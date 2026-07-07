@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "DriveMind AI — FastAPI backend for agentic Google Drive RAG"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastapi>=0.116.0",
+    "pydantic-settings>=2.10.0",
+    "uvicorn[standard]>=0.35.0",
+]
 
 [dependency-groups]
 dev = [
