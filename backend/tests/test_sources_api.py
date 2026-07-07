@@ -61,3 +61,10 @@ async def test_get_source_chunk_not_found_returns_404(async_client: AsyncClient)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Source chunk not found"
+
+
+@pytest.mark.asyncio
+async def test_get_source_chunk_invalid_uuid_returns_422(async_client: AsyncClient) -> None:
+    response = await async_client.get("/api/v1/sources/not-a-uuid")
+
+    assert response.status_code == 422

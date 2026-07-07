@@ -36,11 +36,11 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 6 M5/M6** — Final test pass, smoke test, and phase closure docs
+**Phase 6 M6** — Final verification, smoke test sign-off, and phase closure docs
 
 Say in a new chat:
 
-> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M5.
+> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M6.
 
 ## Quick Commands
 

@@ -55,3 +55,17 @@ def test_settings_chat_defaults() -> None:
     fields = Settings.model_fields
     assert fields["chat_model"].default == "gpt-4o-mini"
     assert fields["rag_max_context_chars"].default == 12000
+
+
+def test_settings_accepts_custom_rag_env_values() -> None:
+    """Chat and retrieval settings should load from environment overrides."""
+    settings = Settings(
+        chat_model="gpt-4o",
+        rag_max_context_chars=8000,
+        retrieval_top_k=12,
+        retrieval_score_threshold=0.25,
+    )
+    assert settings.chat_model == "gpt-4o"
+    assert settings.rag_max_context_chars == 8000
+    assert settings.retrieval_top_k == 12
+    assert settings.retrieval_score_threshold == 0.25

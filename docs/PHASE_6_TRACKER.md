@@ -41,8 +41,8 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 4 (chat + source viewer API routes)
-- **Next milestone:** Milestone 5 — test coverage review + Milestone 6 docs closure
+- **Last completed milestone:** Milestone 5 (retrieval, RAG, and API test coverage)
+- **Next milestone:** Milestone 6 — verification + Phase 6 docs closure
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -60,7 +60,7 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 - [x] Milestone 2 — LLM chat service + grounded prompts (`app/llm/`)
 - [x] Milestone 3 — RAG orchestration service (`app/services/rag_service.py`)
 - [x] Milestone 4 — Chat + source viewer API routes
-- [ ] Milestone 5 — Retrieval, RAG, and API test coverage
+- [x] Milestone 5 — Retrieval, RAG, and API test coverage
 - [ ] Milestone 6 — Verification + Phase 6 docs closure
 
 ## Commit Plan
@@ -179,3 +179,14 @@ curl -X POST http://localhost:8000/api/v1/chat \
 - Mock OpenAI and Qdrant in unit tests; no network in CI.
 - Reuse user resolution pattern from `IndexingService` in `RagService` (M3).
 - Phase 7 replaces vector-only retrieval with hybrid metadata + keyword + merge.
+
+### M5 test coverage (240 tests)
+
+| Area | Tests added |
+|------|-------------|
+| Chat API | no-evidence path, VectorStore/Embedding/Chat config errors → 503, missing field 422, whitespace strip |
+| Sources API | invalid UUID → 422 |
+| RAG service | `max_context_chars` passthrough, filename fallback for blank chunk text |
+| Vector retriever | retrieval settings passed to `search_similar` |
+| Schemas | `ChatRequest` strip/validate, `ChatResponse` shape |
+| Config | custom RAG env overrides |

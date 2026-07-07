@@ -196,3 +196,21 @@ async def test_retrieve_preserves_qdrant_rank_order(
     assert [result.chunk_id for result in results] == [first_id, second_id]
     assert results[0].score == 0.95
     assert results[1].score == 0.80
+
+
+@pytest.mark.asyncio
+async def test_retrieve_passes_retrieval_settings_to_vector_store(
+    retriever: VectorRetriever,
+    mock_db: AsyncMock,
+    mock_vector_store: AsyncMock,
+) -> None:
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
+    )
+
+    await retriever.retrieve("settings test")
+
+    call_kwargs = mock_vector_store.search_similar.await_args.kwargs
+    assert call_kwargs["limit"] == 5
+    assert call_kwargs["score_threshold"] == 0.35
+    assert call_kwargs["expected_vector_size"] == 1536

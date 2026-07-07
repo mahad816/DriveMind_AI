@@ -127,3 +127,120 @@ async def test_chat_openai_failure_returns_503(async_client: AsyncClient) -> Non
 
     assert response.status_code == 503
     assert "OpenAI chat request failed" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_no_evidence_returns_empty_citations(async_client: AsyncClient) -> None:
+    from app.llm.prompts import NO_EVIDENCE_ANSWER
+
+    fake_service = MagicMock()
+    fake_service.ask = AsyncMock(
+        return_value=RagResult(
+            query_id=QUERY_ID,
+            user_id=USER_ID,
+            question="What is quantum foam?",
+            answer=NO_EVIDENCE_ANSWER,
+            citations=[],
+            retrieval_count=0,
+        )
+    )
+    app.dependency_overrides[get_rag_service] = lambda: fake_service
+
+    response = await async_client.post(
+        "/api/v1/chat",
+        json={"question": "What is quantum foam?"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == NO_EVIDENCE_ANSWER
+    assert body["citations"] == []
+    assert body["retrieval_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_chat_vector_store_error_returns_503(async_client: AsyncClient) -> None:
+    from app.embeddings.vector_store import VectorStoreError
+
+    fake_service = MagicMock()
+    fake_service.ask = AsyncMock(
+        side_effect=VectorStoreError("Qdrant connection failed during vector search"),
+    )
+    app.dependency_overrides[get_rag_service] = lambda: fake_service
+
+    response = await async_client.post(
+        "/api/v1/chat",
+        json={"question": "What is tensile strength?"},
+    )
+
+    assert response.status_code == 503
+    assert "Qdrant connection failed" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_embedding_error_returns_503(async_client: AsyncClient) -> None:
+    from app.embeddings.base import EmbeddingError
+
+    fake_service = MagicMock()
+    fake_service.ask = AsyncMock(
+        side_effect=EmbeddingError("OpenAI embedding request failed: timeout"),
+    )
+    app.dependency_overrides[get_rag_service] = lambda: fake_service
+
+    response = await async_client.post(
+        "/api/v1/chat",
+        json={"question": "What is tensile strength?"},
+    )
+
+    assert response.status_code == 503
+    assert "embedding request failed" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_configuration_error_returns_503(async_client: AsyncClient) -> None:
+    from app.llm.base import ChatConfigurationError
+
+    fake_service = MagicMock()
+    fake_service.ask = AsyncMock(
+        side_effect=ChatConfigurationError("OPENAI_API_KEY is not configured"),
+    )
+    app.dependency_overrides[get_rag_service] = lambda: fake_service
+
+    response = await async_client.post(
+        "/api/v1/chat",
+        json={"question": "What is tensile strength?"},
+    )
+
+    assert response.status_code == 503
+    assert "OPENAI_API_KEY" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_chat_missing_question_field_returns_422(async_client: AsyncClient) -> None:
+    response = await async_client.post("/api/v1/chat", json={})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_chat_strips_question_whitespace(async_client: AsyncClient) -> None:
+    fake_service = MagicMock()
+    fake_service.ask = AsyncMock(
+        return_value=RagResult(
+            query_id=QUERY_ID,
+            user_id=USER_ID,
+            question="What is tensile strength?",
+            answer="Answer",
+            citations=[],
+            retrieval_count=0,
+        )
+    )
+    app.dependency_overrides[get_rag_service] = lambda: fake_service
+
+    response = await async_client.post(
+        "/api/v1/chat",
+        json={"question": "  What is tensile strength?  "},
+    )
+
+    assert response.status_code == 200
+    fake_service.ask.assert_awaited_once_with("What is tensile strength?")

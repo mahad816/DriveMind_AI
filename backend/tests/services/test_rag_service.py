@@ -180,3 +180,57 @@ async def test_ask_raises_when_no_oauth_connection(
 
     with pytest.raises(ValueError, match="No Google Drive connection"):
         await service.ask("What files do I have?")
+
+
+@pytest.mark.asyncio
+async def test_ask_passes_max_context_chars_to_chat_service(
+    service: RagService,
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    await service.ask("What is tensile strength?")
+
+    call_kwargs = mock_chat.generate_grounded_answer.await_args.kwargs
+    assert call_kwargs["max_context_chars"] == 12000
+
+
+@pytest.mark.asyncio
+async def test_ask_uses_filename_when_chunk_text_is_blank(
+    service: RagService,
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    blank_chunk = RetrievedChunk(
+        chunk_id=CHUNK_ID,
+        document_id=DOCUMENT_ID,
+        drive_file_id=DRIVE_FILE_ID,
+        filename="notes.txt",
+        mime_type="text/plain",
+        modified_at=datetime.now(UTC),
+        chunk_index=0,
+        text="   ",
+        score=0.91,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
+    mock_retriever.retrieve = AsyncMock(return_value=[blank_chunk])
+    mock_chat.generate_grounded_answer = AsyncMock(return_value="See [1].")
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What is in notes.txt?")
+
+    assert len(result.citations) == 1
+    assert result.citations[0].snippet == "notes.txt"
