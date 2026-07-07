@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -167,7 +168,7 @@ class DriveSyncService:
 
         try:
             client = self._build_drive_client(token_row, refreshed_tokens)
-            drive_files = client.list_files(supported_only=True)
+            drive_files = await asyncio.to_thread(client.list_files, supported_only=True)
 
             for metadata in drive_files:
                 outcome = await self._upsert_file(user.id, metadata)

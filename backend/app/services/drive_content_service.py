@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 from typing import cast
@@ -121,7 +122,11 @@ class DriveContentService:
         client = self._build_drive_client(token_row, refreshed_tokens)
 
         try:
-            data = client.get_file_content(drive_file.drive_file_id, drive_file.mime_type)
+            data = await asyncio.to_thread(
+                client.get_file_content,
+                drive_file.drive_file_id,
+                drive_file.mime_type,
+            )
         except DriveClientError:
             raise
 
