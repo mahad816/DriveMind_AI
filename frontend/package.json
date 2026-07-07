@@ -1,0 +1,12 @@
+{
+  "name": "drivemind-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DriveMind AI — Next.js frontend",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  }
+}

@@ -1,0 +1,1 @@
+"""DriveMind AI backend application."""

@@ -1,0 +1,94 @@
+---
+description: Core DriveMind AI project constraints, architecture, and development rules
+alwaysApply: true
+---
+
+# DriveMind AI — Project Rules
+
+## What This Project Is
+
+A **LangGraph-powered agentic RAG system** for personal Google Drive — not a simple PDF chatbot.
+
+- Single-user MVP, read-only Google Drive access
+- Hybrid retrieval: metadata + keyword + vector
+- Grounded answers with citations from retrieved chunks
+- LangGraph orchestrates flow; LangChain provides components
+
+## Priority Order
+
+1. Correct architecture
+2. Clean codebase
+3. Reliable retrieval
+4. Good LangGraph workflow
+5. Professional documentation
+6. Good UI
+7. Additional features
+
+## Architecture Constraints
+
+- **Backend** (`backend/app/`): FastAPI, ingestion, retrieval, LangGraph agent, Drive connector
+- **Frontend** (`frontend/`): Next.js — consumes backend API only; no direct Drive/Qdrant/LLM access
+- **PostgreSQL**: metadata, chunk text, indexing state, query history
+- **Qdrant**: embeddings and vector IDs only — never original files
+- **LLM never reads Google Drive directly** — only retrieved chunks
+
+## Module Layout
+
+```
+api/          routes only — no business logic
+agents/       LangGraph state, nodes, graph
+connectors/   Google Drive client and sync
+core/         config, logging
+db/           models, session, migrations
+embeddings/   embedding service, Qdrant
+evaluation/   retrieval and answer quality
+ingestion/    extractors, chunking pipeline
+jobs/         background sync/index tasks
+retrieval/    metadata, keyword, vector, hybrid
+schemas/      Pydantic models
+services/     domain business logic
+```
+
+## Coding Rules
+
+- Modular, single-responsibility modules
+- Dependency injection over global state
+- Config via environment variables — no hardcoded secrets
+- Proper typing (Python 3.11+, TypeScript strict)
+- Async where appropriate
+- Business logic in `services/`, not in `api/` routes
+- Build incrementally — one phase at a time
+- No monolithic files, no unnecessary abstractions
+
+## What NOT To Build (MVP)
+
+- Multi-user SaaS
+- Write/delete Drive files
+- ChatGPT clone UI
+- Autonomous file manager
+- Scaffold everything at once
+
+## Git Rules
+
+- Conventional commits: `feat(scope): description`
+- Never commit `.env`, tokens, credentials, Drive downloads, DB volumes
+- One logical change per commit
+- Do not commit unless user explicitly asks
+- Show diff summary before committing
+
+## Phase Discipline
+
+Work one roadmap phase at a time. See `docs/ROADMAP.md`.
+
+Before implementing a phase: propose files and steps → get approval → implement → review → commit.
+
+## Supported File Types (MVP)
+
+Google Docs, PDF, TXT, DOCX, Images (OCR). Audio deferred.
+
+## Key Docs
+
+- `docs/PROJECT_CONTEXT.md` — full context
+- `docs/ROADMAP.md` — phases
+- `docs/ARCHITECTURE.md` — system design
+- `docs/GIT_WORKFLOW.md` — commit rules
