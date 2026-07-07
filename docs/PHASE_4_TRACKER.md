@@ -12,7 +12,7 @@ Convert supported Drive files into normalized plain text and persist extraction 
 |-----------|--------|--------|
 | Google Docs | Drive export as `text/plain` (already in Phase 3) | Done (M2) |
 | TXT | UTF-8 decode with fallback | Done (M2) |
-| DOCX | `python-docx` paragraph extraction | Planned |
+| DOCX | `python-docx` paragraph extraction | Done (M4) |
 | PDF | `pypdf` text extraction **only** (born-digital PDFs) | Done (M3) |
 | Images (PNG, JPEG, WebP, GIF, TIFF, BMP) | Tesseract OCR via `pytesseract` | Planned |
 
@@ -34,8 +34,8 @@ Scanned or image-only PDFs may return little or no extractable text in Phase 4. 
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 3 (PDF text-only extractor)
-- **Next milestone:** Milestone 4 (DOCX extractor)
+- **Last completed milestone:** Milestone 4 (DOCX extractor)
+- **Next milestone:** Milestone 5 (Image OCR extractor)
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -62,7 +62,7 @@ Steps A–C are not required for Milestones 0–4 (no OCR yet).
 - [x] Milestone 1 — Extraction foundation (deps, protocol, registry, hash util, `documents.extracted_text` migration)
 - [x] Milestone 2 — TXT + Google Docs plain-text extractors
 - [x] Milestone 3 — PDF text-only extractor (`pypdf`)
-- [ ] Milestone 4 — DOCX extractor (`python-docx`)
+- [x] Milestone 4 — DOCX extractor (`python-docx`)
 - [ ] Milestone 5 — Image OCR extractor (Tesseract / `pytesseract`)
 - [ ] Milestone 6 — `IngestionService` orchestration + ingest API + phase closure
 

@@ -7,6 +7,11 @@ from app.ingestion.extractors.base import (
     UnsupportedMimeTypeError,
 )
 from app.ingestion.extractors.bootstrap import register_builtin_extractors, reset_builtin_extractors
+from app.ingestion.extractors.docx import (
+    DocxTextExtractor,
+    extract_docx_text,
+    register_docx_extractor,
+)
 from app.ingestion.extractors.pdf import (
     PdfTextExtractor,
     extract_pdf_text,
@@ -28,6 +33,7 @@ from app.ingestion.extractors.registry import (
 register_builtin_extractors()
 
 __all__ = [
+    "DocxTextExtractor",
     "ExtractionError",
     "ExtractionResult",
     "PdfTextExtractor",
@@ -36,10 +42,12 @@ __all__ = [
     "UnsupportedMimeTypeError",
     "clear_extractors",
     "decode_plain_text_bytes",
+    "extract_docx_text",
     "extract_pdf_text",
     "get_extractor",
     "normalize_extracted_text",
     "register_builtin_extractors",
+    "register_docx_extractor",
     "register_extractor",
     "register_pdf_extractor",
     "register_plain_text_extractors",

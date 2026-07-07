@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.ingestion.extractors.docx import register_docx_extractor
 from app.ingestion.extractors.plain_text import register_plain_text_extractors
 from app.ingestion.extractors.pdf import register_pdf_extractor
 
@@ -15,6 +16,7 @@ def register_builtin_extractors() -> None:
         return
     register_plain_text_extractors()
     register_pdf_extractor()
+    register_docx_extractor()
     _bootstrapped = True
 
 
