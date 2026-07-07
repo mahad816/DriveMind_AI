@@ -9,8 +9,8 @@ Authenticate with Google (read-only), sync Drive file metadata into PostgreSQL, 
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 3 (read-only Drive API client)
-- **Next milestone:** Milestone 4 (metadata sync service + API)
+- **Last completed milestone:** Milestone 4 (metadata sync service + API)
+- **Next milestone:** Milestone 5 (export/download handlers)
 - **Blocker:** None — Step D passed; OAuth callback returned `{"status":"ok",...}`
 
 ## Your Action Items (manual setup)
@@ -43,7 +43,7 @@ uv run uvicorn app.main:app --reload
 - [x] Milestone 1 — Google deps, config, OAuth token model + migration
 - [x] Milestone 2 — OAuth routes + auth service
 - [x] Milestone 3 — Read-only Drive API client
-- [ ] Milestone 4 — Metadata sync service + API
+- [x] Milestone 4 — Metadata sync service + API
 - [ ] Milestone 5 — Export/download handlers
 - [ ] Milestone 6 — Incremental sync + phase closure
 
@@ -79,6 +79,24 @@ uv run uvicorn app.main:app --reload
   - `DriveTokens` and `DriveFileMetadata` dataclasses; `DriveClientError`
 - Tests: `backend/tests/connectors/test_google_drive_client.py` (mocked, no live Google calls)
 - `pyproject.toml` mypy note: Google `Credentials`/`refresh` are inline-ignored (`no-untyped-call`)
+
+## Milestone 4 Deliverables (done)
+
+- `backend/app/services/drive_sync_service.py`
+  - Resolves connected user from stored OAuth token (single-user MVP)
+  - Builds `GoogleDriveClient` with token-refresh persistence back to DB
+  - Upserts supported Drive files into `drive_files` (created / updated / unchanged)
+  - Tracks each sync run in `indexing_jobs` (queued → running → completed/failed)
+- `backend/app/schemas/drive_sync.py`
+  - `DriveSyncResponse`, `DriveFileListResponse`, `DriveSyncStatusResponse`
+- `backend/app/api/index.py`
+  - `POST /api/v1/index/sync` — trigger metadata sync
+  - `GET /api/v1/index/status` — latest sync job status
+- `backend/app/api/files.py`
+  - `GET /api/v1/files` — list synced file metadata from PostgreSQL
+- Tests:
+  - `backend/tests/services/test_drive_sync_service.py` (mocked service logic)
+  - `backend/tests/test_drive_sync_api.py` (mocked route tests)
 
 ## Troubleshooting
 
