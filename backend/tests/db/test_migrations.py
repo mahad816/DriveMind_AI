@@ -1,0 +1,70 @@
+"""Migration integrity tests for Phase 2 schema."""
+
+from __future__ import annotations
+
+import subprocess
+import importlib.util
+from pathlib import Path
+
+
+def _backend_dir() -> Path:
+    """Return backend project root from test file location."""
+    return Path(__file__).resolve().parents[2]
+
+
+def test_initial_migration_metadata_is_consistent() -> None:
+    """Revision metadata should remain stable for initial schema migration."""
+    migration_path = (
+        _backend_dir() / "alembic" / "versions" / "20260707_1409_initial_phase2_schema.py"
+    )
+    spec = importlib.util.spec_from_file_location("phase2_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration_module)
+
+    assert migration_module.revision == "20260707_1409"
+    assert migration_module.down_revision is None
+    assert callable(migration_module.upgrade)
+    assert callable(migration_module.downgrade)
+
+
+def test_upgrade_sql_contains_all_core_tables() -> None:
+    """Offline upgrade SQL should create every core Phase 2 table."""
+    result = subprocess.run(
+        ["alembic", "upgrade", "head", "--sql"],
+        cwd=_backend_dir(),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sql = result.stdout
+    for table in (
+        "users",
+        "drive_files",
+        "documents",
+        "chunks",
+        "indexing_jobs",
+        "query_history",
+    ):
+        assert f"CREATE TABLE {table}" in sql
+
+
+def test_downgrade_sql_drops_all_core_tables() -> None:
+    """Offline downgrade SQL should drop every core Phase 2 table."""
+    result = subprocess.run(
+        ["alembic", "downgrade", "20260707_1409:base", "--sql"],
+        cwd=_backend_dir(),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sql = result.stdout
+    for table in (
+        "query_history",
+        "indexing_jobs",
+        "chunks",
+        "documents",
+        "drive_files",
+        "users",
+    ):
+        assert f"DROP TABLE {table}" in sql
