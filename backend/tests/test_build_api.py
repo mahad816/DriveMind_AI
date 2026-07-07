@@ -33,6 +33,7 @@ async def test_build_vector_index_batch_success(async_client: AsyncClient) -> No
             embedded=5,
             unchanged=3,
             skipped=1,
+            failed=0,
             removed=2,
             total=9,
         )
@@ -46,6 +47,7 @@ async def test_build_vector_index_batch_success(async_client: AsyncClient) -> No
     assert body["message"] == "Vector index build (batch) completed"
     assert body["embedded"] == 5
     assert body["unchanged"] == 3
+    assert body["failed"] == 0
     assert body["removed"] == 2
     assert body["job_id"] == str(job_id)
 
@@ -63,6 +65,7 @@ async def test_build_single_file_index_success(async_client: AsyncClient) -> Non
             embedded=1,
             unchanged=0,
             skipped=0,
+            failed=0,
             removed=0,
             total=1,
         )

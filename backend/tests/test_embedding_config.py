@@ -40,3 +40,4 @@ def test_settings_qdrant_defaults() -> None:
     assert fields["qdrant_host"].default == "localhost"
     assert fields["qdrant_port"].default == 6333
     assert fields["qdrant_collection"].default == DEFAULT_QDRANT_COLLECTION
+    assert fields["qdrant_upsert_batch_size"].default == 100

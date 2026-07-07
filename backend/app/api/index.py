@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.connectors.google_drive.client import DriveClientError
 from app.db.session import get_db
 from app.embeddings.base import EmbeddingConfigurationError, EmbeddingError
+from app.embeddings.vector_store import VectorStoreError
 from app.schemas.chunking import ChunkingResponse
 from app.schemas.drive_sync import DriveSyncResponse, DriveSyncStatusResponse
 from app.schemas.index_build import IndexBuildResponse
@@ -171,7 +172,7 @@ async def build_vector_index(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
-    except (EmbeddingConfigurationError, EmbeddingError) as exc:
+    except (EmbeddingConfigurationError, EmbeddingError, VectorStoreError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
@@ -184,6 +185,7 @@ async def build_vector_index(
         embedded=result.embedded,
         unchanged=result.unchanged,
         skipped=result.skipped,
+        failed=result.failed,
         removed=result.removed,
         total=result.total,
         message=f"Vector index build ({scope}) completed",

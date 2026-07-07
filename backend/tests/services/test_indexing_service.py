@@ -16,6 +16,8 @@ from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
 from app.ingestion.hash_util import compute_extracted_text_hash
+from app.embeddings.base import EmbeddingError
+from app.embeddings.vector_store import VectorStoreError
 from app.services.indexing_service import IndexingService
 
 USER_ID = uuid.uuid4()
@@ -147,6 +149,7 @@ async def test_build_index_embeds_new_chunks(
     assert result.embedded == 1
     assert result.unchanged == 0
     assert result.skipped == 0
+    assert result.failed == 0
     assert result.total == 1
     mock_embedding.embed_texts.assert_awaited_once_with(["hello world"])
     mock_vector_store.upsert_points.assert_awaited_once()
@@ -235,7 +238,8 @@ async def test_build_index_batch_processes_documents(
         _chunk(text="doc one", text_hash=documents[0].extracted_text_hash),
         _chunk(text="doc two", text_hash=documents[1].extracted_text_hash),
     ]
-    mock_db.get = AsyncMock(side_effect=[USER, _drive_file(), _drive_file()])
+    drive_file = _drive_file()
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file, drive_file, drive_file])
     mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
     mock_db.scalars = AsyncMock(
         side_effect=[
@@ -249,4 +253,39 @@ async def test_build_index_batch_processes_documents(
 
     assert result.total == 2
     assert result.embedded == 2
+    assert result.failed == 0
+    assert mock_embedding.embed_texts.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_build_index_continues_after_document_failure(
+    service: IndexingService,
+    mock_db: AsyncMock,
+    mock_embedding: AsyncMock,
+    mock_vector_store: AsyncMock,
+) -> None:
+    documents = [_document(text="doc one"), _document(text="doc two")]
+    chunks = [
+        _chunk(text="doc one", text_hash=documents[0].extracted_text_hash),
+        _chunk(text="doc two", text_hash=documents[1].extracted_text_hash),
+    ]
+    drive_file = _drive_file()
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file, drive_file, drive_file])
+    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
+    mock_db.scalars = AsyncMock(
+        side_effect=[
+            MagicMock(all=MagicMock(return_value=documents)),
+            MagicMock(all=MagicMock(return_value=[chunks[0]])),
+            MagicMock(all=MagicMock(return_value=[chunks[1]])),
+        ],
+    )
+    mock_vector_store.upsert_points = AsyncMock(
+        side_effect=[VectorStoreError("Qdrant rejected vector upsert"), None],
+    )
+
+    result = await service.build_index()
+
+    assert result.total == 2
+    assert result.embedded == 1
+    assert result.failed == 1
     assert mock_embedding.embed_texts.await_count == 2

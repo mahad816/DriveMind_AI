@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,10 +19,12 @@ from app.db.models.drive_file import DriveFile
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
-from app.embeddings.base import EmbeddingService
+from app.embeddings.base import EmbeddingError, EmbeddingService
 from app.embeddings.factory import get_embedding_service
-from app.embeddings.vector_store import QdrantVectorStore, VectorPoint
+from app.embeddings.vector_store import QdrantVectorStore, VectorPoint, VectorStoreError
 from app.services.chunking_service import ChunkingService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,6 +36,7 @@ class IndexBuildResult:
     embedded: int
     unchanged: int
     skipped: int
+    failed: int
     removed: int
     total: int
 
@@ -158,10 +162,41 @@ class IndexingService:
                 )
                 for chunk, vector in zip(pending, vectors, strict=True)
             ]
-            await self.vector_store.upsert_points(points)
+            await self.vector_store.upsert_points(
+                points,
+                expected_vector_size=self.embedding_service.embedding_dimension,
+            )
             embedded = len(points)
 
         return embedded, unchanged, 0, removed
+
+    async def _index_document_safe(
+        self,
+        document: Document,
+        *,
+        drive_file: DriveFile | None = None,
+    ) -> tuple[int, int, int, int, int]:
+        """Index one document, returning embedded/unchanged/skipped/removed/failed."""
+        resolved_drive_file = drive_file
+        if resolved_drive_file is None:
+            resolved_drive_file = await self.db.get(DriveFile, document.drive_file_id)
+
+        file_label = (
+            resolved_drive_file.name
+            if resolved_drive_file is not None
+            else str(document.drive_file_id)
+        )
+        try:
+            embedded, unchanged, skipped, removed = await self._index_document(document)
+            return embedded, unchanged, skipped, removed, 0
+        except (EmbeddingError, VectorStoreError) as exc:
+            logger.warning(
+                "Skipping vector index for document %s (%s): %s",
+                document.id,
+                file_label,
+                exc,
+            )
+            return 0, 0, 0, 0, 1
 
     async def build_index(
         self,
@@ -182,7 +217,7 @@ class IndexingService:
         job.status = IndexingJobStatus.RUNNING
         job.started_at = datetime.now(UTC)
 
-        embedded = unchanged = skipped = removed = 0
+        embedded = unchanged = skipped = failed = removed = 0
         total = 0
 
         try:
@@ -198,11 +233,13 @@ class IndexingService:
                         doc_unchanged,
                         doc_skipped,
                         doc_removed,
-                    ) = await self._index_document(document)
+                        doc_failed,
+                    ) = await self._index_document_safe(document, drive_file=drive_file)
                     embedded += doc_embedded
                     unchanged += doc_unchanged
                     skipped += doc_skipped
                     removed += doc_removed
+                    failed += doc_failed
             else:
                 documents = await self._list_indexable_documents(user.id)
                 total = len(documents)
@@ -212,11 +249,13 @@ class IndexingService:
                         doc_unchanged,
                         doc_skipped,
                         doc_removed,
-                    ) = await self._index_document(document)
+                        doc_failed,
+                    ) = await self._index_document_safe(document)
                     embedded += doc_embedded
                     unchanged += doc_unchanged
                     skipped += doc_skipped
                     removed += doc_removed
+                    failed += doc_failed
 
             job.status = IndexingJobStatus.COMPLETED
             job.completed_at = datetime.now(UTC)
@@ -234,6 +273,7 @@ class IndexingService:
             embedded=embedded,
             unchanged=unchanged,
             skipped=skipped,
+            failed=failed,
             removed=removed,
             total=total,
         )

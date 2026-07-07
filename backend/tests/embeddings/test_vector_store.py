@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.config import Settings
-from app.embeddings.vector_store import QdrantVectorStore, VectorPoint
+from app.embeddings.vector_store import QdrantVectorStore, VectorPoint, VectorStoreError
 
 CHUNK_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
@@ -89,6 +89,60 @@ async def test_upsert_points_sends_chunk_vectors(
     call_kwargs = mock_client.upsert.await_args.kwargs
     assert call_kwargs["collection_name"] == "drivemind_chunks"
     assert call_kwargs["points"][0].id == str(CHUNK_ID)
+
+
+@pytest.mark.asyncio
+async def test_upsert_points_batches_large_inputs(
+    store: QdrantVectorStore,
+    mock_client: AsyncMock,
+) -> None:
+    store.upsert_batch_size = 2
+    points = [
+        VectorPoint(
+            chunk_id=uuid.uuid4(),
+            vector=[0.1, 0.2],
+            payload={"chunk_index": index},
+        )
+        for index in range(5)
+    ]
+
+    await store.upsert_points(points)
+
+    assert mock_client.upsert.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_upsert_points_rejects_invalid_vector_dimension(
+    store: QdrantVectorStore,
+    mock_client: AsyncMock,
+) -> None:
+    point = VectorPoint(chunk_id=CHUNK_ID, vector=[0.1, 0.2], payload={})
+
+    with pytest.raises(VectorStoreError, match="expected 1536"):
+        await store.upsert_points([point], expected_vector_size=1536)
+
+    mock_client.upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upsert_points_wraps_qdrant_http_errors(
+    store: QdrantVectorStore,
+    mock_client: AsyncMock,
+) -> None:
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    mock_client.upsert = AsyncMock(
+        side_effect=UnexpectedResponse(
+            status_code=400,
+            reason_phrase="Bad Request",
+            content=b"invalid payload",
+            headers={},
+        ),
+    )
+    point = VectorPoint(chunk_id=CHUNK_ID, vector=[0.1, 0.2], payload={"chunk_index": 0})
+
+    with pytest.raises(VectorStoreError, match="HTTP 400"):
+        await store.upsert_points([point])
 
 
 @pytest.mark.asyncio

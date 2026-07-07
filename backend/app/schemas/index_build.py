@@ -15,6 +15,7 @@ class IndexBuildResponse(SchemaBase):
     embedded: int = Field(ge=0)
     unchanged: int = Field(ge=0)
     skipped: int = Field(ge=0)
+    failed: int = Field(ge=0, description="Documents that could not be embedded or stored")
     removed: int = Field(ge=0, description="Stale vectors removed from Qdrant")
     total: int = Field(ge=0)
     message: str

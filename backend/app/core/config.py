@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
     qdrant_collection: str = "drivemind_chunks"
+    qdrant_upsert_batch_size: int = 100
 
     model_config = SettingsConfigDict(
         env_file=(

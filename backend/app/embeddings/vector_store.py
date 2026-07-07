@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import (
     Distance,
     FieldCondition,
@@ -20,6 +22,7 @@ from qdrant_client.models import (
 from app.core.config import Settings, get_settings
 
 DEFAULT_QDRANT_COLLECTION = "drivemind_chunks"
+DEFAULT_QDRANT_UPSERT_BATCH_SIZE = 100
 
 
 class VectorStoreError(Exception):
@@ -43,9 +46,15 @@ class QdrantVectorStore:
         settings: Settings | None = None,
         *,
         client: AsyncQdrantClient | None = None,
+        upsert_batch_size: int | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self._client = client
+        self.upsert_batch_size = (
+            upsert_batch_size
+            if upsert_batch_size is not None
+            else self.settings.qdrant_upsert_batch_size or DEFAULT_QDRANT_UPSERT_BATCH_SIZE
+        )
 
     @property
     def collection_name(self) -> str:
@@ -62,30 +71,56 @@ class QdrantVectorStore:
     async def ensure_collection(self, *, vector_size: int) -> None:
         """Create the collection when missing."""
         client = self._get_client()
-        if await client.collection_exists(self.collection_name):
-            return
-        await client.create_collection(
-            collection_name=self.collection_name,
-            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-        )
+        try:
+            if await client.collection_exists(self.collection_name):
+                return
+            await client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+            )
+        except (UnexpectedResponse, ResponseHandlingException) as exc:
+            raise VectorStoreError(
+                f"Failed to ensure Qdrant collection '{self.collection_name}': {exc}"
+            ) from exc
 
-    async def upsert_points(self, points: list[VectorPoint]) -> None:
-        """Insert or update chunk vectors."""
+    async def upsert_points(
+        self,
+        points: list[VectorPoint],
+        *,
+        expected_vector_size: int | None = None,
+    ) -> None:
+        """Insert or update chunk vectors in bounded batches."""
         if not points:
             return
 
+        for point in points:
+            _validate_vector(point.vector, expected_size=expected_vector_size)
+
         client = self._get_client()
-        await client.upsert(
-            collection_name=self.collection_name,
-            points=[
-                PointStruct(
-                    id=str(point.chunk_id),
-                    vector=point.vector,
-                    payload=_serialize_payload(point.payload),
+        for start in range(0, len(points), self.upsert_batch_size):
+            batch = points[start : start + self.upsert_batch_size]
+            try:
+                await client.upsert(
+                    collection_name=self.collection_name,
+                    points=[
+                        PointStruct(
+                            id=str(point.chunk_id),
+                            vector=point.vector,
+                            payload=_serialize_payload(point.payload),
+                        )
+                        for point in batch
+                    ],
                 )
-                for point in points
-            ],
-        )
+            except UnexpectedResponse as exc:
+                raise VectorStoreError(
+                    f"Qdrant rejected vector upsert (HTTP {exc.status_code}): {exc.content}"
+                ) from exc
+            except ResponseHandlingException as exc:
+                raise VectorStoreError(
+                    "Qdrant connection failed during vector upsert. "
+                    "Large documents are upserted in batches; if this persists, "
+                    "check that Qdrant is healthy and reachable."
+                ) from exc
 
     async def delete_points(self, chunk_ids: list[uuid.UUID]) -> None:
         """Delete vectors for the given chunk IDs."""
@@ -93,10 +128,15 @@ class QdrantVectorStore:
             return
 
         client = self._get_client()
-        await client.delete(
-            collection_name=self.collection_name,
-            points_selector=PointIdsList(points=[str(chunk_id) for chunk_id in chunk_ids]),
-        )
+        try:
+            await client.delete(
+                collection_name=self.collection_name,
+                points_selector=PointIdsList(points=[str(chunk_id) for chunk_id in chunk_ids]),
+            )
+        except (UnexpectedResponse, ResponseHandlingException) as exc:
+            raise VectorStoreError(
+                f"Failed to delete vectors from Qdrant: {exc}"
+            ) from exc
 
     async def delete_points_for_drive_file_except(
         self,
@@ -109,27 +149,32 @@ class QdrantVectorStore:
         stale_ids: list[uuid.UUID] = []
         offset = None
 
-        while True:
-            records, offset = await client.scroll(
-                collection_name=self.collection_name,
-                scroll_filter=Filter(
-                    must=[
-                        FieldCondition(
-                            key="drive_file_id",
-                            match=MatchValue(value=str(drive_file_id)),
-                        )
-                    ]
-                ),
-                limit=100,
-                offset=offset,
-                with_vectors=False,
-            )
-            for record in records:
-                chunk_id = _parse_chunk_id(record.payload)
-                if chunk_id is not None and chunk_id not in keep_chunk_ids:
-                    stale_ids.append(chunk_id)
-            if offset is None:
-                break
+        try:
+            while True:
+                records, offset = await client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter=Filter(
+                        must=[
+                            FieldCondition(
+                                key="drive_file_id",
+                                match=MatchValue(value=str(drive_file_id)),
+                            )
+                        ]
+                    ),
+                    limit=100,
+                    offset=offset,
+                    with_vectors=False,
+                )
+                for record in records:
+                    chunk_id = _parse_chunk_id(record.payload)
+                    if chunk_id is not None and chunk_id not in keep_chunk_ids:
+                        stale_ids.append(chunk_id)
+                if offset is None:
+                    break
+        except (UnexpectedResponse, ResponseHandlingException) as exc:
+            raise VectorStoreError(
+                f"Failed to scan Qdrant vectors for drive file {drive_file_id}: {exc}"
+            ) from exc
 
         await self.delete_points(stale_ids)
         return len(stale_ids)
@@ -140,25 +185,45 @@ class QdrantVectorStore:
             return {}
 
         client = self._get_client()
-        records = await client.retrieve(
-            collection_name=self.collection_name,
-            ids=[str(chunk_id) for chunk_id in chunk_ids],
-            with_payload=True,
-            with_vectors=False,
-        )
-
         stored: dict[uuid.UUID, str] = {}
-        for record in records:
-            chunk_id = _parse_chunk_id(record.payload)
-            text_hash = record.payload.get("extracted_text_hash") if record.payload else None
-            if chunk_id is not None and isinstance(text_hash, str):
-                stored[chunk_id] = text_hash
+        for start in range(0, len(chunk_ids), self.upsert_batch_size):
+            batch_ids = chunk_ids[start : start + self.upsert_batch_size]
+            try:
+                records = await client.retrieve(
+                    collection_name=self.collection_name,
+                    ids=[str(chunk_id) for chunk_id in batch_ids],
+                    with_payload=True,
+                    with_vectors=False,
+                )
+            except (UnexpectedResponse, ResponseHandlingException) as exc:
+                raise VectorStoreError(
+                    f"Failed to read stored vector hashes from Qdrant: {exc}"
+                ) from exc
+
+            for record in records:
+                chunk_id = _parse_chunk_id(record.payload)
+                text_hash = record.payload.get("extracted_text_hash") if record.payload else None
+                if chunk_id is not None and isinstance(text_hash, str):
+                    stored[chunk_id] = text_hash
         return stored
+
+
+def _validate_vector(vector: list[float], *, expected_size: int | None) -> None:
+    if not vector:
+        raise VectorStoreError("Cannot upsert an empty embedding vector")
+    if expected_size is not None and len(vector) != expected_size:
+        raise VectorStoreError(
+            f"Embedding vector has dimension {len(vector)}, expected {expected_size}"
+        )
+    if not all(math.isfinite(value) for value in vector):
+        raise VectorStoreError("Embedding vector contains non-finite values")
 
 
 def _serialize_payload(payload: dict[str, object]) -> dict[str, object]:
     serialized: dict[str, object] = {}
     for key, value in payload.items():
+        if value is None:
+            continue
         if isinstance(value, datetime):
             serialized[key] = value.isoformat()
         elif isinstance(value, uuid.UUID):
