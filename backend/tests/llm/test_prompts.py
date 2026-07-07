@@ -12,6 +12,7 @@ from app.llm.prompts import (
     build_grounded_user_message,
     format_citation_snippet,
     select_context_chunks,
+    select_prompt_chunks,
 )
 from app.retrieval.types import RetrievedChunk
 
@@ -88,3 +89,32 @@ def test_build_grounded_user_message_rejects_empty_question() -> None:
 def test_build_grounded_user_message_rejects_missing_chunks() -> None:
     with pytest.raises(ChatError, match="without retrieved chunks"):
         build_grounded_user_message("hello?", [], max_context_chars=200)
+
+
+def test_select_prompt_chunks_returns_empty_for_blank_question() -> None:
+    chunk = _chunk(text="content")
+
+    selected = select_prompt_chunks("  ", [chunk], max_context_chars=500)
+
+    assert selected == []
+
+
+def test_select_prompt_chunks_matches_build_grounded_user_message_selection() -> None:
+    chunks = [
+        _chunk(text="a" * 200, chunk_index=0),
+        _chunk(text="b" * 200, chunk_index=1),
+    ]
+
+    selected = select_prompt_chunks(
+        "What is here?",
+        chunks,
+        max_context_chars=300,
+    )
+    message = build_grounded_user_message(
+        "What is here?",
+        chunks,
+        max_context_chars=300,
+    )
+
+    assert len(selected) >= 1
+    assert selected[0].text[:20] in message

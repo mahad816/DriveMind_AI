@@ -39,12 +39,10 @@ def build_grounded_user_message(
     if max_context_chars <= 0:
         raise ChatError("max_context_chars must be positive")
 
-    selected = select_context_chunks(
-        chunks,
-        max_context_chars=_context_budget(
-            question=normalized_question,
-            max_context_chars=max_context_chars,
-        ),
+    selected = select_prompt_chunks(
+        question=normalized_question,
+        chunks=chunks,
+        max_context_chars=max_context_chars,
     )
     blocks = [
         _format_context_block(index=index, chunk=chunk)
@@ -52,6 +50,25 @@ def build_grounded_user_message(
     ]
     context = "\n\n".join(blocks)
     return f"Question:\n{normalized_question}\n\nContext:\n{context}"
+
+
+def select_prompt_chunks(
+    question: str,
+    chunks: list[RetrievedChunk],
+    *,
+    max_context_chars: int,
+) -> list[RetrievedChunk]:
+    """Select the chunks that will be included in the grounded LLM prompt."""
+    normalized_question = question.strip()
+    if not normalized_question or not chunks:
+        return []
+    return select_context_chunks(
+        chunks,
+        max_context_chars=_context_budget(
+            question=normalized_question,
+            max_context_chars=max_context_chars,
+        ),
+    )
 
 
 def select_context_chunks(
