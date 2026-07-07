@@ -1,8 +1,12 @@
 """Application configuration loaded from environment variables."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = BACKEND_ROOT.parent
 
 
 class Settings(BaseSettings):
@@ -24,10 +28,14 @@ class Settings(BaseSettings):
     google_drive_scopes: str = "https://www.googleapis.com/auth/drive.readonly"
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "../.env"),
+        env_file=(
+            str(REPO_ROOT / ".env"),
+            str(BACKEND_ROOT / ".env"),
+        ),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        env_ignore_empty=True,
     )
 
 

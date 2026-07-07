@@ -40,13 +40,16 @@ scripts/     Utility scripts
 - [Architecture](docs/ARCHITECTURE.md) — system design and data flow
 - [Git Workflow](docs/GIT_WORKFLOW.md) — commit and branch discipline
 - [Execution Plan](docs/EXECUTION_PLAN.md) — detailed phase-by-phase plan
-- [Phase 2 Tracker](docs/PHASE_2_TRACKER.md) — milestone-by-milestone execution log
+- [Current Status](docs/CURRENT_STATUS.md) — resume point for new chats
+- [Phase 2 Tracker](docs/PHASE_2_TRACKER.md) — Phase 2 log (complete)
+- [Phase 3 Tracker](docs/PHASE_3_TRACKER.md) — Phase 3 log (active)
 
 ## Development Status
 
 - Phase 0 — Repository foundation (complete)
 - Phase 1 — Backend foundation (complete)
 - Phase 2 — Data model and indexing state (complete)
+- Phase 3 — Google Drive read-only integration (in progress, Milestone 2 done)
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phase breakdown.
 

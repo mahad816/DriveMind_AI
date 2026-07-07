@@ -11,7 +11,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** â€
 | 0 | Repository & Standards Foundation | Complete |
 | 1 | Backend Foundation | Complete |
 | 2 | Data Model & Indexing State | Complete |
-| 3 | Google Drive Read-Only Integration | Not started |
+| 3 | Google Drive Read-Only Integration | In progress |
 | 4 | Document Ingestion & Text Extraction | Not started |
 | 5 | Chunking & Embeddings | Not started |
 | 6 | Basic RAG API | Not started |
@@ -104,6 +104,13 @@ test(backend): add health endpoint tests
 - `citations` â€” answer trace (later)
 
 **Design rule:** PostgreSQL stores metadata and chunk text; Qdrant stores embeddings only.
+
+**Phase 3 progress (in progress):**
+
+- Milestone 1 complete: Google OAuth config + `google_oauth_tokens` model/migration
+- Milestone 2 complete: OAuth login/callback routes (`/api/v1/auth/google`)
+- Next: Drive API client, metadata sync, export/download, incremental sync
+- Tracker: [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md)
 
 **Phase 2 completion notes:**
 
