@@ -45,6 +45,7 @@ def test_upgrade_sql_contains_all_core_tables() -> None:
         "chunks",
         "indexing_jobs",
         "query_history",
+        "google_oauth_tokens",
     ):
         assert f"CREATE TABLE {table}" in sql
 
@@ -68,3 +69,16 @@ def test_downgrade_sql_drops_all_core_tables() -> None:
         "users",
     ):
         assert f"DROP TABLE {table}" in sql
+
+
+def test_oauth_migration_downgrade_sql_drops_token_table() -> None:
+    """Downgrading from head to phase-2 revision should drop oauth token table only."""
+    result = subprocess.run(
+        ["alembic", "downgrade", "20260707_1500:20260707_1409", "--sql"],
+        cwd=_backend_dir(),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sql = result.stdout
+    assert "DROP TABLE google_oauth_tokens" in sql

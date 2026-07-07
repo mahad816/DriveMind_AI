@@ -13,6 +13,7 @@ def test_all_core_tables_are_registered() -> None:
         "chunks",
         "indexing_jobs",
         "query_history",
+        "google_oauth_tokens",
     }
     assert expected_tables.issubset(set(Base.metadata.tables.keys()))
 

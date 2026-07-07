@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://drivemind:drivemind@localhost:5432/drivemind"
 
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+    google_drive_scopes: str = "https://www.googleapis.com/auth/drive.readonly"
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
         env_file_encoding="utf-8",

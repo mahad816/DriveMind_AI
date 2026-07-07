@@ -26,3 +26,8 @@ class User(TimestampMixin, Base):
     drive_files = relationship("DriveFile", back_populates="user")
     indexing_jobs = relationship("IndexingJob", back_populates="user")
     query_history = relationship("QueryHistory", back_populates="user")
+    google_oauth_token = relationship(
+        "GoogleOAuthToken",
+        back_populates="user",
+        uselist=False,
+    )
