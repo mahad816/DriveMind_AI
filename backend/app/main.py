@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from app.api.router import router as api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.db.session import engine
 
 
 @asynccontextmanager
@@ -15,6 +16,7 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     configure_logging(settings.log_level)
     yield
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:

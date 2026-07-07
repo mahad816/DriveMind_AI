@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     api_prefix: str = "/api/v1"
+    database_url: str = "postgresql+asyncpg://drivemind:drivemind@localhost:5432/drivemind"
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
