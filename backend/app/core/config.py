@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     qdrant_collection: str = "drivemind_chunks"
     qdrant_upsert_batch_size: int = 100
 
+    retrieval_top_k: int = 8
+    retrieval_score_threshold: float = 0.35
+
     model_config = SettingsConfigDict(
         env_file=(
             str(REPO_ROOT / ".env"),

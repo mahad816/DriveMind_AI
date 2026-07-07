@@ -23,6 +23,8 @@ from app.core.config import Settings, get_settings
 
 DEFAULT_QDRANT_COLLECTION = "drivemind_chunks"
 DEFAULT_QDRANT_UPSERT_BATCH_SIZE = 100
+DEFAULT_RETRIEVAL_TOP_K = 8
+DEFAULT_RETRIEVAL_SCORE_THRESHOLD = 0.35
 
 
 class VectorStoreError(Exception):
@@ -36,6 +38,14 @@ class VectorPoint:
     chunk_id: uuid.UUID
     vector: list[float]
     payload: dict[str, object]
+
+
+@dataclass(frozen=True)
+class ScoredChunkHit:
+    """A chunk ID and similarity score returned from Qdrant search."""
+
+    chunk_id: uuid.UUID
+    score: float
 
 
 class QdrantVectorStore:
@@ -206,6 +216,56 @@ class QdrantVectorStore:
                 if chunk_id is not None and isinstance(text_hash, str):
                     stored[chunk_id] = text_hash
         return stored
+
+    async def search_similar(
+        self,
+        query_vector: list[float],
+        *,
+        limit: int,
+        score_threshold: float | None = None,
+        expected_vector_size: int | None = None,
+    ) -> list[ScoredChunkHit]:
+        """Return chunk IDs ranked by vector similarity to the query embedding."""
+        _validate_vector(query_vector, expected_size=expected_vector_size)
+
+        client = self._get_client()
+        try:
+            response = await client.query_points(
+                collection_name=self.collection_name,
+                query=query_vector,
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=False,
+                with_vectors=False,
+            )
+        except UnexpectedResponse as exc:
+            raise VectorStoreError(
+                f"Qdrant rejected vector search (HTTP {exc.status_code}): {exc.content}"
+            ) from exc
+        except ResponseHandlingException as exc:
+            raise VectorStoreError(
+                "Qdrant connection failed during vector search. "
+                "Check that Qdrant is healthy and reachable."
+            ) from exc
+
+        hits: list[ScoredChunkHit] = []
+        for point in response.points:
+            chunk_id = _parse_point_id(point.id)
+            if chunk_id is None or point.score is None:
+                continue
+            hits.append(ScoredChunkHit(chunk_id=chunk_id, score=float(point.score)))
+        return hits
+
+
+def _parse_point_id(raw: object) -> uuid.UUID | None:
+    if isinstance(raw, uuid.UUID):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return uuid.UUID(raw)
+        except ValueError:
+            return None
+    return None
 
 
 def _validate_vector(vector: list[float], *, expected_size: int | None) -> None:

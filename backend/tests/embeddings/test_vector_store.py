@@ -6,10 +6,11 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from app.core.config import Settings
-from app.embeddings.vector_store import QdrantVectorStore, VectorPoint, VectorStoreError
+from app.embeddings.vector_store import QdrantVectorStore, ScoredChunkHit, VectorPoint, VectorStoreError
 
 CHUNK_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
@@ -136,7 +137,7 @@ async def test_upsert_points_wraps_qdrant_http_errors(
             status_code=400,
             reason_phrase="Bad Request",
             content=b"invalid payload",
-            headers={},
+            headers=httpx.Headers({}),
         ),
     )
     point = VectorPoint(chunk_id=CHUNK_ID, vector=[0.1, 0.2], payload={"chunk_index": 0})
@@ -210,3 +211,66 @@ async def test_get_stored_hashes_returns_empty_dict_for_no_ids(
 
     assert stored == {}
     mock_client.retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_search_similar_returns_scored_chunk_hits(
+    store: QdrantVectorStore,
+    mock_client: AsyncMock,
+) -> None:
+    mock_client.query_points = AsyncMock(
+        return_value=MagicMock(
+            points=[
+                MagicMock(id=str(CHUNK_ID), score=0.87, payload=None),
+            ],
+        ),
+    )
+
+    hits = await store.search_similar(
+        [0.1] * 1536,
+        limit=8,
+        score_threshold=0.35,
+        expected_vector_size=1536,
+    )
+
+    assert hits == [ScoredChunkHit(chunk_id=CHUNK_ID, score=0.87)]
+    mock_client.query_points.assert_awaited_once()
+    call_kwargs = mock_client.query_points.await_args.kwargs
+    assert call_kwargs["collection_name"] == "drivemind_chunks"
+    assert call_kwargs["limit"] == 8
+    assert call_kwargs["score_threshold"] == 0.35
+
+
+@pytest.mark.asyncio
+async def test_search_similar_rejects_invalid_query_vector(
+    store: QdrantVectorStore,
+    mock_client: AsyncMock,
+) -> None:
+    with pytest.raises(VectorStoreError, match="expected 1536"):
+        await store.search_similar(
+            [0.1, 0.2],
+            limit=8,
+            expected_vector_size=1536,
+        )
+
+    mock_client.query_points.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_search_similar_wraps_qdrant_http_errors(
+    store: QdrantVectorStore,
+    mock_client: AsyncMock,
+) -> None:
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    mock_client.query_points = AsyncMock(
+        side_effect=UnexpectedResponse(
+            status_code=400,
+            reason_phrase="Bad Request",
+            content=b"invalid search",
+            headers=httpx.Headers({}),
+        ),
+    )
+
+    with pytest.raises(VectorStoreError, match="HTTP 400"):
+        await store.search_similar([0.1] * 1536, limit=5)

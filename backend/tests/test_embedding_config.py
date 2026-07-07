@@ -41,3 +41,10 @@ def test_settings_qdrant_defaults() -> None:
     assert fields["qdrant_port"].default == 6333
     assert fields["qdrant_collection"].default == DEFAULT_QDRANT_COLLECTION
     assert fields["qdrant_upsert_batch_size"].default == 100
+
+
+def test_settings_retrieval_defaults() -> None:
+    """Retrieval field defaults should match Phase 6 MVP tuning."""
+    fields = Settings.model_fields
+    assert fields["retrieval_top_k"].default == 8
+    assert fields["retrieval_score_threshold"].default == 0.35
