@@ -43,20 +43,26 @@ scripts/     Utility scripts
 
 ## Development Status
 
-**Phase 0 — Repository foundation** (in progress)
+- Phase 0 — Repository foundation (complete)
+- Phase 1 — Backend foundation (complete)
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phase breakdown.
 
 ## Local Setup
 
-> Full setup instructions will be added in Phase 11. For now:
+> Full setup and production deployment docs will be expanded in Phase 11. For now:
 
 ```bash
 # Start infrastructure
 docker compose -f infra/docker-compose.yml up -d
 
-# Backend (after Phase 1)
-cd backend && uv sync && uv run uvicorn app.main:app --reload
+# Backend
+cd backend
+uv sync --dev
+uv run uvicorn app.main:app --reload
+
+# Run backend tests
+uv run pytest -v
 
 # Frontend (after Phase 9)
 cd frontend && npm install && npm run dev

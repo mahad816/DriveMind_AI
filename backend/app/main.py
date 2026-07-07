@@ -1,6 +1,7 @@
 """FastAPI application entrypoint."""
 
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 
@@ -11,7 +12,7 @@ from app.db.session import engine
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Initialize application-level resources during startup."""
     settings = get_settings()
     configure_logging(settings.log_level)
