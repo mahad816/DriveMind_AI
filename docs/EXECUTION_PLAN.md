@@ -149,9 +149,13 @@ test(backend): add health endpoint tests
 
 ## Phase 5: Chunking And Embeddings
 
-**Goal:** Searchable chunks with metadata in PostgreSQL + Qdrant.
+**Goal:** Searchable chunks with metadata in PostgreSQL + Qdrant vectors.
 
-**Chunk metadata:** file ID, filename, MIME type, Drive URL, modified time, page/section, chunk index.
+**Status:** In progress. See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md).
+
+**Planned:** Chunker, chunk persistence, OpenAI embeddings, Qdrant collection, `POST /api/v1/index/build`.
+
+**Chunk metadata:** file ID, filename, MIME type, modified time, chunk index.
 
 ---
 
