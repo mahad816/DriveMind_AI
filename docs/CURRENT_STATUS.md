@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 3 Milestone 4 complete (Drive metadata sync service + API). OAuth Step D passed.
+**Last updated:** Phase 3 Milestone 5 complete (export/download handlers). OAuth Step D passed.
 
 ## Completed Phases
 
@@ -11,7 +11,7 @@ Use this file to resume work in a new chat.
 | 0 | Complete | Repo structure, docs, Cursor rules |
 | 1 | Complete | FastAPI foundation, health, logging |
 | 2 | Complete | DB models, Alembic migration, schemas, tests |
-| 3 | In progress | Milestones 0–4 done; Milestone 5 next |
+| 3 | In progress | Milestones 0–5 done; Milestone 6 next |
 
 ## Phase 3 Progress (Drive Integration)
 
@@ -24,7 +24,7 @@ See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for milestone checklist and commits
 | 2 — OAuth login/callback routes | Done |
 | 3 — Read-only Drive API client | Done |
 | 4 — Metadata sync API | Done |
-| 5 — Export/download handlers | Not started |
+| 5 — Export/download handlers | Done |
 | 6 — Incremental sync + docs closure | Not started |
 
 ## Your Manual Setup Checklist

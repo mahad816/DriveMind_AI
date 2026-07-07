@@ -9,6 +9,8 @@ from app.connectors.google_drive.client import (
 from app.connectors.google_drive.constants import (
     SUPPORTED_MIME_TYPES,
     is_supported_mime_type,
+    output_content_mime_type,
+    requires_export,
 )
 
 __all__ = [
@@ -18,4 +20,6 @@ __all__ = [
     "DriveTokens",
     "GoogleDriveClient",
     "is_supported_mime_type",
+    "output_content_mime_type",
+    "requires_export",
 ]

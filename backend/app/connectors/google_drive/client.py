@@ -1,11 +1,12 @@
 """Read-only Google Drive API client built from stored OAuth tokens.
 
-This connector only reads Drive metadata. It never mutates, exports, or deletes
-files. Higher-level sync and download logic lives in later milestones/services.
+This connector reads Drive metadata and file content. It never mutates or deletes
+files on Google Drive. Sync orchestration lives in services/.
 """
 
 from __future__ import annotations
 
+import io
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -15,14 +16,18 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaIoBaseDownload
 
 from app.connectors.google_drive.constants import (
     DEFAULT_LIST_QUERY,
     DEFAULT_PAGE_SIZE,
     FILE_FIELDS,
+    GOOGLE_DOC_EXPORT_MIME,
     LIST_FILES_FIELDS,
     MAX_PAGE_SIZE,
     is_supported_mime_type,
+    output_content_mime_type,
+    requires_export,
 )
 from app.core.config import Settings, get_settings
 
@@ -234,3 +239,43 @@ class GoogleDriveClient:
         except HttpError as exc:
             raise DriveClientError(f"Drive get_file_metadata request failed: {exc}") from exc
         return DriveFileMetadata.from_api(payload)
+
+    @staticmethod
+    def _read_media_bytes(request: Any) -> bytes:
+        """Execute a Drive media request and return the full response body."""
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        return buffer.getvalue()
+
+    def get_file_content(self, file_id: str, source_mime_type: str) -> bytes:
+        """Download or export file bytes for a supported MVP file type.
+
+        Google Docs are exported as plain text. Binary types (PDF, DOCX, TXT,
+        images) are downloaded via the media endpoint.
+        """
+        if not file_id:
+            raise DriveClientError("file_id is required")
+        if not is_supported_mime_type(source_mime_type):
+            raise DriveClientError(f"Unsupported MIME type for content read: {source_mime_type}")
+
+        service = self._get_service()
+        try:
+            if requires_export(source_mime_type):
+                request = service.files().export_media(
+                    fileId=file_id,
+                    mimeType=GOOGLE_DOC_EXPORT_MIME,
+                )
+            else:
+                request = service.files().get_media(fileId=file_id)
+            return self._read_media_bytes(request)
+        except HttpError as exc:
+            action = "export" if requires_export(source_mime_type) else "download"
+            raise DriveClientError(f"Drive file {action} failed: {exc}") from exc
+
+    def get_file_content_with_type(self, file_id: str, source_mime_type: str) -> tuple[bytes, str]:
+        """Return file bytes and the MIME type of the returned content."""
+        data = self.get_file_content(file_id, source_mime_type)
+        return data, output_content_mime_type(source_mime_type)

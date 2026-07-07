@@ -9,8 +9,8 @@ Authenticate with Google (read-only), sync Drive file metadata into PostgreSQL, 
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 4 (metadata sync service + API)
-- **Next milestone:** Milestone 5 (export/download handlers)
+- **Last completed milestone:** Milestone 5 (export/download handlers)
+- **Next milestone:** Milestone 6 (incremental sync + phase closure)
 - **Blocker:** None — Step D passed; OAuth callback returned `{"status":"ok",...}`
 
 ## Your Action Items (manual setup)
@@ -44,7 +44,7 @@ uv run uvicorn app.main:app --reload
 - [x] Milestone 2 — OAuth routes + auth service
 - [x] Milestone 3 — Read-only Drive API client
 - [x] Milestone 4 — Metadata sync service + API
-- [ ] Milestone 5 — Export/download handlers
+- [x] Milestone 5 — Export/download handlers
 - [ ] Milestone 6 — Incremental sync + phase closure
 
 ## Commit Plan
@@ -97,6 +97,38 @@ uv run uvicorn app.main:app --reload
 - Tests:
   - `backend/tests/services/test_drive_sync_service.py` (mocked service logic)
   - `backend/tests/test_drive_sync_api.py` (mocked route tests)
+
+## Milestone 5 Deliverables (done)
+
+- `backend/app/connectors/google_drive/constants.py`
+  - `requires_export()`, `output_content_mime_type()`, `GOOGLE_DOC_EXPORT_MIME`
+- `backend/app/connectors/google_drive/client.py`
+  - `get_file_content()` — export Google Docs as plain text; download PDF/TXT/DOCX/images
+  - `get_file_content_with_type()` — bytes + content MIME type
+  - `_read_media_bytes()` — chunked media download via Drive API
+- `backend/app/services/drive_content_service.py`
+  - Validates synced file exists in PostgreSQL for connected user
+  - Builds authenticated client, fetches content, persists token refresh
+  - `DriveFileContent` dataclass
+- `backend/app/api/files.py`
+  - `GET /api/v1/files/{file_id}/content` — returns file bytes (not saved to disk)
+- Tests (mocked, no live Google calls):
+  - `backend/tests/connectors/test_google_drive_client.py` (content methods)
+  - `backend/tests/services/test_drive_content_service.py`
+  - `backend/tests/test_drive_content_api.py`
+
+### Milestone 5 manual smoke test
+
+```bash
+# 1. Ensure OAuth connected and metadata synced
+curl -X POST http://localhost:8000/api/v1/index/sync
+
+# 2. List files and copy a file UUID from the response
+curl http://localhost:8000/api/v1/files
+
+# 3. Download/export content (replace FILE_UUID)
+curl -v http://localhost:8000/api/v1/files/FILE_UUID/content --output /tmp/drivemind-test.bin
+```
 
 ## Troubleshooting
 

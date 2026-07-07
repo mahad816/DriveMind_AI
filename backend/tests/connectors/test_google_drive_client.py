@@ -20,10 +20,13 @@ from app.connectors.google_drive.client import (
     GoogleDriveClient,
 )
 from app.connectors.google_drive.constants import (
+    GOOGLE_DOC_MIME,
     GOOGLE_FOLDER_MIME,
     PDF_MIME,
     TXT_MIME,
     is_supported_mime_type,
+    output_content_mime_type,
+    requires_export,
 )
 
 FAKE_SETTINGS = MagicMock(
@@ -52,6 +55,8 @@ class FakeFilesResource:
         self._list_pages = list_pages or []
         self._get_payload = get_payload
         self.list_calls: list[dict[str, Any]] = []
+        self.get_media_calls: list[dict[str, Any]] = []
+        self.export_media_calls: list[dict[str, Any]] = []
 
     def list(self, **kwargs: Any) -> "FakeRequest":
         self.list_calls.append(kwargs)
@@ -62,6 +67,14 @@ class FakeFilesResource:
     def get(self, **kwargs: Any) -> "FakeRequest":
         return FakeRequest(self._get_payload or {})
 
+    def get_media(self, **kwargs: Any) -> "FakeMediaRequest":
+        self.get_media_calls.append(kwargs)
+        return FakeMediaRequest(b"binary-content")
+
+    def export_media(self, **kwargs: Any) -> "FakeMediaRequest":
+        self.export_media_calls.append(kwargs)
+        return FakeMediaRequest(b"exported-text")
+
 
 class FakeRequest:
     def __init__(self, result: dict[str, Any]) -> None:
@@ -69,6 +82,11 @@ class FakeRequest:
 
     def execute(self) -> dict[str, Any]:
         return self._result
+
+
+class FakeMediaRequest:
+    def __init__(self, payload: bytes) -> None:
+        self.payload = payload
 
 
 class FakeService:
@@ -93,6 +111,16 @@ def test_is_supported_mime_type() -> None:
     assert is_supported_mime_type(TXT_MIME) is True
     assert is_supported_mime_type(GOOGLE_FOLDER_MIME) is False
     assert is_supported_mime_type(None) is False
+
+
+def test_requires_export_only_for_google_docs() -> None:
+    assert requires_export(GOOGLE_DOC_MIME) is True
+    assert requires_export(PDF_MIME) is False
+
+
+def test_output_content_mime_type() -> None:
+    assert output_content_mime_type(GOOGLE_DOC_MIME) == "text/plain"
+    assert output_content_mime_type(PDF_MIME) == PDF_MIME
 
 
 def test_list_files_filters_unsupported_mime_types() -> None:
@@ -253,3 +281,49 @@ def test_refresh_error_is_wrapped() -> None:
     ):
         with pytest.raises(DriveClientError, match="Failed to refresh"):
             client._ensure_credentials()
+
+
+def test_get_file_content_downloads_binary_files() -> None:
+    files_resource = FakeFilesResource()
+    client = _client(files_resource)
+
+    with patch.object(client, "_read_media_bytes", return_value=b"pdf-bytes") as mock_read:
+        data = client.get_file_content("file-1", PDF_MIME)
+
+    assert data == b"pdf-bytes"
+    assert files_resource.get_media_calls == [{"fileId": "file-1"}]
+    mock_read.assert_called_once()
+
+
+def test_get_file_content_exports_google_docs() -> None:
+    files_resource = FakeFilesResource()
+    client = _client(files_resource)
+
+    with patch.object(client, "_read_media_bytes", return_value=b"doc text") as mock_read:
+        data, mime = client.get_file_content_with_type("doc-1", GOOGLE_DOC_MIME)
+
+    assert data == b"doc text"
+    assert mime == "text/plain"
+    assert files_resource.export_media_calls == [
+        {"fileId": "doc-1", "mimeType": "text/plain"}
+    ]
+    mock_read.assert_called_once()
+
+
+def test_get_file_content_rejects_unsupported_mime() -> None:
+    client = _client(FakeFilesResource())
+    with pytest.raises(DriveClientError, match="Unsupported MIME type"):
+        client.get_file_content("file-1", GOOGLE_FOLDER_MIME)
+
+
+def test_get_file_content_wraps_http_error() -> None:
+    files_resource = MagicMock()
+    resp = MagicMock(status=404, reason="Not Found")
+    files_resource.files.return_value.get_media.side_effect = HttpError(resp, b"missing")
+    client = GoogleDriveClient(
+        tokens=_tokens(),
+        settings=FAKE_SETTINGS,
+        service=files_resource,
+    )
+    with pytest.raises(DriveClientError, match="download failed"):
+        client.get_file_content("missing", PDF_MIME)

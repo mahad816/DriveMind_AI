@@ -32,6 +32,9 @@ SUPPORTED_MIME_TYPES: frozenset[str] = frozenset(
     | set(IMAGE_MIME_TYPES)
 )
 
+# Default export target when reading Google Docs content for ingestion.
+GOOGLE_DOC_EXPORT_MIME = "text/plain"
+
 # Fields requested from the Drive API for each file. Kept minimal and read-only.
 FILE_FIELDS = (
     "id, name, mimeType, modifiedTime, createdTime, size, "
@@ -51,3 +54,15 @@ def is_supported_mime_type(mime_type: str | None) -> bool:
     if not mime_type:
         return False
     return mime_type in SUPPORTED_MIME_TYPES
+
+
+def requires_export(mime_type: str) -> bool:
+    """Return True when Drive export_media is required instead of get_media."""
+    return mime_type == GOOGLE_DOC_MIME
+
+
+def output_content_mime_type(source_mime_type: str) -> str:
+    """Return the MIME type of bytes produced when reading a supported file."""
+    if source_mime_type == GOOGLE_DOC_MIME:
+        return GOOGLE_DOC_EXPORT_MIME
+    return source_mime_type
