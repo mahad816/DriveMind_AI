@@ -219,6 +219,11 @@ query_history
   id, user_id, question, answer, citations_json, created_at
 ```
 
+Phase 2 implementation status:
+
+- Tables above are implemented via SQLAlchemy models in `backend/app/db/models/`
+- Initial migration exists at `backend/alembic/versions/20260707_1409_initial_phase2_schema.py`
+
 ### Qdrant
 
 ```

@@ -40,11 +40,13 @@ scripts/     Utility scripts
 - [Architecture](docs/ARCHITECTURE.md) — system design and data flow
 - [Git Workflow](docs/GIT_WORKFLOW.md) — commit and branch discipline
 - [Execution Plan](docs/EXECUTION_PLAN.md) — detailed phase-by-phase plan
+- [Phase 2 Tracker](docs/PHASE_2_TRACKER.md) — milestone-by-milestone execution log
 
 ## Development Status
 
 - Phase 0 — Repository foundation (complete)
 - Phase 1 — Backend foundation (complete)
+- Phase 2 — Data model and indexing state (complete)
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phase breakdown.
 

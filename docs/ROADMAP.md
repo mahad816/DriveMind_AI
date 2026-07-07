@@ -10,7 +10,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** â€
 |-------|------|--------|
 | 0 | Repository & Standards Foundation | Complete |
 | 1 | Backend Foundation | Complete |
-| 2 | Data Model & Indexing State | Not started |
+| 2 | Data Model & Indexing State | Complete |
 | 3 | Google Drive Read-Only Integration | Not started |
 | 4 | Document Ingestion & Text Extraction | Not started |
 | 5 | Chunking & Embeddings | Not started |
@@ -104,6 +104,14 @@ test(backend): add health endpoint tests
 - `citations` â€” answer trace (later)
 
 **Design rule:** PostgreSQL stores metadata and chunk text; Qdrant stores embeddings only.
+
+**Phase 2 completion notes:**
+
+- Shared DB primitives added (`enums`, timestamp mixin)
+- Core SQLAlchemy models implemented for users, drive files, documents, chunks, indexing jobs, and query history
+- Initial Alembic migration created and validated
+- Typed Pydantic schemas added for file, indexing, and query state contracts
+- Integrity test suite added for models and migrations
 
 ---
 

@@ -13,7 +13,7 @@ Model DriveMind persistence for users, drive files, documents, chunks, indexing 
 - [x] Milestone 3 — Initial Alembic migration scaffolded and validated locally (lint + alembic metadata checks)
 - [x] Milestone 4 — Pydantic schemas for indexing/query state
 - [x] Milestone 5 — DB model and migration integrity tests
-- [ ] Milestone 6 — Docs updates and phase completion status
+- [x] Milestone 6 — Docs updates and phase completion status
 
 ## Commit Plan
 
@@ -29,3 +29,4 @@ Model DriveMind persistence for users, drive files, documents, chunks, indexing 
 - Migration file is manually authored to keep deterministic structure and avoid environment-coupled autogeneration issues.
 - Full upgrade/downgrade runtime validation requires a running local PostgreSQL daemon (`docker compose` or local Postgres service).
 - Milestone 3 live migration verified on local Docker PostgreSQL (upgrade -> downgrade -> upgrade).
+- Phase 2 verification suite passed: lint, mypy, 18 tests, alembic head check, and offline upgrade/downgrade SQL generation.
