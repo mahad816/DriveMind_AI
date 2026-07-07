@@ -12,6 +12,11 @@ from app.ingestion.extractors.docx import (
     extract_docx_text,
     register_docx_extractor,
 )
+from app.ingestion.extractors.image_ocr import (
+    ImageOcrExtractor,
+    extract_image_ocr_text,
+    register_image_ocr_extractors,
+)
 from app.ingestion.extractors.pdf import (
     PdfTextExtractor,
     extract_pdf_text,
@@ -37,18 +42,21 @@ __all__ = [
     "ExtractionError",
     "ExtractionResult",
     "PdfTextExtractor",
+    "ImageOcrExtractor",
     "PlainTextExtractor",
     "TextExtractor",
     "UnsupportedMimeTypeError",
     "clear_extractors",
     "decode_plain_text_bytes",
     "extract_docx_text",
+    "extract_image_ocr_text",
     "extract_pdf_text",
     "get_extractor",
     "normalize_extracted_text",
     "register_builtin_extractors",
     "register_docx_extractor",
     "register_extractor",
+    "register_image_ocr_extractors",
     "register_pdf_extractor",
     "register_plain_text_extractors",
     "registered_mime_types",

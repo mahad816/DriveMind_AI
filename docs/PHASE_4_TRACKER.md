@@ -14,7 +14,7 @@ Convert supported Drive files into normalized plain text and persist extraction 
 | TXT | UTF-8 decode with fallback | Done (M2) |
 | DOCX | `python-docx` paragraph extraction | Done (M4) |
 | PDF | `pypdf` text extraction **only** (born-digital PDFs) | Done (M3) |
-| Images (PNG, JPEG, WebP, GIF, TIFF, BMP) | Tesseract OCR via `pytesseract` | Planned |
+| Images (PNG, JPEG, WebP, GIF, TIFF, BMP) | Tesseract OCR via `pytesseract` | Done (M5) |
 
 ## Explicitly Out of Scope (Phase 4)
 
@@ -34,19 +34,20 @@ Scanned or image-only PDFs may return little or no extractable text in Phase 4. 
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 4 (DOCX extractor)
-- **Next milestone:** Milestone 5 (Image OCR extractor)
+- **Last completed milestone:** Milestone 5 (Image OCR extractor)
+- **Next milestone:** Milestone 6 (`IngestionService` + ingest API)
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
 
-Complete before the image OCR milestone (Milestone 5):
+Complete before running image OCR in production (Milestone 5+):
 
-- [ ] **Step A — Tesseract** — install system OCR engine:
+- [x] **Step A — Tesseract** — install system OCR engine:
   ```bash
   brew install tesseract
   tesseract --version
   ```
+  Verify: `tesseract 5.x` (or similar) prints without error.
 - [ ] **Step B — Postgres + migrations** — ensure DB is up and migrations applied:
   ```bash
   docker compose -f infra/docker-compose.yml up -d postgres
@@ -63,7 +64,7 @@ Steps A–C are not required for Milestones 0–4 (no OCR yet).
 - [x] Milestone 2 — TXT + Google Docs plain-text extractors
 - [x] Milestone 3 — PDF text-only extractor (`pypdf`)
 - [x] Milestone 4 — DOCX extractor (`python-docx`)
-- [ ] Milestone 5 — Image OCR extractor (Tesseract / `pytesseract`)
+- [x] Milestone 5 — Image OCR extractor (Tesseract / `pytesseract`)
 - [ ] Milestone 6 — `IngestionService` orchestration + ingest API + phase closure
 
 ## Commit Plan

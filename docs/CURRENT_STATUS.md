@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 4 Milestone 4 complete (DOCX extractor).
+**Last updated:** Phase 4 Milestone 5 complete (Image OCR extractor).
 
 ## Completed Phases
 
@@ -82,9 +82,9 @@ curl http://localhost:8000/api/v1/files
 - [x] Step C — Docker Postgres + `alembic upgrade head`
 - [x] Step D — Browser OAuth test at `/api/v1/auth/google`
 
-## Manual Setup (Phase 4 — before image OCR, Milestone 5)
+## Manual Setup (Phase 4)
 
-- [ ] Step A — `brew install tesseract` (system OCR for images)
+- [x] Step A — Tesseract installed (`brew install tesseract`; verify with `tesseract --version`)
 - [x] Step B — Postgres running + migrations applied
 - [x] Step C — Drive OAuth connected and metadata synced
 

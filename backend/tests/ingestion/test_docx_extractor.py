@@ -97,7 +97,7 @@ def test_builtin_registration_includes_plain_pdf_and_docx_extractors() -> None:
     register_builtin_extractors()
 
     registered = registered_mime_types()
-    assert registered == frozenset({TXT_MIME, GOOGLE_DOC_MIME, PDF_MIME, DOCX_MIME})
+    assert {TXT_MIME, GOOGLE_DOC_MIME, PDF_MIME, DOCX_MIME}.issubset(registered)
 
     docx_result = get_extractor(DOCX_MIME).extract(
         _docx_bytes("DriveMind DOCX test"),
