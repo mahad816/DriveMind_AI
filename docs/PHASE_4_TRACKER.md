@@ -33,9 +33,9 @@ Scanned or image-only PDFs may return little or no extractable text in Phase 4. 
 
 ## Current Snapshot
 
-- **Phase status:** In progress
-- **Last completed milestone:** Milestone 5 (Image OCR extractor)
-- **Next milestone:** Milestone 6 (`IngestionService` + ingest API)
+- **Phase status:** Complete
+- **Last completed milestone:** Milestone 6 (IngestionService + ingest API + phase closure)
+- **Next phase:** Phase 5 — Chunking & Embeddings
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -65,7 +65,7 @@ Steps A–C are not required for Milestones 0–4 (no OCR yet).
 - [x] Milestone 3 — PDF text-only extractor (`pypdf`)
 - [x] Milestone 4 — DOCX extractor (`python-docx`)
 - [x] Milestone 5 — Image OCR extractor (Tesseract / `pytesseract`)
-- [ ] Milestone 6 — `IngestionService` orchestration + ingest API + phase closure
+- [x] Milestone 6 — `IngestionService` orchestration + ingest API + phase closure
 
 ## Commit Plan
 
@@ -124,3 +124,23 @@ uv run pytest -q
 - Store full extracted text on `documents` (new column in M1); chunking splits it in Phase 5.
 - Idempotent ingestion: skip or update when `extracted_text_hash` matches Drive file `modified_at` / content hash.
 - Image OCR quality varies (screenshots OK; handwriting poor). English Tesseract default is fine for MVP.
+
+## Phase 4 Closure
+
+All milestones complete. Verification before moving to Phase 5:
+
+```bash
+cd backend
+uv run ruff check app tests
+uv run mypy app
+uv run basedpyright app tests
+uv run pytest -q
+uv run alembic upgrade head
+```
+
+Smoke test (with backend running and Drive connected):
+
+```bash
+curl -X POST http://localhost:8000/api/v1/index/sync
+curl -X POST http://localhost:8000/api/v1/index/ingest
+```

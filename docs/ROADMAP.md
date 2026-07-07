@@ -12,7 +12,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 1 | Backend Foundation | Complete |
 | 2 | Data Model & Indexing State | Complete |
 | 3 | Google Drive Read-Only Integration | Complete |
-| 4 | Document Ingestion & Text Extraction | In progress — M1 done, see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
+| 4 | Document Ingestion & Text Extraction | Complete — see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
 | 5 | Chunking & Embeddings | Not started |
 | 6 | Basic RAG API | Not started |
 | 7 | Hybrid Retrieval | Not started |
@@ -109,7 +109,7 @@ test(backend): add health endpoint tests
 
 - All milestones done: OAuth, Drive client, metadata sync, export/download, incremental sync
 - Tracker: [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md)
-- Next: Phase 4 — document ingestion and text extraction
+- Next: Phase 5 — chunking and embeddings
 
 **Phase 2 completion notes:**
 
@@ -148,23 +148,21 @@ test(backend): add health endpoint tests
 
 **Goal:** Convert supported file types into normalized text.
 
-**Status:** Not started. See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md).
+**Status:** Complete. See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md).
 
-**In scope:**
+**Delivered:**
 
-- Google Docs — Drive export as plain text
-- TXT — direct decode
-- DOCX — `python-docx`
-- PDF — `pypdf` text extraction only (born-digital PDFs)
-- Images — Tesseract OCR via `pytesseract`
+- Extractor protocol, MIME registry, text hashing, `documents.extracted_text` storage
+- Extractors: Google Docs, TXT, DOCX, PDF (text-only), images (Tesseract OCR)
+- `IngestionService` orchestration + `POST /api/v1/index/ingest`
 
-**Out of scope (Phase 4):**
+**Out of scope (deferred):** EasyOCR, PDF OCR fallback, chunking/embeddings (Phase 5)
 
-- EasyOCR
-- PDF OCR fallback for scanned/image-only PDFs (future phase)
-- Chunking and embeddings (Phase 5)
+**Key files:**
 
-**Location:** `backend/app/ingestion/extractors/`
+- `backend/app/ingestion/extractors/`
+- `backend/app/services/ingestion_service.py`
+- `backend/app/api/index.py`
 
 ---
 

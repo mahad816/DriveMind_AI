@@ -1,5 +1,7 @@
 """Drive indexing sync routes."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +9,9 @@ from app.connectors.google_drive.client import DriveClientError
 from app.db.session import get_db
 from app.schemas.drive_sync import DriveSyncResponse, DriveSyncStatusResponse
 from app.schemas.indexing import IndexingJobRead
+from app.schemas.ingest import IngestionResponse
 from app.services.drive_sync_service import DriveSyncService
+from app.services.ingestion_service import IngestionService
 
 router = APIRouter(prefix="/index")
 
@@ -15,6 +19,11 @@ router = APIRouter(prefix="/index")
 def get_drive_sync_service(db: AsyncSession = Depends(get_db)) -> DriveSyncService:
     """Dependency provider for Drive sync service."""
     return DriveSyncService(db=db)
+
+
+def get_ingestion_service(db: AsyncSession = Depends(get_db)) -> IngestionService:
+    """Dependency provider for document ingestion service."""
+    return IngestionService(db=db)
 
 
 @router.post("/sync", summary="Sync Drive file metadata")
@@ -65,3 +74,38 @@ async def get_sync_status(
     job = await service.get_latest_sync_job()
     job_read = IndexingJobRead.model_validate(job) if job is not None else None
     return DriveSyncStatusResponse(connected=True, job=job_read)
+
+
+@router.post("/ingest", summary="Ingest synced Drive files into extracted documents")
+async def ingest_drive_files(
+    file_id: uuid.UUID | None = Query(
+        default=None,
+        description="Optional synced drive_files.id to ingest a single file.",
+    ),
+    service: IngestionService = Depends(get_ingestion_service),
+) -> IngestionResponse:
+    """Fetch supported Drive files, extract text, and persist documents."""
+    try:
+        result = await service.ingest_files(file_id=file_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except DriveClientError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    scope = "file" if file_id is not None else "batch"
+    return IngestionResponse(
+        job_id=result.job_id,
+        user_id=result.user_id,
+        ingested=result.ingested,
+        unchanged=result.unchanged,
+        failed=result.failed,
+        skipped=result.skipped,
+        total=result.total,
+        message=f"Drive text ingestion ({scope}) completed",
+    )

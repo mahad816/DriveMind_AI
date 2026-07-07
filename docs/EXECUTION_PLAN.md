@@ -139,17 +139,11 @@ test(backend): add health endpoint tests
 
 **Goal:** Normalize text from Google Docs, PDF (text-only), DOCX, TXT, and images.
 
-**Tracker:** [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md)
+**Status:** Complete. See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md).
 
-**In scope:**
+**Delivered:** Extractors, `IngestionService`, `POST /api/v1/index/ingest`.
 
-- Google Docs, TXT, DOCX, PDF (`pypdf`), image OCR (Tesseract)
-
-**Out of scope:**
-
-- EasyOCR, PDF OCR fallback, chunking/embeddings (Phase 5)
-
-**Location:** `backend/app/ingestion/extractors/`
+**Location:** `backend/app/ingestion/`, `backend/app/services/ingestion_service.py`
 
 ---
 

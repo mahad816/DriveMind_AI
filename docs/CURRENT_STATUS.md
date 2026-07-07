@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 4 Milestone 5 complete (Image OCR extractor).
+**Last updated:** Phase 4 complete (document ingestion and text extraction). All milestones 0–6 done.
 
 ## Completed Phases
 
@@ -12,10 +12,19 @@ Use this file to resume work in a new chat.
 | 1 | Complete | FastAPI foundation, health, logging |
 | 2 | Complete | DB models, Alembic migration, schemas, tests |
 | 3 | Complete | OAuth, Drive client, sync, export/download, incremental sync |
+| 4 | Complete | Text extractors, IngestionService, ingest API |
+
+## Phase 4 Summary (Document Ingestion)
+
+See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) for full milestone log.
+
+| Capability | Endpoint / module |
+|------------|-------------------|
+| TXT / Docs / PDF / DOCX / image extractors | `app/ingestion/extractors/` |
+| Batch or single-file ingestion | `POST /api/v1/index/ingest` (`?file_id=` optional) |
+| Extracted text storage | `documents.extracted_text` + `extracted_text_hash` |
 
 ## Phase 3 Summary (Drive Integration)
-
-See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for full milestone log.
 
 | Capability | Endpoint / module |
 |------------|-------------------|
@@ -28,23 +37,15 @@ See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 4 — Document Ingestion & Text Extraction**
+**Phase 5 — Chunking & Embeddings**
 
-See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) for milestone-by-milestone plan.
-
-| In scope | Method |
-|----------|--------|
-| Google Docs | Drive export → plain text |
-| TXT | UTF-8 decode |
-| DOCX | `python-docx` |
-| PDF | `pypdf` text-only (no OCR fallback) |
-| Images | Tesseract OCR (`pytesseract`) |
-
-**Deferred:** EasyOCR, PDF OCR for scanned PDFs, chunking/embeddings (Phase 5).
+- Split extracted text into chunks
+- Generate embeddings and store in Qdrant
+- Idempotent indexing pipeline
 
 Say in a new chat:
 
-> Continue DriveMind AI Phase 4 from `docs/PHASE_4_TRACKER.md` and `docs/CURRENT_STATUS.md`.
+> Continue DriveMind AI Phase 5 from `docs/CURRENT_STATUS.md` and `docs/ROADMAP.md`.
 
 ## Quick Commands
 
@@ -62,31 +63,28 @@ uv run uvicorn app.main:app --reload
 uv run pytest -q
 ```
 
-## Drive Sync Commands
+## Drive + Ingestion Commands
 
 ```bash
-# Incremental sync (default when a changes token exists)
+# Incremental metadata sync
 curl -X POST http://localhost:8000/api/v1/index/sync
 
-# Force full rescan (slower, re-establishes changes baseline)
-curl --max-time 300 -X POST "http://localhost:8000/api/v1/index/sync?full=true"
+# Ingest all supported synced files (text extraction)
+curl -X POST http://localhost:8000/api/v1/index/ingest
+
+# Ingest one file by drive_files.id (UUID from GET /files)
+curl -X POST "http://localhost:8000/api/v1/index/ingest?file_id=<uuid>"
 
 # List synced files
 curl http://localhost:8000/api/v1/files
 ```
 
-## Manual Setup (Phase 3 — all done)
+## Manual Setup Checklist
 
-- [x] Step A — Google Cloud Console (Drive API + OAuth client)
-- [x] Step B — `.env` with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
-- [x] Step C — Docker Postgres + `alembic upgrade head`
-- [x] Step D — Browser OAuth test at `/api/v1/auth/google`
-
-## Manual Setup (Phase 4)
-
-- [x] Step A — Tesseract installed (`brew install tesseract`; verify with `tesseract --version`)
-- [x] Step B — Postgres running + migrations applied
-- [x] Step C — Drive OAuth connected and metadata synced
+- [x] Google OAuth configured (Phase 3)
+- [x] Tesseract installed (`brew install tesseract`)
+- [ ] Postgres running + migrations applied (`uv run alembic upgrade head`)
+- [ ] Drive metadata synced (`POST /api/v1/index/sync`) before first ingest
 
 ## Key Docs
 
@@ -95,4 +93,4 @@ curl http://localhost:8000/api/v1/files
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
 - [PHASE_2_TRACKER.md](PHASE_2_TRACKER.md) — Phase 2 log (complete)
 - [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) — Phase 3 log (complete)
-- [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) — Phase 4 log (active)
+- [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) — Phase 4 log (complete)
