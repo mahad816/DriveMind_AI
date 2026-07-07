@@ -9,21 +9,16 @@ from google.oauth2.credentials import Credentials
 
 from app.api.auth import get_oauth_service
 from app.main import app
-from app.services.google_oauth_service import GoogleOAuthService, OAuthCallbackResult, _oauth_pending
-
-
-@pytest.fixture(autouse=True)
-def clear_oauth_state_store() -> None:
-    """Ensure OAuth state store is clean between tests."""
-    _oauth_pending.clear()
+from app.services.google_oauth_service import GoogleOAuthService, OAuthCallbackResult
+from app.db.models.oauth_pending_state import OAuthPendingState
 
 
 @pytest.mark.asyncio
 async def test_google_login_redirects_to_authorization_url(async_client: AsyncClient) -> None:
     """Login endpoint should redirect to Google authorization URL."""
     fake_service = MagicMock()
-    fake_service.create_authorization_url.return_value = (
-        "https://accounts.google.com/o/oauth2/auth?client_id=test"
+    fake_service.create_authorization_url = AsyncMock(
+        return_value="https://accounts.google.com/o/oauth2/auth?client_id=test"
     )
     app.dependency_overrides[get_oauth_service] = lambda: fake_service
 
@@ -104,9 +99,12 @@ async def test_google_callback_invalid_state_returns_400(async_client: AsyncClie
     assert response.json()["detail"] == "Invalid OAuth state"
 
 
-def test_create_authorization_url_registers_state() -> None:
-    """Authorization URL generation should register OAuth state for callback checks."""
-    service = GoogleOAuthService(db=MagicMock())
+@pytest.mark.asyncio
+async def test_create_authorization_url_persists_pending_state() -> None:
+    """Authorization URL generation should persist PKCE state in the database."""
+    mock_db = AsyncMock()
+    mock_db.commit = AsyncMock()
+    service = GoogleOAuthService(db=mock_db)
     with patch.object(service, "_build_flow") as mock_build_flow:
         flow = MagicMock()
         flow.code_verifier = "pkce-verifier-123"
@@ -116,10 +114,14 @@ def test_create_authorization_url_registers_state() -> None:
         )
         mock_build_flow.return_value = flow
 
-        url = service.create_authorization_url()
+        url = await service.create_authorization_url()
 
     assert url.startswith("https://accounts.google.com/o/oauth2/auth")
-    assert _oauth_pending["test-state"] == "pkce-verifier-123"
+    mock_db.add.assert_called_once()
+    added = mock_db.add.call_args[0][0]
+    assert isinstance(added, OAuthPendingState)
+    assert added.state == "test-state"
+    assert added.code_verifier == "pkce-verifier-123"
 
 
 def test_fetch_credentials_uses_stored_code_verifier() -> None:

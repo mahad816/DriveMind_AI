@@ -4,21 +4,23 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.db.models.google_oauth_token import GoogleOAuthToken
+from app.db.models.oauth_pending_state import OAuthPendingState
 from app.db.models.user import User
 
-_oauth_pending: dict[str, str] = {}
+_OAUTH_STATE_TTL = timedelta(minutes=10)
+_OAUTH_STATE_RETRY_HINT = "Start again from /api/v1/auth/google (do not refresh the callback URL)."
 
 
 @dataclass
@@ -71,8 +73,8 @@ class GoogleOAuthService:
             redirect_uri=self.settings.google_redirect_uri,
         )
 
-    def create_authorization_url(self) -> str:
-        """Create Google OAuth URL and register state for callback validation."""
+    async def create_authorization_url(self) -> str:
+        """Create Google OAuth URL and persist PKCE state for callback validation."""
         flow = self._build_flow()
         authorization_url, state = flow.authorization_url(
             access_type="offline",
@@ -82,13 +84,35 @@ class GoogleOAuthService:
         code_verifier = flow.code_verifier
         if not code_verifier:
             raise ValueError("OAuth PKCE code verifier was not generated")
-        _oauth_pending[state] = code_verifier
+
+        expires_at = datetime.now(UTC) + _OAUTH_STATE_TTL
+        self.db.add(
+            OAuthPendingState(
+                state=state,
+                code_verifier=code_verifier,
+                expires_at=expires_at,
+            )
+        )
+        await self.db.commit()
         return str(authorization_url)
 
-    def _pop_code_verifier(self, state: str | None) -> str:
-        if not state or state not in _oauth_pending:
-            raise ValueError("Invalid OAuth state")
-        return _oauth_pending.pop(state)
+    async def _pop_code_verifier(self, state: str | None) -> str:
+        if not state:
+            raise ValueError(f"Invalid OAuth state. {_OAUTH_STATE_RETRY_HINT}")
+
+        pending = await self.db.scalar(
+            select(OAuthPendingState).where(OAuthPendingState.state == state)
+        )
+        if pending is None:
+            raise ValueError(f"Invalid OAuth state. {_OAUTH_STATE_RETRY_HINT}")
+
+        await self.db.delete(pending)
+        await self.db.flush()
+
+        if pending.expires_at < datetime.now(UTC):
+            raise ValueError(f"OAuth session expired. {_OAUTH_STATE_RETRY_HINT}")
+
+        return pending.code_verifier
 
     def _fetch_credentials(self, code: str, code_verifier: str) -> Credentials:
         flow = self._build_flow()
@@ -159,15 +183,22 @@ class GoogleOAuthService:
 
     async def handle_callback(self, code: str, state: str | None) -> OAuthCallbackResult:
         """Validate callback, exchange code, and persist user + token records."""
-        code_verifier = self._pop_code_verifier(state)
+        code_verifier = await self._pop_code_verifier(state)
         credentials = self._fetch_credentials(code, code_verifier)
         profile = self._fetch_google_profile(credentials)
         user = await self._upsert_user(profile["email"], profile["google_id"])
         await self._upsert_token(user, credentials)
+        await self._cleanup_expired_pending_states()
         await self.db.commit()
         await self.db.refresh(user)
         return OAuthCallbackResult(
             user_id=user.id,
             email=user.email,
             google_id=user.google_id,
+        )
+
+    async def _cleanup_expired_pending_states(self) -> None:
+        """Remove expired OAuth pending rows (best-effort housekeeping)."""
+        await self.db.execute(
+            delete(OAuthPendingState).where(OAuthPendingState.expires_at < datetime.now(UTC))
         )

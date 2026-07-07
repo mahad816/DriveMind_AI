@@ -19,7 +19,7 @@ def get_oauth_service(db: AsyncSession = Depends(get_db)) -> GoogleOAuthService:
 async def google_login(service: GoogleOAuthService = Depends(get_oauth_service)) -> RedirectResponse:
     """Redirect user to Google OAuth consent screen."""
     try:
-        authorization_url = service.create_authorization_url()
+        authorization_url = await service.create_authorization_url()
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -111,6 +111,17 @@ Fix:
 3. **Save file** (Cmd+S) — unsaved editor buffer does not count
 4. Restart uvicorn
 
+### OAuth redirect: Invalid OAuth state
+
+Cause: PKCE state was lost (common with `uvicorn --reload` restarting between login and callback), callback URL was refreshed/reused, or login was not started fresh.
+
+Fix:
+
+1. Open a **new** login URL: `http://localhost:8000/api/v1/auth/google`
+2. Complete Google sign-in **once** — do not refresh the callback page
+3. Ensure migration is applied: `cd backend && uv run alembic upgrade head`
+4. Restart uvicorn after pulling OAuth state persistence fix
+
 ### OAuth redirect mismatch
 
 Google Console redirect URI must exactly match:

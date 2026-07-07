@@ -14,6 +14,7 @@ def test_all_core_tables_are_registered() -> None:
         "indexing_jobs",
         "query_history",
         "google_oauth_tokens",
+        "oauth_pending_states",
     }
     assert expected_tables.issubset(set(Base.metadata.tables.keys()))
 

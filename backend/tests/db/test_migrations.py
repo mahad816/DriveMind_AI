@@ -46,6 +46,7 @@ def test_upgrade_sql_contains_all_core_tables() -> None:
         "indexing_jobs",
         "query_history",
         "google_oauth_tokens",
+        "oauth_pending_states",
     ):
         assert f"CREATE TABLE {table}" in sql
 
