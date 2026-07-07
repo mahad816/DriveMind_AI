@@ -9,16 +9,16 @@ Authenticate with Google (read-only), sync Drive file metadata into PostgreSQL, 
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 2 (OAuth login + callback)
-- **Next milestone:** Milestone 3 (read-only Drive API client)
-- **Blocker:** Step D failed with OAuth 503 because `GOOGLE_CLIENT_SECRET` is empty on disk — save `.env` and retry
+- **Last completed milestone:** Milestone 3 (read-only Drive API client)
+- **Next milestone:** Milestone 4 (metadata sync service + API)
+- **Blocker:** None — Step D passed; OAuth callback returned `{"status":"ok",...}`
 
 ## Your Action Items (manual setup)
 
 - [x] Step A — Google Cloud Console (project, Drive API, OAuth consent, OAuth client)
-- [ ] Step B — `.env` saved on disk with `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (must press Save)
+- [x] Step B — `.env` saved on disk with `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (must press Save)
 - [x] Step C — Start Postgres + run `alembic upgrade head`
-- [ ] Step D — Manual browser OAuth test at `/api/v1/auth/google`
+- [x] Step D — Manual browser OAuth test at `/api/v1/auth/google`
 
 ### Step B verification (no secrets printed)
 
@@ -42,7 +42,7 @@ uv run uvicorn app.main:app --reload
 - [x] Milestone 0 — Phase 3 tracker + setup checklist
 - [x] Milestone 1 — Google deps, config, OAuth token model + migration
 - [x] Milestone 2 — OAuth routes + auth service
-- [ ] Milestone 3 — Read-only Drive API client
+- [x] Milestone 3 — Read-only Drive API client
 - [ ] Milestone 4 — Metadata sync service + API
 - [ ] Milestone 5 — Export/download handlers
 - [ ] Milestone 6 — Incremental sync + phase closure
@@ -64,6 +64,21 @@ uv run uvicorn app.main:app --reload
   - `GET /api/v1/auth/google`
   - `GET /api/v1/auth/google/callback`
 - Tests: `backend/tests/test_auth_google.py`
+
+## Milestone 3 Deliverables (done)
+
+- `backend/app/connectors/google_drive/constants.py`
+  - Supported MVP MIME types (Google Docs, PDF, TXT, DOCX, images)
+  - Drive field selectors, default list query, page-size limits
+  - `is_supported_mime_type()` helper
+- `backend/app/connectors/google_drive/client.py`
+  - `GoogleDriveClient` builds read-only credentials from stored OAuth tokens
+  - Automatic token refresh with optional `on_token_refresh` persistence callback
+  - `list_files` / `iter_files` with pagination and MIME-type filtering
+  - `get_file_metadata` for a single file
+  - `DriveTokens` and `DriveFileMetadata` dataclasses; `DriveClientError`
+- Tests: `backend/tests/connectors/test_google_drive_client.py` (mocked, no live Google calls)
+- `pyproject.toml` mypy note: Google `Credentials`/`refresh` are inline-ignored (`no-untyped-call`)
 
 ## Troubleshooting
 

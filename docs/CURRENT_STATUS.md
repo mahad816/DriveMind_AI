@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 3 Milestone 2 complete (OAuth routes implemented). Step D blocked until `.env` is saved with Google client secret.
+**Last updated:** Phase 3 Milestone 3 complete (read-only Drive API client). OAuth Step D passed — callback returned `{"status":"ok",...}`.
 
 ## Completed Phases
 
@@ -22,7 +22,7 @@ See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for milestone checklist and commits
 | 0 — Tracker + setup checklist | Done |
 | 1 — OAuth config + token model + migration | Done |
 | 2 — OAuth login/callback routes | Done |
-| 3 — Read-only Drive API client | Not started |
+| 3 — Read-only Drive API client | Done |
 | 4 — Metadata sync API | Not started |
 | 5 — Export/download handlers | Not started |
 | 6 — Incremental sync + docs closure | Not started |
@@ -30,9 +30,9 @@ See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for milestone checklist and commits
 ## Your Manual Setup Checklist
 
 - [x] Step A — Google Cloud Console (Drive API + OAuth client)
-- [ ] Step B — `.env` saved on disk with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+- [x] Step B — `.env` saved on disk with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
 - [x] Step C — Docker Postgres + `alembic upgrade head`
-- [ ] Step D — Browser OAuth test at `/api/v1/auth/google`
+- [x] Step D — Browser OAuth test at `/api/v1/auth/google`
 
 ## How to Resume in a New Chat
 
