@@ -117,7 +117,9 @@ async def test_upsert_file_unchanged_when_metadata_matches(
 
 
 @pytest.mark.asyncio
-async def test_sync_metadata_no_connection_raises(service: DriveSyncService, mock_db: AsyncMock) -> None:
+async def test_sync_metadata_no_connection_raises(
+    service: DriveSyncService, mock_db: AsyncMock
+) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
 
     with pytest.raises(ValueError, match="No Google Drive connection"):
@@ -125,7 +127,9 @@ async def test_sync_metadata_no_connection_raises(service: DriveSyncService, moc
 
 
 @pytest.mark.asyncio
-async def test_sync_metadata_full_mode_success(service: DriveSyncService, mock_db: AsyncMock) -> None:
+async def test_sync_metadata_full_mode_success(
+    service: DriveSyncService, mock_db: AsyncMock
+) -> None:
     mock_client = MagicMock()
     mock_client.list_files.return_value = [
         _metadata("file-1"),
@@ -237,7 +241,9 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
 
 
 @pytest.mark.asyncio
-async def test_is_connected_false_when_no_token(service: DriveSyncService, mock_db: AsyncMock) -> None:
+async def test_is_connected_false_when_no_token(
+    service: DriveSyncService, mock_db: AsyncMock
+) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
     assert await service.is_connected() is False
 

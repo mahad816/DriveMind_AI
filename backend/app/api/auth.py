@@ -16,7 +16,9 @@ def get_oauth_service(db: AsyncSession = Depends(get_db)) -> GoogleOAuthService:
 
 
 @router.get("/google", summary="Start Google OAuth login")
-async def google_login(service: GoogleOAuthService = Depends(get_oauth_service)) -> RedirectResponse:
+async def google_login(
+    service: GoogleOAuthService = Depends(get_oauth_service),
+) -> RedirectResponse:
     """Redirect user to Google OAuth consent screen."""
     try:
         authorization_url = await service.create_authorization_url()

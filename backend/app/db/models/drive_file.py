@@ -35,7 +35,9 @@ class DriveFile(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(1024), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     folder_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)
-    modified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    modified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[DriveFileStatus] = mapped_column(
         Enum(DriveFileStatus, name="drive_file_status", native_enum=False),

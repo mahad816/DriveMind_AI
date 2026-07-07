@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -20,7 +21,7 @@ from app.services.drive_sync_service import DriveSyncResult
 
 
 @pytest.fixture(autouse=True)
-def clear_dependency_overrides() -> None:
+def clear_dependency_overrides() -> Generator[None, None, None]:
     yield
     app.dependency_overrides.clear()
 

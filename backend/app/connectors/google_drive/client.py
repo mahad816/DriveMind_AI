@@ -252,11 +252,7 @@ class GoogleDriveClient:
             raise DriveClientError("file_id is required")
         service = self._get_service()
         try:
-            payload = (
-                service.files()
-                .get(fileId=file_id, fields=FILE_FIELDS)
-                .execute()
-            )
+            payload = service.files().get(fileId=file_id, fields=FILE_FIELDS).execute()
         except HttpError as exc:
             raise DriveClientError(f"Drive get_file_metadata request failed: {exc}") from exc
         return DriveFileMetadata.from_api(payload)

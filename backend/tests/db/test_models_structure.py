@@ -22,7 +22,7 @@ def test_all_core_tables_are_registered() -> None:
 
 def test_foreign_keys_exist_for_core_relationships() -> None:
     """Critical foreign-key links should be defined for relational integrity."""
-    assert User.__table__.name == "users"
+    assert User.__tablename__ == "users"
 
     drive_file_fks = {fk.target_fullname for fk in DriveFile.__table__.foreign_keys}
     assert "users.id" in drive_file_fks

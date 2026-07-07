@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,7 +16,7 @@ from app.services.drive_content_service import DriveFileContent
 
 
 @pytest.fixture(autouse=True)
-def clear_dependency_overrides() -> None:
+def clear_dependency_overrides() -> Generator[None, None, None]:
     yield
     app.dependency_overrides.clear()
 

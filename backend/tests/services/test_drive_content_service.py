@@ -51,7 +51,9 @@ def service(mock_db: AsyncMock) -> DriveContentService:
 
 
 @pytest.mark.asyncio
-async def test_fetch_file_content_returns_bytes(service: DriveContentService, mock_db: AsyncMock) -> None:
+async def test_fetch_file_content_returns_bytes(
+    service: DriveContentService, mock_db: AsyncMock
+) -> None:
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, DRIVE_FILE, TOKEN_ROW])
     mock_db.get = AsyncMock(return_value=USER)
 
@@ -97,7 +99,9 @@ async def test_fetch_file_content_exports_google_doc(
 
 
 @pytest.mark.asyncio
-async def test_fetch_file_content_not_found(service: DriveContentService, mock_db: AsyncMock) -> None:
+async def test_fetch_file_content_not_found(
+    service: DriveContentService, mock_db: AsyncMock
+) -> None:
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None])
     mock_db.get = AsyncMock(return_value=USER)
 

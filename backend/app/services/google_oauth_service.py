@@ -51,7 +51,7 @@ class GoogleOAuthService:
             raise ValueError("Google OAuth credentials are not configured")
 
     def _oauth_scopes(self) -> list[str]:
-        scopes = list(_identity_scopes)
+        scopes: list[str] = list(_identity_scopes)
         for scope in self.settings.google_drive_scopes.split():
             if scope and scope not in scopes:
                 scopes.append(scope)

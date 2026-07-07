@@ -42,8 +42,7 @@ FILE_FIELDS = (
 )
 LIST_FILES_FIELDS = f"nextPageToken, files({FILE_FIELDS})"
 CHANGE_LIST_FIELDS = (
-    f"nextPageToken, newStartPageToken, "
-    f"changes(removed, fileId, file({FILE_FIELDS}))"
+    f"nextPageToken, newStartPageToken, changes(removed, fileId, file({FILE_FIELDS}))"
 )
 
 # Exclude folders and trashed files from listings by default.

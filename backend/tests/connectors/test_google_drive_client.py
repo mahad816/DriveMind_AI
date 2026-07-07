@@ -271,10 +271,13 @@ def test_refresh_invoked_and_persists_new_token() -> None:
     expired = datetime.now(UTC) - timedelta(hours=1)
     persisted: list[DriveTokens] = []
 
+    def persist_tokens(tokens: DriveTokens) -> None:
+        persisted.append(tokens)
+
     client = GoogleDriveClient(
         tokens=_tokens(expiry=expired),
         settings=FAKE_SETTINGS,
-        on_token_refresh=persisted.append,
+        on_token_refresh=persist_tokens,
         service=FakeService(FakeFilesResource(list_pages=[{"files": []}])),
     )
 
@@ -331,9 +334,7 @@ def test_get_file_content_exports_google_docs() -> None:
 
     assert data == b"doc text"
     assert mime == "text/plain"
-    assert files_resource.export_media_calls == [
-        {"fileId": "doc-1", "mimeType": "text/plain"}
-    ]
+    assert files_resource.export_media_calls == [{"fileId": "doc-1", "mimeType": "text/plain"}]
     mock_read.assert_called_once()
 
 
