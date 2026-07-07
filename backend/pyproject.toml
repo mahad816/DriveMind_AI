@@ -51,7 +51,7 @@ python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*"]
+module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*"]
 ignore_missing_imports = true
 
 [tool.basedpyright]

@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 4 Milestone 2 complete (TXT + Google Docs extractors).
+**Last updated:** Phase 4 Milestone 3 complete (PDF text-only extractor).
 
 ## Completed Phases
 
