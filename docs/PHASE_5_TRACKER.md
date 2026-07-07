@@ -10,8 +10,8 @@ Turn Phase 4 extracted text into searchable chunks stored in PostgreSQL, generat
 
 | Capability | Method | Status |
 |------------|--------|--------|
-| Text chunking | Deterministic splitter with overlap + metadata | Planned |
-| Chunk persistence | Idempotent rows in `chunks` table | Planned |
+| Text chunking | Deterministic splitter with overlap + metadata | Done (M1) |
+| Chunk persistence | Idempotent rows in `chunks` table | Done (M2) |
 | Embedding service | Provider abstraction (OpenAI `text-embedding-3-small`) | Planned |
 | Vector store | Qdrant collection `drivemind_chunks` | Planned |
 | Indexing pipeline | Chunks → embed → upsert, reindex on text change | Planned |
@@ -35,8 +35,8 @@ Turn Phase 4 extracted text into searchable chunks stored in PostgreSQL, generat
 
 ## Current Snapshot
 
-- **Phase status:** In progress (Milestone 1 complete)
-- **Next milestone:** Milestone 2 (chunk persistence service)
+- **Phase status:** In progress (Milestone 2 complete)
+- **Next milestone:** Milestone 3 (embedding provider abstraction)
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -82,7 +82,7 @@ Steps A–D are not required for Milestone 0–1 (docs + chunker code only).
 
 - [x] Milestone 0 — Phase 5 tracker + setup checklist + docs alignment
 - [x] Milestone 1 — Deterministic text chunker (`app/ingestion/chunking.py`)
-- [ ] Milestone 2 — Chunk persistence service + optional `POST /api/v1/index/chunk`
+- [x] Milestone 2 — Chunk persistence service + optional `POST /api/v1/index/chunk`
 - [ ] Milestone 3 — Embedding provider abstraction + settings
 - [ ] Milestone 4 — Qdrant client + collection setup
 - [ ] Milestone 5 — End-to-end indexing pipeline (`POST /api/v1/index/build`)

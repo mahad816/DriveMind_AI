@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.google_drive.client import DriveClientError
 from app.db.session import get_db
+from app.schemas.chunking import ChunkingResponse
 from app.schemas.drive_sync import DriveSyncResponse, DriveSyncStatusResponse
 from app.schemas.indexing import IndexingJobRead
 from app.schemas.ingest import IngestionResponse
+from app.services.chunking_service import ChunkingService
 from app.services.drive_sync_service import DriveSyncService
 from app.services.ingestion_service import IngestionService
 
@@ -24,6 +26,11 @@ def get_drive_sync_service(db: AsyncSession = Depends(get_db)) -> DriveSyncServi
 def get_ingestion_service(db: AsyncSession = Depends(get_db)) -> IngestionService:
     """Dependency provider for document ingestion service."""
     return IngestionService(db=db)
+
+
+def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
+    """Dependency provider for document chunking service."""
+    return ChunkingService(db=db)
 
 
 @router.post("/sync", summary="Sync Drive file metadata")
@@ -108,4 +115,33 @@ async def ingest_drive_files(
         skipped=result.skipped,
         total=result.total,
         message=f"Drive text ingestion ({scope}) completed",
+    )
+
+
+@router.post("/chunk", summary="Chunk extracted documents into searchable segments")
+async def chunk_extracted_documents(
+    file_id: uuid.UUID | None = Query(
+        default=None,
+        description="Optional synced drive_files.id to chunk a single file's document.",
+    ),
+    service: ChunkingService = Depends(get_chunking_service),
+) -> ChunkingResponse:
+    """Split extracted document text into chunk rows stored in PostgreSQL."""
+    try:
+        result = await service.chunk_documents(file_id=file_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    scope = "file" if file_id is not None else "batch"
+    return ChunkingResponse(
+        job_id=result.job_id,
+        user_id=result.user_id,
+        chunked=result.chunked,
+        unchanged=result.unchanged,
+        skipped=result.skipped,
+        total=result.total,
+        message=f"Document chunking ({scope}) completed",
     )
