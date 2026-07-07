@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 4 Milestone 1 complete (extraction foundation).
+**Last updated:** Phase 4 Milestone 2 complete (TXT + Google Docs extractors).
 
 ## Completed Phases
 

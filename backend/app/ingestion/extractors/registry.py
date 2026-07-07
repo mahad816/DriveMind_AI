@@ -8,10 +8,7 @@ _EXTRACTORS: dict[str, TextExtractor] = {}
 
 
 def register_extractor(mime_type: str, extractor: TextExtractor) -> None:
-    """Register an extractor for a MIME type.
-
-    Later milestones register concrete extractors (plain text, PDF, DOCX, OCR).
-    """
+    """Register an extractor for a MIME type."""
     if not mime_type:
         raise ValueError("mime_type must be non-empty")
     _EXTRACTORS[mime_type] = extractor
