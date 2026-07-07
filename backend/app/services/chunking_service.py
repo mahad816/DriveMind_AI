@@ -132,6 +132,10 @@ class ChunkingService:
 
         return "chunked"
 
+    async def sync_document_chunks(self, document: Document) -> str:
+        """Ensure chunk rows exist for a document. Returns 'chunked' or 'unchanged'."""
+        return await self._replace_chunks(document)
+
     async def _chunk_drive_file(self, drive_file: DriveFile) -> str:
         document = await self._get_latest_document(drive_file.id)
         if document is None:

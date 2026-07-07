@@ -7,12 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.google_drive.client import DriveClientError
 from app.db.session import get_db
+from app.embeddings.base import EmbeddingConfigurationError, EmbeddingError
 from app.schemas.chunking import ChunkingResponse
 from app.schemas.drive_sync import DriveSyncResponse, DriveSyncStatusResponse
+from app.schemas.index_build import IndexBuildResponse
 from app.schemas.indexing import IndexingJobRead
 from app.schemas.ingest import IngestionResponse
 from app.services.chunking_service import ChunkingService
 from app.services.drive_sync_service import DriveSyncService
+from app.services.indexing_service import IndexingService
 from app.services.ingestion_service import IngestionService
 
 router = APIRouter(prefix="/index")
@@ -31,6 +34,11 @@ def get_ingestion_service(db: AsyncSession = Depends(get_db)) -> IngestionServic
 def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
     """Dependency provider for document chunking service."""
     return ChunkingService(db=db)
+
+
+def get_indexing_service(db: AsyncSession = Depends(get_db)) -> IndexingService:
+    """Dependency provider for vector indexing service."""
+    return IndexingService(db=db)
 
 
 @router.post("/sync", summary="Sync Drive file metadata")
@@ -144,4 +152,39 @@ async def chunk_extracted_documents(
         skipped=result.skipped,
         total=result.total,
         message=f"Document chunking ({scope}) completed",
+    )
+
+
+@router.post("/build", summary="Build vector index from chunked documents")
+async def build_vector_index(
+    file_id: uuid.UUID | None = Query(
+        default=None,
+        description="Optional synced drive_files.id to index a single file's document.",
+    ),
+    service: IndexingService = Depends(get_indexing_service),
+) -> IndexBuildResponse:
+    """Chunk documents, embed pending chunks, and upsert vectors into Qdrant."""
+    try:
+        result = await service.build_index(file_id=file_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except (EmbeddingConfigurationError, EmbeddingError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    scope = "file" if file_id is not None else "batch"
+    return IndexBuildResponse(
+        job_id=result.job_id,
+        user_id=result.user_id,
+        embedded=result.embedded,
+        unchanged=result.unchanged,
+        skipped=result.skipped,
+        removed=result.removed,
+        total=result.total,
+        message=f"Vector index build ({scope}) completed",
     )
