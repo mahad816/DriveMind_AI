@@ -51,7 +51,7 @@ scripts/     Utility scripts
 - Phase 1 — Backend foundation (complete)
 - Phase 2 — Data model and indexing state (complete)
 - Phase 3 — Google Drive read-only integration (complete)
-- Phase 4 — Document ingestion and text extraction (not started)
+- Phase 4 — Document ingestion and text extraction (in progress, Milestone 1 done)
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/PHASE_4_TRACKER.md](docs/PHASE_4_TRACKER.md) for the active phase.
 

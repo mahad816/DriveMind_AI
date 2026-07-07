@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, Integer, String
+from sqlalchemy import ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,6 +26,7 @@ class Document(TimestampMixin, Base):
         ForeignKey("drive_files.id", ondelete="CASCADE"),
         nullable=False,
     )
+    extracted_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     extracted_text_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

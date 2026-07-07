@@ -12,7 +12,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 1 | Backend Foundation | Complete |
 | 2 | Data Model & Indexing State | Complete |
 | 3 | Google Drive Read-Only Integration | Complete |
-| 4 | Document Ingestion & Text Extraction | Not started — see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
+| 4 | Document Ingestion & Text Extraction | In progress — M1 done, see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
 | 5 | Chunking & Embeddings | Not started |
 | 6 | Basic RAG API | Not started |
 | 7 | Hybrid Retrieval | Not started |

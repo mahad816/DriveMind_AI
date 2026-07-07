@@ -86,6 +86,7 @@ def test_document_read_rejects_negative_page_count() -> None:
         DocumentRead(
             id=uuid4(),
             drive_file_id=uuid4(),
+            extracted_text="sample extracted body",
             extracted_text_hash="abc123",
             page_count=-3,
             created_at=datetime.now(timezone.utc),

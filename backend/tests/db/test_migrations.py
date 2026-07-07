@@ -73,6 +73,36 @@ def test_downgrade_sql_drops_all_core_tables() -> None:
         assert f"DROP TABLE {table}" in sql
 
 
+def test_upgrade_sql_contains_documents_extracted_text_column() -> None:
+    """Offline upgrade SQL should add extracted_text storage on documents."""
+    result = subprocess.run(
+        ["alembic", "upgrade", "head", "--sql"],
+        cwd=_backend_dir(),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sql = result.stdout
+    assert "extracted_text" in sql
+    assert "documents" in sql
+
+
+def test_documents_extracted_text_migration_metadata_is_consistent() -> None:
+    """Revision metadata should remain stable for extracted_text migration."""
+    migration_path = (
+        _backend_dir() / "alembic" / "versions" / "20260707_1800_add_documents_extracted_text.py"
+    )
+    spec = importlib.util.spec_from_file_location("phase4_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration_module)
+
+    assert migration_module.revision == "20260707_1800"
+    assert migration_module.down_revision == "20260707_1700"
+    assert callable(migration_module.upgrade)
+    assert callable(migration_module.downgrade)
+
+
 def test_oauth_migration_downgrade_sql_drops_token_table() -> None:
     """Downgrading from head to phase-2 revision should drop oauth token table only."""
     result = subprocess.run(

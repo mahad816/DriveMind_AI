@@ -33,8 +33,9 @@ Scanned or image-only PDFs may return little or no extractable text in Phase 4. 
 
 ## Current Snapshot
 
-- **Phase status:** Not started
-- **Next milestone:** Milestone 0 (this tracker + setup checklist)
+- **Phase status:** In progress
+- **Last completed milestone:** Milestone 1 (extraction foundation)
+- **Next milestone:** Milestone 2 (TXT + Google Docs extractors)
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -57,8 +58,8 @@ Steps A–C are not required for Milestones 0–4 (no OCR yet).
 
 ## Milestone Status
 
-- [ ] Milestone 0 — Phase 4 tracker + setup checklist + docs alignment
-- [ ] Milestone 1 — Extraction foundation (deps, protocol, registry, hash util, `documents.extracted_text` migration)
+- [x] Milestone 0 — Phase 4 tracker + setup checklist + docs alignment
+- [x] Milestone 1 — Extraction foundation (deps, protocol, registry, hash util, `documents.extracted_text` migration)
 - [ ] Milestone 2 — TXT + Google Docs plain-text extractors
 - [ ] Milestone 3 — PDF text-only extractor (`pypdf`)
 - [ ] Milestone 4 — DOCX extractor (`python-docx`)

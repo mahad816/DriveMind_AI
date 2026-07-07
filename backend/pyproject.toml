@@ -12,7 +12,11 @@ dependencies = [
     "google-auth>=2.55.1",
     "google-auth-oauthlib>=1.4.0",
     "greenlet>=3.2.0",
+    "pillow>=12.3.0",
     "pydantic-settings>=2.10.0",
+    "pypdf>=6.14.2",
+    "pytesseract>=0.3.13",
+    "python-docx>=1.2.0",
     "sqlalchemy>=2.0.40",
     "uvicorn[standard]>=0.35.0",
 ]
@@ -24,6 +28,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
     "mypy>=1.13",
+    "basedpyright>=1.39.9",
 ]
 
 [build-system]
@@ -46,5 +51,20 @@ python_version = "3.11"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["google_auth_oauthlib.*", "googleapiclient.*"]
+module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*"]
 ignore_missing_imports = true
+
+[tool.basedpyright]
+include = ["app", "tests"]
+exclude = [".venv", "**/__pycache__", "alembic/versions"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportAny = "none"
+reportPrivateUsage = "none"
+reportUnusedCallResult = "none"
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
+reportMissingTypeStubs = "none"

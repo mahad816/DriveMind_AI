@@ -30,6 +30,7 @@ class DriveFileRead(IdentifierSchema, TimestampedSchema, DriveFileBase):
 class DocumentBase(SchemaBase):
     """Shared document fields after extraction step."""
 
+    extracted_text: str = ""
     extracted_text_hash: str = Field(min_length=1, max_length=128)
     page_count: int | None = Field(default=None, ge=0)
 
