@@ -13,8 +13,8 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 2 | Data Model & Indexing State | Complete |
 | 3 | Google Drive Read-Only Integration | Complete |
 | 4 | Document Ingestion & Text Extraction | Complete — see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
-| 5 | Chunking & Embeddings | In progress — see [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) |
-| 6 | Basic RAG API | Not started |
+| 5 | Chunking & Embeddings | Complete — see [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) |
+| 6 | Basic RAG API | Not started — next phase |
 | 7 | Hybrid Retrieval | Not started |
 | 8 | LangGraph Agent | Not started |
 | 9 | Frontend Foundation | Not started |
@@ -109,7 +109,7 @@ test(backend): add health endpoint tests
 
 - All milestones done: OAuth, Drive client, metadata sync, export/download, incremental sync
 - Tracker: [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md)
-- Next: Phase 5 — chunking and embeddings
+- Next: Phase 6 — basic RAG chat
 
 **Phase 2 completion notes:**
 
@@ -170,26 +170,26 @@ test(backend): add health endpoint tests
 
 **Goal:** Searchable chunks with rich metadata in PostgreSQL and embeddings in Qdrant.
 
-**Status:** In progress. See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md).
+**Status:** Complete. See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md).
 
-**Build:**
+**Delivered:**
 
-- Chunking strategy with metadata preservation
-- Embedding service abstraction (OpenAI)
-- Qdrant collection setup
-- Idempotent indexing pipeline
-- Reindex on document text change
+- Deterministic text chunker with overlap + metadata
+- Idempotent chunk persistence (`POST /api/v1/index/chunk`)
+- OpenAI embedding service abstraction
+- Qdrant vector store + `drivemind_chunks` collection
+- End-to-end index build (`POST /api/v1/index/build`)
+- Reindex on `extracted_text_hash` change; stale vector cleanup
 
 **Out of scope:** Chat/RAG (Phase 6), hybrid retrieval (Phase 7), LangGraph (Phase 8)
 
-**Chunk metadata:** file ID, filename, MIME type, modified time, chunk index.
-
-**Key files (planned):**
+**Key files:**
 
 - `backend/app/ingestion/chunking.py`
 - `backend/app/services/chunking_service.py`
 - `backend/app/services/indexing_service.py`
 - `backend/app/embeddings/`
+- `backend/app/api/index.py`
 
 ---
 

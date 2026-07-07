@@ -151,11 +151,9 @@ test(backend): add health endpoint tests
 
 **Goal:** Searchable chunks with metadata in PostgreSQL + Qdrant vectors.
 
-**Status:** In progress. See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md).
+**Status:** Complete. See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md).
 
-**Planned:** Chunker, chunk persistence, OpenAI embeddings, Qdrant collection, `POST /api/v1/index/build`.
-
-**Chunk metadata:** file ID, filename, MIME type, modified time, chunk index.
+**Delivered:** Chunker, chunk API, OpenAI embeddings, Qdrant store, `POST /api/v1/index/build`.
 
 ---
 

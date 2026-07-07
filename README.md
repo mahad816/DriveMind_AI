@@ -44,7 +44,7 @@ scripts/     Utility scripts
 - [Phase 2 Tracker](docs/PHASE_2_TRACKER.md) — Phase 2 log (complete)
 - [Phase 3 Tracker](docs/PHASE_3_TRACKER.md) — Phase 3 log (complete)
 - [Phase 4 Tracker](docs/PHASE_4_TRACKER.md) — Phase 4 log (complete)
-- [Phase 5 Tracker](docs/PHASE_5_TRACKER.md) — Phase 5 log (active)
+- [Phase 5 Tracker](docs/PHASE_5_TRACKER.md) — Phase 5 log (complete)
 
 ## Development Status
 
@@ -53,9 +53,10 @@ scripts/     Utility scripts
 - Phase 2 — Data model and indexing state (complete)
 - Phase 3 — Google Drive read-only integration (complete)
 - Phase 4 — Document ingestion and text extraction (complete)
-- Phase 5 — Chunking and embeddings (in progress, Milestone 0 done)
+- Phase 5 — Chunking and embeddings (complete)
+- Phase 6 — Basic RAG chat (not started)
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/PHASE_5_TRACKER.md](docs/PHASE_5_TRACKER.md) for the active phase.
+See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md) for the active phase.
 
 ## Local Setup
 
