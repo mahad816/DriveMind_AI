@@ -137,7 +137,17 @@ test(backend): add health endpoint tests
 
 ## Phase 4: Document Ingestion And Text Extraction
 
-**Goal:** Normalize text from Google Docs, PDF, DOCX, TXT, images.
+**Goal:** Normalize text from Google Docs, PDF (text-only), DOCX, TXT, and images.
+
+**Tracker:** [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md)
+
+**In scope:**
+
+- Google Docs, TXT, DOCX, PDF (`pypdf`), image OCR (Tesseract)
+
+**Out of scope:**
+
+- EasyOCR, PDF OCR fallback, chunking/embeddings (Phase 5)
 
 **Location:** `backend/app/ingestion/extractors/`
 

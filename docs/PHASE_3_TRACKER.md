@@ -10,7 +10,7 @@ Authenticate with Google (read-only), sync Drive file metadata into PostgreSQL, 
 
 - **Phase status:** Complete
 - **Last completed milestone:** Milestone 6 (incremental sync + phase closure)
-- **Next phase:** Phase 4 — Document Ingestion & Text Extraction
+- **Next phase:** Phase 4 — Document Ingestion & Text Extraction ([PHASE_4_TRACKER.md](PHASE_4_TRACKER.md))
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -166,7 +166,7 @@ curl --max-time 300 -X POST "http://localhost:8000/api/v1/index/sync?full=true"
 
 ## New Chat Handoff Prompt
 
-> Continue DriveMind AI Phase 4 from `docs/CURRENT_STATUS.md` and `docs/ROADMAP.md`.
+> Continue DriveMind AI Phase 4 from `docs/PHASE_4_TRACKER.md` and `docs/CURRENT_STATUS.md`.
 
 ## Troubleshooting
 

@@ -45,7 +45,7 @@ All answers must use **retrieved evidence from Google Drive**, not LLM knowledge
 |------------|--------|
 | Users | Single authenticated user (MVP) |
 | Permissions | Read-only — never modify or delete Drive files |
-| File types | Google Docs, PDF, TXT, DOCX, Images (OCR) |
+| File types | Google Docs, PDF (text-only), TXT, DOCX, Images (Tesseract OCR) |
 | Later | Audio files via Whisper (Phase 2+) |
 
 ---
@@ -100,7 +100,9 @@ Read-only: authenticate, list files, download/export supported documents, synchr
 
 ### OCR
 
-Tesseract or EasyOCR for screenshots, scanned PDFs, and images.
+Tesseract (via `pytesseract`) for standalone images (PNG, JPEG, WebP, etc.).
+
+**Phase 4 scope:** image OCR only. **Not in Phase 4:** EasyOCR, PDF OCR fallback for scanned PDFs (deferred).
 
 ### Whisper (optional, later)
 

@@ -92,11 +92,11 @@ Hybrid search combining metadata, keyword, and vector strategies.
 flowchart LR
     A[Google Drive] --> B[Drive Connector]
     B --> C{File Type?}
-    C -->|Google Doc| D[Export as text/PDF]
-    C -->|PDF| E[PDF Extractor]
+    C -->|Google Doc| D[Export as plain text]
+    C -->|PDF| E[PDF text extractor]
     C -->|DOCX| F[DOCX Extractor]
     C -->|TXT| G[Plain Text]
-    C -->|Image| H[OCR]
+    C -->|Image| H[Tesseract OCR]
     D --> I[Normalized Text]
     E --> I
     F --> I
@@ -110,13 +110,15 @@ flowchart LR
 
 ### Supported File Types (MVP)
 
-| Type | Extraction Method |
-|------|-------------------|
-| Google Docs | Drive export API |
-| PDF | Text extraction + OCR fallback |
-| DOCX | python-docx or similar |
-| TXT | Direct read |
-| Images | Tesseract / EasyOCR |
+| Type | Extraction Method | Notes |
+|------|-------------------|-------|
+| Google Docs | Drive export API (`text/plain`) | Reuses Phase 3 content fetch |
+| PDF | `pypdf` text extraction | Born-digital PDFs only; no OCR fallback in Phase 4 |
+| DOCX | `python-docx` | Paragraph text; embedded images not OCR'd |
+| TXT | Direct UTF-8 decode | |
+| Images | Tesseract via `pytesseract` | Requires system `tesseract` install |
+
+**Deferred (not Phase 4):** EasyOCR, PDF OCR for scanned/image-only PDFs.
 
 ---
 
@@ -207,7 +209,7 @@ drive_files
   folder_path, modified_at, indexed_at, status
 
 documents
-  id, drive_file_id, extracted_text_hash, page_count
+  id, drive_file_id, extracted_text, extracted_text_hash, page_count
 
 chunks
   id, document_id, chunk_index, text, metadata_json

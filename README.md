@@ -6,7 +6,7 @@ DriveMind indexes your Google Drive, retrieves relevant information using hybrid
 
 ## What It Does
 
-- Indexes Google Docs, PDFs, TXT, DOCX, and images (OCR)
+- Indexes Google Docs, PDFs (text extraction), TXT, DOCX, and images (Tesseract OCR)
 - Answers questions using retrieved evidence from your Drive
 - Supports metadata queries (latest resume, files by date, folder path)
 - Uses LangGraph to orchestrate intent classification, retrieval planning, evidence grading, and citation verification
@@ -42,16 +42,18 @@ scripts/     Utility scripts
 - [Execution Plan](docs/EXECUTION_PLAN.md) — detailed phase-by-phase plan
 - [Current Status](docs/CURRENT_STATUS.md) — resume point for new chats
 - [Phase 2 Tracker](docs/PHASE_2_TRACKER.md) — Phase 2 log (complete)
-- [Phase 3 Tracker](docs/PHASE_3_TRACKER.md) — Phase 3 log (active)
+- [Phase 3 Tracker](docs/PHASE_3_TRACKER.md) — Phase 3 log (complete)
+- [Phase 4 Tracker](docs/PHASE_4_TRACKER.md) — Phase 4 log (active)
 
 ## Development Status
 
 - Phase 0 — Repository foundation (complete)
 - Phase 1 — Backend foundation (complete)
 - Phase 2 — Data model and indexing state (complete)
-- Phase 3 — Google Drive read-only integration (in progress, Milestone 2 done)
+- Phase 3 — Google Drive read-only integration (complete)
+- Phase 4 — Document ingestion and text extraction (not started)
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the full phase breakdown.
+See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/PHASE_4_TRACKER.md](docs/PHASE_4_TRACKER.md) for the active phase.
 
 ## Local Setup
 

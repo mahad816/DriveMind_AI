@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 3 complete (Google Drive read-only integration). All milestones 0–6 done.
+**Last updated:** Phase 3 complete. Phase 4 scoped and ready to start (Milestone 0).
 
 ## Completed Phases
 
@@ -30,12 +30,21 @@ See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for full milestone log.
 
 **Phase 4 — Document Ingestion & Text Extraction**
 
-- Convert supported Drive files into normalized text
-- Extractors for Google Docs, PDF, DOCX, TXT, images (OCR)
+See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) for milestone-by-milestone plan.
+
+| In scope | Method |
+|----------|--------|
+| Google Docs | Drive export → plain text |
+| TXT | UTF-8 decode |
+| DOCX | `python-docx` |
+| PDF | `pypdf` text-only (no OCR fallback) |
+| Images | Tesseract OCR (`pytesseract`) |
+
+**Deferred:** EasyOCR, PDF OCR for scanned PDFs, chunking/embeddings (Phase 5).
 
 Say in a new chat:
 
-> Continue DriveMind AI Phase 4 from `docs/CURRENT_STATUS.md` and `docs/ROADMAP.md`.
+> Continue DriveMind AI Phase 4 from `docs/PHASE_4_TRACKER.md` and `docs/CURRENT_STATUS.md`.
 
 ## Quick Commands
 
@@ -73,6 +82,12 @@ curl http://localhost:8000/api/v1/files
 - [x] Step C — Docker Postgres + `alembic upgrade head`
 - [x] Step D — Browser OAuth test at `/api/v1/auth/google`
 
+## Manual Setup (Phase 4 — before image OCR, Milestone 5)
+
+- [ ] Step A — `brew install tesseract` (system OCR for images)
+- [x] Step B — Postgres running + migrations applied
+- [x] Step C — Drive OAuth connected and metadata synced
+
 ## Key Docs
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
@@ -80,3 +95,4 @@ curl http://localhost:8000/api/v1/files
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
 - [PHASE_2_TRACKER.md](PHASE_2_TRACKER.md) — Phase 2 log (complete)
 - [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) — Phase 3 log (complete)
+- [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) — Phase 4 log (active)

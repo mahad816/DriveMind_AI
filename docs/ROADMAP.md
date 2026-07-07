@@ -12,7 +12,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 1 | Backend Foundation | Complete |
 | 2 | Data Model & Indexing State | Complete |
 | 3 | Google Drive Read-Only Integration | Complete |
-| 4 | Document Ingestion & Text Extraction | Not started |
+| 4 | Document Ingestion & Text Extraction | Not started — see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
 | 5 | Chunking & Embeddings | Not started |
 | 6 | Basic RAG API | Not started |
 | 7 | Hybrid Retrieval | Not started |
@@ -148,13 +148,21 @@ test(backend): add health endpoint tests
 
 **Goal:** Convert supported file types into normalized text.
 
-**Extractors:**
+**Status:** Not started. See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md).
 
-- Google Docs (export)
-- PDF (text + OCR fallback)
-- DOCX
-- TXT
-- Images (Tesseract / EasyOCR)
+**In scope:**
+
+- Google Docs — Drive export as plain text
+- TXT — direct decode
+- DOCX — `python-docx`
+- PDF — `pypdf` text extraction only (born-digital PDFs)
+- Images — Tesseract OCR via `pytesseract`
+
+**Out of scope (Phase 4):**
+
+- EasyOCR
+- PDF OCR fallback for scanned/image-only PDFs (future phase)
+- Chunking and embeddings (Phase 5)
 
 **Location:** `backend/app/ingestion/extractors/`
 

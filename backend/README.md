@@ -1,5 +1,5 @@
 # DriveMind Backend
 
-FastAPI backend for DriveMind AI — ingestion, hybrid retrieval, and LangGraph agent.
+FastAPI backend for DriveMind AI — ingestion (text extraction), hybrid retrieval, and LangGraph agent.
 
-See the [root README](../README.md) and [docs](../docs/) for full project context.
+Phase 4 adds extractors under `app/ingestion/extractors/` (TXT, Docs, DOCX, PDF text-only, image OCR). See [PHASE_4_TRACKER.md](../docs/PHASE_4_TRACKER.md).

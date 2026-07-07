@@ -84,7 +84,7 @@ Before implementing a phase: propose files and steps → get approval → implem
 
 ## Supported File Types (MVP)
 
-Google Docs, PDF, TXT, DOCX, Images (OCR). Audio deferred.
+Google Docs, PDF (text-only), TXT, DOCX, Images (Tesseract OCR). Audio deferred. No EasyOCR or PDF OCR fallback in Phase 4.
 
 ## Key Docs
 
