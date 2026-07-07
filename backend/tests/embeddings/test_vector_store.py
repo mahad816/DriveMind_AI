@@ -10,7 +10,12 @@ import httpx
 import pytest
 
 from app.core.config import Settings
-from app.embeddings.vector_store import QdrantVectorStore, ScoredChunkHit, VectorPoint, VectorStoreError
+from app.embeddings.vector_store import (
+    QdrantVectorStore,
+    ScoredChunkHit,
+    VectorPoint,
+    VectorStoreError,
+)
 
 CHUNK_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()

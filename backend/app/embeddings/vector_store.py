@@ -144,9 +144,7 @@ class QdrantVectorStore:
                 points_selector=PointIdsList(points=[str(chunk_id) for chunk_id in chunk_ids]),
             )
         except (UnexpectedResponse, ResponseHandlingException) as exc:
-            raise VectorStoreError(
-                f"Failed to delete vectors from Qdrant: {exc}"
-            ) from exc
+            raise VectorStoreError(f"Failed to delete vectors from Qdrant: {exc}") from exc
 
     async def delete_points_for_drive_file_except(
         self,

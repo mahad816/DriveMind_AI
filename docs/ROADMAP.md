@@ -14,7 +14,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 3 | Google Drive Read-Only Integration | Complete |
 | 4 | Document Ingestion & Text Extraction | Complete — see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
 | 5 | Chunking & Embeddings | Complete — see [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) |
-| 6 | Basic RAG API | In progress — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
+| 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
 | 7 | Hybrid Retrieval | Not started |
 | 8 | LangGraph Agent | Not started |
 | 9 | Frontend Foundation | Not started |
@@ -197,7 +197,7 @@ test(backend): add health endpoint tests
 
 **Goal:** End-to-end question answering with citations.
 
-**Status:** In progress. See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md).
+**Status:** Complete. See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md).
 
 **Build:**
 
@@ -207,6 +207,7 @@ test(backend): add health endpoint tests
 - `POST /chat` endpoint (M4)
 - `GET /sources/{chunk_id}` source viewer (M4)
 - Citation return format via `CitationItem`
+- Test coverage for retrieval, RAG, and API routes (M5)
 
 **Important:** Prove simple RAG works before adding LangGraph.
 
@@ -216,6 +217,13 @@ test(backend): add health endpoint tests
 - `backend/app/llm/` (M2)
 - `backend/app/services/rag_service.py` (M3)
 - `backend/app/api/chat.py`, `sources.py` (M4)
+
+**Phase 6 completion notes:**
+
+- End-to-end flow: question → embed → Qdrant search → Postgres hydrate → LLM answer → citations → `query_history`
+- Vector-only retrieval (hybrid deferred to Phase 7)
+- 240 backend tests passing; smoke test confirmed grounded answers with citations
+- Next: Phase 7 — hybrid metadata + keyword + merge + rerank
 
 ---
 

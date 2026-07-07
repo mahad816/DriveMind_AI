@@ -40,9 +40,9 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 
 ## Current Snapshot
 
-- **Phase status:** In progress
-- **Last completed milestone:** Milestone 5 (retrieval, RAG, and API test coverage)
-- **Next milestone:** Milestone 6 — verification + Phase 6 docs closure
+- **Phase status:** Complete
+- **Last completed milestone:** Milestone 6 (verification + Phase 6 docs closure)
+- **Next phase:** Phase 7 — Hybrid Retrieval
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -61,7 +61,7 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 - [x] Milestone 3 — RAG orchestration service (`app/services/rag_service.py`)
 - [x] Milestone 4 — Chat + source viewer API routes
 - [x] Milestone 5 — Retrieval, RAG, and API test coverage
-- [ ] Milestone 6 — Verification + Phase 6 docs closure
+- [x] Milestone 6 — Verification + Phase 6 docs closure
 
 ## Commit Plan
 
@@ -158,11 +158,15 @@ All milestones complete. Verification before moving to Phase 7:
 
 ```bash
 cd backend
+uv sync --dev
 uv run ruff check app tests
+uv run ruff format --check app tests
 uv run mypy app
 uv run basedpyright app tests
 uv run pytest -q
 ```
+
+**Closure verification (2026-07-08):** 240 tests passed; ruff, mypy, and basedpyright clean.
 
 Smoke test with backend running, Drive connected, Qdrant indexed, OpenAI key set:
 
@@ -170,7 +174,12 @@ Smoke test with backend running, Drive connected, Qdrant indexed, OpenAI key set
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "Summarize my notes on tensile strength."}'
+
+# Use chunk_id from citations[] — not query_id
+curl http://localhost:8000/api/v1/sources/<chunk_id_from_citations>
 ```
+
+**Smoke test sign-off:** `POST /api/v1/chat` returned grounded answers with citations from indexed Callister PDF; `GET /api/v1/sources/{chunk_id}` returns full chunk text.
 
 ## Notes
 

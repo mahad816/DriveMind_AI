@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 6 in progress (M0–M1 complete: tracker + vector retrieval). Phase 5 complete.
+**Last updated:** Phase 6 complete (Basic RAG API). Phase 7 next.
 
 ## Completed Phases
 
@@ -14,19 +14,28 @@ Use this file to resume work in a new chat.
 | 3 | Complete | OAuth, Drive client, sync, export/download, incremental sync |
 | 4 | Complete | Text extractors, IngestionService, ingest API |
 | 5 | Complete | Chunking, embeddings, Qdrant vector index, build API |
+| 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 
-## Phase 6 Summary (Basic RAG API) — In Progress
+## Phase 6 Summary (Basic RAG API) — Complete
 
 See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 
 | Capability | Module | Status |
 |------------|--------|--------|
-| Vector retrieval | `app/retrieval/vector.py` | Done (M1) |
-| Qdrant search | `app/embeddings/vector_store.py` | Done (M1) |
-| LLM chat service | `app/llm/openai_service.py` | Done (M2) |
-| RAG orchestration | `app/services/rag_service.py` | Done (M3) |
-| Chat API | `POST /api/v1/chat` | Done (M4) |
-| Source viewer | `GET /api/v1/sources/{chunk_id}` | Done (M4) |
+| Vector retrieval | `app/retrieval/vector.py` | Done |
+| Qdrant search | `app/embeddings/vector_store.py` | Done |
+| LLM chat service | `app/llm/openai_service.py` | Done |
+| RAG orchestration | `app/services/rag_service.py` | Done |
+| Chat API | `POST /api/v1/chat` | Done |
+| Source viewer | `GET /api/v1/sources/{chunk_id}` | Done |
+| Query persistence | `query_history` table | Done |
+
+**Endpoints:**
+
+- `POST /api/v1/chat` — grounded answer + citations
+- `GET /api/v1/sources/{chunk_id}` — full chunk text for citation viewer
+
+**Verification:** 240 tests passing; smoke test confirmed grounded answers with citations.
 
 ## Phase 5 Index (verified)
 
@@ -36,11 +45,11 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 6 M6** — Final verification, smoke test sign-off, and phase closure docs
+**Phase 7 — Hybrid Retrieval** — metadata + keyword + vector merge, reranking, evidence grading
 
 Say in a new chat:
 
-> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M6.
+> Continue DriveMind AI Phase 7 from `docs/ROADMAP.md` — hybrid retrieval.
 
 ## Quick Commands
 
@@ -58,21 +67,26 @@ uv run uvicorn app.main:app --reload
 curl -X POST http://localhost:8000/api/v1/index/sync
 curl -X POST http://localhost:8000/api/v1/index/ingest
 curl -X POST http://localhost:8000/api/v1/index/build
+
+# RAG chat (Phase 6)
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is tensile strength?"}'
 ```
 
-## Manual Setup (Phase 6)
+## Manual Setup (Phase 6+)
 
 - [x] Google OAuth configured (Phase 3)
 - [x] Qdrant running with vectors built
 - [x] `OPENAI_API_KEY` set in `.env`
 - [x] Postgres + migrations applied
 - [x] Index built (`failed: 0`)
-- [x] `CHAT_MODEL` wired in settings (M2)
+- [x] `CHAT_MODEL` wired in settings
 
 ## Key Docs
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
 - [ROADMAP.md](ROADMAP.md) — all phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
-- [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) — Phase 6 log (active)
+- [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) — Phase 6 log (complete)
 - [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) — Phase 5 log (complete)

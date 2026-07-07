@@ -111,10 +111,7 @@ def format_citation_snippet(text: str, *, max_length: int = DEFAULT_CITATION_SNI
 
 
 def _format_context_block(*, index: int, chunk: RetrievedChunk) -> str:
-    header = (
-        f"[{index}] {chunk.filename} "
-        f"(chunk {chunk.chunk_index}, score: {chunk.score:.2f})"
-    )
+    header = f"[{index}] {chunk.filename} (chunk {chunk.chunk_index}, score: {chunk.score:.2f})"
     return f"{header}\n{chunk.text}"
 
 
@@ -127,10 +124,7 @@ def _context_budget(*, question: str, max_context_chars: int) -> int:
 
 
 def _with_truncated_text(chunk: RetrievedChunk, *, max_chars: int) -> RetrievedChunk:
-    header = (
-        f"[1] {chunk.filename} "
-        f"(chunk {chunk.chunk_index}, score: {chunk.score:.2f})"
-    )
+    header = f"[1] {chunk.filename} (chunk {chunk.chunk_index}, score: {chunk.score:.2f})"
     text_budget = max(max_chars - len(header) - 1, 1)
     truncated_text = chunk.text[:text_budget].rstrip()
     if len(chunk.text) > text_budget:

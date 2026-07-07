@@ -61,7 +61,9 @@ class OpenAIChatService:
             raise ChatError(f"OpenAI chat request failed: {exc}") from exc
 
         choice = response.choices[0] if response.choices else None
-        content = choice.message.content if choice is not None and choice.message is not None else None
+        content = (
+            choice.message.content if choice is not None and choice.message is not None else None
+        )
         if not content or not content.strip():
             raise ChatError("OpenAI chat request returned an empty answer")
         return content.strip()

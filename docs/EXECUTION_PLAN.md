@@ -161,27 +161,9 @@ test(backend): add health endpoint tests
 
 **Goal:** `/chat` with vector retrieval and citations. No LangGraph yet.
 
-**Status:** In progress. See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md).
+**Status:** Complete. See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md).
 
-**Milestones:**
-
-| # | Deliverable |
-|---|-------------|
-| M0 | Tracker + docs alignment |
-| M1 | `retrieval/vector.py`, `vector_store.search_similar()` |
-| M2 | `app/llm/` chat service + prompts |
-| M3 | `rag_service.py` + `query_history` persistence |
-| M4 | `POST /chat`, `GET /sources/{chunk_id}` |
-| M5 | Tests |
-| M6 | Phase closure docs |
-
-**Files (target):**
-
-- `backend/app/retrieval/types.py`, `vector.py`
-- `backend/app/embeddings/vector_store.py` (search)
-- `backend/app/llm/` (M2)
-- `backend/app/services/rag_service.py` (M3)
-- `backend/app/api/chat.py`, `sources.py` (M4)
+**Delivered:** Vector retriever, OpenAI chat service, `RagService`, `POST /api/v1/chat`, `GET /api/v1/sources/{chunk_id}`, query history persistence, 240 tests.
 
 ---
 
