@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 5 Milestone 0 complete (tracker + docs alignment). Phase 4 complete.
+**Last updated:** Phase 5 Milestone 1 complete (deterministic text chunker). Phase 4 complete.
 
 ## Completed Phases
 
@@ -20,7 +20,7 @@ See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) for milestone-by-milestone plan.
 
 | Planned capability | Module |
 |--------------------|--------|
-| Text chunking | `app/ingestion/chunking.py` |
+| Text chunking | `app/ingestion/chunking.py` | Done (M1) |
 | Chunk rows in Postgres | `app/services/chunking_service.py` |
 | Embeddings | `app/embeddings/` |
 | Vectors in Qdrant | `app/embeddings/vector_store.py` |
@@ -38,7 +38,7 @@ See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 5 Milestone 1** — Deterministic text chunker
+**Phase 5 Milestone 2** — Chunk persistence service (`ChunkingService`)
 
 Say in a new chat:
 

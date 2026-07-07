@@ -35,8 +35,8 @@ Turn Phase 4 extracted text into searchable chunks stored in PostgreSQL, generat
 
 ## Current Snapshot
 
-- **Phase status:** In progress (Milestone 0 complete)
-- **Next milestone:** Milestone 1 (deterministic text chunker)
+- **Phase status:** In progress (Milestone 1 complete)
+- **Next milestone:** Milestone 2 (chunk persistence service)
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -81,7 +81,7 @@ Steps A–D are not required for Milestone 0–1 (docs + chunker code only).
 ## Milestone Status
 
 - [x] Milestone 0 — Phase 5 tracker + setup checklist + docs alignment
-- [ ] Milestone 1 — Deterministic text chunker (`app/ingestion/chunking.py`)
+- [x] Milestone 1 — Deterministic text chunker (`app/ingestion/chunking.py`)
 - [ ] Milestone 2 — Chunk persistence service + optional `POST /api/v1/index/chunk`
 - [ ] Milestone 3 — Embedding provider abstraction + settings
 - [ ] Milestone 4 — Qdrant client + collection setup
