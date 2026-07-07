@@ -16,7 +16,6 @@ from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
 from app.ingestion.hash_util import compute_extracted_text_hash
-from app.embeddings.base import EmbeddingError
 from app.embeddings.vector_store import VectorStoreError
 from app.services.indexing_service import IndexingService
 
