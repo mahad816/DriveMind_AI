@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 3 Milestone 5 complete (export/download handlers). OAuth Step D passed.
+**Last updated:** Phase 3 complete (Google Drive read-only integration). All milestones 0–6 done.
 
 ## Completed Phases
 
@@ -11,34 +11,31 @@ Use this file to resume work in a new chat.
 | 0 | Complete | Repo structure, docs, Cursor rules |
 | 1 | Complete | FastAPI foundation, health, logging |
 | 2 | Complete | DB models, Alembic migration, schemas, tests |
-| 3 | In progress | Milestones 0–5 done; Milestone 6 next |
+| 3 | Complete | OAuth, Drive client, sync, export/download, incremental sync |
 
-## Phase 3 Progress (Drive Integration)
+## Phase 3 Summary (Drive Integration)
 
-See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for milestone checklist and commits.
+See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) for full milestone log.
 
-| Milestone | Status |
-|-----------|--------|
-| 0 — Tracker + setup checklist | Done |
-| 1 — OAuth config + token model + migration | Done |
-| 2 — OAuth login/callback routes | Done |
-| 3 — Read-only Drive API client | Done |
-| 4 — Metadata sync API | Done |
-| 5 — Export/download handlers | Done |
-| 6 — Incremental sync + docs closure | Not started |
+| Capability | Endpoint / module |
+|------------|-------------------|
+| OAuth login | `GET /api/v1/auth/google` |
+| OAuth callback | `GET /api/v1/auth/google/callback` |
+| Full / incremental sync | `POST /api/v1/index/sync` (`?full=true` for full scan) |
+| Sync status | `GET /api/v1/index/status` |
+| List synced files | `GET /api/v1/files` |
+| Export / download content | `GET /api/v1/files/{file_id}/content` |
 
-## Your Manual Setup Checklist
+## What's Next
 
-- [x] Step A — Google Cloud Console (Drive API + OAuth client)
-- [x] Step B — `.env` saved on disk with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
-- [x] Step C — Docker Postgres + `alembic upgrade head`
-- [x] Step D — Browser OAuth test at `/api/v1/auth/google`
+**Phase 4 — Document Ingestion & Text Extraction**
 
-## How to Resume in a New Chat
+- Convert supported Drive files into normalized text
+- Extractors for Google Docs, PDF, DOCX, TXT, images (OCR)
 
-Say:
+Say in a new chat:
 
-> Continue DriveMind AI Phase 3 from `docs/CURRENT_STATUS.md` and `docs/PHASE_3_TRACKER.md`.
+> Continue DriveMind AI Phase 4 from `docs/CURRENT_STATUS.md` and `docs/ROADMAP.md`.
 
 ## Quick Commands
 
@@ -56,35 +53,25 @@ uv run uvicorn app.main:app --reload
 uv run pytest -q
 ```
 
-## OAuth Smoke Test (Step D)
-
-1. Ensure `.env` is **saved** (not just open in editor)
-2. Restart uvicorn after saving `.env`
-3. Open: `http://localhost:8000/api/v1/auth/google`
-4. Expected callback JSON: `{"status":"ok", ...}`
-
-## Known Issue: OAuth 503
-
-If you see:
-
-```json
-{"detail":"Google OAuth credentials are not configured"}
-```
-
-Check:
-
-1. `.env` file is saved to disk (Cmd+S)
-2. `GOOGLE_CLIENT_SECRET=` has a value (not empty)
-3. Restart backend after editing `.env`
-
-Verify without printing secrets:
+## Drive Sync Commands
 
 ```bash
-cd backend
-uv run python -c "from app.core.config import Settings; s=Settings(); print(len(s.google_client_id), len(s.google_client_secret))"
+# Incremental sync (default when a changes token exists)
+curl -X POST http://localhost:8000/api/v1/index/sync
+
+# Force full rescan (slower, re-establishes changes baseline)
+curl --max-time 300 -X POST "http://localhost:8000/api/v1/index/sync?full=true"
+
+# List synced files
+curl http://localhost:8000/api/v1/files
 ```
 
-Expected: both numbers should be greater than `0`.
+## Manual Setup (Phase 3 — all done)
+
+- [x] Step A — Google Cloud Console (Drive API + OAuth client)
+- [x] Step B — `.env` with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+- [x] Step C — Docker Postgres + `alembic upgrade head`
+- [x] Step D — Browser OAuth test at `/api/v1/auth/google`
 
 ## Key Docs
 
@@ -92,4 +79,4 @@ Expected: both numbers should be greater than `0`.
 - [ROADMAP.md](ROADMAP.md) — all phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
 - [PHASE_2_TRACKER.md](PHASE_2_TRACKER.md) — Phase 2 log (complete)
-- [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) — Phase 3 log (active)
+- [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md) — Phase 3 log (complete)

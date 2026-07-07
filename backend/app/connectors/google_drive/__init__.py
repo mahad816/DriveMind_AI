@@ -1,6 +1,7 @@
 """Google Drive API client and sync services."""
 
 from app.connectors.google_drive.client import (
+    DriveChange,
     DriveClientError,
     DriveFileMetadata,
     DriveTokens,
@@ -15,6 +16,7 @@ from app.connectors.google_drive.constants import (
 
 __all__ = [
     "SUPPORTED_MIME_TYPES",
+    "DriveChange",
     "DriveClientError",
     "DriveFileMetadata",
     "DriveTokens",

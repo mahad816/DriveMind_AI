@@ -47,6 +47,7 @@ def test_upgrade_sql_contains_all_core_tables() -> None:
         "query_history",
         "google_oauth_tokens",
         "oauth_pending_states",
+        "drive_sync_states",
     ):
         assert f"CREATE TABLE {table}" in sql
 

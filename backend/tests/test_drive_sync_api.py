@@ -34,9 +34,11 @@ async def test_sync_drive_metadata_success(async_client: AsyncClient) -> None:
         return_value=DriveSyncResult(
             job_id=job_id,
             user_id=user_id,
+            mode="incremental",
             created=2,
             updated=1,
             unchanged=0,
+            removed=0,
             total_seen=3,
         )
     )
@@ -46,7 +48,8 @@ async def test_sync_drive_metadata_success(async_client: AsyncClient) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["message"] == "Drive metadata sync completed"
+    assert body["message"] == "Drive metadata incremental sync completed"
+    assert body["mode"] == "incremental"
     assert body["created"] == 2
     assert body["updated"] == 1
     assert body["total_seen"] == 3

@@ -14,6 +14,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from app.connectors.google_drive.client import (
+    DriveChange,
     DriveClientError,
     DriveFileMetadata,
     DriveTokens,
@@ -51,12 +52,17 @@ class FakeFilesResource:
         self,
         list_pages: list[dict[str, Any]] | None = None,
         get_payload: dict[str, Any] | None = None,
+        change_pages: list[dict[str, Any]] | None = None,
+        start_page_token: str = "start-token",
     ) -> None:
         self._list_pages = list_pages or []
         self._get_payload = get_payload
         self.list_calls: list[dict[str, Any]] = []
         self.get_media_calls: list[dict[str, Any]] = []
         self.export_media_calls: list[dict[str, Any]] = []
+        self._change_pages = change_pages or []
+        self._start_page_token = start_page_token
+        self.change_list_calls: list[dict[str, Any]] = []
 
     def list(self, **kwargs: Any) -> "FakeRequest":
         self.list_calls.append(kwargs)
@@ -74,6 +80,24 @@ class FakeFilesResource:
     def export_media(self, **kwargs: Any) -> "FakeMediaRequest":
         self.export_media_calls.append(kwargs)
         return FakeMediaRequest(b"exported-text")
+
+
+class FakeChangesResource:
+    def __init__(self, files_resource: FakeFilesResource) -> None:
+        self._files_resource = files_resource
+
+    def getStartPageToken(self) -> "FakeRequest":
+        return FakeRequest({"startPageToken": self._files_resource._start_page_token})
+
+    def list(self, **kwargs: Any) -> "FakeRequest":
+        self._files_resource.change_list_calls.append(kwargs)
+        index = len(self._files_resource.change_list_calls) - 1
+        page = (
+            self._files_resource._change_pages[index]
+            if index < len(self._files_resource._change_pages)
+            else {"changes": []}
+        )
+        return FakeRequest(page)
 
 
 class FakeRequest:
@@ -95,6 +119,9 @@ class FakeService:
 
     def files(self) -> FakeFilesResource:
         return self._files_resource
+
+    def changes(self) -> FakeChangesResource:
+        return FakeChangesResource(self._files_resource)
 
 
 def _client(files_resource: FakeFilesResource, **kwargs: Any) -> GoogleDriveClient:
@@ -327,3 +354,54 @@ def test_get_file_content_wraps_http_error() -> None:
     )
     with pytest.raises(DriveClientError, match="download failed"):
         client.get_file_content("missing", PDF_MIME)
+
+
+def test_get_start_page_token_returns_token() -> None:
+    files_resource = FakeFilesResource(start_page_token="baseline-token")
+    client = _client(files_resource)
+
+    token = client.get_start_page_token()
+
+    assert token == "baseline-token"
+
+
+def test_list_changes_returns_parsed_changes_and_new_token() -> None:
+    files_resource = FakeFilesResource(
+        change_pages=[
+            {
+                "changes": [
+                    {
+                        "fileId": "removed-1",
+                        "removed": True,
+                    },
+                    {
+                        "fileId": "file-2",
+                        "removed": False,
+                        "file": {
+                            "id": "file-2",
+                            "name": "notes.txt",
+                            "mimeType": TXT_MIME,
+                        },
+                    },
+                ],
+                "newStartPageToken": "new-token",
+            }
+        ]
+    )
+    client = _client(files_resource)
+
+    changes, new_token = client.list_changes("old-token")
+
+    assert new_token == "new-token"
+    assert len(changes) == 2
+    assert changes[0].removed is True
+    assert changes[1].file is not None
+    assert changes[1].file.mime_type == TXT_MIME
+    assert files_resource.change_list_calls[0]["pageToken"] == "old-token"
+
+
+def test_drive_change_from_api_handles_removed_entries() -> None:
+    change = DriveChange.from_api({"fileId": "abc", "removed": True})
+    assert change.file_id == "abc"
+    assert change.removed is True
+    assert change.file is None

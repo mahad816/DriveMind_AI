@@ -41,6 +41,10 @@ FILE_FIELDS = (
     "parents, trashed, webViewLink, md5Checksum"
 )
 LIST_FILES_FIELDS = f"nextPageToken, files({FILE_FIELDS})"
+CHANGE_LIST_FIELDS = (
+    f"nextPageToken, newStartPageToken, "
+    f"changes(removed, fileId, file({FILE_FIELDS}))"
+)
 
 # Exclude folders and trashed files from listings by default.
 DEFAULT_LIST_QUERY = f"mimeType != '{GOOGLE_FOLDER_MIME}' and trashed = false"

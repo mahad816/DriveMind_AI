@@ -1,6 +1,6 @@
 """Drive indexing sync routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.google_drive.client import DriveClientError
@@ -19,11 +19,15 @@ def get_drive_sync_service(db: AsyncSession = Depends(get_db)) -> DriveSyncServi
 
 @router.post("/sync", summary="Sync Drive file metadata")
 async def sync_drive_metadata(
+    full: bool = Query(
+        default=False,
+        description="Force a full Drive scan. Default uses incremental sync when available.",
+    ),
     service: DriveSyncService = Depends(get_drive_sync_service),
 ) -> DriveSyncResponse:
-    """List supported Drive files and upsert metadata into PostgreSQL."""
+    """Sync Drive metadata using incremental Changes API or a full scan."""
     try:
-        result = await service.sync_metadata()
+        result = await service.sync_metadata(full=full)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -35,14 +39,17 @@ async def sync_drive_metadata(
             detail=str(exc),
         ) from exc
 
+    mode_label = "full" if result.mode == "full" else "incremental"
     return DriveSyncResponse(
         job_id=result.job_id,
         user_id=result.user_id,
+        mode=result.mode,
         created=result.created,
         updated=result.updated,
         unchanged=result.unchanged,
+        removed=result.removed,
         total_seen=result.total_seen,
-        message="Drive metadata sync completed",
+        message=f"Drive metadata {mode_label} sync completed",
     )
 
 

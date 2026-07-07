@@ -14,9 +14,11 @@ class DriveSyncResponse(SchemaBase):
 
     job_id: UUID
     user_id: UUID
+    mode: str
     created: int = Field(ge=0)
     updated: int = Field(ge=0)
     unchanged: int = Field(ge=0)
+    removed: int = Field(ge=0)
     total_seen: int = Field(ge=0)
     message: str
 

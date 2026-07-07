@@ -31,3 +31,8 @@ class User(TimestampMixin, Base):
         back_populates="user",
         uselist=False,
     )
+    drive_sync_state = relationship(
+        "DriveSyncState",
+        back_populates="user",
+        uselist=False,
+    )

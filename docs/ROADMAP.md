@@ -11,7 +11,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** â€
 | 0 | Repository & Standards Foundation | Complete |
 | 1 | Backend Foundation | Complete |
 | 2 | Data Model & Indexing State | Complete |
-| 3 | Google Drive Read-Only Integration | In progress |
+| 3 | Google Drive Read-Only Integration | Complete |
 | 4 | Document Ingestion & Text Extraction | Not started |
 | 5 | Chunking & Embeddings | Not started |
 | 6 | Basic RAG API | Not started |
@@ -105,12 +105,11 @@ test(backend): add health endpoint tests
 
 **Design rule:** PostgreSQL stores metadata and chunk text; Qdrant stores embeddings only.
 
-**Phase 3 progress (in progress):**
+**Phase 3 progress (complete):**
 
-- Milestone 1 complete: Google OAuth config + `google_oauth_tokens` model/migration
-- Milestone 2 complete: OAuth login/callback routes (`/api/v1/auth/google`)
-- Next: Drive API client, metadata sync, export/download, incremental sync
+- All milestones done: OAuth, Drive client, metadata sync, export/download, incremental sync
 - Tracker: [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md)
+- Next: Phase 4 â€” document ingestion and text extraction
 
 **Phase 2 completion notes:**
 
@@ -126,19 +125,22 @@ test(backend): add health endpoint tests
 
 **Goal:** Authenticate and sync supported files safely.
 
-**Build:**
+**Status:** Complete. See [PHASE_3_TRACKER.md](PHASE_3_TRACKER.md).
 
-- OAuth with read-only scopes
-- File listing and metadata sync
-- Export Google Docs
-- Download PDF, TXT, DOCX, images
-- Incremental sync (modified time / changes API)
+**Delivered:**
+
+- OAuth with read-only scopes + PKCE state in PostgreSQL
+- Read-only Drive API client (list, metadata, export, download)
+- Metadata sync into `drive_files` with indexing job tracking
+- Export/download via `GET /files/{id}/content`
+- Incremental sync via Drive Changes API + `drive_sync_states` table
 
 **Key files:**
 
 - `backend/app/connectors/google_drive/client.py`
-- `backend/app/connectors/google_drive/service.py`
-- `backend/app/api/drive.py`
+- `backend/app/services/drive_sync_service.py`
+- `backend/app/services/drive_content_service.py`
+- `backend/app/api/auth.py`, `index.py`, `files.py`
 
 ---
 

@@ -19,6 +19,7 @@ from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseDownload
 
 from app.connectors.google_drive.constants import (
+    CHANGE_LIST_FIELDS,
     DEFAULT_LIST_QUERY,
     DEFAULT_PAGE_SIZE,
     FILE_FIELDS,
@@ -77,6 +78,26 @@ class DriveFileMetadata:
             parents=list(payload.get("parents", [])),
             web_view_link=payload.get("webViewLink"),
             md5_checksum=payload.get("md5Checksum"),
+        )
+
+
+@dataclass
+class DriveChange:
+    """A single change entry from the Google Drive Changes API."""
+
+    file_id: str
+    removed: bool
+    file: DriveFileMetadata | None = None
+
+    @classmethod
+    def from_api(cls, payload: dict[str, Any]) -> "DriveChange":
+        file_payload = payload.get("file")
+        file_meta = DriveFileMetadata.from_api(file_payload) if file_payload else None
+        file_id = cast(str, payload.get("fileId") or (file_meta.id if file_meta else ""))
+        return cls(
+            file_id=file_id,
+            removed=bool(payload.get("removed")),
+            file=file_meta,
         )
 
 
@@ -239,6 +260,53 @@ class GoogleDriveClient:
         except HttpError as exc:
             raise DriveClientError(f"Drive get_file_metadata request failed: {exc}") from exc
         return DriveFileMetadata.from_api(payload)
+
+    def get_start_page_token(self) -> str:
+        """Fetch a Changes API start page token for establishing an incremental baseline."""
+        service = self._get_service()
+        try:
+            response = service.changes().getStartPageToken().execute()
+        except HttpError as exc:
+            raise DriveClientError(f"Drive getStartPageToken request failed: {exc}") from exc
+        token = response.get("startPageToken")
+        if not token:
+            raise DriveClientError("Drive getStartPageToken returned no token")
+        return cast(str, token)
+
+    def list_changes(self, page_token: str) -> tuple[list[DriveChange], str]:
+        """Return all changes since page_token and the new start page token."""
+        if not page_token:
+            raise DriveClientError("page_token is required for changes.list")
+        service = self._get_service()
+        changes: list[DriveChange] = []
+        token: str | None = page_token
+        new_start_page_token: str | None = None
+
+        while token is not None:
+            try:
+                response = (
+                    service.changes()
+                    .list(
+                        pageToken=token,
+                        fields=CHANGE_LIST_FIELDS,
+                        spaces="drive",
+                        includeRemoved=True,
+                    )
+                    .execute()
+                )
+            except HttpError as exc:
+                raise DriveClientError(f"Drive changes.list request failed: {exc}") from exc
+
+            for payload in response.get("changes", []):
+                changes.append(DriveChange.from_api(payload))
+
+            new_start_page_token = response.get("newStartPageToken")
+            token = response.get("nextPageToken")
+
+        if not new_start_page_token:
+            raise DriveClientError("Drive changes.list did not return newStartPageToken")
+
+        return changes, new_start_page_token
 
     @staticmethod
     def _read_media_bytes(request: Any) -> bytes:

@@ -8,10 +8,10 @@ Authenticate with Google (read-only), sync Drive file metadata into PostgreSQL, 
 
 ## Current Snapshot
 
-- **Phase status:** In progress
-- **Last completed milestone:** Milestone 5 (export/download handlers)
-- **Next milestone:** Milestone 6 (incremental sync + phase closure)
-- **Blocker:** None — Step D passed; OAuth callback returned `{"status":"ok",...}`
+- **Phase status:** Complete
+- **Last completed milestone:** Milestone 6 (incremental sync + phase closure)
+- **Next phase:** Phase 4 — Document Ingestion & Text Extraction
+- **Blocker:** None
 
 ## Your Action Items (manual setup)
 
@@ -45,7 +45,7 @@ uv run uvicorn app.main:app --reload
 - [x] Milestone 3 — Read-only Drive API client
 - [x] Milestone 4 — Metadata sync service + API
 - [x] Milestone 5 — Export/download handlers
-- [ ] Milestone 6 — Incremental sync + phase closure
+- [x] Milestone 6 — Incremental sync + phase closure
 
 ## Commit Plan
 
@@ -130,6 +130,44 @@ curl http://localhost:8000/api/v1/files
 curl -v http://localhost:8000/api/v1/files/FILE_UUID/content --output /tmp/drivemind-test.bin
 ```
 
+## Milestone 6 Deliverables (done)
+
+- `backend/app/db/models/drive_sync_state.py` + migration `20260707_1700`
+  - Stores Google Drive Changes API `changes_page_token` per user
+- `backend/app/connectors/google_drive/client.py`
+  - `DriveChange` dataclass
+  - `get_start_page_token()` — baseline after full sync
+  - `list_changes(page_token)` — incremental changes with pagination
+- `backend/app/services/drive_sync_service.py`
+  - **Full sync** (default when no token, or `?full=true`): lists all supported files, saves start page token
+  - **Incremental sync** (default when token exists): `changes.list`, upserts modified files, marks removed as `skipped`
+  - `DriveSyncResult.mode` and `removed` count
+- `backend/app/api/index.py`
+  - `POST /api/v1/index/sync?full=false` — incremental by default
+- Tests: client changes API, incremental/full service paths, updated API schema tests
+
+### Incremental sync smoke test
+
+```bash
+# After at least one full sync has established a changes token:
+curl -X POST http://localhost:8000/api/v1/index/sync
+# Response includes: "mode":"incremental", "removed":N, ...
+
+# Force full rescan when needed:
+curl --max-time 300 -X POST "http://localhost:8000/api/v1/index/sync?full=true"
+```
+
+## Phase 3 Completion Notes
+
+- Verification suite: `uv run ruff check app tests`, `uv run mypy app`, `uv run pytest -q` (81 tests)
+- Read-only Drive scope only; OAuth tokens + sync state in PostgreSQL
+- Blocking Google API calls run in thread pool (`asyncio.to_thread`) to avoid freezing the server
+- Never commit `.env`, credentials, or downloaded Drive files
+
+## New Chat Handoff Prompt
+
+> Continue DriveMind AI Phase 4 from `docs/CURRENT_STATUS.md` and `docs/ROADMAP.md`.
+
 ## Troubleshooting
 
 ### OAuth 503: credentials not configured
@@ -165,7 +203,3 @@ Google Console redirect URI must exactly match:
 - Read-only scope only: `https://www.googleapis.com/auth/drive.readonly`
 - OAuth tokens stored in `google_oauth_tokens` table
 - Never commit `.env`, credentials, or downloaded Drive files
-
-## New Chat Handoff Prompt
-
-> Continue DriveMind Phase 3 from `docs/CURRENT_STATUS.md` and `docs/PHASE_3_TRACKER.md`. Proceed with Milestone 3 after Step D passes.
