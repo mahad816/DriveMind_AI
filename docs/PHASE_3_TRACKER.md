@@ -10,14 +10,14 @@ Authenticate with Google (read-only), sync Drive file metadata into PostgreSQL, 
 
 - [x] Step A — Google Cloud Console (project, Drive API, OAuth consent, OAuth client)
 - [ ] Step B — Copy `.env.example` → `.env` and fill `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-- [ ] Step C — Start Postgres + run `alembic upgrade head` (after Milestone 1 migration exists)
+- [x] Step C — Start Postgres + run `alembic upgrade head` (after Milestone 1 migration exists)
 - [ ] Step D — Manual browser OAuth test (after Milestone 2 only)
 
 ## Milestone Status
 
 - [x] Milestone 0 — Phase 3 tracker + setup checklist
 - [x] Milestone 1 — Google deps, config, OAuth token model + migration
-- [ ] Milestone 2 — OAuth routes + auth service
+- [x] Milestone 2 — OAuth routes + auth service
 - [ ] Milestone 3 — Read-only Drive API client
 - [ ] Milestone 4 — Metadata sync service + API
 - [ ] Milestone 5 — Export/download handlers
