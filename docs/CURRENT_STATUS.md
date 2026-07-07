@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 5 Milestone 2 complete (chunk persistence service + chunk API). Phase 4 complete.
+**Last updated:** Phase 5 Milestone 3 complete (embedding provider abstraction). Phase 4 complete.
 
 ## Completed Phases
 
@@ -23,7 +23,7 @@ See [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) for milestone-by-milestone plan.
 | Text chunking | `app/ingestion/chunking.py` | Done (M1) |
 | Chunk rows in Postgres | `app/services/chunking_service.py` | Done (M2) |
 | Chunk API | `POST /api/v1/index/chunk` | Done (M2) |
-| Embeddings | `app/embeddings/` |
+| Embeddings | `app/embeddings/` | Done (M3) |
 | Vectors in Qdrant | `app/embeddings/vector_store.py` |
 | Build index API | `POST /api/v1/index/build` (Milestone 5) |
 
@@ -39,7 +39,7 @@ See [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 5 Milestone 3** — Embedding provider abstraction (`app/embeddings/`)
+**Phase 5 Milestone 4** — Qdrant client + collection setup (`app/embeddings/vector_store.py`)
 
 Say in a new chat:
 
@@ -74,7 +74,7 @@ curl http://localhost:8000/api/v1/files
 - [x] Google OAuth configured (Phase 3)
 - [x] Tesseract installed (Phase 4)
 - [ ] Qdrant running (`docker compose ... up -d qdrant`) — before M4
-- [ ] `OPENAI_API_KEY` set in `.env` — before M3 real embeddings
+- [ ] `OPENAI_API_KEY` set in `.env` — before real embedding smoke tests (M5+)
 - [ ] Postgres + migrations applied
 - [ ] Documents ingested (`POST /api/v1/index/ingest`) — before chunk/index smoke tests
 

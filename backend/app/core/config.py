@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     google_drive_scopes: str = "https://www.googleapis.com/auth/drive.readonly"
 
+    openai_api_key: str = ""
+    embedding_model: str = "text-embedding-3-small"
+
     model_config = SettingsConfigDict(
         env_file=(
             str(REPO_ROOT / ".env"),
