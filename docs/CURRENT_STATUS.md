@@ -25,8 +25,8 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 | Qdrant search | `app/embeddings/vector_store.py` | Done (M1) |
 | LLM chat service | `app/llm/openai_service.py` | Done (M2) |
 | RAG orchestration | `app/services/rag_service.py` | Done (M3) |
-| Chat API | `POST /api/v1/chat` | M4 |
-| Source viewer | `GET /api/v1/sources/{chunk_id}` | M4 |
+| Chat API | `POST /api/v1/chat` | Done (M4) |
+| Source viewer | `GET /api/v1/sources/{chunk_id}` | Done (M4) |
 
 ## Phase 5 Index (verified)
 
@@ -36,11 +36,11 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 6 M4** — Chat + source viewer API (`POST /chat`, `GET /sources/{chunk_id}`)
+**Phase 6 M5/M6** — Final test pass, smoke test, and phase closure docs
 
 Say in a new chat:
 
-> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M4.
+> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M5.
 
 ## Quick Commands
 

@@ -13,9 +13,9 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 | Vector retrieval | Qdrant similarity search + Postgres chunk hydration | Done (M1) |
 | LLM chat service | OpenAI chat completions + grounded prompts | Done (M2) |
 | RAG orchestration | Retrieve → generate → cite → persist `query_history` | Done (M3) |
-| Chat API | `POST /api/v1/chat` | Not started (M4) |
-| Source viewer | `GET /api/v1/sources/{chunk_id}` | Not started (M4) |
-| Query persistence | Store question, answer, citations in `query_history` | Not started (M3) |
+| Chat API | `POST /api/v1/chat` | Done (M4) |
+| Source viewer | `GET /api/v1/sources/{chunk_id}` | Done (M4) |
+| Query persistence | Store question, answer, citations in `query_history` | Done (M3) |
 
 ## Explicitly Out of Scope (Phase 6)
 
@@ -41,8 +41,8 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 3 (RAG orchestration service)
-- **Next milestone:** Milestone 4 — Chat + source viewer API routes
+- **Last completed milestone:** Milestone 4 (chat + source viewer API routes)
+- **Next milestone:** Milestone 5 — test coverage review + Milestone 6 docs closure
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -59,7 +59,7 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 - [x] Milestone 1 — Vector retriever + Qdrant `search_similar()` (`app/retrieval/`)
 - [x] Milestone 2 — LLM chat service + grounded prompts (`app/llm/`)
 - [x] Milestone 3 — RAG orchestration service (`app/services/rag_service.py`)
-- [ ] Milestone 4 — Chat + source viewer API routes
+- [x] Milestone 4 — Chat + source viewer API routes
 - [ ] Milestone 5 — Retrieval, RAG, and API test coverage
 - [ ] Milestone 6 — Verification + Phase 6 docs closure
 
