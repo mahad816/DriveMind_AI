@@ -10,6 +10,7 @@ from typing import cast
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,7 @@ from app.core.config import Settings, get_settings
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 
-_oauth_states: set[str] = set()
+_oauth_pending: dict[str, str] = {}
 
 
 @dataclass
@@ -27,6 +28,13 @@ class OAuthCallbackResult:
     user_id: uuid.UUID
     email: str
     google_id: str
+
+
+_identity_scopes = (
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+)
 
 
 class GoogleOAuthService:
@@ -40,6 +48,13 @@ class GoogleOAuthService:
         if not self.settings.google_client_id or not self.settings.google_client_secret:
             raise ValueError("Google OAuth credentials are not configured")
 
+    def _oauth_scopes(self) -> list[str]:
+        scopes = list(_identity_scopes)
+        for scope in self.settings.google_drive_scopes.split():
+            if scope and scope not in scopes:
+                scopes.append(scope)
+        return scopes
+
     def _build_flow(self) -> Flow:
         self._validate_google_config()
         client_config = {
@@ -52,7 +67,7 @@ class GoogleOAuthService:
         }
         return Flow.from_client_config(
             client_config,
-            scopes=[self.settings.google_drive_scopes],
+            scopes=self._oauth_scopes(),
             redirect_uri=self.settings.google_redirect_uri,
         )
 
@@ -64,25 +79,35 @@ class GoogleOAuthService:
             include_granted_scopes="true",
             prompt="consent",
         )
-        _oauth_states.add(state)
+        code_verifier = flow.code_verifier
+        if not code_verifier:
+            raise ValueError("OAuth PKCE code verifier was not generated")
+        _oauth_pending[state] = code_verifier
         return str(authorization_url)
 
-    def _validate_state(self, state: str | None) -> None:
-        if not state or state not in _oauth_states:
+    def _pop_code_verifier(self, state: str | None) -> str:
+        if not state or state not in _oauth_pending:
             raise ValueError("Invalid OAuth state")
-        _oauth_states.discard(state)
+        return _oauth_pending.pop(state)
 
-    def _fetch_credentials(self, code: str) -> Credentials:
+    def _fetch_credentials(self, code: str, code_verifier: str) -> Credentials:
         flow = self._build_flow()
-        flow.fetch_token(code=code)
+        flow.code_verifier = code_verifier
+        try:
+            flow.fetch_token(code=code)
+        except Exception as exc:
+            raise ValueError(f"OAuth token exchange failed: {exc}") from exc
         credentials = cast(Credentials, flow.credentials)
         if not credentials.token:
             raise ValueError("Failed to obtain Google OAuth credentials")
         return credentials
 
     def _fetch_google_profile(self, credentials: Credentials) -> dict[str, str]:
-        oauth2_service = build("oauth2", "v2", credentials=credentials, cache_discovery=False)
-        profile = oauth2_service.userinfo().get().execute()
+        try:
+            oauth2_service = build("oauth2", "v2", credentials=credentials, cache_discovery=False)
+            profile = oauth2_service.userinfo().get().execute()
+        except HttpError as exc:
+            raise ValueError(f"Failed to fetch Google profile: {exc}") from exc
         email = profile.get("email")
         google_id = profile.get("id")
         if not email or not google_id:
@@ -134,8 +159,8 @@ class GoogleOAuthService:
 
     async def handle_callback(self, code: str, state: str | None) -> OAuthCallbackResult:
         """Validate callback, exchange code, and persist user + token records."""
-        self._validate_state(state)
-        credentials = self._fetch_credentials(code)
+        code_verifier = self._pop_code_verifier(state)
+        credentials = self._fetch_credentials(code, code_verifier)
         profile = self._fetch_google_profile(credentials)
         user = await self._upsert_user(profile["email"], profile["google_id"])
         await self._upsert_token(user, credentials)

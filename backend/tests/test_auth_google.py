@@ -9,13 +9,13 @@ from google.oauth2.credentials import Credentials
 
 from app.api.auth import get_oauth_service
 from app.main import app
-from app.services.google_oauth_service import GoogleOAuthService, OAuthCallbackResult, _oauth_states
+from app.services.google_oauth_service import GoogleOAuthService, OAuthCallbackResult, _oauth_pending
 
 
 @pytest.fixture(autouse=True)
 def clear_oauth_state_store() -> None:
     """Ensure OAuth state store is clean between tests."""
-    _oauth_states.clear()
+    _oauth_pending.clear()
 
 
 @pytest.mark.asyncio
@@ -109,6 +109,7 @@ def test_create_authorization_url_registers_state() -> None:
     service = GoogleOAuthService(db=MagicMock())
     with patch.object(service, "_build_flow") as mock_build_flow:
         flow = MagicMock()
+        flow.code_verifier = "pkce-verifier-123"
         flow.authorization_url.return_value = (
             "https://accounts.google.com/o/oauth2/auth?state=test-state",
             "test-state",
@@ -118,7 +119,22 @@ def test_create_authorization_url_registers_state() -> None:
         url = service.create_authorization_url()
 
     assert url.startswith("https://accounts.google.com/o/oauth2/auth")
-    assert "test-state" in _oauth_states
+    assert _oauth_pending["test-state"] == "pkce-verifier-123"
+
+
+def test_fetch_credentials_uses_stored_code_verifier() -> None:
+    """Token exchange should reuse the PKCE verifier from the login step."""
+    service = GoogleOAuthService(db=MagicMock())
+    with patch.object(service, "_build_flow") as mock_build_flow:
+        flow = MagicMock()
+        flow.credentials = Credentials(token="access-token")
+        mock_build_flow.return_value = flow
+
+        credentials = service._fetch_credentials("auth-code", "pkce-verifier-123")
+
+    assert flow.code_verifier == "pkce-verifier-123"
+    flow.fetch_token.assert_called_once_with(code="auth-code")
+    assert credentials.token == "access-token"
 
 
 def test_validate_google_config_requires_client_credentials() -> None:
@@ -129,6 +145,18 @@ def test_validate_google_config_requires_client_credentials() -> None:
     )
     with pytest.raises(ValueError, match="not configured"):
         service._validate_google_config()
+
+
+def test_oauth_scopes_include_identity_and_drive() -> None:
+    """OAuth should request identity scopes needed for userinfo plus Drive access."""
+    service = GoogleOAuthService(
+        db=MagicMock(),
+        settings=MagicMock(google_drive_scopes="https://www.googleapis.com/auth/drive.readonly"),
+    )
+    scopes = service._oauth_scopes()
+    assert "openid" in scopes
+    assert "https://www.googleapis.com/auth/userinfo.email" in scopes
+    assert "https://www.googleapis.com/auth/drive.readonly" in scopes
 
 
 def test_fetch_google_profile_requires_identity_fields() -> None:
