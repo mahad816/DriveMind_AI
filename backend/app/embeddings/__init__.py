@@ -12,14 +12,24 @@ from app.embeddings.openai_service import (
     OpenAIEmbeddingService,
     resolve_embedding_dimension,
 )
+from app.embeddings.vector_store import (
+    DEFAULT_QDRANT_COLLECTION,
+    QdrantVectorStore,
+    VectorPoint,
+    VectorStoreError,
+)
 
 __all__ = [
     "DEFAULT_EMBEDDING_BATCH_SIZE",
     "DEFAULT_EMBEDDING_MODEL",
+    "DEFAULT_QDRANT_COLLECTION",
     "EmbeddingConfigurationError",
     "EmbeddingError",
     "EmbeddingService",
     "OpenAIEmbeddingService",
+    "QdrantVectorStore",
+    "VectorPoint",
+    "VectorStoreError",
     "get_embedding_service",
     "resolve_embedding_dimension",
 ]

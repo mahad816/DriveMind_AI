@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_collection: str = "drivemind_chunks"
+
     model_config = SettingsConfigDict(
         env_file=(
             str(REPO_ROOT / ".env"),

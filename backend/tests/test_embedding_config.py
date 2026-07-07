@@ -2,6 +2,7 @@
 
 from app.core.config import Settings
 from app.embeddings.openai_service import DEFAULT_EMBEDDING_MODEL
+from app.embeddings.vector_store import DEFAULT_QDRANT_COLLECTION
 
 
 def test_settings_include_embedding_fields() -> None:
@@ -15,7 +16,27 @@ def test_settings_include_embedding_fields() -> None:
 
 
 def test_settings_embedding_defaults() -> None:
-    """Embedding settings should default to the MVP OpenAI model."""
-    settings = Settings()
-    assert settings.openai_api_key == ""
-    assert settings.embedding_model == DEFAULT_EMBEDDING_MODEL
+    """Embedding field defaults should match the MVP OpenAI model."""
+    fields = Settings.model_fields
+    assert fields["openai_api_key"].default == ""
+    assert fields["embedding_model"].default == DEFAULT_EMBEDDING_MODEL
+
+
+def test_settings_include_qdrant_fields() -> None:
+    """Settings model should expose Qdrant connection env fields."""
+    settings = Settings(
+        qdrant_host="qdrant.local",
+        qdrant_port=7333,
+        qdrant_collection="custom_chunks",
+    )
+    assert settings.qdrant_host == "qdrant.local"
+    assert settings.qdrant_port == 7333
+    assert settings.qdrant_collection == "custom_chunks"
+
+
+def test_settings_qdrant_defaults() -> None:
+    """Qdrant field defaults should match local docker-compose values."""
+    fields = Settings.model_fields
+    assert fields["qdrant_host"].default == "localhost"
+    assert fields["qdrant_port"].default == 6333
+    assert fields["qdrant_collection"].default == DEFAULT_QDRANT_COLLECTION

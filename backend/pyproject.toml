@@ -18,6 +18,7 @@ dependencies = [
     "pypdf>=6.14.2",
     "pytesseract>=0.3.13",
     "python-docx>=1.2.0",
+    "qdrant-client>=1.18.0",
     "sqlalchemy>=2.0.40",
     "uvicorn[standard]>=0.35.0",
 ]
@@ -48,12 +49,16 @@ line-length = 100
 target-version = "py311"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*", "PIL.*", "openai.*"]
+module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*", "PIL.*", "openai.*", "qdrant_client.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "qdrant_client.*"
+follow_imports = "skip"
 
 [tool.basedpyright]
 include = ["app", "tests"]
