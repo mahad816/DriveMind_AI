@@ -11,7 +11,7 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 | Capability | Method | Status |
 |------------|--------|--------|
 | Vector retrieval | Qdrant similarity search + Postgres chunk hydration | Done (M1) |
-| LLM chat service | OpenAI chat completions + grounded prompts | Not started (M2) |
+| LLM chat service | OpenAI chat completions + grounded prompts | Done (M2) |
 | RAG orchestration | Retrieve → generate → cite → persist `query_history` | Not started (M3) |
 | Chat API | `POST /api/v1/chat` | Not started (M4) |
 | Source viewer | `GET /api/v1/sources/{chunk_id}` | Not started (M4) |
@@ -41,8 +41,8 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 1 (vector retriever + Qdrant search)
-- **Next milestone:** Milestone 2 — OpenAI chat service + RAG prompts
+- **Last completed milestone:** Milestone 2 (OpenAI chat service + RAG prompts)
+- **Next milestone:** Milestone 3 — RAG orchestration service
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -51,13 +51,13 @@ Deliver end-to-end grounded question answering over indexed Drive content: embed
 - [x] **Step B — OpenAI API key in `.env`**
 - [x] **Step C — Postgres + migrations**
 - [x] **Step D — Index built** (`POST /api/v1/index/build` completed with `failed: 0`)
-- [ ] **Step E — `CHAT_MODEL` in `.env`** (default `gpt-4o-mini`; wired in M2)
+- [x] **Step E — `CHAT_MODEL` in `.env`** (default `gpt-4o-mini`; wired in M2)
 
 ## Milestone Status
 
 - [x] Milestone 0 — Phase 6 tracker + setup checklist + docs alignment
 - [x] Milestone 1 — Vector retriever + Qdrant `search_similar()` (`app/retrieval/`)
-- [ ] Milestone 2 — LLM chat service + grounded prompts (`app/llm/`)
+- [x] Milestone 2 — LLM chat service + grounded prompts (`app/llm/`)
 - [ ] Milestone 3 — RAG orchestration service (`app/services/rag_service.py`)
 - [ ] Milestone 4 — Chat + source viewer API routes
 - [ ] Milestone 5 — Retrieval, RAG, and API test coverage

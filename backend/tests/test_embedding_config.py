@@ -48,3 +48,10 @@ def test_settings_retrieval_defaults() -> None:
     fields = Settings.model_fields
     assert fields["retrieval_top_k"].default == 8
     assert fields["retrieval_score_threshold"].default == 0.35
+
+
+def test_settings_chat_defaults() -> None:
+    """Chat and RAG field defaults should match Phase 6 MVP tuning."""
+    fields = Settings.model_fields
+    assert fields["chat_model"].default == "gpt-4o-mini"
+    assert fields["rag_max_context_chars"].default == 12000

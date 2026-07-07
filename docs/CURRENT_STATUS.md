@@ -23,7 +23,7 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 |------------|--------|--------|
 | Vector retrieval | `app/retrieval/vector.py` | Done (M1) |
 | Qdrant search | `app/embeddings/vector_store.py` | Done (M1) |
-| LLM chat service | `app/llm/` | M2 |
+| LLM chat service | `app/llm/openai_service.py` | Done (M2) |
 | RAG orchestration | `app/services/rag_service.py` | M3 |
 | Chat API | `POST /api/v1/chat` | M4 |
 | Source viewer | `GET /api/v1/sources/{chunk_id}` | M4 |
@@ -36,11 +36,11 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 
 ## What's Next
 
-**Phase 6 M2** — OpenAI chat service + grounded RAG prompts
+**Phase 6 M3** — RAG orchestration service (`rag_service.py`)
 
 Say in a new chat:
 
-> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M2.
+> Continue DriveMind AI Phase 6 from `docs/PHASE_6_TRACKER.md` — start at M3.
 
 ## Quick Commands
 
@@ -67,7 +67,7 @@ curl -X POST http://localhost:8000/api/v1/index/build
 - [x] `OPENAI_API_KEY` set in `.env`
 - [x] Postgres + migrations applied
 - [x] Index built (`failed: 0`)
-- [ ] `CHAT_MODEL` wired in settings (M2)
+- [x] `CHAT_MODEL` wired in settings (M2)
 
 ## Key Docs
 
