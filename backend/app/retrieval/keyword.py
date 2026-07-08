@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -15,6 +16,18 @@ from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.retrieval.types import RetrievedChunk
+
+# Regex to detect queries that explicitly name a file with an extension.
+# Examples: "Resume_2024.pdf", "notes.docx", "report.txt"
+_FILENAME_EXT_RE = re.compile(
+    r"\b[\w][\w\-_]*\.(?:pdf|docx|doc|txt|pptx|xlsx|csv|png|jpg|jpeg|md)\b",
+    re.IGNORECASE,
+)
+
+# Score given to chunks returned via filename-only path (no FTS rank available).
+# Positioned above the evidence_min_fusion_score (0.15) but below typical strong
+# FTS matches so FTS hits still win when they overlap.
+_FILENAME_ONLY_SCORE = 0.4
 
 
 @dataclass(frozen=True)
@@ -74,10 +87,43 @@ class KeywordRetriever:
         return retrieved
 
     async def _search_hits(self, question: str) -> list[KeywordHit]:
+        """Return scored hits by merging FTS results with optional filename-only results.
+
+        Two paths run when a strong filename signal is detected:
+        - FTS path: standard ``search_vector @@ ts_query`` ranking.
+        - Filename-only path: ``DriveFile.name ILIKE %term%`` without any FTS
+          requirement, so chunks from the named file are always included even
+          when their body text doesn't produce FTS matches.
+        """
         ts_query = self._ts_query(question)
-        if ts_query is None:
+        has_filename = self._has_filename_signal(question)
+
+        if ts_query is None and not has_filename:
             return []
 
+        hits_by_id: dict[uuid.UUID, KeywordHit] = {}
+
+        # FTS path
+        if ts_query is not None:
+            for hit in await self._fts_hits(question, ts_query):
+                hits_by_id[hit.chunk_id] = hit
+
+        # Filename-only path — supplement FTS with chunks from explicitly named files
+        if has_filename:
+            for hit in await self._filename_only_hits(question):
+                # Keep the higher of the two scores if the chunk also appeared in FTS.
+                existing = hits_by_id.get(hit.chunk_id)
+                if existing is None or hit.score > existing.score:
+                    hits_by_id[hit.chunk_id] = hit
+
+        return list(hits_by_id.values())
+
+    async def _fts_hits(
+        self,
+        question: str,
+        ts_query: ColumnElement[object],
+    ) -> list[KeywordHit]:
+        """Run PostgreSQL full-text search and return ranked hits."""
         filename_match = self._filename_match_expression(question)
         keyword_rank = self._ts_rank_expression(ts_query)
         combined_score = keyword_rank + case((filename_match, 0.2), else_=0.0)
@@ -96,6 +142,39 @@ class KeywordRetriever:
             if isinstance(chunk_id, uuid.UUID):
                 hits.append(KeywordHit(chunk_id=chunk_id, score=float(score or 0.0)))
         return hits
+
+    async def _filename_only_hits(self, question: str) -> list[KeywordHit]:
+        """Return chunk IDs from files whose name matches query terms.
+
+        Used when the user mentions a file by name (e.g. ``Resume_2024.pdf``).
+        No full-text search is required — only the filename ILIKE filter is applied.
+        Chunks are returned in ``chunk_index`` order so the most context-relevant
+        text from the named file comes first.
+        """
+        query_terms = self._query_terms(question)
+        if not query_terms:
+            return []
+
+        name_filters = [DriveFile.name.ilike(f"%{term}%") for term in query_terms]
+        result = await self.db.execute(
+            select(Chunk.id)
+            .join(Document, Chunk.document_id == Document.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(or_(*name_filters))
+            .order_by(DriveFile.modified_at.desc(), Chunk.chunk_index.asc())
+            .limit(self.settings.retrieval_candidate_k)
+        )
+
+        return [
+            KeywordHit(chunk_id=row[0], score=_FILENAME_ONLY_SCORE)
+            for row in result
+            if isinstance(row[0], uuid.UUID)
+        ]
+
+    @staticmethod
+    def _has_filename_signal(question: str) -> bool:
+        """Return True when the question explicitly names a file with an extension."""
+        return bool(_FILENAME_EXT_RE.search(question))
 
     def _ts_query(self, question: str) -> ColumnElement[object] | None:
         query_terms = self._query_terms(question)

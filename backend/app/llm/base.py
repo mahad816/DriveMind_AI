@@ -32,3 +32,23 @@ class ChatService(Protocol):
     ) -> str:
         """Generate an answer grounded in the supplied retrieved chunks."""
         ...
+
+    async def generate_direct_answer(self, question: str) -> str:
+        """Generate a direct conversational reply without any file context.
+
+        Used for chitchat / social messages where retrieval is not needed.
+        """
+        ...
+
+    async def generate_inventory_answer(
+        self,
+        question: str,
+        inventory_context: str,
+    ) -> str:
+        """Answer a file-inventory question using a structured Drive file context.
+
+        ``inventory_context`` is a pre-formatted string produced by
+        ``build_inventory_context()`` that lists matching files, counts, and
+        optional content excerpts from the most recently modified file.
+        """
+        ...

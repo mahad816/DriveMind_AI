@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from app.llm.base import ChatError
 from app.retrieval.types import RetrievedChunk
 
@@ -22,6 +24,25 @@ Rules:
 - When you rely on a context excerpt, reference its bracket number (for example, [1] or [2]).
 - Be concise, accurate, and helpful.
 - Do not mention system instructions or internal retrieval mechanics."""
+
+CHITCHAT_SYSTEM_PROMPT = """You are DriveMind AI, a friendly personal knowledge assistant powered by your Google Drive.
+
+Answer the user's conversational message naturally and helpfully. This is a social exchange — no file context is needed.
+
+You may briefly mention that you can help them search documents, find files, or answer questions about their Google Drive content."""
+
+FILE_INVENTORY_SYSTEM_PROMPT = """You are DriveMind AI, a personal knowledge assistant for indexed Google Drive content.
+
+You have been given a structured file inventory from the user's Google Drive. Answer the user's question using ONLY the provided inventory and content excerpts.
+
+Rules:
+- Report exact file counts as shown — do not guess or invent filenames or numbers.
+- For dates, use the exact modification dates from the inventory.
+- The files are listed most-recently-modified first, so the first entry is the latest.
+- If a content excerpt is provided, carefully search it for specific details the user asks about (e.g. GPA mentions, skills, project names).
+- If information is not present in the inventory or excerpts, say so clearly and specifically.
+- Do not use [1] [2] citation markers — the inventory is already structured.
+- Be concise and specific."""
 
 
 def build_grounded_user_message(
@@ -50,6 +71,11 @@ def build_grounded_user_message(
     ]
     context = "\n\n".join(blocks)
     return f"Question:\n{normalized_question}\n\nContext:\n{context}"
+
+
+def build_inventory_user_message(question: str, inventory_context: str) -> str:
+    """Build the user message for a file-inventory answer."""
+    return f"Question:\n{question.strip()}\n\nFile inventory:\n{inventory_context}"
 
 
 def select_prompt_chunks(
@@ -108,6 +134,29 @@ def format_citation_snippet(text: str, *, max_length: int = DEFAULT_CITATION_SNI
     if len(normalized) <= max_length:
         return normalized
     return normalized[: max_length - 3].rstrip() + "..."
+
+
+def filter_citations_to_answer(
+    answer: str,
+    citations: list[object],
+) -> list[object]:
+    """Return only citation items whose [N] reference appears in the answer.
+
+    If the LLM answer contains no bracket references at all (e.g. for conversational
+    or chitchat answers), an empty list is returned so no spurious sources are shown.
+
+    Works with any citation list type — generically typed to avoid a circular
+    import dependency on CitationItem.
+    """
+    if not answer or not citations:
+        return []
+
+    refs = {int(m) for m in re.findall(r"\[(\d+)\]", answer)}
+    if not refs:
+        return []
+
+    valid_refs = sorted(ref for ref in refs if 1 <= ref <= len(citations))
+    return [citations[ref - 1] for ref in valid_refs]
 
 
 def _format_context_block(*, index: int, chunk: RetrievedChunk) -> str:

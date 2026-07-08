@@ -173,7 +173,8 @@ async def test_ask_resolves_explicit_user_id(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("hello?", user_id=USER_ID)
+    # Use a knowledge question (not chitchat) so we exercise the RAG path.
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
     assert result.user_id == USER_ID
     mock_db.scalar.assert_not_awaited()
@@ -403,3 +404,256 @@ async def test_ask_uses_linear_path_when_agent_disabled_even_if_graph_available(
     assert result.query_id == QUERY_ID
     assert result.answer == "Tensile strength is discussed in [1]."
     mock_retriever.retrieve.assert_awaited_once_with("What is tensile strength?")
+
+
+# ── Chitchat bypass ────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ask_chitchat_bypasses_retrieval_and_has_no_citations(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    """Greeting messages must not trigger retrieval or produce source citations."""
+    mock_chat.generate_direct_answer = AsyncMock(
+        return_value="Hello! How can I help you today?"
+    )
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            rag_max_context_chars=12000,
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("hi", user_id=USER_ID)
+
+    assert result.answer == "Hello! How can I help you today?"
+    assert result.citations == []
+    assert result.retrieval_count == 0
+    mock_retriever.retrieve.assert_not_awaited()
+    mock_chat.generate_grounded_answer.assert_not_awaited()
+    mock_chat.generate_direct_answer.assert_awaited_once_with("hi")
+
+
+@pytest.mark.asyncio
+async def test_ask_chitchat_persists_history_with_empty_citations(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    mock_chat.generate_direct_answer = AsyncMock(return_value="Hi! How can I help?")
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            rag_max_context_chars=12000,
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    await service.ask("hello!", user_id=USER_ID)
+
+    added = mock_db.add.call_args.args[0]
+    assert isinstance(added, QueryHistory)
+    assert added.citations_json == []
+
+
+# ── File inventory path ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ask_file_inventory_bypasses_chunk_retrieval(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Resume/CV inventory questions must not use chunk retrieval."""
+    from unittest.mock import AsyncMock as AM
+    from app.retrieval.file_inventory import InventoryResult
+
+    mock_chat.generate_inventory_answer = AM(
+        return_value="You have 3 resume files. The latest is Resume_2024.pdf (2024-03-12). It does not mention GPA."
+    )
+
+    fake_result = InventoryResult(
+        search_terms=["resume", "cv"],
+        total_count=3,
+        files=[],
+        latest_file=None,
+    )
+
+    async def fake_search(self: object, question: str) -> InventoryResult:
+        return fake_result
+
+    monkeypatch.setattr(
+        "app.retrieval.file_inventory.FileInventoryRetriever.search",
+        fake_search,
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            rag_max_context_chars=12000,
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask(
+        "can you check all files which have resume name or CV and tell how many",
+        user_id=USER_ID,
+    )
+
+    assert "3 resume files" in result.answer or "resume" in result.answer.lower()
+    assert result.citations == []
+    mock_retriever.retrieve.assert_not_awaited()
+    mock_chat.generate_grounded_answer.assert_not_awaited()
+    mock_chat.generate_inventory_answer.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ask_file_inventory_retrieval_count_reflects_file_count(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.retrieval.file_inventory import InventoryResult
+
+    mock_chat.generate_inventory_answer = AsyncMock(return_value="Found 2 files.")
+
+    fake_result = InventoryResult(
+        search_terms=["resume"],
+        total_count=2,
+        files=[],
+        latest_file=None,
+    )
+
+    async def fake_search(self: object, question: str) -> InventoryResult:
+        return fake_result
+
+    monkeypatch.setattr(
+        "app.retrieval.file_inventory.FileInventoryRetriever.search",
+        fake_search,
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("find all my resumes", user_id=USER_ID)
+
+    assert result.retrieval_count == 2
+
+
+# ── Citation hygiene ───────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_grounded_rag_citations_filtered_to_referenced_only(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    """Citations not referenced by [N] in the answer must not be returned."""
+    # Provide two chunks but the LLM only references [1].
+    chunk_a = _retrieved_chunk()
+    chunk_b = RetrievedChunk(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        drive_file_id=uuid.uuid4(),
+        filename="other.pdf",
+        mime_type="application/pdf",
+        modified_at=chunk_a.modified_at,
+        chunk_index=0,
+        text="Unrelated content.",
+        score=0.5,
+    )
+    mock_retriever = AsyncMock()
+    mock_retriever.retrieve = AsyncMock(return_value=[chunk_a, chunk_b])
+    mock_chat.generate_grounded_answer = AsyncMock(
+        return_value="Tensile strength is discussed in [1]."
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
+
+    # Only chunk_a ([1]) should be cited — chunk_b is not referenced
+    assert len(result.citations) == 1
+    assert result.citations[0].filename == "notes.txt"
+
+
+@pytest.mark.asyncio
+async def test_grounded_rag_no_citations_when_llm_uses_no_brackets(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    """If the LLM answer has no [N] refs, zero citations must be returned."""
+    mock_retriever = AsyncMock()
+    mock_retriever.retrieve = AsyncMock(return_value=[_retrieved_chunk()])
+    mock_chat.generate_grounded_answer = AsyncMock(
+        return_value="Tensile strength describes the maximum stress a material can sustain."
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
+
+    assert result.citations == []

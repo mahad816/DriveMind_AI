@@ -17,12 +17,51 @@ from app.db.models.drive_file import DriveFile
 from app.retrieval.types import RetrievedChunk
 
 _LATEST_KEYWORDS = {"latest", "recent", "newest", "last"}
-_METADATA_NAME_HINTS = {"file", "filename", "named", "called", "document", "folder", "path"}
+
+# Extended name-intent hints: added "files", "name", "names" so queries like
+# "files named X" or "the file name contains resume" correctly trigger filename
+# term extraction without requiring the singular "file" or "filename".
+_METADATA_NAME_HINTS = {
+    "file",
+    "files",
+    "filename",
+    "name",
+    "names",
+    "named",
+    "called",
+    "document",
+    "folder",
+    "path",
+}
+
 _MIME_HINTS: dict[str, str] = {
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "doc": "application/vnd.google-apps.document",
     "txt": "text/plain",
+}
+
+# Domain file-type terms that should become filename_terms automatically when the
+# user is asking for a specific file type by name.  This ensures "latest resume"
+# → filename_terms=["resume"] so MetadataRetriever returns only resume-named files,
+# not the globally latest files.
+_DOMAIN_FILENAME_TERMS: dict[str, str] = {
+    "resume": "resume",
+    "resumes": "resume",
+    "cv": "cv",
+    "cvs": "cv",
+    "curriculum": "curriculum",
+    "certificate": "certificate",
+    "certificates": "certificate",
+    "certification": "certification",
+    "certifications": "certification",
+    "transcript": "transcript",
+    "transcripts": "transcript",
+    "thesis": "thesis",
+    "dissertation": "dissertation",
+    "report": "report",
+    "reports": "report",
+    "portfolio": "portfolio",
 }
 
 
@@ -177,6 +216,17 @@ class MetadataRetriever:
                 [token for token in tokens if len(token) >= 3 and token not in _METADATA_NAME_HINTS]
             )
             filename_terms = list(dict.fromkeys(filename_terms))
+
+        # When asking for latest/recent by file type (e.g. "latest resume", "recent CV"),
+        # add the domain term as a filename filter so only that file type is returned —
+        # not the globally latest files.  This prevents "latest resume" from returning
+        # unrelated recently modified files.
+        if latest_first or has_name_intent:
+            for token in tokens:
+                canonical = _DOMAIN_FILENAME_TERMS.get(token)
+                if canonical and canonical not in filename_terms:
+                    filename_terms.append(canonical)
+
         folder_terms = [term for term in tokens if term in {"folder", "class", "course", "notes"}]
 
         return MetadataQuerySpec(

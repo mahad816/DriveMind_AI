@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from app.agents.drive_graph.nodes import (
     build_retrieval_plan,
     classify_intent,
@@ -85,3 +87,41 @@ def test_build_retrieval_plan_unknown_defaults_to_full_hybrid() -> None:
     """Unknown intent should preserve recall by using all retrievers."""
     plan = build_retrieval_plan(QueryIntent.UNKNOWN)
     assert plan.retrievers == ("vector", "keyword", "metadata")
+
+
+# ── Intent priority fix (Phase 4c) ────────────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # The exact question from the bug report
+        "can you check all files which have resume name or CV and tell how many in total and tell which one of them was the latest resume like date etc",
+        # Simpler forms
+        "find all resume files",
+        "how many CVs do I have?",
+        "list all resumes",
+        "how many certificate files do I have",
+        "count all my transcripts",
+        "every certificate I have",
+    ],
+)
+def test_inventory_queries_classify_as_list_or_filter_not_find_latest(
+    question: str,
+) -> None:
+    """Inventory count/list queries must route to LIST_OR_FILTER, not FIND_LATEST."""
+    intent = classify_intent_heuristic(question)
+    assert intent is QueryIntent.LIST_OR_FILTER
+
+
+def test_find_latest_resume_still_classifies_as_find_latest() -> None:
+    """'Find my latest resume' is a single-file lookup — must remain FIND_LATEST."""
+    assert classify_intent_heuristic("Find my latest resume.") is QueryIntent.FIND_LATEST
+
+
+def test_find_latest_cv_still_classifies_as_find_latest() -> None:
+    assert classify_intent_heuristic("Show me my most recent CV") is QueryIntent.FIND_LATEST
+
+
+def test_latest_without_domain_term_is_find_latest() -> None:
+    """'latest pdf notes' has no inventory domain term — stays FIND_LATEST."""
+    assert classify_intent_heuristic("Find my latest pdf notes") is QueryIntent.FIND_LATEST

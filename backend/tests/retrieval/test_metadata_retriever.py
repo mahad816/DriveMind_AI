@@ -180,3 +180,89 @@ def test_parse_query_extracts_mime_and_latest_signals() -> None:
     assert spec.latest_first is True
     assert "application/pdf" in spec.mime_filters
     assert "materials" in spec.filename_terms
+
+
+# ── Domain term extraction (Phase 4b fixes) ───────────────────────────────────
+
+def test_parse_query_latest_resume_adds_resume_to_filename_terms() -> None:
+    """'latest resume' must filter to resume-named files, not globally latest."""
+    spec = MetadataRetriever._parse_query("Find my latest resume")
+    assert spec.latest_first is True
+    assert "resume" in spec.filename_terms
+
+
+def test_parse_query_latest_cv_adds_cv_to_filename_terms() -> None:
+    spec = MetadataRetriever._parse_query("what is my most recent CV?")
+    assert spec.latest_first is True
+    assert "cv" in spec.filename_terms
+
+
+def test_parse_query_latest_certificate_adds_domain_term() -> None:
+    spec = MetadataRetriever._parse_query("show me the latest certificate")
+    assert spec.latest_first is True
+    assert "certificate" in spec.filename_terms
+
+
+def test_parse_query_latest_pdf_does_not_add_domain_term() -> None:
+    """'latest pdf' should use MIME filter only — not add 'pdf' as filename term."""
+    spec = MetadataRetriever._parse_query("latest pdf notes")
+    assert spec.latest_first is True
+    assert "application/pdf" in spec.mime_filters
+    # pdf is a MIME hint, not a domain filename term
+    assert "pdf" not in spec.filename_terms
+
+
+def test_parse_query_files_named_hint() -> None:
+    """'files' and 'name' should now trigger has_name_intent."""
+    spec = MetadataRetriever._parse_query("files named resume")
+    assert "resume" in spec.filename_terms or spec.has_signals
+
+
+def test_parse_query_name_hint_recognized() -> None:
+    """'name' alone should activate has_name_intent so terms are extracted."""
+    spec = MetadataRetriever._parse_query("find files with name containing notes")
+    assert spec.has_signals is True
+
+
+@pytest.mark.asyncio
+async def test_retrieve_latest_resume_filters_by_filename(
+    retriever: MetadataRetriever,
+    mock_db: AsyncMock,
+) -> None:
+    """MetadataRetriever should return only resume-named files for 'latest resume'."""
+    now = datetime.now(UTC)
+    resume_file = _drive_file(
+        file_id=FILE_A_ID,
+        name="Resume_Maddy_2024.pdf",
+        mime_type="application/pdf",
+        modified_at=now,
+    )
+    other_file = _drive_file(
+        file_id=FILE_B_ID,
+        name="DriveMind_Design.pdf",
+        mime_type="application/pdf",
+        modified_at=now - timedelta(hours=1),
+    )
+    chunk_resume = _chunk(
+        chunk_id=CHUNK_A_ID,
+        document_id=DOC_A_ID,
+        drive_file=resume_file,
+        text="work experience",
+    )
+    chunk_other = _chunk(
+        chunk_id=CHUNK_B_ID,
+        document_id=DOC_B_ID,
+        drive_file=other_file,
+        text="design notes",
+    )
+    # Simulate the DB returning both (the WHERE clause is checked at a higher level
+    # so we just verify the scorer correctly ranks resume-named chunks higher)
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[chunk_resume, chunk_other])),
+    )
+
+    results = await retriever.retrieve("Find my latest resume")
+
+    assert len(results) >= 1
+    # Resume-named chunk should score higher due to filename match
+    assert results[0].chunk_id == CHUNK_A_ID

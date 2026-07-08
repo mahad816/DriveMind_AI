@@ -243,7 +243,9 @@ def verify_citations(state: DriveGraphState) -> dict[str, Any]:
 
     refs = [int(match) for match in re.findall(r"\[(\d+)\]", answer)]
     if not refs:
-        return {}
+        # No bracket references in the answer — clear all citations so the UI
+        # does not show irrelevant source pills (e.g. for chitchat responses).
+        return {"citations": []}
 
     valid_indices = {index for index in refs if 1 <= index <= len(citations)}
     invalid_indices = {index for index in refs if index < 1 or index > len(citations)}
@@ -281,10 +283,36 @@ def classify_intent_heuristic(question: str) -> QueryIntent:
     """Classify query intent using lightweight deterministic rules.
 
     This keeps M3 reliable and testable. LLM-assisted fallback can be layered in M4+.
+
+    Priority order (highest to lowest):
+    1. LIST_OR_FILTER with inventory domain term  — count/all/list + resume/cv/…
+    2. FIND_LATEST                                 — latest/recent/newest
+    3. SUMMARIZE_TOPIC
+    4. LIST_OR_FILTER (generic file listing)
+    5. KEYWORD_SEARCH
+    6. SEMANTIC_QUESTION
+    7. UNKNOWN
     """
     normalized = question.strip().lower()
     if not normalized:
         return QueryIntent.UNKNOWN
+
+    # LIST_OR_FILTER takes priority over FIND_LATEST when the user is asking
+    # for an enumeration or count of a specific file type (e.g. "find all resume
+    # files, how many", "list every CV").  Bare "find" is intentionally excluded
+    # so that "Find my latest resume" still resolves to FIND_LATEST.
+    _has_list_signal = re.search(
+        r"\b(how many|count|total|all|every|each|list)\b",
+        normalized,
+    )
+    _has_inventory_domain = re.search(
+        r"\b(resume|resumes|cv|cvs|certificate|certificates|"
+        r"certification|certifications|transcript|transcripts|"
+        r"thesis|dissertation)\b",
+        normalized,
+    )
+    if _has_list_signal and _has_inventory_domain:
+        return QueryIntent.LIST_OR_FILTER
 
     if re.search(r"\b(latest|recent|newest)\b", normalized):
         return QueryIntent.FIND_LATEST
