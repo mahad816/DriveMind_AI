@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { OnboardingAwareHomeRedirect } from "@/components/onboarding/onboarding-gate";
 
 export default function HomePage() {
-  redirect("/chat");
+  return <OnboardingAwareHomeRedirect />;
 }

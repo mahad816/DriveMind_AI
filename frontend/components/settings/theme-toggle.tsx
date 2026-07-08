@@ -14,30 +14,24 @@ function toThemeValue(value: string): ThemeValue {
 }
 
 export function ThemeToggle() {
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   const current: ThemeValue =
     theme === "light" || theme === "dark" ? theme : "system";
 
   return (
-    <div className="space-y-3">
-      <Tabs
-        value={current}
-        onValueChange={(next) => {
-          setTheme(toThemeValue(next));
-        }}
-      >
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="system">System</TabsTrigger>
-          <TabsTrigger value="light">Light</TabsTrigger>
-          <TabsTrigger value="dark">Dark</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      <p className="text-xs text-muted-foreground">
-        Resolved theme: {resolvedTheme ?? current}
-      </p>
-    </div>
+    <Tabs
+      value={current}
+      onValueChange={(next) => {
+        setTheme(toThemeValue(next));
+      }}
+      aria-label="Appearance"
+    >
+      <TabsList className="grid w-full grid-cols-3">
+        <TabsTrigger value="system">System</TabsTrigger>
+        <TabsTrigger value="light">Light</TabsTrigger>
+        <TabsTrigger value="dark">Dark</TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 }
-

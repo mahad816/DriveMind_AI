@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 
-import { PageContainer } from "@/components/layout/page-container";
-import { PageHeader } from "@/components/layout/page-header";
+import { PageShell } from "@/components/layout/page-shell";
 import { SourceViewer } from "@/components/sources/source-viewer";
+import { sourceCopy } from "@/lib/user-language";
 
 export const metadata: Metadata = {
-  title: "Source",
+  title: sourceCopy.pageTitle,
 };
 
 type SourcePageProps = {
@@ -17,10 +17,9 @@ type SourcePageProps = {
 export default async function SourcePage({ params }: SourcePageProps) {
   const { chunkId } = await params;
   return (
-    <PageContainer size="lg" className="max-w-4xl">
-      <PageHeader title="Source viewer" description="Full citation chunk for the grounded answer." />
+    <PageShell size="md" title={sourceCopy.pageTitle} description={sourceCopy.pageDescription}>
       <SourceViewer chunkId={chunkId} />
-    </PageContainer>
+    </PageShell>
   );
 }
 

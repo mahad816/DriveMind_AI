@@ -1,22 +1,38 @@
 import { describe, expect, it } from "vitest";
 
-import { isNavItemActive } from "@/lib/navigation";
+import {
+  isChatRoute,
+  isConversationActive,
+  isNewChatActive,
+  isUtilityNavActive,
+} from "@/lib/navigation";
 
-describe("isNavItemActive", () => {
-  it("marks chat active on /chat", () => {
-    expect(isNavItemActive("/chat", "/chat")).toBe(true);
+describe("navigation helpers", () => {
+  it("detects chat routes including sources", () => {
+    expect(isChatRoute("/chat")).toBe(true);
+    expect(isChatRoute("/chat/abc-123")).toBe(true);
+    expect(isChatRoute("/sources/chunk-1")).toBe(true);
+    expect(isChatRoute("/files")).toBe(false);
   });
 
-  it("marks chat active on source viewer routes", () => {
-    expect(isNavItemActive("/sources/abc-123", "/chat")).toBe(true);
+  it("marks new chat active only on /chat", () => {
+    expect(isNewChatActive("/chat")).toBe(true);
+    expect(isNewChatActive("/chat/abc")).toBe(false);
   });
 
-  it("marks index active only on index routes", () => {
-    expect(isNavItemActive("/index", "/index")).toBe(true);
-    expect(isNavItemActive("/chat", "/index")).toBe(false);
+  it("marks conversation active on /chat/[id]", () => {
+    expect(isConversationActive("/chat/abc-123", "abc-123")).toBe(true);
+    expect(isConversationActive("/chat/other", "abc-123")).toBe(false);
   });
 
-  it("supports nested paths for non-chat routes", () => {
-    expect(isNavItemActive("/settings/advanced", "/settings")).toBe(true);
+  it("marks files active on nested file routes", () => {
+    expect(isUtilityNavActive("/files", "/files")).toBe(true);
+    expect(isUtilityNavActive("/files/abc", "/files")).toBe(true);
+    expect(isUtilityNavActive("/chat", "/files")).toBe(false);
+  });
+
+  it("marks settings active on nested settings routes", () => {
+    expect(isUtilityNavActive("/settings", "/settings")).toBe(true);
+    expect(isUtilityNavActive("/settings/advanced", "/settings")).toBe(true);
   });
 });

@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { isNavItemActive, type NavItem } from "@/lib/navigation";
+import { isUtilityNavActive, type UtilityNavItem } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
-type NavLinkProps = {
-  item: NavItem;
+type UtilityNavLinkProps = {
+  item: UtilityNavItem;
   onNavigate?: () => void;
   className?: string;
 };
 
-export function NavLink({ item, onNavigate, className }: NavLinkProps) {
+export function UtilityNavLink({ item, onNavigate, className }: UtilityNavLinkProps) {
   const pathname = usePathname();
-  const active = isNavItemActive(pathname, item.href);
+  const active = isUtilityNavActive(pathname, item.href);
   const Icon = item.icon;
 
   return (
@@ -25,7 +25,7 @@ export function NavLink({ item, onNavigate, className }: NavLinkProps) {
       className={cn(
         "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
         active
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          ? "border-l-2 border-primary bg-sidebar-accent pl-[10px] text-sidebar-accent-foreground"
           : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         className,
       )}

@@ -1,19 +1,24 @@
-import { ChatApiStatusCard } from "@/components/chat/chat-api-status-card";
+import { Suspense } from "react";
+
 import { ChatInterface } from "@/components/chat/chat-interface";
-import { PageContainer } from "@/components/layout/page-container";
-import { PageHeader } from "@/components/layout/page-header";
+import { ConversationLayout } from "@/components/layout/conversation-layout";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default function ChatPage() {
+function ChatLoadingFallback() {
   return (
-    <PageContainer size="lg" className="max-w-3xl">
-      <PageHeader
-        title="Chat"
-        description="Ask grounded questions about your indexed Drive files."
-      />
-
-      <ChatApiStatusCard />
-      <ChatInterface />
-    </PageContainer>
+    <div className="flex flex-1 flex-col gap-4 py-8">
+      <Skeleton className="h-8 w-2/3" />
+      <Skeleton className="h-24 w-full" />
+    </div>
   );
 }
 
+export default function ChatPage() {
+  return (
+    <ConversationLayout>
+      <Suspense fallback={<ChatLoadingFallback />}>
+        <ChatInterface />
+      </Suspense>
+    </ConversationLayout>
+  );
+}

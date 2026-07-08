@@ -1,16 +1,18 @@
-import { PageContainer } from "@/components/layout/page-container";
-import { PageHeader } from "@/components/layout/page-header";
-import { FilesBrowser } from "@/components/files/files-browser";
+import { KnowledgeLibrary } from "@/components/files/knowledge-library";
+import { PageShell } from "@/components/layout/page-shell";
+
+export const metadata = {
+  title: "Files — DriveMind AI",
+};
 
 export default function FilesPage() {
   return (
-    <PageContainer size="lg" className="max-w-7xl">
-      <PageHeader
-        title="Files"
-        description="Browse synced Drive files and indexing status."
-      />
-
-      <FilesBrowser />
-    </PageContainer>
+    <PageShell
+      size="xl"
+      title="Your knowledge library"
+      description="Browse, search, and ask questions about any file in your Google Drive."
+    >
+      <KnowledgeLibrary />
+    </PageShell>
   );
 }

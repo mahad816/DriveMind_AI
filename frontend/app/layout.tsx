@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { ToastProvider } from "@/components/ui/toast-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import "./globals.css";
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
     default: "DriveMind AI",
     template: "%s | DriveMind AI",
   },
-  description: "Grounded answers from your indexed Google Drive files.",
+  description: "Your personal AI knowledge assistant for Google Drive.",
 };
 
 export default function RootLayout({
@@ -36,9 +37,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen font-sans antialiased`}
       >
         <ThemeProvider>
-          <TooltipProvider>
-            <AppShell>{children}</AppShell>
-          </TooltipProvider>
+          <ToastProvider>
+            <TooltipProvider>
+              <AppShell>{children}</AppShell>
+            </TooltipProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

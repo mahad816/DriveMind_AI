@@ -1,6 +1,7 @@
 "use client";
 
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
+import { connectionStatusLabel } from "@/lib/user-language";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -14,7 +15,7 @@ export function ConnectionStatusBadge({ className }: ConnectionStatusBadgeProps)
   if (isLoading && !data) {
     return (
       <Badge variant="outline" className={cn("text-xs font-normal", className)}>
-        Checking…
+        {connectionStatusLabel.checking}
       </Badge>
     );
   }
@@ -22,7 +23,7 @@ export function ConnectionStatusBadge({ className }: ConnectionStatusBadgeProps)
   if (error) {
     return (
       <Badge variant="destructive" className={cn("text-xs font-normal", className)}>
-        API error
+        {connectionStatusLabel.error}
       </Badge>
     );
   }
@@ -31,16 +32,16 @@ export function ConnectionStatusBadge({ className }: ConnectionStatusBadgeProps)
     return (
       <Badge
         variant="outline"
-        className={cn("border-emerald-500/40 text-emerald-700 dark:text-emerald-400", className)}
+        className={cn("border-success/40 text-success", className)}
       >
-        Connected
+        {connectionStatusLabel.connected}
       </Badge>
     );
   }
 
   return (
     <Badge variant="outline" className={cn("text-xs font-normal", className)}>
-      Not connected
+      {connectionStatusLabel.notConnected}
     </Badge>
   );
 }

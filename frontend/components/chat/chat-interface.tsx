@@ -1,19 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 
+import { ComposerDock } from "@/components/chat/composer-dock";
+import { EmptyStateHero } from "@/components/chat/empty-state-hero";
+import { MessageThread } from "@/components/chat/message-thread";
+import { SourcePanel } from "@/components/chat/source-panel";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
+import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
+import { useConversations } from "@/lib/hooks/use-conversations";
 import { isApiError } from "@/lib/api/errors";
 import { askQuestion } from "@/lib/api/chat";
-import type { ChatResponse } from "@/lib/api/types";
-
-import { ChatComposer } from "@/components/chat/chat-composer";
-import { ChatAnswer } from "@/components/chat/chat-answer";
+import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
 type ChatMessageState =
   | {
@@ -37,12 +37,6 @@ type ChatMessageState =
       response: null;
     };
 
-const exampleQuestions = [
-  "What does tensile strength mean?",
-  "Summarize everything about PTCL in my Drive.",
-  "Find my latest resume in Drive.",
-] as const;
-
 function createMessageId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -50,184 +44,151 @@ function createMessageId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function ChatInterface() {
+function titleFromQuestion(question: string): string {
+  const trimmed = question.trim();
+  if (trimmed.length <= 48) return trimmed;
+  return `${trimmed.slice(0, 48)}…`;
+}
+
+type ChatInterfaceProps = {
+  conversationId?: string;
+};
+
+export function ChatInterface({ conversationId }: ChatInterfaceProps) {
+  const searchParams = useSearchParams();
   const { data: connection, error: connectionError, refetch } = useConnectionStatus({
     pollIntervalMs: 30_000,
   });
+  const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
+  const { renameConversation, bumpConversation } = useConversations();
 
   useEffect(() => {
-    // A quick one-time refresh makes the UI respond faster after OAuth redirects.
     void refetch();
   }, [refetch]);
 
   const isConnected = connection?.connected ?? false;
+  const titledRef = useRef(false);
+  const prefilledRef = useRef(false);
 
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessageState[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(false);
 
   const endRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length]);
+  }, [messages.length, isSending]);
 
-  const canSend = useMemo(() => {
-    if (!isConnected) return false;
-    if (isSending) return false;
-    return question.trim().length > 0;
-  }, [isConnected, isSending, question]);
+  useEffect(() => {
+    const ask = searchParams.get("ask");
+    if (!ask || prefilledRef.current) return;
+    prefilledRef.current = true;
+    setQuestion(ask);
+  }, [searchParams]);
 
-  const send = useCallback(async () => {
-    if (!canSend) return;
+  const send = useCallback(
+    async (overrideQuestion?: string) => {
+      const normalized = (overrideQuestion ?? question).trim();
+      if (!isConnected || needsPrepare || isSending || normalized.length === 0) return;
 
-    const normalized = question.trim();
-    const id = createMessageId();
+      const id = createMessageId();
 
-    setQuestion("");
-    setIsSending(true);
+      if (conversationId && !titledRef.current) {
+        renameConversation(conversationId, titleFromQuestion(normalized));
+        titledRef.current = true;
+      }
 
-    setMessages((prev) => [
-      ...prev,
-      { id, question: normalized, status: "loading", error: null },
-    ]);
+      setQuestion("");
+      setIsSending(true);
 
-    try {
-      const response = await askQuestion({ question: normalized });
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id
-            ? { id, question: m.question, status: "done", error: null, response }
-            : m,
-        ),
-      );
-    } catch (err) {
-      const message = isApiError(err) ? err.detail : err instanceof Error ? err.message : "Request failed";
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id
-            ? { id, question: m.question, status: "error", error: message, response: null }
-            : m,
-        ),
-      );
-    } finally {
-      setIsSending(false);
-    }
-  }, [canSend, question]);
+      setMessages((prev) => [
+        ...prev,
+        { id, question: normalized, status: "loading", error: null },
+      ]);
 
-  const exampleChips = (
-    <div className="flex flex-wrap gap-2">
-      {exampleQuestions.map((q) => (
-        <Button
-          key={q}
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={!isConnected || isSending}
-          onClick={() => setQuestion(q)}
-        >
-          {q}
-        </Button>
-      ))}
-    </div>
+      try {
+        const response = await askQuestion({ question: normalized });
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === id
+              ? { id, question: message.question, status: "done", error: null, response }
+              : message,
+          ),
+        );
+        if (conversationId) {
+          bumpConversation(conversationId);
+        }
+      } catch (err) {
+        const message = isApiError(err)
+          ? err.detail
+          : err instanceof Error
+            ? err.message
+            : "Request failed";
+        setMessages((prev) =>
+          prev.map((entry) =>
+            entry.id === id
+              ? { id, question: entry.question, status: "error", error: message, response: null }
+              : entry,
+          ),
+        );
+      } finally {
+        setIsSending(false);
+      }
+    },
+    [bumpConversation, conversationId, isConnected, isSending, needsPrepare, question, renameConversation],
   );
 
+  const handleSourceSelect = useCallback((citation: CitationItem) => {
+    setSelectedCitation(citation);
+    setSourcePanelOpen(true);
+  }, []);
+
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-0 flex-1 flex-col">
       {connectionError ? (
-        <Alert variant="destructive">
+        <Alert variant="destructive" className="mb-4 shrink-0">
           <AlertTitle>Connection status error</AlertTitle>
           <AlertDescription>{connectionError}</AlertDescription>
         </Alert>
       ) : null}
 
-      {!isConnected ? (
-        <Alert className="border-amber-500/30 bg-amber-50 text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
-          <AlertTitle>Google Drive not connected</AlertTitle>
-          <AlertDescription>
-            Connect Drive in <a className="underline" href="/settings">Settings</a> and sync metadata in Index.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Chat</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {messages.length === 0 ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Ask a question and get a grounded answer with clickable sources.
-              </p>
-              {exampleChips}
-            </div>
-          ) : null}
-
-          <div className="space-y-6">
-            {messages.map((m) => {
-              if (m.status === "loading") {
-                return (
-                  <div key={m.id} className="space-y-3">
-                    <div className="rounded-lg bg-muted px-3 py-2 text-sm">
-                      <span className="font-medium">You:</span> {m.question}
-                    </div>
-                    <div className="space-y-2">
-                      <Skeleton className="h-5 w-2/3" />
-                      <Skeleton className="h-5 w-full" />
-                      <Skeleton className="h-5 w-5/6" />
-                    </div>
-                  </div>
-                );
-              }
-
-              if (m.status === "error") {
-                return (
-                  <div key={m.id} className="space-y-3">
-                    <div className="rounded-lg bg-muted px-3 py-2 text-sm">
-                      <span className="font-medium">You:</span> {m.question}
-                    </div>
-                    <Alert variant="destructive">
-                      <AlertTitle>Answer failed</AlertTitle>
-                      <AlertDescription>{m.error}</AlertDescription>
-                    </Alert>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={m.id} className="space-y-3">
-                  <div className="rounded-lg bg-muted px-3 py-2 text-sm">
-                    <span className="font-medium">You:</span> {m.question}
-                  </div>
-                  <div>
-                    <ChatAnswer response={m.response} />
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="text-xs font-normal">
-                        retrieval_count: {m.response.retrieval_count}
-                      </Badge>
-                      {m.response.message ? (
-                        <Badge variant="outline" className="text-xs font-normal">
-                          {m.response.message}
-                        </Badge>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={endRef} />
-          </div>
-
-          <ChatComposer
-            value={question}
-            onChange={setQuestion}
-            onSubmit={() => void send()}
-            disabled={!isConnected}
-            isLoading={isSending}
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        aria-busy={isSending}
+        aria-label="Conversation"
+      >
+        {messages.length === 0 ? (
+          <EmptyStateHero
+            needsConnect={needsConnect}
+            needsPrepare={needsPrepare}
+            isSending={isSending}
+            onSuggestionClick={(suggestion) => void send(suggestion)}
           />
-        </CardContent>
-      </Card>
+        ) : (
+          <MessageThread
+            messages={messages}
+            onSourceSelect={handleSourceSelect}
+            endRef={endRef}
+          />
+        )}
+      </div>
+
+      <ComposerDock
+        value={question}
+        onChange={setQuestion}
+        onSubmit={() => void send()}
+        disabled={!isConnected || needsPrepare}
+        isLoading={isSending}
+      />
+
+      <SourcePanel
+        citation={selectedCitation}
+        open={sourcePanelOpen}
+        onOpenChange={setSourcePanelOpen}
+      />
     </div>
   );
 }
-
