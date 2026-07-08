@@ -21,6 +21,8 @@ class DriveGraphState(TypedDict):
     ranked_chunks: list[RetrievedChunk]
     citations: list[CitationItem]
     retrieval_count: int
+    # Set by the runner so conditional routing can cap rewrite loops safely.
+    max_rewrite_attempts: NotRequired[int]
     intent: NotRequired[QueryIntent]
     retrieval_plan: NotRequired[RetrievalPlan]
     active_retrievers: NotRequired[tuple[str, ...]]
