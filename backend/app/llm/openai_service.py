@@ -9,6 +9,7 @@ from app.llm.base import ChatConfigurationError, ChatError
 from app.llm.prompts import (
     CHITCHAT_SYSTEM_PROMPT,
     FILE_INVENTORY_SYSTEM_PROMPT,
+    FILE_TARGET_SYSTEM_PROMPT,
     RAG_SYSTEM_PROMPT,
     build_grounded_user_message,
     build_inventory_user_message,
@@ -98,3 +99,18 @@ class OpenAIChatService:
         """
         user_message = build_inventory_user_message(question, inventory_context)
         return await self._complete(FILE_INVENTORY_SYSTEM_PROMPT, user_message)
+
+    async def generate_file_target_answer(
+        self,
+        question: str,
+        chunks: list[RetrievedChunk],
+        *,
+        max_context_chars: int,
+    ) -> str:
+        """Answer a question about one specific file using its full indexed content."""
+        user_message = build_grounded_user_message(
+            question,
+            chunks,
+            max_context_chars=max_context_chars,
+        )
+        return await self._complete(FILE_TARGET_SYSTEM_PROMPT, user_message)

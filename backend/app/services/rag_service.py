@@ -23,6 +23,7 @@ from app.llm.prompts import (
 )
 from app.retrieval.base import Retriever
 from app.retrieval.file_inventory import FileInventoryRetriever, build_inventory_context
+from app.retrieval.file_target import FileTargetRetriever
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.query_router import QueryRoute, classify_query
 from app.retrieval.types import RetrievedChunk
@@ -49,7 +50,8 @@ class RagService:
 
     1. CHITCHAT       → generate_direct_answer(), no retrieval, no citations.
     2. FILE_INVENTORY → FileInventoryRetriever SQL path, no chunk retrieval, no citations.
-    3. GROUNDED_RAG   → hybrid/vector retrieval then grounded answer.
+    3. FILE_TARGET    → direct lookup of a named file + all its chunks, no hybrid noise.
+    4. GROUNDED_RAG   → hybrid/vector retrieval then grounded answer.
                         Uses LangGraph agent when agent_graph_enabled=True,
                         otherwise the linear path.
     """
@@ -97,6 +99,7 @@ class RagService:
         Routing runs first regardless of agent_graph_enabled:
           CHITCHAT       → direct reply, no retrieval, no sources shown.
           FILE_INVENTORY → SQL file search, no chunk retrieval, no sources shown.
+          FILE_TARGET    → named file lookup, full file content, with citations.
           GROUNDED_RAG   → hybrid retrieval (LangGraph or linear).
         """
         normalized_question = question.strip()
@@ -149,7 +152,87 @@ class RagService:
                 retrieval_count=inv_result.total_count,
             )
 
-        # ── 3. Grounded RAG — LangGraph agent path ────────────────────────────
+        # ── 3. Named file target path ─────────────────────────────────────────
+        if route is QueryRoute.FILE_TARGET:
+            target_result = await FileTargetRetriever(self.db).search(
+                normalized_question, user_id=user.id
+            )
+            if target_result.found:
+                answer = await self.chat_service.generate_file_target_answer(
+                    normalized_question,
+                    target_result.chunks,
+                    max_context_chars=self.settings.rag_max_context_chars,
+                )
+                prompt_chunks = select_prompt_chunks(
+                    normalized_question,
+                    target_result.chunks,
+                    max_context_chars=self.settings.rag_max_context_chars,
+                )
+                all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
+                citations = cast(
+                    list[CitationItem],
+                    filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]
+                )
+                query_id = await self._persist_query_history(
+                    user_id=user.id,
+                    question=normalized_question,
+                    answer=answer,
+                    citations=citations,
+                )
+                return RagResult(
+                    query_id=query_id,
+                    user_id=user.id,
+                    question=normalized_question,
+                    answer=answer,
+                    citations=citations,
+                    retrieval_count=len(target_result.chunks),
+                )
+
+            if target_result.files and target_result.not_indexed:
+                file_names = ", ".join(f.name for f in target_result.files)
+                answer = (
+                    f'I found "{file_names}" in your Drive, but it is still being prepared. '
+                    "Go to **Build knowledge** and run **Set up my assistant** to finish indexing it, "
+                    "then ask again."
+                )
+                query_id = await self._persist_query_history(
+                    user_id=user.id,
+                    question=normalized_question,
+                    answer=answer,
+                    citations=[],
+                )
+                return RagResult(
+                    query_id=query_id,
+                    user_id=user.id,
+                    question=normalized_question,
+                    answer=answer,
+                    citations=[],
+                    retrieval_count=0,
+                )
+
+            if target_result.targets and not target_result.files:
+                names = ", ".join(f'"{t}"' for t in target_result.targets)
+                answer = (
+                    f"I could not find a file named {names} in your synced Google Drive. "
+                    "Try **Build knowledge → Set up my assistant** if you added it recently."
+                )
+                query_id = await self._persist_query_history(
+                    user_id=user.id,
+                    question=normalized_question,
+                    answer=answer,
+                    citations=[],
+                )
+                return RagResult(
+                    query_id=query_id,
+                    user_id=user.id,
+                    question=normalized_question,
+                    answer=answer,
+                    citations=[],
+                    retrieval_count=0,
+                )
+            # No resolvable target — fall through to grounded RAG.
+
+        # ── 4. Grounded RAG — LangGraph agent path ────────────────────────────
         if self.settings.agent_graph_enabled:
             from app.agents.drive_graph.runner import run_drive_graph
 
@@ -175,7 +258,7 @@ class RagService:
                 retrieval_count=graph_result.retrieval_count,
             )
 
-        # ── 4. Grounded RAG — linear path ─────────────────────────────────────
+        # ── 5. Grounded RAG — linear path ─────────────────────────────────────
         if self.settings.hybrid_retrieval_enabled and isinstance(self.retriever, HybridRetriever):
             evidence = await self.retriever.retrieve_with_grade(normalized_question)
             retrieved = evidence.chunks

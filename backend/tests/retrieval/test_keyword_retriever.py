@@ -87,7 +87,13 @@ async def test_retrieve_returns_keyword_scored_chunks(
     retriever: KeywordRetriever,
     mock_db: AsyncMock,
 ) -> None:
-    mock_db.execute = AsyncMock(return_value=[(CHUNK_ID, 0.77)])
+    # "materials tensile" has long terms (>=5 chars) → FTS + always-on filename = 2 calls.
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            [(CHUNK_ID, 0.77)],  # FTS hit
+            [],                   # always-on filename: no file matches
+        ]
+    )
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
@@ -172,16 +178,19 @@ async def test_retrieve_merges_filename_only_hits_when_fts_empty(
     mock_db: AsyncMock,
     settings: Settings,
 ) -> None:
-    """Chunks from a named file must be included even when FTS finds nothing."""
+    """Chunks from a named file must be included even when FTS finds nothing.
+
+    "Resume_2024.pdf" triggers quoted-target + FTS + filename-explicit paths.
+    """
     retriever = KeywordRetriever(db=mock_db, settings=settings)
 
     fn_chunk_id = uuid.uuid4()
 
-    # FTS search returns nothing (search_vector mismatch for filename query)
     mock_db.execute = AsyncMock(
         side_effect=[
-            [],                              # FTS hits → empty
-            [(fn_chunk_id,)],                # filename-only hits → one result
+            [(fn_chunk_id,)],    # quoted-target / exact name
+            [],                  # FTS → empty
+            [(fn_chunk_id,)],    # filename-explicit path
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -190,24 +199,26 @@ async def test_retrieve_merges_filename_only_hits_when_fts_empty(
 
     await retriever.retrieve("What is in Resume_2024.pdf?")
 
-    # Should have called execute twice: once for FTS, once for filename-only
-    assert mock_db.execute.await_count == 2
+    assert mock_db.execute.await_count == 3
 
 
 @pytest.mark.asyncio
-async def test_retrieve_filename_only_not_triggered_without_extension(
+async def test_retrieve_always_on_filename_runs_for_long_tokens(
     mock_db: AsyncMock,
     settings: Settings,
 ) -> None:
-    """Filename-only path should NOT run when query has no file extension."""
+    """Always-on filename path runs for any query with tokens ≥ 5 chars.
+
+    "tensile" (7) and "strength" (8) are long enough, so 2 execute calls are
+    expected even though no file extension is present.
+    """
     retriever = KeywordRetriever(db=mock_db, settings=settings)
 
-    mock_db.execute = AsyncMock(return_value=[])
+    mock_db.execute = AsyncMock(side_effect=[[], []])  # FTS + always-on filename
 
     await retriever.retrieve("What is tensile strength?")
 
-    # Only one db.execute call (FTS), no filename-only path
-    assert mock_db.execute.await_count == 1
+    assert mock_db.execute.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -219,11 +230,11 @@ async def test_fts_score_kept_when_higher_than_filename_score(
     retriever = KeywordRetriever(db=mock_db, settings=settings)
     high_fts_score = 0.85
 
-    # Use the module-level CHUNK_ID so _load_chunks finds the right chunk object.
     mock_db.execute = AsyncMock(
         side_effect=[
-            [(CHUNK_ID, high_fts_score)],   # FTS hits with high score
-            [(CHUNK_ID,)],                  # filename-only same chunk (lower fixed score)
+            [(CHUNK_ID,)],                 # quoted-target / exact name
+            [(CHUNK_ID, high_fts_score)],  # FTS: high score
+            [(CHUNK_ID,)],                 # filename-explicit
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -281,13 +292,19 @@ async def test_phrase_search_runs_when_quoted_phrase_detected(
     mock_db: AsyncMock,
     settings: Settings,
 ) -> None:
-    """Long quoted phrase triggers phrase-search path (db.execute called twice)."""
+    """Long quoted phrase triggers phrase-search path.
+
+    Query has a quoted token → quoted-target path runs first.
+    Then: FTS + always-on filename + phrase = 4 db.execute calls total.
+    """
     retriever = KeywordRetriever(db=mock_db, settings=settings)
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [(CHUNK_ID, 0.3)],   # FTS path returns a low-score hit
-            [(CHUNK_ID,)],       # phrase path returns same chunk (score 0.6 wins)
+            [],                  # quoted-target: no exact filename match
+            [(CHUNK_ID, 0.3)],  # FTS: low-score hit
+            [],                  # always-on filename: no match
+            [(CHUNK_ID,)],       # phrase ILIKE: same chunk (score 0.6 wins)
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -298,9 +315,7 @@ async def test_phrase_search_runs_when_quoted_phrase_detected(
         'Which file contains "Connects to a user\'s Google Drive and stores file metadata"?'
     )
 
-    # FTS + phrase → 2 execute calls
-    assert mock_db.execute.await_count == 2
-    # Phrase score (0.6) wins over FTS score (0.3)
+    assert mock_db.execute.await_count == 4
     assert len(results) == 1
     assert results[0].score == pytest.approx(0.6)
 
@@ -310,13 +325,18 @@ async def test_phrase_search_finds_chunk_when_fts_empty(
     mock_db: AsyncMock,
     settings: Settings,
 ) -> None:
-    """Phrase search must surface a chunk even when FTS returns nothing."""
+    """Phrase search must surface a chunk even when FTS returns nothing.
+
+    Quoted token → quoted-target path first, then FTS + always-on filename + phrase = 4 calls.
+    """
     retriever = KeywordRetriever(db=mock_db, settings=settings)
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [],                  # FTS → empty (stopwords dominate long phrase)
-            [(CHUNK_ID,)],       # phrase ILIKE → found
+            [],            # quoted-target → empty (long phrase is not a filename)
+            [],            # FTS → empty
+            [],            # always-on filename → empty
+            [(CHUNK_ID,)], # phrase ILIKE → found
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -337,13 +357,14 @@ async def test_phrase_search_not_triggered_without_quotes_or_cue(
     mock_db: AsyncMock,
     settings: Settings,
 ) -> None:
-    """Normal questions without a phrase should only trigger FTS (1 execute call)."""
+    """Normal questions without a phrase trigger FTS + always-on filename (2 calls)."""
     retriever = KeywordRetriever(db=mock_db, settings=settings)
-    mock_db.execute = AsyncMock(return_value=[])
+    mock_db.execute = AsyncMock(side_effect=[[], []])  # FTS + always-on filename
 
     await retriever.retrieve("What is tensile strength?")
 
-    assert mock_db.execute.await_count == 1
+    # FTS + always-on filename; phrase path NOT triggered (no quotes/cue)
+    assert mock_db.execute.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -351,14 +372,19 @@ async def test_phrase_score_beats_fts_score_for_exact_phrase(
     mock_db: AsyncMock,
     settings: Settings,
 ) -> None:
-    """Phrase hits get _PHRASE_SCORE (0.6); FTS hits get whatever ts_rank_cd returns."""
+    """Phrase hits get _PHRASE_SCORE (0.6); FTS hits get whatever ts_rank_cd returns.
+
+    Quoted token → quoted-target first, then FTS + always-on filename + phrase = 4 calls.
+    """
     retriever = KeywordRetriever(db=mock_db, settings=settings)
     low_fts_score = 0.1
 
     mock_db.execute = AsyncMock(
         side_effect=[
+            [],                            # quoted-target: no filename match
             [(CHUNK_ID, low_fts_score)],   # FTS: low score
-            [(CHUNK_ID,)],                  # phrase: same chunk, score 0.6
+            [],                            # always-on filename: no match
+            [(CHUNK_ID,)],                 # phrase: same chunk, score 0.6 wins
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -369,5 +395,4 @@ async def test_phrase_score_beats_fts_score_for_exact_phrase(
         'find "this is a very specific sentence that appears verbatim in one document"'
     )
 
-    # Phrase score (0.6) replaces the lower FTS score
     assert results[0].score == pytest.approx(0.6)

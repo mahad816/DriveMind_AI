@@ -108,13 +108,22 @@ def test_file_inventory_questions_route_correctly(question: str) -> None:
         "Explain CoreChain architecture",
         "What projects did I work on at PTCL?",
         "What is federated learning in my notes?",
-        "Tell me about my AWS experience",
         "Summarize everything about CoreChain",
         "Find everything related to machine learning",
         "Which files mention LangGraph or RAG?",
     ],
 )
 def test_knowledge_questions_route_to_grounded_rag(question: str) -> None:
+    assert classify_query(question) is QueryRoute.GROUNDED_RAG
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Tell me about my AWS experience",
+    ],
+)
+def test_broad_topic_questions_route_to_grounded_rag(question: str) -> None:
     assert classify_query(question) is QueryRoute.GROUNDED_RAG
 
 

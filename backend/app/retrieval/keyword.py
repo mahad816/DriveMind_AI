@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
+from app.retrieval.filename_targets import extract_filename_targets
 from app.retrieval.types import RetrievedChunk
 
 # Regex to detect queries that explicitly name a file with an extension.
@@ -25,9 +26,13 @@ _FILENAME_EXT_RE = re.compile(
 )
 
 # Score given to chunks returned via filename-only path (no FTS rank available).
-# Positioned above the evidence_min_fusion_score (0.15) but below typical strong
-# FTS matches so FTS hits still win when they overlap.
-_FILENAME_ONLY_SCORE = 0.4
+# High enough to pass evidence_min_fusion_score (0.15) and survive reranking even
+# when vector search returns nothing.
+_FILENAME_ONLY_SCORE = 0.85
+
+# Minimum term length for the always-on filename ILIKE pass.  Shorter terms (e.g.
+# "me", "of", "tell") would match thousands of files — only scan with longer tokens.
+_MIN_FILENAME_TERM_LEN = 5
 
 # ── Phrase search constants ────────────────────────────────────────────────────
 
@@ -114,31 +119,52 @@ class KeywordRetriever:
     async def _search_hits(self, question: str) -> list[KeywordHit]:
         """Return scored hits by merging FTS, filename-only, and phrase-search results.
 
-        Three paths:
+        Five paths (highest to lowest priority):
+        - **Quoted-target path**: ``DriveFile.name ILIKE %target%`` for each quoted
+          token in the question (e.g. ``Tell me about "HI"``).  Runs regardless of
+          token length so even single-letter filenames are found.
         - **FTS path**: ``search_vector @@ ts_query`` ranking via ``websearch_to_tsquery``.
-        - **Filename-only path**: ``DriveFile.name ILIKE %term%`` — activated when the
-          question names a file with an extension.
+        - **Filename-explicit path**: ``DriveFile.name ILIKE %term%`` — activated when the
+          question names a file with an extension (e.g. ``Resume_2024.pdf``).
+        - **Filename-always path**: same ILIKE search using tokens ≥ _MIN_FILENAME_TERM_LEN
+          chars to avoid false positives on common words ("me", "of", "tell").
         - **Phrase-search path**: ``Chunk.text ILIKE '%exact phrase%'`` — activated when
-          the question contains a quoted phrase or a phrase-cue prefix.  Scores at
-          ``_PHRASE_SCORE`` (0.6) so long phrases win even when FTS fails due to stopwords.
+          the question contains a quoted phrase or a phrase-cue prefix.
         """
         ts_query = self._ts_query(question)
         has_filename = self._has_filename_signal(question)
         phrase = self._extract_phrase(question)
-
-        if ts_query is None and not has_filename and phrase is None:
-            return []
+        quoted_targets = extract_filename_targets(question)
 
         hits_by_id: dict[uuid.UUID, KeywordHit] = {}
+
+        # Quoted-target path — exact filename match for any quoted token.
+        # This works even for short names like "HI" that the long-term filter
+        # would otherwise skip.
+        if quoted_targets:
+            for hit in await self._filename_only_hits_for_terms(quoted_targets):
+                existing = hits_by_id.get(hit.chunk_id)
+                if existing is None or hit.score > existing.score:
+                    hits_by_id[hit.chunk_id] = hit
 
         # FTS path
         if ts_query is not None:
             for hit in await self._fts_hits(question, ts_query):
-                hits_by_id[hit.chunk_id] = hit
+                existing = hits_by_id.get(hit.chunk_id)
+                if existing is None or hit.score > existing.score:
+                    hits_by_id[hit.chunk_id] = hit
 
-        # Filename-only path — supplement FTS with chunks from explicitly named files
+        # Filename-explicit path (extension present in query)
         if has_filename:
             for hit in await self._filename_only_hits(question):
+                existing = hits_by_id.get(hit.chunk_id)
+                if existing is None or hit.score > existing.score:
+                    hits_by_id[hit.chunk_id] = hit
+
+        # Filename-always path — use long tokens regardless of extension presence.
+        long_terms = [t for t in self._query_terms(question) if len(t) >= _MIN_FILENAME_TERM_LEN]
+        if long_terms and not has_filename:
+            for hit in await self._filename_only_hits_for_terms(long_terms):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
@@ -180,19 +206,36 @@ class KeywordRetriever:
     async def _filename_only_hits(self, question: str) -> list[KeywordHit]:
         """Return chunk IDs from files whose name matches query terms.
 
-        Used when the user mentions a file by name (e.g. ``Resume_2024.pdf``).
-        No full-text search is required — only the filename ILIKE filter is applied.
+        Used when the user mentions a file by name with an extension
+        (e.g. ``Resume_2024.pdf``).
         """
         query_terms = self._query_terms(question)
-        if not query_terms:
+        return await self._filename_only_hits_for_terms(query_terms)
+
+    async def _filename_only_hits_for_terms(self, terms: list[str]) -> list[KeywordHit]:
+        """Return chunk IDs from files whose name contains any of the given terms.
+
+        Core implementation shared by the explicit-extension path and the
+        always-on long-token path.
+        """
+        if not terms:
             return []
 
-        name_filters = [DriveFile.name.ilike(f"%{term}%") for term in query_terms]
+        # Quoted / short targets use exact case-insensitive name match so "HI"
+        # does not match every file containing the substring "hi".
+        filters = []
+        for term in terms:
+            exact = func.lower(DriveFile.name) == term.lower()
+            if len(term) <= 4:
+                filters.append(exact)
+            else:
+                filters.append(or_(exact, DriveFile.name.ilike(f"%{term}%")))
+
         result = await self.db.execute(
             select(Chunk.id)
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
-            .where(or_(*name_filters))
+            .where(or_(*filters))
             .order_by(DriveFile.modified_at.desc(), Chunk.chunk_index.asc())
             .limit(self.settings.retrieval_candidate_k)
         )

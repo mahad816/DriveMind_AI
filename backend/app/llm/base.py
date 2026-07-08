@@ -47,8 +47,17 @@ class ChatService(Protocol):
     ) -> str:
         """Answer a file-inventory question using a structured Drive file context.
 
-        ``inventory_context`` is a pre-formatted string produced by
-        ``build_inventory_context()`` that lists matching files, counts, and
-        optional content excerpts from the most recently modified file.
+        ``inventory_context`` must be produced by ``build_inventory_context()``.
+        No chunk citations are produced for this path.
         """
+        ...
+
+    async def generate_file_target_answer(
+        self,
+        question: str,
+        chunks: list[RetrievedChunk],
+        *,
+        max_context_chars: int,
+    ) -> str:
+        """Answer a question about a specific named file using its full content."""
         ...

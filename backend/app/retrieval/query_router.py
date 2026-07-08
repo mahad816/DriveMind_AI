@@ -1,14 +1,10 @@
-"""Query routing — classify an incoming question into one of three processing paths.
+"""Query routing — classify an incoming question into processing paths.
 
-Three routes:
-  CHITCHAT       — social/conversational messages with no knowledge-seeking intent.
-                   Bypass retrieval entirely; answer directly; return no citations.
-  FILE_INVENTORY — questions asking for a file listing, count, or latest-by-name
-                   (e.g. "find all resume files, how many, which is latest",
-                    "list total number of files", "how many files do I have").
-                   Use the FileInventoryRetriever SQL path instead of chunk RAG.
-  GROUNDED_RAG   — all other knowledge questions.
-                   Use the existing hybrid retrieval + grounded answer pipeline.
+Routes:
+  CHITCHAT       — social messages; no retrieval.
+  FILE_INVENTORY — file counts, lists, resume/CV inventory SQL path.
+  FILE_TARGET    — user asks about a specific file by name (e.g. Tell me about "HI").
+  GROUNDED_RAG   — general knowledge questions via hybrid retrieval.
 """
 
 from __future__ import annotations
@@ -16,12 +12,19 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 
+from app.retrieval.filename_targets import extract_filename_targets, is_file_about_question
+
+# Quoted token in the query (e.g. "HI", "Far611") — presence means the user is
+# referencing something by name and can never be a pure social message.
+_QUOTED_TOKEN_RE = re.compile(r'"[^"]{1,}"|\'[^\']{1,}\'')
+
 
 class QueryRoute(StrEnum):
     """Top-level routing decision for an incoming user question."""
 
     CHITCHAT = "chitchat"
     FILE_INVENTORY = "file_inventory"
+    FILE_TARGET = "file_target"
     GROUNDED_RAG = "grounded_rag"
 
 
@@ -140,13 +143,13 @@ _GENERAL_FILE_COUNT_RE = re.compile(
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def classify_query(question: str) -> QueryRoute:
-    """Classify a question into CHITCHAT, FILE_INVENTORY, or GROUNDED_RAG.
+    """Classify a question into the appropriate processing route.
 
     Priority order:
-      1. Chitchat  — no knowledge signals, matches social phrase list.
-      2. File inventory — domain term + action signal, general file count,
-                          or "files named X" pattern.
-      3. Default GROUNDED_RAG.
+      1. Chitchat — pure social, no knowledge signals.
+      2. File inventory — counts, lists, resume/CV searches.
+      3. File target — asking about a specific named file.
+      4. Grounded RAG — default hybrid retrieval.
     """
     normalized = question.strip()
     if not normalized:
@@ -154,11 +157,22 @@ def classify_query(question: str) -> QueryRoute:
 
     lower = normalized.lower()
 
+    # Quoted token → never chitchat (e.g. Tell me about "HI")
+    if _QUOTED_TOKEN_RE.search(normalized):
+        if _is_file_inventory(lower):
+            return QueryRoute.FILE_INVENTORY
+        if is_file_about_question(normalized):
+            return QueryRoute.FILE_TARGET
+        return QueryRoute.GROUNDED_RAG
+
     if _is_chitchat(lower):
         return QueryRoute.CHITCHAT
 
     if _is_file_inventory(lower):
         return QueryRoute.FILE_INVENTORY
+
+    if is_file_about_question(normalized) and extract_filename_targets(normalized):
+        return QueryRoute.FILE_TARGET
 
     return QueryRoute.GROUNDED_RAG
 

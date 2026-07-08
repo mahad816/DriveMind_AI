@@ -5,12 +5,15 @@ from __future__ import annotations
 from dataclasses import replace
 
 from app.core.config import Settings, get_settings
+from app.retrieval.filename_targets import chunk_matches_filename_target, extract_filename_targets
 from app.retrieval.types import RetrievedChunk
 
 
 def weighted_fusion_rerank(
     candidates: list[RetrievedChunk],
     settings: Settings | None = None,
+    *,
+    question: str | None = None,
 ) -> list[RetrievedChunk]:
     """Rerank merged candidates using normalized per-source weighted scores."""
     if not candidates:
@@ -23,6 +26,7 @@ def weighted_fusion_rerank(
         "metadata": resolved.hybrid_weight_metadata,
     }
     maxima = _max_source_scores(candidates)
+    filename_targets = extract_filename_targets(question) if question else []
 
     reranked: list[RetrievedChunk] = []
     for chunk in candidates:
@@ -47,12 +51,20 @@ def weighted_fusion_rerank(
 
     reranked.sort(
         key=lambda item: (
+            _filename_priority(item, filename_targets),
             item.fusion_score if item.fusion_score is not None else 0.0,
             item.modified_at,
         ),
         reverse=True,
     )
     return reranked[: resolved.retrieval_top_k]
+
+
+def _filename_priority(chunk: RetrievedChunk, targets: list[str]) -> int:
+    """Return 1 when the chunk belongs to a file named in the question, else 0."""
+    if not targets:
+        return 0
+    return 1 if chunk_matches_filename_target(chunk, targets) else 0
 
 
 def _max_source_scores(candidates: list[RetrievedChunk]) -> dict[str, float]:

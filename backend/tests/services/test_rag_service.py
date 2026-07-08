@@ -239,7 +239,7 @@ async def test_ask_uses_filename_when_chunk_text_is_blank(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("What is in notes.txt?")
+    result = await service.ask("What does the blank section mean?")
 
     assert len(result.citations) == 1
     assert result.citations[0].snippet == "notes.txt"
