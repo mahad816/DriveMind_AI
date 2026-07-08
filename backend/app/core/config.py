@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     fts_language: str = "english"
     rag_max_context_chars: int = 12000
 
+    agent_graph_enabled: bool = False
+    agent_max_rewrite_attempts: int = 2
+
     model_config = SettingsConfigDict(
         env_file=(
             str(REPO_ROOT / ".env"),

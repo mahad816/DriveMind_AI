@@ -19,6 +19,7 @@ dependencies = [
     "pytesseract>=0.3.13",
     "python-docx>=1.2.0",
     "qdrant-client>=1.18.0",
+    "langgraph>=0.4.0",
     "sqlalchemy>=2.0.40",
     "uvicorn[standard]>=0.35.0",
 ]
@@ -53,7 +54,7 @@ python_version = "3.12"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*", "PIL.*", "openai.*", "qdrant_client.*"]
+module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*", "PIL.*", "openai.*", "qdrant_client.*", "langgraph.*", "langchain_core.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
