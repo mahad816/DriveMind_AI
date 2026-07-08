@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 8 in progress (LangGraph Agent). M0–M1 complete.
+**Last updated:** Phase 8 complete (LangGraph Agent). M0–M10 done.
 
 ## Completed Phases
 
@@ -16,7 +16,7 @@ Use this file to resume work in a new chat.
 | 5 | Complete | Chunking, embeddings, Qdrant vector index, build API |
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
-| 8 | In progress | LangGraph agent — M0–M1 complete (foundation) |
+| 8 | Complete | LangGraph agent — intent routing, rewrite loop, citation verify |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -60,23 +60,36 @@ See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) for milestone-by-milestone progress
 
 **Verification:** full suite passed (`ruff`, `mypy`, `basedpyright`, `pytest`) with 271 tests.
 
-## Phase 8 Summary (LangGraph Agent) — In Progress
+## Phase 8 Summary (LangGraph Agent) — Complete
 
 See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) for milestone-by-milestone progress.
 
 | Capability | Module | Status |
 |------------|--------|--------|
-| LangGraph dependency | `backend/pyproject.toml` | Done (M1) |
-| Drive graph state | `app/agents/drive_graph/state.py` | Done (M1) |
-| Intent + retrieval types | `app/agents/drive_graph/types.py` | Done (M1) |
-| Agent config flags | `app/core/config.py` | Done (M1) |
-| Graph skeleton + runner | `app/agents/drive_graph/graph.py` | Pending (M2) |
+| LangGraph dependency | `backend/pyproject.toml` | Done |
+| Drive graph state + types | `app/agents/drive_graph/state.py`, `types.py` | Done |
+| Graph skeleton + runner | `app/agents/drive_graph/graph.py`, `runner.py` | Done |
+| Intent + retrieval planning | `app/agents/drive_graph/nodes.py`, `prompts.py` | Done |
+| Routed retrieval | `app/agents/drive_graph/nodes.py` | Done |
+| Rerank + grade + rewrite loop | `app/agents/drive_graph/nodes.py`, `graph.py` | Done |
+| Answer + citation verify | `app/agents/drive_graph/nodes.py` | Done |
+| RAG integration | `app/services/rag_service.py` (`AGENT_GRAPH_ENABLED`) | Done |
 
-**Next milestone:** M2 — graph skeleton + runner.
+**Graph flow:**
+
+```
+receive_question → classify_intent → plan_retrieval → route_retriever
+→ retrieve → rerank → grade_evidence
+→ (rewrite_query loop) → generate_answer → verify_citations → return_response
+```
+
+**Verification:** 307 tests passing (+36 from Phase 7 baseline); live smoke confirmed grounded answers with citations on both graph and linear paths.
+
+**Next phase:** Phase 9 — Frontend Foundation.
 
 Say in a new chat (if needed):
 
-> Continue DriveMind AI Phase 8 from `docs/PHASE_8_TRACKER.md` — Milestone 2.
+> Continue DriveMind AI Phase 9 from `docs/ROADMAP.md` — Frontend Foundation.
 
 ## Quick Commands
 
@@ -95,7 +108,7 @@ curl -X POST http://localhost:8000/api/v1/index/sync
 curl -X POST http://localhost:8000/api/v1/index/ingest
 curl -X POST http://localhost:8000/api/v1/index/build
 
-# RAG chat (Phase 6)
+# RAG chat (set AGENT_GRAPH_ENABLED=true in .env for LangGraph path)
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "What is tensile strength?"}'
@@ -110,13 +123,14 @@ curl -X POST http://localhost:8000/api/v1/chat \
 - [x] Index built (`failed: 0`)
 - [x] `CHAT_MODEL` wired in settings
 - [x] Re-sync after M4 for improved `folder_path` metadata
+- [ ] **Recommended:** `AGENT_GRAPH_ENABLED=true` in `.env` (restart API after change)
 
 ## Key Docs
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
 - [ROADMAP.md](ROADMAP.md) — all phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
-- [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) — Phase 8 log (in progress)
+- [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) — Phase 8 log (complete)
 - [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) — Phase 7 log (complete)
 - [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) — Phase 6 log (complete)
 - [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) — Phase 5 log (complete)

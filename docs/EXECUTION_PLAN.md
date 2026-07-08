@@ -202,7 +202,7 @@ test(backend): add health endpoint tests
 
 **Goal:** Agentic workflow with intent classification, retrieval routing, query rewrite, citation verification.
 
-**Status:** In progress. See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md).
+**Status:** Complete. See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md).
 
 **Milestones:**
 

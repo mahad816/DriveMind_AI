@@ -16,7 +16,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 5 | Chunking & Embeddings | Complete — see [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) |
 | 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
 | 7 | Hybrid Retrieval | Complete — see [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) |
-| 8 | LangGraph Agent | In progress — see [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) |
+| 8 | LangGraph Agent | Complete — see [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) |
 | 9 | Frontend Foundation | Not started |
 | 10 | Evaluation & Quality | Not started |
 | 11 | Documentation & Deployment | Not started |
@@ -263,16 +263,16 @@ test(backend): add health endpoint tests
 
 **Goal:** Agentic retrieval workflow replacing linear RAG.
 
-**Status:** In progress. See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md).
+**Status:** Complete. See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md).
 
-**Build:**
+**Delivered:**
 
 - LangGraph foundation (`DriveGraphState`, `QueryIntent`, `RetrievalPlan`, config flags)
-- Graph skeleton with stub nodes and runner
-- Intent classification + retrieval planning
+- Graph skeleton with runner (`build_drive_graph`, `run_drive_graph`)
+- Intent classification + retrieval planning (rule heuristics + LLM fallback)
 - Routed retrieval (selective retrievers per intent)
 - Rerank + evidence grading (reuse Phase 7)
-- Query rewrite loop with attempt cap
+- Query rewrite loop with `AGENT_MAX_REWRITE_ATTEMPTS` cap
 - Answer generation + citation verification
 - `RagService` integration behind `AGENT_GRAPH_ENABLED`
 
@@ -291,6 +291,9 @@ receive_question → classify_intent → plan_retrieval → route_retriever
 - `backend/app/agents/drive_graph/graph.py`
 - `backend/app/agents/drive_graph/nodes.py`
 - `backend/app/agents/drive_graph/runner.py`
+- `backend/app/services/rag_service.py` (feature-flag delegation)
+
+**Verification:** `ruff`, `mypy`, `basedpyright`, and **307** backend tests; live smoke confirmed grounded answers with citations on both graph and linear paths.
 
 ---
 

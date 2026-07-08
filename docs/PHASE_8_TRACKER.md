@@ -11,14 +11,15 @@ Replace the linear `RagService.ask()` flow with a LangGraph agentic workflow tha
 | Capability | Method | Status |
 |------------|--------|--------|
 | LangGraph foundation | `langgraph` dependency, `DriveGraphState`, `QueryIntent`, `RetrievalPlan` | Done (M1) |
-| Graph skeleton | `StateGraph` with stub nodes + runner | Pending (M2) |
-| Intent classification | Rule heuristics + structured LLM fallback | Pending (M3) |
-| Retrieval planning | Map intent → retriever subset + options | Pending (M3) |
-| Routed retrieval | Selective vector/keyword/metadata retrievers | Pending (M4) |
-| Rerank + grade | Reuse Phase 7 `weighted_fusion_rerank` + `grade_evidence` | Pending (M5) |
-| Query rewrite loop | LLM rewrite with `AGENT_MAX_REWRITE_ATTEMPTS` cap | Pending (M6) |
-| Answer + citations | Reuse `ChatService` + citation verification | Pending (M7) |
-| RAG integration | `AGENT_GRAPH_ENABLED` flag in `RagService` | Pending (M8) |
+| Graph skeleton | `StateGraph` with stub nodes + runner | Done (M2) |
+| Intent classification | Rule heuristics + structured LLM fallback | Done (M3) |
+| Retrieval planning | Map intent → retriever subset + options | Done (M3) |
+| Routed retrieval | Selective vector/keyword/metadata retrievers | Done (M4) |
+| Rerank + grade | Reuse Phase 7 `weighted_fusion_rerank` + `grade_evidence` | Done (M5) |
+| Query rewrite loop | LLM rewrite with `AGENT_MAX_REWRITE_ATTEMPTS` cap | Done (M6) |
+| Answer + citations | Reuse `ChatService` + citation verification | Done (M7) |
+| RAG integration | `AGENT_GRAPH_ENABLED` flag in `RagService` | Done (M8) |
+| Test coverage | Node + graph integration + RagService flag tests | Done (M9) |
 
 ## Explicitly Out of Scope (Phase 8)
 
@@ -40,9 +41,9 @@ Replace the linear `RagService.ask()` flow with a LangGraph agentic workflow tha
 
 ## Current Snapshot
 
-- **Phase status:** In progress
-- **Last completed milestone:** Milestone 1 (LangGraph foundation)
-- **Next milestone:** Milestone 2 — graph skeleton + runner
+- **Phase status:** Complete
+- **Last completed milestone:** Milestone 10 (verification + Phase 8 docs closure)
+- **Next phase:** Phase 9 — Frontend Foundation
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -51,22 +52,22 @@ Replace the linear `RagService.ask()` flow with a LangGraph agentic workflow tha
 - [x] **Step B — Qdrant running with indexed vectors**
 - [x] **Step C — OAuth connected and metadata synced at least once**
 - [x] **Step D — OpenAI API key in `.env`** (for end-to-end chat verification)
-- [ ] **Step E — After M1:** run `cd backend && uv sync` to install `langgraph`
-- [ ] **Step F — After M8:** set `AGENT_GRAPH_ENABLED=true` in `.env` and restart API
+- [x] **Step E — After M1:** run `cd backend && uv sync` to install `langgraph`
+- [ ] **Step F — Recommended:** set `AGENT_GRAPH_ENABLED=true` in `.env` and restart API
 
 ## Milestone Status
 
 - [x] Milestone 0 — Phase 8 tracker + docs alignment
 - [x] Milestone 1 — LangGraph dependency + drive graph state/types + config
-- [ ] Milestone 2 — Graph skeleton + runner
-- [ ] Milestone 3 — Intent classification + retrieval planning nodes
-- [ ] Milestone 4 — Route retriever + retrieve node
-- [ ] Milestone 5 — Rerank + grade evidence nodes
-- [ ] Milestone 6 — Query rewrite loop
-- [ ] Milestone 7 — Generate answer + verify citations + return
-- [ ] Milestone 8 — RagService integration behind feature flag
-- [ ] Milestone 9 — Agent node + graph integration tests
-- [ ] Milestone 10 — Verification + Phase 8 docs closure
+- [x] Milestone 2 — Graph skeleton + runner
+- [x] Milestone 3 — Intent classification + retrieval planning nodes
+- [x] Milestone 4 — Route retriever + retrieve node
+- [x] Milestone 5 — Rerank + grade evidence nodes
+- [x] Milestone 6 — Query rewrite loop
+- [x] Milestone 7 — Generate answer + verify citations + return
+- [x] Milestone 8 — RagService integration behind feature flag
+- [x] Milestone 9 — Agent node + graph integration tests
+- [x] Milestone 10 — Verification + Phase 8 docs closure
 
 ## Commit Plan
 
@@ -87,20 +88,20 @@ Replace the linear `RagService.ask()` flow with a LangGraph agentic workflow tha
 ```text
 backend/app/agents/drive_graph/
   __init__.py              # public exports
-  state.py                 # DriveGraphState + initial state factory (M1)
-  types.py                 # QueryIntent, RetrievalPlan (M1)
-  prompts.py               # intent + rewrite prompts (M3)
-  nodes.py                 # graph node functions (M3–M7)
-  graph.py                 # StateGraph wiring (M2)
-  runner.py                # async invoke helper (M2)
+  state.py                 # DriveGraphState + initial state factory
+  types.py                 # QueryIntent, RetrievalPlan
+  prompts.py               # intent + rewrite prompts
+  nodes.py                 # graph node functions
+  graph.py                 # StateGraph wiring + conditional edges
+  runner.py                # async invoke helper
 ```
 
 ## Configuration Targets (Phase 8)
 
-| Setting | Env var | Default |
-|---------|---------|---------|
-| Agent graph toggle | `AGENT_GRAPH_ENABLED` | `false` |
-| Max rewrite attempts | `AGENT_MAX_REWRITE_ATTEMPTS` | `2` |
+| Setting | Env var | Default | Recommended |
+|---------|---------|---------|-------------|
+| Agent graph toggle | `AGENT_GRAPH_ENABLED` | `false` | `true` (after smoke) |
+| Max rewrite attempts | `AGENT_MAX_REWRITE_ATTEMPTS` | `2` | `2` |
 
 ## Verification Commands
 
@@ -121,8 +122,9 @@ uv run pytest -q
 cd backend
 uv sync
 
-# After M8 (agent graph wired into chat)
-# Set AGENT_GRAPH_ENABLED=true in .env, restart API, then:
+# Enable LangGraph orchestration (recommended after M10 verification)
+# Add to .env: AGENT_GRAPH_ENABLED=true
+# Restart API, then smoke test:
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "What is tensile strength?"}'
@@ -134,5 +136,6 @@ curl -X POST http://localhost:8000/api/v1/chat \
 ## Notes
 
 - Phase 7 delivered hybrid retrieval; Phase 8 orchestrates it with LangGraph.
-- `AGENT_GRAPH_ENABLED` defaults to `false` until M8 smoke passes.
-- Phase 7 verification baseline: 271 tests, all static checks clean.
+- `AGENT_GRAPH_ENABLED` defaults to `false` in code; set `true` in `.env` to use the graph path.
+- Phase 7 verification baseline: 271 tests. Phase 8 closure: **307 tests** (+36), all static checks clean.
+- Live smoke (M10): both paths verified — Phase 7 linear (`AGENT_GRAPH_ENABLED=false`) and LangGraph agent (`AGENT_GRAPH_ENABLED=true`) return grounded answers with citations for indexed content.

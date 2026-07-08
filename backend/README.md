@@ -94,21 +94,25 @@ receive_question -> classify_intent -> plan_retrieval -> route_retriever
 
 ### Environment variables (Phase 8)
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `AGENT_GRAPH_ENABLED` | `false` | Toggle LangGraph orchestration inside `RagService` |
-| `AGENT_MAX_REWRITE_ATTEMPTS` | `2` | Max rewrite-query loop attempts before forcing answer path |
+| Variable | Default | Recommended | Purpose |
+|----------|---------|-------------|---------|
+| `AGENT_GRAPH_ENABLED` | `false` | `true` | Toggle LangGraph orchestration inside `RagService` |
+| `AGENT_MAX_REWRITE_ATTEMPTS` | `2` | `2` | Max rewrite-query loop attempts before forcing answer path |
+
+Set `AGENT_GRAPH_ENABLED=true` in `.env` and restart the API to use the LangGraph path. The Phase 7 linear path remains available when set to `false`.
 
 ### Manual operations tied to Phase 8
 
 ```bash
-# After wiring M8 and before smoke testing graph path:
-# 1) Set AGENT_GRAPH_ENABLED=true in .env
+# 1) Add to .env: AGENT_GRAPH_ENABLED=true
 # 2) Restart backend server
 # 3) Run chat smoke test
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"question":"What is tensile strength?"}'
+
+# Optional — confirm Phase 7 fallback still works
+# Set AGENT_GRAPH_ENABLED=false and repeat curl above
 ```
 
 ## System dependencies (Phase 4 image OCR)
