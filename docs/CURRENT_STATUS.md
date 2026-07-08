@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 9 — Frontend Foundation (M0–M9 complete; M10 docs closure in progress).
+**Last updated:** Phase 11 — Documentation & Deployment (docs complete).
 
 ## Completed Phases
 
@@ -17,7 +17,8 @@ Use this file to resume work in a new chat.
 | 6 | Complete | Vector RAG, chat API, source viewer |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
 | 8 | Complete | LangGraph agent — intent routing, rewrite loop, citation verify |
-| 9 | Near complete | Next.js UI — chat, files, indexing, settings, sources, chat history, polish |
+| 9 | Complete | Next.js UI — chat, files, indexing, settings, sources, chat history |
+| 11 | Complete (docs) | Setup, OAuth, indexing, retrieval, LangGraph, deployment guides |
 
 ## Phase 9 Summary (Frontend Foundation)
 
@@ -100,14 +101,12 @@ curl -X POST http://localhost:8000/api/v1/chat \
 
 ## Next Up
 
-- **Phase 9 M10:** Final verification + phase closure
-- **Phase 10:** Evaluation dashboard and retrieval quality metrics
-- **Phase 11:** Deployment docs and production hardening
+- **Phase 10:** Evaluation runner, question sets, retrieval metrics dashboard
+- **Optional:** Live deploy per [guides/DEPLOYMENT.md](guides/DEPLOYMENT.md)
 
 ## Key Docs
 
+- [Documentation Hub](README.md) — all guides
+- [Portfolio Overview](PORTFOLIO_OVERVIEW.md) — reviewer summary
 - [README.md](../README.md) — GitHub landing page
-- [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
-- [ROADMAP.md](ROADMAP.md) — all phases
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system design
-- [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) — Phase 9 log
+- [PHASE_11_TRACKER.md](PHASE_11_TRACKER.md) — Phase 11 log

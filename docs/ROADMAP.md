@@ -17,9 +17,9 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
 | 7 | Hybrid Retrieval | Complete — see [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) |
 | 8 | LangGraph Agent | Complete — see [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) |
-| 9 | Frontend Foundation | Near complete — see [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) |
+| 9 | Frontend Foundation | Complete — see [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) |
 | 10 | Evaluation & Quality | Not started |
-| 11 | Documentation & Deployment | Not started |
+| 11 | Documentation & Deployment | Complete (docs) — see [PHASE_11_TRACKER.md](PHASE_11_TRACKER.md) |
 
 ---
 
@@ -352,17 +352,20 @@ receive_question → classify_intent → plan_retrieval → route_retriever
 
 **Goal:** Portfolio-ready project.
 
-**Docs:**
+**Status:** Documentation complete. Live deployment optional.
 
-- Local setup guide
-- Google Drive OAuth setup
-- Indexing lifecycle
-- Retrieval strategy
-- LangGraph workflow
-- Evaluation methodology
-- Limitations and future roadmap
+**Docs:** See [docs/README.md](README.md) and [PHASE_11_TRACKER.md](PHASE_11_TRACKER.md).
 
-**Deployment:** Backend, frontend, PostgreSQL, Qdrant with proper secret management.
+- [x] Local setup guide
+- [x] Google Drive OAuth setup
+- [x] Indexing lifecycle
+- [x] Retrieval strategy
+- [x] LangGraph workflow
+- [x] Evaluation methodology
+- [x] Limitations and future roadmap
+- [x] Deployment guide (Vercel + backend split)
+- [x] Portfolio overview
+- [ ] Live production deploy (optional)
 
 ---
 

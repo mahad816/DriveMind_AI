@@ -41,9 +41,9 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 
 ## Current Snapshot
 
-- **Phase status:** Near complete
+- **Phase status:** Complete
 - **Last completed milestone:** Milestone 9 (polish, chat history, message actions, tests)
-- **Next milestone:** Milestone 10 — verification + docs closure
+- **Next milestone:** — (phase complete)
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -68,7 +68,7 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 - [x] Milestone 7 — Chat interface
 - [x] Milestone 8 — Source citation viewer
 - [x] Milestone 9 — Polish + frontend tests + chat history + message actions
-- [ ] Milestone 10 — Verification + Phase 9 docs closure
+- [x] Milestone 10 — Verification + Phase 9 docs closure
 
 ## Commit Plan
 

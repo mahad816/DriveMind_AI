@@ -17,7 +17,7 @@ Single-user MVP · read-only Drive access · grounded answers with sources
 | **Answers** | Generated only from retrieved chunks — with clickable source citations |
 | **Agent** | LangGraph workflow: intent routing → retrieval planning → rerank → evidence grading → rewrite loop → citation verify |
 | **UI** | Next.js app: chat, file browser, indexing pipeline, settings, source viewer |
-| **Status** | Phases 0–8 complete · Phase 9 (frontend) near complete · Phases 10–11 planned |
+| **Status** | Phases 0–8 complete · Phase 9 complete · Phase 11 docs complete · Phase 10 planned |
 
 ---
 
@@ -222,9 +222,9 @@ infra/           Docker Compose (Postgres + Qdrant)
 | 6 | Basic RAG API | Complete |
 | 7 | Hybrid Retrieval | Complete |
 | 8 | LangGraph Agent | Complete |
-| 9 | Frontend Foundation | Near complete |
+| 9 | Frontend Foundation | Complete |
 | 10 | Evaluation & Quality | Planned |
-| 11 | Documentation & Deployment | Planned |
+| 11 | Documentation & Deployment | Complete (docs) — see [PHASE_11_TRACKER.md](docs/PHASE_11_TRACKER.md) |
 
 Resume point for contributors: [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)
 
@@ -234,12 +234,18 @@ Resume point for contributors: [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)
 
 | Doc | Description |
 |-----|-------------|
+| [Documentation Hub](docs/README.md) | Index of all guides and reference docs |
+| [Portfolio Overview](docs/PORTFOLIO_OVERVIEW.md) | One-page summary for reviewers |
+| [Local Setup](docs/guides/SETUP.md) | Prerequisites and first run |
+| [Google OAuth](docs/guides/GOOGLE_OAUTH.md) | Drive connection setup |
+| [Indexing Lifecycle](docs/guides/INDEXING.md) | Sync → ingest → chunk → build |
+| [Retrieval Strategy](docs/guides/RETRIEVAL.md) | Hybrid search and query routing |
+| [LangGraph Workflow](docs/guides/LANGGRAPH.md) | Agent orchestration |
+| [Deployment](docs/guides/DEPLOYMENT.md) | Vercel + backend hosting |
 | [PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | Product vision, scope, principles |
-| [ROADMAP.md](docs/ROADMAP.md) | Phased execution plan |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and data flow |
 | [CURRENT_STATUS.md](docs/CURRENT_STATUS.md) | Latest progress and commands |
-| [GIT_WORKFLOW.md](docs/GIT_WORKFLOW.md) | Commit and branch discipline |
-| [PHASE_9_TRACKER.md](docs/PHASE_9_TRACKER.md) | Frontend phase log |
+| [Limitations & Future](docs/LIMITATIONS_AND_ROADMAP.md) | MVP scope and roadmap |
 
 ---
 

@@ -8,9 +8,9 @@ Detailed phase-by-phase execution plan. This document mirrors the approved Curso
 
 ## Current Starting Point
 
-Phases 0–8 are complete. Phase 9 (Next.js frontend) is near complete — chat, files, indexing, settings, sources, and chat history are implemented. Phases 10 (evaluation) and 11 (deployment) remain.
+Phases 0–9 and Phase 11 (documentation) are complete. Phase 10 (evaluation tooling) is next.
 
-Resume from [CURRENT_STATUS.md](CURRENT_STATUS.md) and [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md).
+Resume from [CURRENT_STATUS.md](CURRENT_STATUS.md) and [docs/README.md](README.md).
 
 ---
 
