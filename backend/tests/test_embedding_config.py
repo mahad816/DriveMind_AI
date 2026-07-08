@@ -44,10 +44,18 @@ def test_settings_qdrant_defaults() -> None:
 
 
 def test_settings_retrieval_defaults() -> None:
-    """Retrieval field defaults should match Phase 6 MVP tuning."""
+    """Retrieval defaults should match the Phase 7 hybrid baseline."""
     fields = Settings.model_fields
+    assert fields["hybrid_retrieval_enabled"].default is True
+    assert fields["retrieval_candidate_k"].default == 24
     assert fields["retrieval_top_k"].default == 8
     assert fields["retrieval_score_threshold"].default == 0.35
+    assert fields["hybrid_rrf_k"].default == 60
+    assert fields["hybrid_weight_vector"].default == 0.5
+    assert fields["hybrid_weight_keyword"].default == 0.3
+    assert fields["hybrid_weight_metadata"].default == 0.2
+    assert fields["evidence_min_fusion_score"].default == 0.15
+    assert fields["fts_language"].default == "english"
 
 
 def test_settings_chat_defaults() -> None:
@@ -62,10 +70,26 @@ def test_settings_accepts_custom_rag_env_values() -> None:
     settings = Settings(
         chat_model="gpt-4o",
         rag_max_context_chars=8000,
+        hybrid_retrieval_enabled=False,
+        retrieval_candidate_k=32,
         retrieval_top_k=12,
         retrieval_score_threshold=0.25,
+        hybrid_rrf_k=40,
+        hybrid_weight_vector=0.4,
+        hybrid_weight_keyword=0.4,
+        hybrid_weight_metadata=0.2,
+        evidence_min_fusion_score=0.2,
+        fts_language="simple",
     )
     assert settings.chat_model == "gpt-4o"
     assert settings.rag_max_context_chars == 8000
+    assert settings.hybrid_retrieval_enabled is False
+    assert settings.retrieval_candidate_k == 32
     assert settings.retrieval_top_k == 12
     assert settings.retrieval_score_threshold == 0.25
+    assert settings.hybrid_rrf_k == 40
+    assert settings.hybrid_weight_vector == 0.4
+    assert settings.hybrid_weight_keyword == 0.4
+    assert settings.hybrid_weight_metadata == 0.2
+    assert settings.evidence_min_fusion_score == 0.2
+    assert settings.fts_language == "simple"

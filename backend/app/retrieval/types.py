@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
+
+RetrievalSource = Literal["vector", "keyword", "metadata", "hybrid"]
 
 
 @dataclass(frozen=True)
 class RetrievedChunk:
-    """A chunk returned by retrieval with Postgres text and Qdrant score."""
+    """A chunk returned by retrieval with text and retrieval scores."""
 
     chunk_id: uuid.UUID
     document_id: uuid.UUID
@@ -20,3 +23,6 @@ class RetrievedChunk:
     chunk_index: int
     text: str
     score: float
+    primary_source: RetrievalSource = "vector"
+    source_scores: dict[RetrievalSource, float] = field(default_factory=dict)
+    fusion_score: float | None = None

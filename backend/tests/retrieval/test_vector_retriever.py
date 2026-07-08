@@ -65,6 +65,7 @@ def _chunk() -> Chunk:
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
+        retrieval_candidate_k=11,
         retrieval_top_k=5,
         retrieval_score_threshold=0.35,
     )
@@ -126,6 +127,9 @@ async def test_retrieve_returns_hydrated_chunks(
     assert results[0].filename == "notes.txt"
     assert results[0].text == "hello world chunk"
     assert results[0].score == 0.91
+    assert results[0].primary_source == "vector"
+    assert results[0].source_scores["vector"] == 0.91
+    assert results[0].fusion_score is None
     mock_embedding.embed_texts.assert_awaited_once_with(["What is in my notes?"])
     mock_vector_store.search_similar.assert_awaited_once()
 
@@ -211,6 +215,6 @@ async def test_retrieve_passes_retrieval_settings_to_vector_store(
     await retriever.retrieve("settings test")
 
     call_kwargs = mock_vector_store.search_similar.await_args.kwargs
-    assert call_kwargs["limit"] == 5
+    assert call_kwargs["limit"] == 11
     assert call_kwargs["score_threshold"] == 0.35
     assert call_kwargs["expected_vector_size"] == 1536

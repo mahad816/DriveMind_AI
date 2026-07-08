@@ -42,7 +42,7 @@ class VectorRetriever:
         query_vector = (await self.embedding_service.embed_texts([normalized]))[0]
         hits = await self.vector_store.search_similar(
             query_vector,
-            limit=self.settings.retrieval_top_k,
+            limit=self.settings.retrieval_candidate_k,
             score_threshold=self.settings.retrieval_score_threshold,
             expected_vector_size=self.embedding_service.embedding_dimension,
         )
@@ -73,6 +73,8 @@ class VectorRetriever:
                     chunk_index=chunk.chunk_index,
                     text=chunk.text,
                     score=score_by_id[chunk.id],
+                    primary_source="vector",
+                    source_scores={"vector": score_by_id[chunk.id]},
                 )
             )
         return retrieved

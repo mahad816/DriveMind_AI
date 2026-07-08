@@ -36,8 +36,16 @@ class Settings(BaseSettings):
     qdrant_collection: str = "drivemind_chunks"
     qdrant_upsert_batch_size: int = 100
 
+    hybrid_retrieval_enabled: bool = True
+    retrieval_candidate_k: int = 24
     retrieval_top_k: int = 8
     retrieval_score_threshold: float = 0.35
+    hybrid_rrf_k: int = 60
+    hybrid_weight_vector: float = 0.5
+    hybrid_weight_keyword: float = 0.3
+    hybrid_weight_metadata: float = 0.2
+    evidence_min_fusion_score: float = 0.15
+    fts_language: str = "english"
     rag_max_context_chars: int = 12000
 
     model_config = SettingsConfigDict(
