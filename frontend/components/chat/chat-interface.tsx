@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { ComposerDock } from "@/components/chat/composer-dock";
@@ -11,6 +11,12 @@ import { SourcePanel } from "@/components/chat/source-panel";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { useConversations } from "@/lib/hooks/use-conversations";
+import {
+  getConversationMessages,
+  saveConversationMessages,
+  type StoredChatMessage,
+} from "@/lib/conversations/messages";
+import { getConversation } from "@/lib/conversations/storage";
 import { isApiError } from "@/lib/api/errors";
 import { askQuestion } from "@/lib/api/chat";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
@@ -50,11 +56,69 @@ function titleFromQuestion(question: string): string {
   return `${trimmed.slice(0, 48)}…`;
 }
 
+function fromStoredMessage(stored: StoredChatMessage): ChatMessageState {
+  if (stored.status === "error") {
+    return {
+      id: stored.id,
+      question: stored.question,
+      status: "error",
+      error: stored.error ?? "Request failed",
+      response: null,
+    };
+  }
+
+  return {
+    id: stored.id,
+    question: stored.question,
+    status: "done",
+    error: null,
+    response: {
+      query_id: stored.id,
+      user_id: "",
+      answer: stored.answer ?? "",
+      citations: stored.citations,
+      retrieval_count: stored.retrievalCount,
+      message: stored.answer ?? "",
+    },
+  };
+}
+
+function toStoredMessages(messages: ChatMessageState[]): StoredChatMessage[] {
+  return messages.flatMap((message) => {
+    if (message.status === "loading") return [];
+    if (message.status === "error") {
+      return [
+        {
+          id: message.id,
+          question: message.question,
+          status: "error",
+          answer: null,
+          citations: [],
+          retrievalCount: 0,
+          error: message.error,
+        },
+      ];
+    }
+    return [
+      {
+        id: message.id,
+        question: message.question,
+        status: "done",
+        answer: message.response.answer,
+        citations: message.response.citations,
+        retrievalCount: message.response.retrieval_count,
+        error: null,
+      },
+    ];
+  });
+}
+
 type ChatInterfaceProps = {
   conversationId?: string;
 };
 
 export function ChatInterface({ conversationId }: ChatInterfaceProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { data: connection, error: connectionError, refetch } = useConnectionStatus({
     pollIntervalMs: 30_000,
@@ -72,11 +136,32 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessageState[]>([]);
+  const [messagesLoaded, setMessagesLoaded] = useState(!conversationId);
   const [isSending, setIsSending] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
   const [sourcePanelOpen, setSourcePanelOpen] = useState(false);
 
   const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const record = getConversation(conversationId);
+    if (!record) {
+      router.replace("/chat");
+      return;
+    }
+
+    const stored = getConversationMessages(conversationId);
+    setMessages(stored.map(fromStoredMessage));
+    titledRef.current = record.title !== "New conversation" || stored.length > 0;
+    setMessagesLoaded(true);
+  }, [conversationId, router]);
+
+  useEffect(() => {
+    if (!conversationId || !messagesLoaded) return;
+    saveConversationMessages(conversationId, toStoredMessages(messages));
+  }, [conversationId, messages, messagesLoaded]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

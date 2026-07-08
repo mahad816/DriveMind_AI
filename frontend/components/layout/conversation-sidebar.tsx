@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Files, MessageSquare, MessageSquarePlus } from "lucide-react";
 
+import { ConversationItem } from "@/components/layout/conversation-item";
 import { UtilityNavLink } from "@/components/layout/utility-nav-link";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useConversations } from "@/lib/hooks/use-conversations";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { utilityNavItems } from "@/lib/navigation";
-import { knowledgeStatusLabel } from "@/lib/user-language";
+import { chatCopy, knowledgeStatusLabel } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
 
 type ConversationSidebarProps = {
@@ -19,13 +22,17 @@ type ConversationSidebarProps = {
 export function ConversationSidebar({ className, onNavigate }: ConversationSidebarProps) {
   const router = useRouter();
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
+  const { groups, isLoading, startNewConversation, renameConversation, removeConversation } =
+    useConversations();
 
   const handleNewChat = () => {
+    const created = startNewConversation();
     onNavigate?.();
-    router.push("/chat");
+    router.push(`/chat/${created.id}`);
   };
 
   const showSetupChip = needsConnect || needsPrepare;
+  const hasChats = groups.some((g) => g.conversations.length > 0);
 
   return (
     <aside
@@ -36,7 +43,7 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
       aria-label="App navigation"
     >
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2.5 px-4">
+      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <MessageSquare className="size-4" />
         </div>
@@ -46,8 +53,7 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
         </div>
       </div>
 
-      <div className="flex flex-col gap-1 px-3 pb-3">
-        {/* New Chat CTA */}
+      <div className="flex shrink-0 flex-col gap-1 px-3 pb-3">
         <button
           type="button"
           onClick={handleNewChat}
@@ -60,8 +66,53 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
 
       <Separator />
 
-      {/* Primary nav — Files prominent */}
-      <nav className="flex flex-col gap-0.5 p-3" aria-label="Primary navigation">
+      {/* Chat history */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="px-3 pt-3 pb-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {chatCopy.recentChats}
+          </p>
+        </div>
+
+        <nav
+          className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+          aria-label="Recent conversations"
+        >
+          {isLoading ? (
+            <div className="space-y-2 px-1">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : hasChats ? (
+            groups.map((group) => (
+              <div key={group.label} className="mb-3">
+                <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  {group.label}
+                </p>
+                <div className="space-y-0.5">
+                  {group.conversations.map((conversation) => (
+                    <ConversationItem
+                      key={conversation.id}
+                      conversation={conversation}
+                      onNavigate={onNavigate}
+                      onRename={(id, title) => renameConversation(id, title)}
+                      onDelete={removeConversation}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="px-3 py-2 text-xs text-muted-foreground">{chatCopy.noChatsYet}</p>
+          )}
+        </nav>
+      </div>
+
+      <Separator />
+
+      {/* Primary + utility nav */}
+      <nav className="flex shrink-0 flex-col gap-0.5 p-3" aria-label="Primary navigation">
         <PrimaryNavLink
           href="/files"
           icon={Files}
@@ -71,10 +122,7 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
         />
       </nav>
 
-      <Separator />
-
-      {/* Utility nav */}
-      <nav className="flex flex-col gap-1 p-3" aria-label="Utility navigation">
+      <nav className="flex shrink-0 flex-col gap-1 px-3 pb-3" aria-label="Utility navigation">
         {utilityNavItems
           .filter((item) => item.href !== "/files")
           .map((item) => (
@@ -82,9 +130,8 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
           ))}
       </nav>
 
-      {/* Setup chip */}
       {showSetupChip ? (
-        <div className="mt-auto border-t border-sidebar-border p-3">
+        <div className="shrink-0 border-t border-sidebar-border p-3">
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs">
             <p className="font-medium text-foreground">
               {needsConnect ? "Connect Google Drive" : "Your assistant isn't ready yet"}
@@ -98,9 +145,7 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
             </Link>
           </div>
         </div>
-      ) : (
-        <div className="mt-auto border-t border-sidebar-border p-3 pb-4" />
-      )}
+      ) : null}
     </aside>
   );
 }

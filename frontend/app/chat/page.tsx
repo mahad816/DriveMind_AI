@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { ChatInterface } from "@/components/chat/chat-interface";
+import { NewChatRedirect } from "@/components/chat/new-chat-redirect";
 import { ConversationLayout } from "@/components/layout/conversation-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -17,7 +17,7 @@ export default function ChatPage() {
   return (
     <ConversationLayout>
       <Suspense fallback={<ChatLoadingFallback />}>
-        <ChatInterface />
+        <NewChatRedirect />
       </Suspense>
     </ConversationLayout>
   );

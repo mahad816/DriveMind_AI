@@ -5,6 +5,7 @@ import { ConversationItem } from "@/components/layout/conversation-item";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/chat",
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 describe("ConversationItem", () => {
@@ -17,6 +18,8 @@ describe("ConversationItem", () => {
           createdAt: "2026-07-08T10:00:00.000Z",
           updatedAt: "2026-07-08T11:00:00.000Z",
         }}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
       />,
     );
 

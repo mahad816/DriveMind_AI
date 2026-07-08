@@ -152,4 +152,6 @@ export const chatCopy = {
     "Connect your Google Drive and set up your assistant. It only takes a few minutes.",
   notReadyCta: "Set up my assistant",
   connectBody: "Connect Google Drive in Settings to get started.",
+  recentChats: "Chats",
+  noChatsYet: "No chats yet — start a new conversation.",
 } as const;

@@ -1,4 +1,5 @@
 import type { ConversationGroup, ConversationRecord } from "@/lib/conversations/types";
+import { deleteConversationMessages } from "@/lib/conversations/messages";
 
 const STORAGE_KEY = "drivemind:conversations";
 
@@ -103,6 +104,7 @@ export function touchConversation(id: string): void {
 }
 
 export function deleteConversation(id: string): void {
+  deleteConversationMessages(id);
   writeAll(readAll().filter((c) => c.id !== id));
 }
 
