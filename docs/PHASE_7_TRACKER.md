@@ -10,13 +10,13 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 
 | Capability | Method | Status |
 |------------|--------|--------|
-| Metadata retrieval | File-level filters and recency ranking over `drive_files` | Planned (M4) |
-| Keyword retrieval | PostgreSQL full-text search over `chunks` | Planned (M3) |
-| Vector retrieval | Qdrant semantic search candidate pool | Planned update (M1) |
-| Hybrid merge | Reciprocal rank fusion + dedupe by `chunk_id` | Planned (M5) |
-| Reranking | Weighted score fusion (no extra LLM call) | Planned (M6) |
-| Evidence grading | Threshold-based sufficient/insufficient decision | Planned (M7) |
-| RAG integration | `HybridRetriever` wired into `RagService` | Planned (M8) |
+| Metadata retrieval | File-level filters and recency ranking over `drive_files` | Done (M4) |
+| Keyword retrieval | PostgreSQL full-text search over `chunks` | Done (M3) |
+| Vector retrieval | Qdrant semantic search candidate pool | Done (M1 update) |
+| Hybrid merge | Reciprocal rank fusion + dedupe by `chunk_id` | Done (M5) |
+| Reranking | Weighted score fusion (no extra LLM call) | Done (M6) |
+| Evidence grading | Threshold-based sufficient/insufficient decision | Done (M7) |
+| RAG integration | `HybridRetriever` wired into `RagService` | Done (M8) |
 
 ## Explicitly Out of Scope (Phase 7)
 
@@ -38,9 +38,9 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 
 ## Current Snapshot
 
-- **Phase status:** In progress
-- **Last completed milestone:** Milestone 9 (retrieval and API test coverage)
-- **Next milestone:** Milestone 10 — verification + Phase 7 docs closure
+- **Phase status:** Complete
+- **Last completed milestone:** Milestone 10 (verification + Phase 7 docs closure)
+- **Next phase:** Phase 8 — LangGraph Agent
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -49,7 +49,7 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 - [x] **Step B — Qdrant running with indexed vectors**
 - [x] **Step C — OAuth connected and metadata synced at least once**
 - [x] **Step D — OpenAI API key in `.env`** (for end-to-end chat verification)
-- [ ] **Step E — Re-sync after M4** to populate improved `folder_path`
+- [x] **Step E — Re-sync after M4** to populate improved `folder_path`
 
 ## Milestone Status
 
@@ -63,7 +63,7 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 - [x] Milestone 7 — Evidence grader
 - [x] Milestone 8 — Hybrid retriever integration in `RagService`
 - [x] Milestone 9 — Retrieval and API test coverage
-- [ ] Milestone 10 — Verification + Phase 7 docs closure
+- [x] Milestone 10 — Verification + Phase 7 docs closure
 
 ## Commit Plan
 
@@ -140,3 +140,4 @@ curl -X POST http://localhost:8000/api/v1/chat \
 - Phase 6 already proved baseline RAG works (vector-only, grounded answers, citations).
 - Phase 7 focuses retrieval quality improvements only; API shape remains stable.
 - Phase 8 will add query rewrite loops and intent-based routing with LangGraph.
+- Phase 7 verification suite passed with 271 tests and all static checks clean.
