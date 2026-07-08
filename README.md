@@ -47,23 +47,210 @@ Single-user MVP · read-only Drive access · grounded answers with sources
 
 ---
 
-## Architecture
+## How it works
 
-```text
-Google Drive (read-only)
-        ↓
-Drive Connector → Ingestion → Chunking → Embeddings → Qdrant
-        ↓                        ↓
-   PostgreSQL  ←──────────  chunk text + metadata
-        ↓
-Hybrid Retrieval ←── LangGraph Agent ←── POST /chat
-        ↓
-   Next.js UI (chat · files · index · settings · sources)
+DriveMind has three main flows: **indexing** (Drive → searchable index), **query routing** (pick the right strategy), and **grounded answers** (retrieve evidence → cite sources).
+
+### System overview
+
+```mermaid
+flowchart TB
+    subgraph UserLayer [User]
+        U[Browser]
+    end
+
+    subgraph Frontend [Next.js Frontend]
+        Chat[Chat]
+        Files[Files Library]
+        IndexUI[Build Knowledge]
+        Settings[Settings]
+    end
+
+    subgraph Backend [FastAPI Backend]
+        API[REST API /api/v1]
+        RAG[RAG Service]
+        Agent[LangGraph Agent]
+        Retrieval[Hybrid Retrieval]
+        Ingest[Ingestion Pipeline]
+        DriveConn[Drive Connector]
+    end
+
+    subgraph Storage [Storage]
+        PG[(PostgreSQL)]
+        QD[(Qdrant)]
+    end
+
+    subgraph External [External APIs]
+        GD[Google Drive]
+        OAI[OpenAI]
+    end
+
+    U --> Chat & Files & IndexUI & Settings
+    Chat & Files & IndexUI & Settings --> API
+    API --> RAG
+    RAG --> Agent
+    RAG --> Retrieval
+    API --> Ingest
+    Ingest --> DriveConn
+    DriveConn --> GD
+    Ingest --> PG
+    Ingest --> QD
+    Ingest --> OAI
+    Retrieval --> PG
+    Retrieval --> QD
+    Agent --> OAI
+    RAG --> OAI
 ```
+
+> The frontend only calls the backend API. It never talks to Drive, Qdrant, or OpenAI directly.
+
+[Full architecture →](docs/ARCHITECTURE.md)
+
+---
+
+### 1. Indexing pipeline
+
+Turns Google Drive files into searchable chunks and vectors. Runs as background jobs; only **pending** files are processed on repeat runs.
+
+```mermaid
+flowchart LR
+    GD[Google Drive] --> Sync[SYNC<br/>metadata]
+    Sync --> Ingest[INGEST<br/>extract text]
+    Ingest --> Chunk[CHUNK<br/>split text]
+    Chunk --> Build[BUILD<br/>embed vectors]
+    Sync --> DF[(drive_files)]
+    Ingest --> Doc[(documents)]
+    Chunk --> Ch[(chunks)]
+    Build --> QD[(Qdrant)]
+    Build --> IDX[status: indexed]
+```
+
+| Stage | API | Output |
+|-------|-----|--------|
+| Sync | `POST /index/sync` | File metadata in PostgreSQL |
+| Ingest | `POST /index/ingest` | Extracted plain text (Docs, PDF, DOCX, TXT, OCR) |
+| Chunk | `POST /index/chunk` | Text segments with file metadata |
+| Build | `POST /index/build` | Embeddings in Qdrant; file marked **indexed** |
+
+```mermaid
+stateDiagram-v2
+    [*] --> discovered: New file from sync
+    discovered --> indexing: Ingest starts
+    indexing --> indexed: Build complete
+    indexed --> discovered: File edited in Drive
+    discovered --> failed: Extract error
+    failed --> indexing: Retry ingest
+    indexed --> skipped: Removed from Drive
+```
+
+[Indexing guide →](docs/guides/INDEXING.md)
+
+---
+
+### 2. Query routing
+
+Every question is classified before retrieval. This avoids using vector search for greetings, file counts, or named-file lookups.
+
+```mermaid
+flowchart TD
+    Q[User question] --> Router{classify_query}
+
+    Router -->|hi, thanks| Chitchat[CHITCHAT<br/>direct LLM]
+    Router -->|how many, list files| Inventory[FILE_INVENTORY<br/>SQL search]
+    Router -->|tell me about filename| Target[FILE_TARGET<br/>all chunks for file]
+    Router -->|everything else| RAG[GROUNDED_RAG<br/>hybrid retrieval]
+
+    Chitchat --> Ans[Answer]
+    Inventory --> Ans
+    Target --> Ans
+    RAG --> Ans
+
+    Ans --> Cit[Citations + source pills]
+```
+
+[Retrieval guide →](docs/guides/RETRIEVAL.md)
+
+---
+
+### 3. Hybrid retrieval
+
+For `GROUNDED_RAG` questions, three retrievers run in parallel. Results are merged, reranked, and graded before the LLM sees them.
+
+```mermaid
+flowchart TD
+    Q[Question] --> V[Vector Retriever<br/>Qdrant similarity]
+    Q --> K[Keyword Retriever<br/>PostgreSQL FTS]
+    Q --> M[Metadata Retriever<br/>dates, folders, MIME]
+
+    V --> Merge[RRF merge + dedupe]
+    K --> Merge
+    M --> Merge
+
+    Merge --> Rerank[Weighted fusion rerank<br/>filename-aware]
+    Rerank --> Grade[Evidence grading]
+    Grade --> Ctx[Top-K chunks to LLM]
+    Ctx --> LLM[Grounded answer + citations]
+```
+
+---
+
+### 4. LangGraph agent
+
+When `AGENT_GRAPH_ENABLED=true`, the `GROUNDED_RAG` path uses a LangGraph workflow with intent planning, selective retrievers, and a rewrite loop when evidence is weak.
+
+```mermaid
+flowchart TD
+    Start[receive_question] --> Intent[classify_intent]
+    Intent --> Plan[plan_retrieval]
+    Plan --> Route[route_retriever]
+    Route --> Ret[retrieve]
+    Ret --> Rerank[rerank]
+    Rerank --> Grade[grade_evidence]
+    Grade --> Enough{Enough evidence?}
+    Enough -->|No, retries left| Rewrite[rewrite_query]
+    Rewrite --> Ret
+    Enough -->|Yes or max retries| Gen[generate_answer]
+    Gen --> Verify[verify_citations]
+    Verify --> Done[return_response]
+```
+
+[LangGraph guide →](docs/guides/LANGGRAPH.md)
+
+---
+
+### 5. End-to-end chat flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Next.js Chat
+    participant API as FastAPI
+    participant RAG as RAG Service
+    participant DB as PostgreSQL / Qdrant
+    participant LLM as OpenAI
+
+    U->>UI: Ask question
+    UI->>API: POST /api/v1/chat
+    API->>RAG: classify + retrieve
+    RAG->>DB: Hybrid search chunks
+    DB-->>RAG: Ranked evidence
+    RAG->>LLM: Grounded prompt + chunks
+    LLM-->>RAG: Answer with refs
+    RAG-->>API: Answer + citations
+    API-->>UI: JSON response
+    UI-->>U: Markdown answer + source pills
+    U->>UI: Click source
+    UI->>API: GET /sources/chunk_id
+    API-->>UI: Full excerpt
+```
+
+---
+
+## Architecture (summary)
 
 **Rule:** The frontend talks only to the FastAPI backend. It never calls Google Drive, Qdrant, or the LLM directly.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for layer responsibilities, data model, and deployment topology.
 
 ---
 

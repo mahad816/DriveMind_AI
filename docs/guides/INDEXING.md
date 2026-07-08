@@ -6,15 +6,28 @@ How DriveMind moves files from Google Drive into a searchable knowledge index.
 
 ## Pipeline overview
 
-```text
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│   SYNC   │ →  │  INGEST  │ →  │  CHUNK   │ →  │  BUILD   │
-│ metadata │    │  extract │    │  split   │    │  embed   │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-     │               │               │               │
-     ▼               ▼               ▼               ▼
- drive_files     documents         chunks         Qdrant vectors
- (PostgreSQL)   (PostgreSQL)    (PostgreSQL)    + INDEXED status
+```mermaid
+flowchart LR
+    GD[Google Drive] --> Sync[SYNC]
+    Sync --> Ingest[INGEST]
+    Ingest --> Chunk[CHUNK]
+    Chunk --> Build[BUILD]
+    Sync --> DF[(drive_files)]
+    Ingest --> Doc[(documents)]
+    Chunk --> Ch[(chunks)]
+    Build --> QD[(Qdrant)]
+    Build --> IDX[indexed]
+```
+
+```mermaid
+stateDiagram-v2
+    [*] --> discovered: New or edited file
+    discovered --> indexing: Ingest starts
+    indexing --> indexed: Build complete
+    indexed --> discovered: Drive file modified
+    discovered --> failed: Extraction error
+    failed --> indexing: Retry on next ingest
+    indexed --> skipped: Removed from Drive
 ```
 
 Each stage is triggered by a `POST` endpoint and runs as a **background job**. Poll `GET /index/status` or `GET /index/pending` for progress.

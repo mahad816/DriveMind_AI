@@ -22,6 +22,20 @@ Professional documentation for setup, architecture, and portfolio presentation.
 | [Evaluation](guides/EVALUATION.md) | Quality methodology and planned metrics (Phase 10) |
 | [Deployment](guides/DEPLOYMENT.md) | Production topology, Vercel + backend hosting, secrets |
 
+## Diagrams (Mermaid)
+
+GitHub renders these automatically in markdown files.
+
+| Flow | Where to view |
+|------|----------------|
+| **System overview** | [README](../README.md#system-overview) |
+| **Indexing pipeline + file statuses** | [INDEXING](guides/INDEXING.md) |
+| **Query routing + hybrid retrieval** | [RETRIEVAL](guides/RETRIEVAL.md) |
+| **LangGraph agent loop** | [LANGGRAPH](guides/LANGGRAPH.md) |
+| **OAuth sequence** | [GOOGLE_OAUTH](guides/GOOGLE_OAUTH.md) |
+| **Deployment topology** | [DEPLOYMENT](guides/DEPLOYMENT.md) |
+| **Full architecture set** | [ARCHITECTURE](ARCHITECTURE.md) |
+
 ## Reference
 
 | Doc | Description |

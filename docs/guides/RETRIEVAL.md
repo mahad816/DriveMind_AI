@@ -21,13 +21,19 @@ Vector search alone fails on real Drive questions:
 
 `classify_query()` in `app/retrieval/query_router.py` assigns one of four routes **in priority order**:
 
-```text
-Question
-   │
-   ├─ CHITCHAT ────────────→ Direct LLM (no retrieval)
-   ├─ FILE_INVENTORY ──────→ SQL file search + inventory answer
-   ├─ FILE_TARGET ─────────→ Named-file chunk lookup
-   └─ GROUNDED_RAG ────────→ Hybrid retrieval (default)
+```mermaid
+flowchart TD
+    Q[User question] --> R{classify_query}
+
+    R -->|social / greeting| C[CHITCHAT]
+    R -->|how many, list, count| I[FILE_INVENTORY]
+    R -->|quoted filename| T[FILE_TARGET]
+    R -->|default| G[GROUNDED_RAG]
+
+    C --> D1[Direct LLM answer]
+    I --> D2[SQL file inventory]
+    T --> D3[All chunks for matched file]
+    G --> D4[Hybrid retrieval path]
 ```
 
 ### Route details
@@ -49,22 +55,18 @@ Quoted strings (`"Far611"`) bypass chitchat classification and prioritize file-t
 
 When `HYBRID_RETRIEVAL_ENABLED=true` (default):
 
-```text
-                    ┌─ VectorRetriever (Qdrant)
-Question ──────────►├─ KeywordRetriever (PostgreSQL FTS)
-                    └─ MetadataRetriever (SQL filters)
-                              │
-                              ▼
-                    reciprocal_rank_fusion_merge()
-                              │
-                              ▼
-                    weighted_fusion_rerank(question)
-                              │
-                              ▼
-                    grade_evidence()
-                              │
-                              ▼
-                         Top-K chunks
+```mermaid
+flowchart TD
+    Q[Question] --> V[Vector - Qdrant]
+    Q --> K[Keyword - PostgreSQL FTS]
+    Q --> M[Metadata - SQL filters]
+
+    V --> Merge[RRF merge]
+    K --> Merge
+    M --> Merge
+    Merge --> Rerank[Weighted rerank]
+    Rerank --> Grade[Evidence grade]
+    Grade --> Out[Top-K chunks]
 ```
 
 ### Three retrievers
