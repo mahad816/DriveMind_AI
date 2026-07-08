@@ -39,8 +39,8 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 2 (PostgreSQL FTS migration + chunk search-vector sync)
-- **Next milestone:** Milestone 3 — keyword retriever (`app/retrieval/keyword.py`)
+- **Last completed milestone:** Milestone 3 (keyword retriever)
+- **Next milestone:** Milestone 4 — metadata retriever + folder path population fix
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -56,7 +56,7 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 - [x] Milestone 0 — Phase 7 tracker + docs alignment
 - [x] Milestone 1 — Retrieval foundation (`retrieval` types/protocol + candidate pool config)
 - [x] Milestone 2 — PostgreSQL FTS migration + chunk search vector sync
-- [ ] Milestone 3 — Keyword retriever (`app/retrieval/keyword.py`)
+- [x] Milestone 3 — Keyword retriever (`app/retrieval/keyword.py`)
 - [ ] Milestone 4 — Metadata retriever + folder path population fix
 - [ ] Milestone 5 — Hybrid merge + dedupe (`RRF`)
 - [ ] Milestone 6 — Weighted fusion reranker
