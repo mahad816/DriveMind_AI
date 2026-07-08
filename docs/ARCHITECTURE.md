@@ -61,7 +61,8 @@ flowchart TD
 
 - Consumes backend REST API only
 - **Does not** talk directly to Google Drive, Qdrant, or LLM
-- Renders chat, indexing status, citations, and settings
+- Renders chat (with localStorage conversation history), files browser, indexing dashboard, citations, and settings
+- Next.js rewrite proxy: browser calls same-origin `/api/v1`; server forwards to FastAPI
 
 ### Backend API (FastAPI)
 

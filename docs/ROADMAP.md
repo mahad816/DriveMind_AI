@@ -17,7 +17,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
 | 7 | Hybrid Retrieval | Complete — see [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) |
 | 8 | LangGraph Agent | Complete — see [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) |
-| 9 | Frontend Foundation | In progress — see [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) |
+| 9 | Frontend Foundation | Near complete — see [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) |
 | 10 | Evaluation & Quality | Not started |
 | 11 | Documentation & Deployment | Not started |
 
@@ -301,17 +301,17 @@ receive_question → classify_intent → plan_retrieval → route_retriever
 
 **Goal:** Next.js UI after backend API is meaningful.
 
-**Status:** In progress. See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md).
+**Status:** Near complete. See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md).
 
 **Build:**
 
 - Next.js App Router + TypeScript + Tailwind + shadcn/ui
 - Typed API client with Next.js proxy (same-origin `/api/v1`)
-- App shell with sidebar navigation
+- App shell with sidebar navigation and chat history (localStorage)
 - Settings (Drive OAuth connection, theme)
-- Indexing dashboard (sync → ingest → chunk → build pipeline)
-- Files browser
-- Chat interface with citation cards
+- Indexing dashboard (sync → ingest → chunk → build pipeline, incremental)
+- Files browser with per-file prepare and ask-about-file
+- Chat interface with citations, copy/retry/regenerate, follow-ups, shortcuts
 - Source citation viewer
 
 **Milestones:**
@@ -327,10 +327,10 @@ receive_question → classify_intent → plan_retrieval → route_retriever
 | M6 | Files browser |
 | M7 | Chat interface |
 | M8 | Source citation viewer |
-| M9 | Polish + frontend tests |
+| M9 | Polish + chat history + message actions + frontend tests |
 | M10 | Verification + docs closure |
 
-**Explicitly deferred:** Evaluation dashboard (Phase 10), SSE streaming, multi-user auth UI.
+**Explicitly deferred:** Server-backed chat history, evaluation dashboard (Phase 10), SSE streaming, multi-user auth UI.
 
 ---
 

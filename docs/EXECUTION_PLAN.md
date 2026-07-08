@@ -8,7 +8,9 @@ Detailed phase-by-phase execution plan. This document mirrors the approved Curso
 
 ## Current Starting Point
 
-Repository foundation at `INFO_VAULT`. Backend and frontend are scaffolded with module structure only — no feature implementation yet.
+Phases 0–8 are complete. Phase 9 (Next.js frontend) is near complete — chat, files, indexing, settings, sources, and chat history are implemented. Phases 10 (evaluation) and 11 (deployment) remain.
+
+Resume from [CURRENT_STATUS.md](CURRENT_STATUS.md) and [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md).
 
 ---
 

@@ -84,7 +84,7 @@ Backend REST API for authentication, Google Drive integration, indexing, chat, s
 
 ### Next.js
 
-Frontend for chat interface, indexing dashboard, source viewer, settings, and evaluation dashboard.
+Frontend for chat interface (history, citations, message actions), files browser, indexing dashboard, source viewer, settings, and onboarding. Evaluation dashboard is Phase 10.
 
 ### PostgreSQL
 

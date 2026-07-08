@@ -14,18 +14,19 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 | API client + proxy | Typed `lib/api/`, Next.js rewrites to backend | Done (M2) |
 | App shell | Sidebar nav, connection banner, responsive layout | Done (M3) |
 | Settings page | Drive OAuth connect, theme toggle | Done (M4) |
-| Indexing dashboard | Pipeline stepper, job status, file stats | Done (M5) |
-| Files browser | Table, filters, per-file re-ingest | Done (M6) |
+| Indexing dashboard | Pipeline stepper, job status, incremental prepare | Done (M5) |
+| Files browser | Table, filters, per-file prepare, ask-about-file | Done (M6) |
 | Chat interface | Composer, markdown answers, citation cards | Done (M7) |
 | Source viewer | `/sources/[chunkId]` citation drill-down | Done (M8) |
-| Polish + tests | Error/empty states, vitest coverage | Pending (M9) |
+| Polish + tests | Chat history, actions, shortcuts, vitest | Done (M9) |
+| Verification + docs | README, CURRENT_STATUS, phase closure | In progress (M10) |
 
 ## Explicitly Out of Scope (Phase 9)
 
 | Item | Reason |
 |------|--------|
+| **Server-backed chat history** | MVP uses browser `localStorage`; API later |
 | **Evaluation dashboard** | Phase 10 |
-| **Chat history / threads** | No `GET /chat/history` API yet |
 | **SSE streaming answers** | Post-MVP |
 | **Multi-user auth UI** | Post-MVP single-user MVP |
 | **In-app file binary preview** | Optional later |
@@ -40,9 +41,9 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 
 ## Current Snapshot
 
-- **Phase status:** In progress
-- **Last completed milestone:** Milestone 8 (Source viewer — `/sources/[chunkId]`)
-- **Next milestone:** Milestone 9 — Polish + frontend tests
+- **Phase status:** Near complete
+- **Last completed milestone:** Milestone 9 (polish, chat history, message actions, tests)
+- **Next milestone:** Milestone 10 — verification + docs closure
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -51,9 +52,9 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 - [x] **Step B — Qdrant running with indexed vectors**
 - [x] **Step C — OAuth connected and metadata synced at least once**
 - [x] **Step D — OpenAI API key in `.env`**
-- [ ] **Step E — After M1:** run `cd frontend && npm install`
-- [ ] **Step F — After M2:** add `FRONTEND_URL=http://localhost:3000` to `.env`, restart API
-- [ ] **Step G — After M3+:** run `cd frontend && npm run dev` alongside backend
+- [x] **Step E —** `cd frontend && npm install`
+- [x] **Step F —** `FRONTEND_URL=http://localhost:3000` in `.env`, restart API
+- [x] **Step G —** `cd frontend && npm run dev` alongside backend
 
 ## Milestone Status
 
@@ -66,7 +67,7 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 - [x] Milestone 6 — Files browser
 - [x] Milestone 7 — Chat interface
 - [x] Milestone 8 — Source citation viewer
-- [ ] Milestone 9 — Polish + frontend tests
+- [x] Milestone 9 — Polish + frontend tests + chat history + message actions
 - [ ] Milestone 10 — Verification + Phase 9 docs closure
 
 ## Commit Plan
@@ -80,8 +81,10 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 7. `feat(frontend): add drive files browser page`
 8. `feat(frontend): add chat interface with citations`
 9. `feat(frontend): add source citation viewer page`
-10. `test(frontend): add component and api client coverage`
-11. `docs(frontend): complete phase 9 frontend foundation`
+10. `feat(chat): sidebar history with rename, delete, and message persistence`
+11. `feat(chat): add copy, retry, regenerate, shortcuts, and chat search`
+12. `test(frontend): add component and api client coverage`
+13. `docs(frontend): complete phase 9 frontend foundation`
 
 ## Target Module Layout
 
@@ -92,21 +95,24 @@ frontend/
     page.tsx                   # redirect → /chat
     globals.css
     chat/page.tsx
+    chat/[id]/page.tsx
     index/page.tsx
     files/page.tsx
     settings/page.tsx
     sources/[chunkId]/page.tsx
   components/
-    layout/                    # app-sidebar, connection-banner, page-header
-    chat/                      # composer, answer, citation cards
-    index/                     # pipeline stepper, stats
-    files/                     # files table, status badges
+    layout/                    # sidebar, conversation-item, app-shell
+    chat/                      # composer, answers, citations, follow-ups
+    knowledge/                 # prepare flow, diagnostics
+    files/                     # files table, preview panel
     sources/                   # source content viewer
     ui/                        # shadcn primitives
   lib/
     api/                       # client, types, domain modules
-    hooks/                     # use-connection-status
-    utils.ts
+    chat/                      # clipboard, follow-ups, source labels
+    conversations/             # localStorage history + titles
+    hooks/                     # connection, knowledge, conversations, shortcuts
+    knowledge/                   # prepare pipeline client logic
 ```
 
 ## Configuration Targets (Phase 9)
@@ -125,30 +131,23 @@ cd frontend
 npm install
 npm run lint
 npm run build
-npm test          # after M9
-```
+npm test
 
-Backend regression (when M2 touches auth):
-
-```bash
-cd backend && uv run pytest -q
+cd ../backend
+uv run pytest -q
 ```
 
 ## Manual Commands Across Phase 9
 
 ```bash
-# After M1
-cd frontend && npm install
-
 # Daily dev (two terminals)
-cd backend && uv run uvicorn app.main:app --reload
+cd backend && uv run uvicorn app.main:app --reload --port 8000
 cd frontend && npm run dev
 
-# After M2 — OAuth smoke
-# Add FRONTEND_URL=http://localhost:3000 to .env, restart backend
+# OAuth smoke
 # Open http://localhost:3000/settings → Connect Google Drive
 
-# After M7 — Chat smoke
+# Chat smoke
 curl -X POST http://localhost:3000/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"question": "What is tensile strength?"}'
@@ -157,6 +156,6 @@ curl -X POST http://localhost:3000/api/v1/chat \
 ## Notes
 
 - Phase 8 delivered LangGraph agent behind `AGENT_GRAPH_ENABLED`; frontend uses same `POST /chat` contract.
-- Backend baseline: 307 tests, 14 endpoints under `/api/v1`.
+- Chat history persists in browser `localStorage` (not server-backed).
+- Incremental indexing: setup skips unchanged files; full-scan retry available on setup errors.
 - Design aesthetic: refined productivity (Linear/Vercel-style), zinc palette, minimal motion.
-- API wiring is M2; M1 delivers runnable scaffold with rewrite stub in `next.config.ts`.
