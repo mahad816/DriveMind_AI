@@ -1,6 +1,7 @@
 """Hybrid retrieval: metadata, keyword, vector, merge, rerank."""
 
 from app.retrieval.base import Retriever
+from app.retrieval.grade import EvidenceGrade, grade_evidence
 from app.retrieval.keyword import KeywordRetriever
 from app.retrieval.metadata import MetadataRetriever
 from app.retrieval.merge import reciprocal_rank_fusion_merge
@@ -17,4 +18,6 @@ __all__ = [
     "MetadataRetriever",
     "reciprocal_rank_fusion_merge",
     "weighted_fusion_rerank",
+    "EvidenceGrade",
+    "grade_evidence",
 ]
