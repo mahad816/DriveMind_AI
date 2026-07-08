@@ -45,11 +45,13 @@ class RagResult:
 class RagService:
     """Orchestrate retrieval, grounded answer generation, and query history.
 
-    Processing priority for the linear (non-agent-graph) path:
+    Query routing applies to ALL execution paths (linear and LangGraph agent):
 
-    1. CHITCHAT   → generate_direct_answer(), no retrieval, no citations.
-    2. FILE_INVENTORY → FileInventoryRetriever, structured context, no chunk citations.
-    3. GROUNDED_RAG   → hybrid/vector retrieval, grounded answer, citation hygiene.
+    1. CHITCHAT       → generate_direct_answer(), no retrieval, no citations.
+    2. FILE_INVENTORY → FileInventoryRetriever SQL path, no chunk retrieval, no citations.
+    3. GROUNDED_RAG   → hybrid/vector retrieval then grounded answer.
+                        Uses LangGraph agent when agent_graph_enabled=True,
+                        otherwise the linear path.
     """
 
     def __init__(
@@ -92,8 +94,10 @@ class RagService:
     ) -> RagResult:
         """Answer a question and persist query history.
 
-        Routes through CHITCHAT → FILE_INVENTORY → GROUNDED_RAG before any
-        retrieval work is done.
+        Routing runs first regardless of agent_graph_enabled:
+          CHITCHAT       → direct reply, no retrieval, no sources shown.
+          FILE_INVENTORY → SQL file search, no chunk retrieval, no sources shown.
+          GROUNDED_RAG   → hybrid retrieval (LangGraph or linear).
         """
         normalized_question = question.strip()
         if not normalized_question:
@@ -101,33 +105,7 @@ class RagService:
 
         user = await self._resolve_user(user_id)
 
-        # ── LangGraph agent path (routing not applied here yet) ──────────────
-        if self.settings.agent_graph_enabled:
-            from app.agents.drive_graph.runner import run_drive_graph
-
-            graph_result = await run_drive_graph(
-                self.db,
-                self.settings,
-                question=normalized_question,
-                user_id=user.id,
-                chat_service=self.chat_service,
-            )
-            query_id = await self._persist_query_history(
-                user_id=user.id,
-                question=graph_result.question,
-                answer=graph_result.answer,
-                citations=graph_result.citations,
-            )
-            return RagResult(
-                query_id=query_id,
-                user_id=user.id,
-                question=graph_result.question,
-                answer=graph_result.answer,
-                citations=graph_result.citations,
-                retrieval_count=graph_result.retrieval_count,
-            )
-
-        # ── Linear path with query routing ────────────────────────────────────
+        # ── Route first — applies to ALL execution paths ──────────────────────
         route = classify_query(normalized_question)
 
         # ── 1. Chitchat bypass ────────────────────────────────────────────────
@@ -171,7 +149,33 @@ class RagService:
                 retrieval_count=inv_result.total_count,
             )
 
-        # ── 3. Grounded RAG path ──────────────────────────────────────────────
+        # ── 3. Grounded RAG — LangGraph agent path ────────────────────────────
+        if self.settings.agent_graph_enabled:
+            from app.agents.drive_graph.runner import run_drive_graph
+
+            graph_result = await run_drive_graph(
+                self.db,
+                self.settings,
+                question=normalized_question,
+                user_id=user.id,
+                chat_service=self.chat_service,
+            )
+            query_id = await self._persist_query_history(
+                user_id=user.id,
+                question=graph_result.question,
+                answer=graph_result.answer,
+                citations=graph_result.citations,
+            )
+            return RagResult(
+                query_id=query_id,
+                user_id=user.id,
+                question=graph_result.question,
+                answer=graph_result.answer,
+                citations=graph_result.citations,
+                retrieval_count=graph_result.retrieval_count,
+            )
+
+        # ── 4. Grounded RAG — linear path ─────────────────────────────────────
         if self.settings.hybrid_retrieval_enabled and isinstance(self.retriever, HybridRetriever):
             evidence = await self.retriever.retrieve_with_grade(normalized_question)
             retrieved = evidence.chunks
@@ -193,7 +197,6 @@ class RagService:
                 max_context_chars=self.settings.rag_max_context_chars,
             )
             all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
-            # Only keep citations the LLM actually referenced with [N] markers.
             citations = cast(
                 list[CitationItem],
                 filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]

@@ -29,6 +29,31 @@ _FILENAME_EXT_RE = re.compile(
 # FTS matches so FTS hits still win when they overlap.
 _FILENAME_ONLY_SCORE = 0.4
 
+# ── Phrase search constants ────────────────────────────────────────────────────
+
+# Minimum character length for a phrase to trigger phrase-level ILIKE search.
+_MIN_PHRASE_LEN = 10
+
+# Score assigned to phrase-matched chunks.  High enough to beat stopword-heavy
+# FTS scores for long exact-phrase queries (evidence_min_fusion_score is 0.15).
+_PHRASE_SCORE = 0.6
+
+# Extracts a quoted phrase of at least MIN_PHRASE_LEN chars.
+# e.g. `'which file has "Connects to a user\'s Google Drive"'`
+_QUOTED_PHRASE_RE = re.compile(r'"([^"]{10,})"')
+
+# Extracts a phrase that follows a semantic cue such as "this line:", "which file has:"
+_PHRASE_CUE_RE = re.compile(
+    r"\b(?:"
+    r"this (?:exact )?(?:line|text|sentence|phrase|passage|quote)|"
+    r"which (?:file )?(?:has|contains?)|"
+    r"find (?:the )?(?:file )?(?:that )?(?:has|contains?)|"
+    r"find where it says?|"
+    r"file that (?:has|contains?)"
+    r")\s*[:\-]?\s+(.{10,})",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 @dataclass(frozen=True)
 class KeywordHit:
@@ -39,7 +64,7 @@ class KeywordHit:
 
 
 class KeywordRetriever:
-    """Retrieve chunks using PostgreSQL full-text search and filename matches."""
+    """Retrieve chunks using PostgreSQL full-text search, filename matches, and phrase search."""
 
     def __init__(self, db: AsyncSession, settings: Settings | None = None) -> None:
         self.db = db
@@ -87,18 +112,21 @@ class KeywordRetriever:
         return retrieved
 
     async def _search_hits(self, question: str) -> list[KeywordHit]:
-        """Return scored hits by merging FTS results with optional filename-only results.
+        """Return scored hits by merging FTS, filename-only, and phrase-search results.
 
-        Two paths run when a strong filename signal is detected:
-        - FTS path: standard ``search_vector @@ ts_query`` ranking.
-        - Filename-only path: ``DriveFile.name ILIKE %term%`` without any FTS
-          requirement, so chunks from the named file are always included even
-          when their body text doesn't produce FTS matches.
+        Three paths:
+        - **FTS path**: ``search_vector @@ ts_query`` ranking via ``websearch_to_tsquery``.
+        - **Filename-only path**: ``DriveFile.name ILIKE %term%`` — activated when the
+          question names a file with an extension.
+        - **Phrase-search path**: ``Chunk.text ILIKE '%exact phrase%'`` — activated when
+          the question contains a quoted phrase or a phrase-cue prefix.  Scores at
+          ``_PHRASE_SCORE`` (0.6) so long phrases win even when FTS fails due to stopwords.
         """
         ts_query = self._ts_query(question)
         has_filename = self._has_filename_signal(question)
+        phrase = self._extract_phrase(question)
 
-        if ts_query is None and not has_filename:
+        if ts_query is None and not has_filename and phrase is None:
             return []
 
         hits_by_id: dict[uuid.UUID, KeywordHit] = {}
@@ -111,7 +139,13 @@ class KeywordRetriever:
         # Filename-only path — supplement FTS with chunks from explicitly named files
         if has_filename:
             for hit in await self._filename_only_hits(question):
-                # Keep the higher of the two scores if the chunk also appeared in FTS.
+                existing = hits_by_id.get(hit.chunk_id)
+                if existing is None or hit.score > existing.score:
+                    hits_by_id[hit.chunk_id] = hit
+
+        # Phrase-search path — exact substring match on chunk text
+        if phrase is not None:
+            for hit in await self._phrase_hits(phrase):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
@@ -148,8 +182,6 @@ class KeywordRetriever:
 
         Used when the user mentions a file by name (e.g. ``Resume_2024.pdf``).
         No full-text search is required — only the filename ILIKE filter is applied.
-        Chunks are returned in ``chunk_index`` order so the most context-relevant
-        text from the named file comes first.
         """
         query_terms = self._query_terms(question)
         if not query_terms:
@@ -170,6 +202,60 @@ class KeywordRetriever:
             for row in result
             if isinstance(row[0], uuid.UUID)
         ]
+
+    async def _phrase_hits(self, phrase: str) -> list[KeywordHit]:
+        """Return chunks whose text contains the exact phrase via ILIKE substring match.
+
+        Handles apostrophes and special characters safely via SQLAlchemy parameterised
+        binding.  ILIKE wildcards (% and _) present in the phrase are escaped so they
+        are treated as literals.
+
+        Args:
+            phrase: The raw (un-escaped) phrase extracted from the user question.
+        """
+        # Escape ILIKE wildcard characters within the phrase literal.
+        escaped = phrase.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+        result = await self.db.execute(
+            select(Chunk.id)
+            .where(Chunk.text.ilike(f"%{escaped}%", escape="\\"))
+            .order_by(Chunk.chunk_index.asc())
+            .limit(self.settings.retrieval_candidate_k)
+        )
+
+        return [
+            KeywordHit(chunk_id=row[0], score=_PHRASE_SCORE)
+            for row in result
+            if isinstance(row[0], uuid.UUID)
+        ]
+
+    @staticmethod
+    def _extract_phrase(question: str) -> str | None:
+        """Extract an exact phrase from a quoted string or after a phrase-cue word.
+
+        Returns the raw phrase (not SQL-escaped) or ``None`` if no phrase is found.
+
+        Priority:
+        1. Quoted text: ``"Connects to a user's Google Drive"``
+        2. After a cue: ``this line: Connects to a user's Google Drive``
+        """
+        # Priority 1: quoted phrase
+        m = _QUOTED_PHRASE_RE.search(question)
+        if m:
+            phrase = m.group(1).strip()
+            if len(phrase) >= _MIN_PHRASE_LEN:
+                return phrase
+
+        # Priority 2: phrase after a semantic cue
+        m = _PHRASE_CUE_RE.search(question)
+        if m:
+            phrase = m.group(1).strip()
+            # Trim trailing punctuation / question marks
+            phrase = re.sub(r"[?.!]+$", "", phrase).strip()
+            if len(phrase) >= _MIN_PHRASE_LEN:
+                return phrase
+
+        return None
 
     @staticmethod
     def _has_filename_signal(question: str) -> bool:

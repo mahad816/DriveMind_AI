@@ -234,3 +234,140 @@ async def test_fts_score_kept_when_higher_than_filename_score(
 
     assert len(results) == 1
     assert results[0].score == high_fts_score  # FTS score preserved, not overwritten
+
+
+# ── Phrase search (Phase D) ────────────────────────────────────────────────────
+
+def test_extract_phrase_from_quoted_text() -> None:
+    """Quoted phrase of 10+ chars should be extracted."""
+    phrase = KeywordRetriever._extract_phrase(
+        'which file contains "Connects to a user\'s Google Drive"?'
+    )
+    assert phrase == "Connects to a user's Google Drive"
+
+
+def test_extract_phrase_from_cue_this_line() -> None:
+    phrase = KeywordRetriever._extract_phrase(
+        "which file has this line: Connects to a user's Google Drive and stores metadata"
+    )
+    assert phrase is not None
+    assert "Connects to a user" in phrase
+
+
+def test_extract_phrase_from_cue_which_file_contains() -> None:
+    phrase = KeywordRetriever._extract_phrase(
+        "which file contains: The system uses LangGraph for orchestration"
+    )
+    assert phrase is not None
+    assert "LangGraph" in phrase
+
+
+def test_extract_phrase_returns_none_for_short_quote() -> None:
+    """Quotes shorter than 10 chars must not trigger phrase search."""
+    # "hello" is 5 chars — well below the 10-char minimum
+    phrase = KeywordRetriever._extract_phrase('"hello"')
+    assert phrase is None
+
+
+def test_extract_phrase_returns_none_for_normal_query() -> None:
+    """Regular questions without quotes or cues return None."""
+    assert KeywordRetriever._extract_phrase("What is tensile strength?") is None
+    assert KeywordRetriever._extract_phrase("Find my latest resume") is None
+    assert KeywordRetriever._extract_phrase("Summarize my documents") is None
+
+
+@pytest.mark.asyncio
+async def test_phrase_search_runs_when_quoted_phrase_detected(
+    mock_db: AsyncMock,
+    settings: Settings,
+) -> None:
+    """Long quoted phrase triggers phrase-search path (db.execute called twice)."""
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            [(CHUNK_ID, 0.3)],   # FTS path returns a low-score hit
+            [(CHUNK_ID,)],       # phrase path returns same chunk (score 0.6 wins)
+        ]
+    )
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[_chunk()]))
+    )
+
+    results = await retriever.retrieve(
+        'Which file contains "Connects to a user\'s Google Drive and stores file metadata"?'
+    )
+
+    # FTS + phrase → 2 execute calls
+    assert mock_db.execute.await_count == 2
+    # Phrase score (0.6) wins over FTS score (0.3)
+    assert len(results) == 1
+    assert results[0].score == pytest.approx(0.6)
+
+
+@pytest.mark.asyncio
+async def test_phrase_search_finds_chunk_when_fts_empty(
+    mock_db: AsyncMock,
+    settings: Settings,
+) -> None:
+    """Phrase search must surface a chunk even when FTS returns nothing."""
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            [],                  # FTS → empty (stopwords dominate long phrase)
+            [(CHUNK_ID,)],       # phrase ILIKE → found
+        ]
+    )
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[_chunk()]))
+    )
+
+    results = await retriever.retrieve(
+        '"Connects to a user\'s Google Drive and stores file metadata in PostgreSQL"'
+    )
+
+    assert len(results) == 1
+    assert results[0].chunk_id == CHUNK_ID
+    assert results[0].score == pytest.approx(0.6)
+
+
+@pytest.mark.asyncio
+async def test_phrase_search_not_triggered_without_quotes_or_cue(
+    mock_db: AsyncMock,
+    settings: Settings,
+) -> None:
+    """Normal questions without a phrase should only trigger FTS (1 execute call)."""
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    mock_db.execute = AsyncMock(return_value=[])
+
+    await retriever.retrieve("What is tensile strength?")
+
+    assert mock_db.execute.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_phrase_score_beats_fts_score_for_exact_phrase(
+    mock_db: AsyncMock,
+    settings: Settings,
+) -> None:
+    """Phrase hits get _PHRASE_SCORE (0.6); FTS hits get whatever ts_rank_cd returns."""
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    low_fts_score = 0.1
+
+    mock_db.execute = AsyncMock(
+        side_effect=[
+            [(CHUNK_ID, low_fts_score)],   # FTS: low score
+            [(CHUNK_ID,)],                  # phrase: same chunk, score 0.6
+        ]
+    )
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[_chunk()]))
+    )
+
+    results = await retriever.retrieve(
+        'find "this is a very specific sentence that appears verbatim in one document"'
+    )
+
+    # Phrase score (0.6) replaces the lower FTS score
+    assert results[0].score == pytest.approx(0.6)

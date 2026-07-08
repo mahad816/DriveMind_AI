@@ -657,3 +657,119 @@ async def test_grounded_rag_no_citations_when_llm_uses_no_brackets(
     result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
     assert result.citations == []
+
+
+# ── Phase A: routing applies before agent_graph_enabled ───────────────────────
+
+@pytest.mark.asyncio
+async def test_ask_chitchat_bypasses_graph_when_agent_enabled(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With agent_graph_enabled=True, chitchat must NOT reach run_drive_graph."""
+    mock_chat.generate_direct_answer = AsyncMock(return_value="Hello! How can I help?")
+
+    graph_call_count = 0
+
+    async def fail_if_graph_called(*args: object, **kwargs: object) -> object:
+        nonlocal graph_call_count
+        graph_call_count += 1
+        raise AssertionError("run_drive_graph must not be called for chitchat")
+
+    monkeypatch.setattr(
+        "app.agents.drive_graph.runner.run_drive_graph",
+        fail_if_graph_called,
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            agent_graph_enabled=True,
+            hybrid_retrieval_enabled=False,
+            rag_max_context_chars=12000,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("hi", user_id=USER_ID)
+
+    assert graph_call_count == 0, "run_drive_graph was called for chitchat"
+    assert result.citations == []
+    assert result.retrieval_count == 0
+    mock_chat.generate_direct_answer.assert_awaited_once_with("hi")
+    mock_retriever.retrieve.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ask_file_inventory_bypasses_graph_when_agent_enabled(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With agent_graph_enabled=True, file inventory questions must NOT reach run_drive_graph."""
+    from app.retrieval.file_inventory import InventoryResult
+
+    mock_chat.generate_inventory_answer = AsyncMock(
+        return_value="Found 2 resume files. Latest: Resume_2024.pdf."
+    )
+
+    fake_inv_result = InventoryResult(
+        search_terms=["resume"],
+        total_count=2,
+        files=[],
+        latest_file=None,
+    )
+
+    async def fake_search(self: object, question: str) -> InventoryResult:
+        return fake_inv_result
+
+    monkeypatch.setattr(
+        "app.retrieval.file_inventory.FileInventoryRetriever.search",
+        fake_search,
+    )
+
+    graph_call_count = 0
+
+    async def fail_if_graph_called(*args: object, **kwargs: object) -> object:
+        nonlocal graph_call_count
+        graph_call_count += 1
+        raise AssertionError("run_drive_graph must not be called for file inventory")
+
+    monkeypatch.setattr(
+        "app.agents.drive_graph.runner.run_drive_graph",
+        fail_if_graph_called,
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            agent_graph_enabled=True,
+            hybrid_retrieval_enabled=False,
+            rag_max_context_chars=12000,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("find all my resume files", user_id=USER_ID)
+
+    assert graph_call_count == 0, "run_drive_graph was called for file inventory"
+    assert result.citations == []
+    mock_chat.generate_inventory_answer.assert_awaited_once()
+    mock_retriever.retrieve.assert_not_awaited()

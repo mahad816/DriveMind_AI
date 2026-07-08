@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
 from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
-from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.llm.prompts import NO_EVIDENCE_ANSWER, filter_citations_to_answer
 from app.llm.prompts import format_citation_snippet, select_prompt_chunks
 from app.retrieval.base import Retriever
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
@@ -228,7 +228,12 @@ def make_generate_answer_node(
             ranked,
             max_context_chars=settings.rag_max_context_chars,
         )
-        citations = [build_citation(chunk) for chunk in prompt_chunks]
+        all_citations = [build_citation(chunk) for chunk in prompt_chunks]
+        # Only include citations the LLM actually referenced with [N] markers.
+        citations = cast(
+            list[CitationItem],
+            filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]
+        )
         return {"answer": answer, "citations": citations}
 
     return _generate_answer

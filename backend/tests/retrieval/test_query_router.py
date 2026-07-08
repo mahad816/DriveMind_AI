@@ -141,3 +141,24 @@ def test_find_latest_resume_is_file_inventory() -> None:
 
 def test_find_latest_cv_is_file_inventory() -> None:
     assert classify_query("What is my most recent CV?") is QueryRoute.FILE_INVENTORY
+
+
+# ── General file-count queries (Phase B) ───────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "list total number of files",
+        "how many files do I have",
+        "how many files do I have indexed",
+        "count all files",
+        "what is the total number of files",
+        "how many files are there",
+        "list all my files",
+        "show all my files",
+        "all my files",
+    ],
+)
+def test_general_file_count_routes_to_file_inventory(question: str) -> None:
+    """Global file count / listing should route to FILE_INVENTORY (no domain term needed)."""
+    assert classify_query(question) is QueryRoute.FILE_INVENTORY
