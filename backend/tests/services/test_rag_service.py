@@ -8,10 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.core.config import Settings
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
 from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
 from app.services.rag_service import RagService
 
@@ -78,7 +80,7 @@ def service(
 ) -> RagService:
     return RagService(
         db=mock_db,
-        settings=MagicMock(rag_max_context_chars=12000),
+        settings=MagicMock(rag_max_context_chars=12000, hybrid_retrieval_enabled=False),
         retriever=mock_retriever,
         chat_service=mock_chat,
     )
@@ -234,3 +236,48 @@ async def test_ask_uses_filename_when_chunk_text_is_blank(
 
     assert len(result.citations) == 1
     assert result.citations[0].snippet == "notes.txt"
+
+
+def test_service_uses_hybrid_retriever_when_enabled(mock_db: AsyncMock) -> None:
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=True),
+        chat_service=AsyncMock(),
+    )
+    assert isinstance(service.retriever, HybridRetriever)
+
+
+@pytest.mark.asyncio
+async def test_ask_uses_evidence_grading_path_when_retriever_supports_it(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    graded_retriever = HybridRetriever(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=True),
+        vector_retriever=AsyncMock(),
+        keyword_retriever=AsyncMock(),
+        metadata_retriever=AsyncMock(),
+    )
+    graded_retriever.retrieve_with_grade = AsyncMock(  # type: ignore[method-assign]
+        return_value=MagicMock(chunks=[]),
+    )
+    service = RagService(
+        db=mock_db,
+        settings=MagicMock(rag_max_context_chars=12000, hybrid_retrieval_enabled=True),
+        retriever=graded_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What is tensile strength?")
+
+    assert result.answer == NO_EVIDENCE_ANSWER
+    graded_retriever.retrieve_with_grade.assert_awaited_once_with("What is tensile strength?")
+    mock_chat.generate_grounded_answer.assert_not_awaited()

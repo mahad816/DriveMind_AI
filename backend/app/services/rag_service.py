@@ -19,6 +19,8 @@ from app.llm.prompts import (
     format_citation_snippet,
     select_prompt_chunks,
 )
+from app.retrieval.base import Retriever
+from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.vector import VectorRetriever
 from app.schemas.query import CitationItem
@@ -44,12 +46,17 @@ class RagService:
         db: AsyncSession,
         settings: Settings | None = None,
         *,
-        retriever: VectorRetriever | None = None,
+        retriever: Retriever | None = None,
         chat_service: ChatService | None = None,
     ) -> None:
         self.db = db
         self.settings = settings or get_settings()
-        self.retriever = retriever or VectorRetriever(db, self.settings)
+        if retriever is not None:
+            self.retriever = retriever
+        elif self.settings.hybrid_retrieval_enabled:
+            self.retriever = HybridRetriever(db, self.settings)
+        else:
+            self.retriever = VectorRetriever(db, self.settings)
         self.chat_service = chat_service or get_chat_service(self.settings)
 
     async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
@@ -78,7 +85,11 @@ class RagService:
             raise ValueError("Question must not be empty")
 
         user = await self._resolve_user(user_id)
-        retrieved = await self.retriever.retrieve(normalized_question)
+        if self.settings.hybrid_retrieval_enabled and isinstance(self.retriever, HybridRetriever):
+            evidence = await self.retriever.retrieve_with_grade(normalized_question)
+            retrieved = evidence.chunks
+        else:
+            retrieved = await self.retriever.retrieve(normalized_question)
 
         if not retrieved:
             answer = NO_EVIDENCE_ANSWER
