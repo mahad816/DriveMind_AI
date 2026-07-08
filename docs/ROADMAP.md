@@ -16,7 +16,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 5 | Chunking & Embeddings | Complete — see [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) |
 | 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
 | 7 | Hybrid Retrieval | Complete — see [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) |
-| 8 | LangGraph Agent | Not started |
+| 8 | LangGraph Agent | In progress — see [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) |
 | 9 | Frontend Foundation | Not started |
 | 10 | Evaluation & Quality | Not started |
 | 11 | Documentation & Deployment | Not started |
@@ -263,35 +263,34 @@ test(backend): add health endpoint tests
 
 **Goal:** Agentic retrieval workflow replacing linear RAG.
 
+**Status:** In progress. See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md).
+
+**Build:**
+
+- LangGraph foundation (`DriveGraphState`, `QueryIntent`, `RetrievalPlan`, config flags)
+- Graph skeleton with stub nodes and runner
+- Intent classification + retrieval planning
+- Routed retrieval (selective retrievers per intent)
+- Rerank + evidence grading (reuse Phase 7)
+- Query rewrite loop with attempt cap
+- Answer generation + citation verification
+- `RagService` integration behind `AGENT_GRAPH_ENABLED`
+
 **Graph nodes:**
 
 ```
-receive_question
-    ↓
-classify_intent
-    ↓
-plan_retrieval
-    ↓
-route_retriever
-    ↓
-retrieve → rerank → grade_evidence
-    ↓
-Enough? ──No──→ rewrite_query → retrieve_again
-    │
-   Yes
-    ↓
-generate_answer
-    ↓
-verify_citations
-    ↓
-return_response
+receive_question → classify_intent → plan_retrieval → route_retriever
+→ retrieve → rerank → grade_evidence
+→ (rewrite_query loop) → generate_answer → verify_citations → return_response
 ```
 
 **Key files:**
 
 - `backend/app/agents/drive_graph/state.py`
+- `backend/app/agents/drive_graph/types.py`
 - `backend/app/agents/drive_graph/graph.py`
 - `backend/app/agents/drive_graph/nodes.py`
+- `backend/app/agents/drive_graph/runner.py`
 
 ---
 

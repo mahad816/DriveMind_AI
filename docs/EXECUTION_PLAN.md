@@ -171,7 +171,7 @@ test(backend): add health endpoint tests
 
 **Goal:** Metadata + keyword + vector + merge + rerank + evidence grading.
 
-**Status:** In progress. See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md).
+**Status:** Complete. See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md).
 
 **Milestones:**
 
@@ -202,13 +202,33 @@ test(backend): add health endpoint tests
 
 **Goal:** Agentic workflow with intent classification, retrieval routing, query rewrite, citation verification.
 
+**Status:** In progress. See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md).
+
+**Milestones:**
+
+| # | Deliverable |
+|---|-------------|
+| M0 | Tracker + docs alignment |
+| M1 | LangGraph dependency + `DriveGraphState` + types + config |
+| M2 | Graph skeleton + runner |
+| M3 | Intent classification + retrieval planning nodes |
+| M4 | Route retriever + retrieve node |
+| M5 | Rerank + grade evidence nodes |
+| M6 | Query rewrite loop |
+| M7 | Generate answer + verify citations + return |
+| M8 | RagService integration behind `AGENT_GRAPH_ENABLED` |
+| M9 | Agent node + graph integration tests |
+| M10 | Verification + docs closure |
+
 **Nodes:** receive_question → classify_intent → plan_retrieval → route_retriever → retrieve → rerank → grade_evidence → (rewrite_query loop) → generate_answer → verify_citations → return_response
 
 **Files:**
 
 - `backend/app/agents/drive_graph/state.py`
+- `backend/app/agents/drive_graph/types.py`
 - `backend/app/agents/drive_graph/graph.py`
 - `backend/app/agents/drive_graph/nodes.py`
+- `backend/app/agents/drive_graph/runner.py`
 
 ---
 

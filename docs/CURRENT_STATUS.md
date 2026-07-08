@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 7 complete (Hybrid Retrieval). Phase 8 next.
+**Last updated:** Phase 8 in progress (LangGraph Agent). M0–M1 complete.
 
 ## Completed Phases
 
@@ -16,6 +16,7 @@ Use this file to resume work in a new chat.
 | 5 | Complete | Chunking, embeddings, Qdrant vector index, build API |
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
+| 8 | In progress | LangGraph agent — M0–M1 complete (foundation) |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -59,13 +60,23 @@ See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) for milestone-by-milestone progress
 
 **Verification:** full suite passed (`ruff`, `mypy`, `basedpyright`, `pytest`) with 271 tests.
 
-## What's Next
+## Phase 8 Summary (LangGraph Agent) — In Progress
 
-**Phase 8 — LangGraph Agent** — intent classification, retrieval routing, query rewrite loop, and citation verification.
+See [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) for milestone-by-milestone progress.
+
+| Capability | Module | Status |
+|------------|--------|--------|
+| LangGraph dependency | `backend/pyproject.toml` | Done (M1) |
+| Drive graph state | `app/agents/drive_graph/state.py` | Done (M1) |
+| Intent + retrieval types | `app/agents/drive_graph/types.py` | Done (M1) |
+| Agent config flags | `app/core/config.py` | Done (M1) |
+| Graph skeleton + runner | `app/agents/drive_graph/graph.py` | Pending (M2) |
+
+**Next milestone:** M2 — graph skeleton + runner.
 
 Say in a new chat (if needed):
 
-> Continue DriveMind AI Phase 8 from `docs/ROADMAP.md` — LangGraph agent.
+> Continue DriveMind AI Phase 8 from `docs/PHASE_8_TRACKER.md` — Milestone 2.
 
 ## Quick Commands
 
@@ -105,6 +116,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
 - [ROADMAP.md](ROADMAP.md) — all phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
+- [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) — Phase 8 log (in progress)
 - [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) — Phase 7 log (complete)
 - [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) — Phase 6 log (complete)
 - [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) — Phase 5 log (complete)
