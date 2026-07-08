@@ -34,8 +34,15 @@ def _metadata(
     name: str = "doc.pdf",
     mime: str = "application/pdf",
     modified: str = "2026-07-07T10:00:00.000Z",
+    parents: list[str] | None = None,
 ) -> DriveFileMetadata:
-    return DriveFileMetadata(id=file_id, name=name, mime_type=mime, modified_time=modified)
+    return DriveFileMetadata(
+        id=file_id,
+        name=name,
+        mime_type=mime,
+        modified_time=modified,
+        parents=parents or [],
+    )
 
 
 @pytest.fixture
@@ -58,17 +65,46 @@ def test_parse_drive_timestamp_handles_z_suffix(service: DriveSyncService) -> No
     assert parsed.year == 2026
 
 
+def test_resolve_folder_path_returns_nested_path(service: DriveSyncService) -> None:
+    metadata = _metadata(parents=["folder-b"])
+    folder_lookup = {
+        "folder-a": DriveFileMetadata(
+            id="folder-a",
+            name="RootFolder",
+            mime_type="application/vnd.google-apps.folder",
+            parents=[],
+        ),
+        "folder-b": DriveFileMetadata(
+            id="folder-b",
+            name="ChildFolder",
+            mime_type="application/vnd.google-apps.folder",
+            parents=["folder-a"],
+        ),
+    }
+
+    folder_path = service._resolve_folder_path(metadata, folder_lookup)
+    assert folder_path == "/RootFolder/ChildFolder"
+
+
+def test_resolve_folder_path_returns_none_when_unknown_parent(
+    service: DriveSyncService,
+) -> None:
+    metadata = _metadata(parents=["missing-parent"])
+    assert service._resolve_folder_path(metadata, {}) is None
+
+
 @pytest.mark.asyncio
 async def test_upsert_file_creates_new_row(service: DriveSyncService, mock_db: AsyncMock) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
 
-    outcome = await service._upsert_file(USER_ID, _metadata())
+    outcome = await service._upsert_file(USER_ID, _metadata(), folder_path="/Course")
 
     assert outcome == "created"
     mock_db.add.assert_called_once()
     added = mock_db.add.call_args[0][0]
     assert isinstance(added, DriveFile)
     assert added.drive_file_id == "file-1"
+    assert added.folder_path == "/Course"
     assert added.status == DriveFileStatus.DISCOVERED
 
 
@@ -88,10 +124,11 @@ async def test_upsert_file_updates_when_metadata_changed(
     )
     mock_db.scalar = AsyncMock(return_value=existing)
 
-    outcome = await service._upsert_file(USER_ID, _metadata(name="new.pdf"))
+    outcome = await service._upsert_file(USER_ID, _metadata(name="new.pdf"), folder_path="/Updated")
 
     assert outcome == "updated"
     assert existing.name == "new.pdf"
+    assert existing.folder_path == "/Updated"
 
 
 @pytest.mark.asyncio
@@ -111,7 +148,7 @@ async def test_upsert_file_unchanged_when_metadata_matches(
     )
     mock_db.scalar = AsyncMock(return_value=existing)
 
-    outcome = await service._upsert_file(USER_ID, _metadata())
+    outcome = await service._upsert_file(USER_ID, _metadata(), folder_path=None)
 
     assert outcome == "unchanged"
 
@@ -140,11 +177,18 @@ async def test_sync_metadata_full_mode_success(
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, None])
     mock_db.get = AsyncMock(return_value=USER)
 
-    async def always_create(_user_id: uuid.UUID, _meta: DriveFileMetadata) -> str:
+    async def always_create(
+        _user_id: uuid.UUID,
+        _meta: DriveFileMetadata,
+        *,
+        folder_path: str | None,
+    ) -> str:
+        _ = folder_path
         return "created"
 
     with (
         patch.object(service, "_build_drive_client", return_value=mock_client),
+        patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_upsert_file", side_effect=always_create),
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as mock_save_state,
     ):
@@ -184,6 +228,7 @@ async def test_sync_metadata_incremental_applies_changes(
         patch.object(service, "_build_drive_client", return_value=mock_client),
         patch.object(service, "_mark_file_removed", new_callable=AsyncMock, return_value=1),
         patch.object(service, "_upsert_file", new_callable=AsyncMock, return_value="updated"),
+        patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as mock_save_state,
     ):
         result = await service.sync_metadata()
@@ -210,6 +255,7 @@ async def test_sync_metadata_force_full_even_with_sync_state(
 
     with (
         patch.object(service, "_build_drive_client", return_value=mock_client),
+        patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_save_sync_state", new_callable=AsyncMock),
     ):
         result = await service.sync_metadata(full=True)
@@ -273,7 +319,7 @@ async def test_upsert_file_restores_skipped_file(
     )
     mock_db.scalar = AsyncMock(return_value=existing)
 
-    outcome = await service._upsert_file(USER_ID, _metadata())
+    outcome = await service._upsert_file(USER_ID, _metadata(), folder_path=None)
 
     assert outcome == "updated"
     assert existing.status == DriveFileStatus.DISCOVERED

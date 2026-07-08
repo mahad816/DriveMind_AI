@@ -2,6 +2,7 @@
 
 from app.retrieval.base import Retriever
 from app.retrieval.keyword import KeywordRetriever
+from app.retrieval.metadata import MetadataRetriever
 from app.retrieval.types import RetrievalSource, RetrievedChunk
 from app.retrieval.vector import VectorRetriever
 
@@ -11,4 +12,5 @@ __all__ = [
     "RetrievalSource",
     "VectorRetriever",
     "KeywordRetriever",
+    "MetadataRetriever",
 ]

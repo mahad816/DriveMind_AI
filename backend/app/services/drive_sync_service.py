@@ -19,7 +19,7 @@ from app.connectors.google_drive.client import (
     GoogleDriveClient,
     TokenPersister,
 )
-from app.connectors.google_drive.constants import is_supported_mime_type
+from app.connectors.google_drive.constants import GOOGLE_FOLDER_MIME, is_supported_mime_type
 from app.core.config import Settings, get_settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.drive_file import DriveFile
@@ -138,10 +138,59 @@ class DriveSyncService:
         token_row.token_expiry = latest.token_expiry
         token_row.scopes = latest.scopes
 
+    @staticmethod
+    def _folder_query() -> str:
+        return f"mimeType = '{GOOGLE_FOLDER_MIME}' and trashed = false"
+
+    def _build_folder_lookup(
+        self,
+        client: GoogleDriveClient,
+    ) -> dict[str, DriveFileMetadata]:
+        folders = client.list_files(
+            query=self._folder_query(),
+            supported_only=False,
+        )
+        return {folder.id: folder for folder in folders if folder.id}
+
+    def _resolve_folder_path(
+        self,
+        metadata: DriveFileMetadata,
+        folder_lookup: dict[str, DriveFileMetadata],
+    ) -> str | None:
+        if not metadata.parents:
+            return None
+        first_parent = metadata.parents[0]
+        parts = self._folder_parts(first_parent, folder_lookup, set())
+        if not parts:
+            return None
+        return "/" + "/".join(parts)
+
+    def _folder_parts(
+        self,
+        folder_id: str,
+        folder_lookup: dict[str, DriveFileMetadata],
+        visited: set[str],
+    ) -> list[str]:
+        if folder_id in visited:
+            return []
+        visited.add(folder_id)
+        folder = folder_lookup.get(folder_id)
+        if folder is None:
+            return []
+        parent_parts: list[str] = []
+        if folder.parents:
+            parent_parts = self._folder_parts(folder.parents[0], folder_lookup, visited)
+        current = folder.name.strip()
+        if current:
+            return [*parent_parts, current]
+        return parent_parts
+
     async def _upsert_file(
         self,
         user_id: uuid.UUID,
         metadata: DriveFileMetadata,
+        *,
+        folder_path: str | None,
     ) -> str:
         """Insert or update a drive_files row. Returns 'created', 'updated', or 'unchanged'."""
         existing = await self.db.scalar(
@@ -156,7 +205,7 @@ class DriveSyncService:
                     drive_file_id=metadata.id,
                     name=metadata.name,
                     mime_type=metadata.mime_type,
-                    folder_path=None,
+                    folder_path=folder_path,
                     modified_at=modified_at,
                     status=DriveFileStatus.DISCOVERED,
                 )
@@ -166,6 +215,7 @@ class DriveSyncService:
         changed = (
             existing.name != metadata.name
             or existing.mime_type != metadata.mime_type
+            or existing.folder_path != folder_path
             or existing.modified_at != modified_at
             or existing.status == DriveFileStatus.SKIPPED
         )
@@ -174,6 +224,7 @@ class DriveSyncService:
 
         existing.name = metadata.name
         existing.mime_type = metadata.mime_type
+        existing.folder_path = folder_path
         existing.modified_at = modified_at
         if existing.status == DriveFileStatus.SKIPPED:
             existing.status = DriveFileStatus.DISCOVERED
@@ -198,8 +249,10 @@ class DriveSyncService:
         self,
         user_id: uuid.UUID,
         metadata: DriveFileMetadata,
+        *,
+        folder_path: str | None,
     ) -> tuple[int, int, int]:
-        outcome = await self._upsert_file(user_id, metadata)
+        outcome = await self._upsert_file(user_id, metadata, folder_path=folder_path)
         if outcome == "created":
             return 1, 0, 0
         if outcome == "updated":
@@ -211,10 +264,16 @@ class DriveSyncService:
         user: User,
         client: GoogleDriveClient,
     ) -> tuple[int, int, int, int]:
+        folder_lookup = await asyncio.to_thread(self._build_folder_lookup, client)
         drive_files = await asyncio.to_thread(client.list_files, supported_only=True)
         created = updated = unchanged = 0
         for metadata in drive_files:
-            c, u, n = await self._apply_metadata(user.id, metadata)
+            folder_path = self._resolve_folder_path(metadata, folder_lookup)
+            c, u, n = await self._apply_metadata(
+                user.id,
+                metadata,
+                folder_path=folder_path,
+            )
             created += c
             updated += u
             unchanged += n
@@ -229,6 +288,7 @@ class DriveSyncService:
         client: GoogleDriveClient,
         sync_state: DriveSyncState,
     ) -> tuple[int, int, int, int]:
+        folder_lookup = await asyncio.to_thread(self._build_folder_lookup, client)
         changes, new_token = await asyncio.to_thread(
             client.list_changes,
             sync_state.changes_page_token,
@@ -240,7 +300,12 @@ class DriveSyncService:
                 continue
             if not is_supported_mime_type(change.file.mime_type):
                 continue
-            c, u, n = await self._apply_metadata(user.id, change.file)
+            folder_path = self._resolve_folder_path(change.file, folder_lookup)
+            c, u, n = await self._apply_metadata(
+                user.id,
+                change.file,
+                folder_path=folder_path,
+            )
             created += c
             updated += u
             unchanged += n
