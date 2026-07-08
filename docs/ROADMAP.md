@@ -17,7 +17,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
 | 7 | Hybrid Retrieval | Complete — see [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) |
 | 8 | LangGraph Agent | Complete — see [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) |
-| 9 | Frontend Foundation | Not started |
+| 9 | Frontend Foundation | In progress — see [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) |
 | 10 | Evaluation & Quality | Not started |
 | 11 | Documentation & Deployment | Not started |
 
@@ -301,13 +301,36 @@ receive_question → classify_intent → plan_retrieval → route_retriever
 
 **Goal:** Next.js UI after backend API is meaningful.
 
-**Pages:**
+**Status:** In progress. See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md).
 
-- Chat interface
-- Indexing dashboard
-- Source/citation viewer
-- Settings (Drive connection, model config)
-- Evaluation dashboard (later)
+**Build:**
+
+- Next.js App Router + TypeScript + Tailwind + shadcn/ui
+- Typed API client with Next.js proxy (same-origin `/api/v1`)
+- App shell with sidebar navigation
+- Settings (Drive OAuth connection, theme)
+- Indexing dashboard (sync → ingest → chunk → build pipeline)
+- Files browser
+- Chat interface with citation cards
+- Source citation viewer
+
+**Milestones:**
+
+| # | Deliverable |
+|---|-------------|
+| M0 | Tracker + docs alignment |
+| M1 | Next.js scaffold + design system |
+| M2 | API client + proxy + OAuth redirect |
+| M3 | App shell + navigation |
+| M4 | Settings page |
+| M5 | Indexing dashboard |
+| M6 | Files browser |
+| M7 | Chat interface |
+| M8 | Source citation viewer |
+| M9 | Polish + frontend tests |
+| M10 | Verification + docs closure |
+
+**Explicitly deferred:** Evaluation dashboard (Phase 10), SSE streaming, multi-user auth UI.
 
 ---
 

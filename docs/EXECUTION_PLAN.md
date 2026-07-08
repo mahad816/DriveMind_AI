@@ -236,6 +236,32 @@ test(backend): add health endpoint tests
 
 **Goal:** Next.js chat, indexing dashboard, source viewer, settings.
 
+**Status:** In progress. See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md).
+
+**Milestones:**
+
+| # | Deliverable |
+|---|-------------|
+| M0 | Tracker + docs alignment |
+| M1 | Next.js scaffold + Tailwind + shadcn/ui |
+| M2 | Typed API client + Next.js proxy + OAuth redirect |
+| M3 | App shell + sidebar navigation |
+| M4 | Settings page (Drive connect, theme) |
+| M5 | Indexing dashboard (pipeline stepper) |
+| M6 | Files browser |
+| M7 | Chat interface with citations |
+| M8 | Source citation viewer |
+| M9 | Polish + vitest coverage |
+| M10 | Verification + docs closure |
+
+**Pages:** `/chat`, `/index`, `/files`, `/settings`, `/sources/[chunkId]`
+
+**Files:**
+
+- `frontend/app/` — App Router pages
+- `frontend/components/` — layout, chat, index, files, ui
+- `frontend/lib/api/` — typed API client (M2+)
+
 ---
 
 ## Phase 10: Evaluation And Quality

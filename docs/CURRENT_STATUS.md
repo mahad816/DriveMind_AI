@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 8 complete (LangGraph Agent). M0–M10 done.
+**Last updated:** Phase 9 in progress (Frontend Foundation). M0–M1 complete.
 
 ## Completed Phases
 
@@ -17,6 +17,7 @@ Use this file to resume work in a new chat.
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
 | 8 | Complete | LangGraph agent — intent routing, rewrite loop, citation verify |
+| 9 | In progress | Next.js frontend — M0–M1 complete (scaffold) |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -85,11 +86,21 @@ receive_question → classify_intent → plan_retrieval → route_retriever
 
 **Verification:** 307 tests passing (+36 from Phase 7 baseline); live smoke confirmed grounded answers with citations on both graph and linear paths.
 
-**Next phase:** Phase 9 — Frontend Foundation.
+**Next phase:** Phase 9 — Frontend Foundation (in progress).
+
+See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) for milestone-by-milestone progress.
+
+| Capability | Module | Status |
+|------------|--------|--------|
+| Next.js scaffold | `frontend/app/`, `components/ui/` | Done (M1) |
+| API client + proxy | `frontend/lib/api/` | Pending (M2) |
+| App shell + pages | `frontend/components/layout/` | Pending (M3+) |
+
+**Next milestone:** M2 — typed API client and OAuth redirect wiring.
 
 Say in a new chat (if needed):
 
-> Continue DriveMind AI Phase 9 from `docs/ROADMAP.md` — Frontend Foundation.
+> Continue DriveMind AI Phase 9 from `docs/PHASE_9_TRACKER.md` — Milestone 2.
 
 ## Quick Commands
 
@@ -130,7 +141,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
 - [ROADMAP.md](ROADMAP.md) — all phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
-- [PHASE_8_TRACKER.md](PHASE_8_TRACKER.md) — Phase 8 log (complete)
+- [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) — Phase 9 log (in progress)
 - [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) — Phase 7 log (complete)
 - [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) — Phase 6 log (complete)
 - [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) — Phase 5 log (complete)
