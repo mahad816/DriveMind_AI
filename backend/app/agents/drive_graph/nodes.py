@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import re
 import uuid as uuid_module
-from typing import Any
+import asyncio
+from typing import Any, Awaitable, Callable
 
 from app.agents.drive_graph.state import DriveGraphState
+from app.agents.drive_graph.types import RetrieverName
 from app.agents.drive_graph.types import QueryIntent, RetrievalPlan
+from app.core.config import Settings
+from app.retrieval.base import Retriever
+from app.retrieval.types import RetrievedChunk, RetrievalSource
+from typing import cast
+from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 
 
@@ -58,6 +65,51 @@ def retrieve(state: DriveGraphState) -> dict[str, Any]:
         "ranked_chunks": [],
         "retrieval_count": 0,
     }
+
+
+def make_retrieve_node(
+    *,
+    retrievers: dict[RetrieverName, Retriever],
+    settings: Settings,
+) -> Callable[[DriveGraphState], Awaitable[dict[str, Any]]]:
+    """Create a routed retrieval node using only active retrievers.
+
+    The closure keeps node functions testable without relying on global state.
+    """
+
+    async def _retrieve(state: DriveGraphState) -> dict[str, Any]:
+        active = state.get("active_retrievers")
+        if not active:
+            return {"raw_chunks": [], "ranked_chunks": [], "retrieval_count": 0}
+
+        working_query = state["working_query"]
+
+        tasks: list[Awaitable[list[RetrievedChunk]]] = []
+        source_order: list[RetrieverName] = []
+        for raw_name in active:
+            if raw_name not in {"vector", "keyword", "metadata"}:
+                raise ValueError(f"Unsupported active retriever name: {raw_name}")
+            name = cast(RetrieverName, raw_name)
+
+            retriever = retrievers.get(name)
+            if retriever is None:
+                raise ValueError(f"Missing retriever for active name: {name}")
+            tasks.append(retriever.retrieve(working_query))
+            source_order.append(name)
+
+        results = await asyncio.gather(*tasks)
+        chunks_by_source: dict[RetrievalSource, list[RetrievedChunk]] = {
+            cast(RetrievalSource, name): chunks for name, chunks in zip(source_order, results)
+        }
+        merged = reciprocal_rank_fusion_merge(chunks_by_source, settings=settings)
+
+        return {
+            "raw_chunks": merged,
+            "ranked_chunks": [],
+            "retrieval_count": len(merged),
+        }
+
+    return _retrieve
 
 
 def rerank(state: DriveGraphState) -> dict[str, Any]:

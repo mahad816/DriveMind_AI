@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 from langgraph.graph import END, StateGraph
 
@@ -19,8 +19,12 @@ from app.agents.drive_graph.nodes import (
     retrieve,
     rerank,
     verify_citations,
+    make_retrieve_node,
 )
 from app.agents.drive_graph.state import DriveGraphState
+from app.agents.drive_graph.types import RetrieverName
+from app.core.config import Settings
+from app.retrieval.base import Retriever
 
 
 def _should_rewrite(state: DriveGraphState) -> str:
@@ -33,8 +37,8 @@ def _should_rewrite(state: DriveGraphState) -> str:
 
 
 @lru_cache(maxsize=1)
-def build_drive_graph() -> Any:
-    """Compile and cache the Phase 8 DriveGraph skeleton."""
+def _build_default_graph() -> Any:
+    """Compile and cache the Phase 8 DriveGraph skeleton using stub retrieval."""
     graph = StateGraph(DriveGraphState)
 
     # Core pipeline nodes (stubbed in M2).
@@ -43,6 +47,64 @@ def build_drive_graph() -> Any:
     graph.add_node("plan_retrieval", plan_retrieval)
     graph.add_node("route_retriever", route_retriever)
     graph.add_node("retrieve", retrieve)
+    graph.add_node("rerank", rerank)
+    graph.add_node("grade_evidence", grade_evidence)
+    graph.add_node("rewrite_query", rewrite_query)
+    graph.add_node("generate_answer", generate_answer)
+    graph.add_node("verify_citations", verify_citations)
+    graph.add_node("return_response", return_response)
+
+    graph.set_entry_point("receive_question")
+    graph.set_finish_point("return_response")
+
+    graph.add_edge("receive_question", "classify_intent")
+    graph.add_edge("classify_intent", "plan_retrieval")
+    graph.add_edge("plan_retrieval", "route_retriever")
+    graph.add_edge("route_retriever", "retrieve")
+    graph.add_edge("retrieve", "rerank")
+    graph.add_edge("rerank", "grade_evidence")
+
+    graph.add_conditional_edges(
+        "grade_evidence",
+        _should_rewrite,
+        {
+            "rewrite_query": "rewrite_query",
+            "generate_answer": "generate_answer",
+        },
+    )
+
+    graph.add_edge("rewrite_query", "retrieve")
+    graph.add_edge("generate_answer", "verify_citations")
+    graph.add_edge("verify_citations", "return_response")
+    graph.add_edge("return_response", END)
+
+    return graph.compile()
+
+
+def build_drive_graph(
+    *,
+    retrievers: dict[RetrieverName, Retriever] | None = None,
+    settings: Settings | None = None,
+) -> Any:
+    """Build a DriveGraph.
+
+    - When `retrievers` is not provided, this uses stubbed retrieval (M2/M3 tests).
+    - When `retrievers` are provided, the `retrieve` node will call only active retrievers (M4).
+    """
+    if retrievers is None:
+        return _build_default_graph()
+
+    if settings is None:
+        raise ValueError("settings is required when retrievers are provided")
+
+    graph = StateGraph(DriveGraphState)
+
+    graph.add_node("receive_question", receive_question)
+    graph.add_node("classify_intent", classify_intent)
+    graph.add_node("plan_retrieval", plan_retrieval)
+    graph.add_node("route_retriever", route_retriever)
+    retrieve_node = make_retrieve_node(retrievers=retrievers, settings=settings)
+    graph.add_node("retrieve", cast(Any, retrieve_node))
     graph.add_node("rerank", rerank)
     graph.add_node("grade_evidence", grade_evidence)
     graph.add_node("rewrite_query", rewrite_query)
