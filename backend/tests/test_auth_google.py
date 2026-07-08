@@ -103,6 +103,7 @@ async def test_google_callback_invalid_state_returns_400(async_client: AsyncClie
 async def test_create_authorization_url_persists_pending_state() -> None:
     """Authorization URL generation should persist PKCE state in the database."""
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
     service = GoogleOAuthService(db=mock_db)
     with patch.object(service, "_build_flow") as mock_build_flow:
