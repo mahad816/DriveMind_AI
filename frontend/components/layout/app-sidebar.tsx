@@ -1,22 +1,12 @@
-import Link from "next/link";
-import {
-  Database,
-  Files,
-  MessageSquare,
-  Settings,
-  Sparkles,
-} from "lucide-react";
+"use client";
+
+import { Sparkles } from "lucide-react";
 
 import { ConnectionStatusBadge } from "@/components/layout/connection-status-badge";
+import { NavLink } from "@/components/layout/nav-link";
 import { Separator } from "@/components/ui/separator";
+import { mainNavItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
-
-const navItems = [
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/index", label: "Index", icon: Database },
-  { href: "/files", label: "Files", icon: Files },
-  { href: "/settings", label: "Settings", icon: Settings },
-] as const;
 
 type AppSidebarProps = {
   className?: string;
@@ -42,20 +32,10 @@ export function AppSidebar({ className }: AppSidebarProps) {
 
       <Separator />
 
-      <nav className="flex flex-1 flex-col gap-1 p-3">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            >
-              <Icon className="size-4 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col gap-1 p-3" aria-label="Main navigation">
+        {mainNavItems.map((item) => (
+          <NavLink key={item.href} item={item} />
+        ))}
       </nav>
 
       <div className="border-t border-sidebar-border p-4">

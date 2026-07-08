@@ -12,7 +12,7 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 |------------|--------|--------|
 | Next.js scaffold | App Router, TypeScript strict, Tailwind, shadcn/ui | Done (M1) |
 | API client + proxy | Typed `lib/api/`, Next.js rewrites to backend | Done (M2) |
-| App shell | Sidebar nav, connection banner, responsive layout | Pending (M3) |
+| App shell | Sidebar nav, connection banner, responsive layout | Done (M3) |
 | Settings page | Drive OAuth connect, theme toggle | Pending (M4) |
 | Indexing dashboard | Pipeline stepper, job status, file stats | Pending (M5) |
 | Files browser | Table, filters, per-file re-ingest | Pending (M6) |
@@ -41,8 +41,8 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 2 (API client + proxy + OAuth redirect)
-- **Next milestone:** Milestone 3 — App shell + navigation + connection gate
+- **Last completed milestone:** Milestone 3 (App shell + navigation + connection gate)
+- **Next milestone:** Milestone 4 — Settings page
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -60,7 +60,7 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 - [x] Milestone 0 — Phase 9 tracker + docs alignment
 - [x] Milestone 1 — Next.js scaffold + Tailwind + shadcn/ui
 - [x] Milestone 2 — API client + proxy + OAuth redirect
-- [ ] Milestone 3 — App shell + navigation + connection gate
+- [x] Milestone 3 — App shell + navigation + connection gate
 - [ ] Milestone 4 — Settings page
 - [ ] Milestone 5 — Indexing dashboard
 - [ ] Milestone 6 — Files browser

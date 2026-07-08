@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 9 in progress (Frontend Foundation). M0–M2 complete.
+**Last updated:** Phase 9 in progress (Frontend Foundation). M0–M3 complete.
 
 ## Completed Phases
 
@@ -17,7 +17,7 @@ Use this file to resume work in a new chat.
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
 | 8 | Complete | LangGraph agent — intent routing, rewrite loop, citation verify |
-| 9 | In progress | Next.js frontend — M0–M2 complete (API client) |
+| 9 | In progress | Next.js frontend — M0–M3 complete (app shell) |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -94,9 +94,9 @@ See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) for milestone-by-milestone progress
 |------------|--------|--------|
 | Next.js scaffold | `frontend/app/`, `components/ui/` | Done (M1) |
 | API client + proxy | `frontend/lib/api/` | Done (M2) |
-| App shell + pages | `frontend/components/layout/` | Pending (M3+) |
+| App shell + pages | `frontend/components/layout/` | Done (M3) |
 
-**Next milestone:** M3 — app shell navigation and connection banner.
+**Next milestone:** M4 — Settings page with Drive connection.
 
 ## Quick Commands
 
