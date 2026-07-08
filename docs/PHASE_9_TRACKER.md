@@ -14,7 +14,7 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 | API client + proxy | Typed `lib/api/`, Next.js rewrites to backend | Done (M2) |
 | App shell | Sidebar nav, connection banner, responsive layout | Done (M3) |
 | Settings page | Drive OAuth connect, theme toggle | Done (M4) |
-| Indexing dashboard | Pipeline stepper, job status, file stats | Pending (M5) |
+| Indexing dashboard | Pipeline stepper, job status, file stats | Done (M5) |
 | Files browser | Table, filters, per-file re-ingest | Pending (M6) |
 | Chat interface | Composer, markdown answers, citation cards | Pending (M7) |
 | Source viewer | `/sources/[chunkId]` citation drill-down | Pending (M8) |
@@ -41,8 +41,8 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 4 (Settings page — Drive connect + theme toggle)
-- **Next milestone:** Milestone 5 — Indexing dashboard
+- **Last completed milestone:** Milestone 5 (Indexing dashboard — pipeline controls + file stats)
+- **Next milestone:** Milestone 6 — Files browser
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -62,7 +62,7 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 - [x] Milestone 2 — API client + proxy + OAuth redirect
 - [x] Milestone 3 — App shell + navigation + connection gate
 - [x] Milestone 4 — Settings page
-- [ ] Milestone 5 — Indexing dashboard
+- [x] Milestone 5 — Indexing dashboard
 - [ ] Milestone 6 — Files browser
 - [ ] Milestone 7 — Chat interface
 - [ ] Milestone 8 — Source citation viewer
