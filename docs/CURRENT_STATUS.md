@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 9 in progress (Frontend Foundation). M0–M1 complete.
+**Last updated:** Phase 9 in progress (Frontend Foundation). M0–M2 complete.
 
 ## Completed Phases
 
@@ -17,7 +17,7 @@ Use this file to resume work in a new chat.
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
 | 8 | Complete | LangGraph agent — intent routing, rewrite loop, citation verify |
-| 9 | In progress | Next.js frontend — M0–M1 complete (scaffold) |
+| 9 | In progress | Next.js frontend — M0–M2 complete (API client) |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -93,14 +93,10 @@ See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) for milestone-by-milestone progress
 | Capability | Module | Status |
 |------------|--------|--------|
 | Next.js scaffold | `frontend/app/`, `components/ui/` | Done (M1) |
-| API client + proxy | `frontend/lib/api/` | Pending (M2) |
+| API client + proxy | `frontend/lib/api/` | Done (M2) |
 | App shell + pages | `frontend/components/layout/` | Pending (M3+) |
 
-**Next milestone:** M2 — typed API client and OAuth redirect wiring.
-
-Say in a new chat (if needed):
-
-> Continue DriveMind AI Phase 9 from `docs/PHASE_9_TRACKER.md` — Milestone 2.
+**Next milestone:** M3 — app shell navigation and connection banner.
 
 ## Quick Commands
 

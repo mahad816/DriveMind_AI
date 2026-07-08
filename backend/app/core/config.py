@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     agent_graph_enabled: bool = False
     agent_max_rewrite_attempts: int = 2
 
+    frontend_url: str = "http://localhost:3000"
+
     model_config = SettingsConfigDict(
         env_file=(
             str(REPO_ROOT / ".env"),

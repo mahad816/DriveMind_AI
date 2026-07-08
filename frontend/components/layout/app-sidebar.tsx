@@ -7,7 +7,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { ConnectionStatusBadge } from "@/components/layout/connection-status-badge";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -61,9 +61,7 @@ export function AppSidebar({ className }: AppSidebarProps) {
       <div className="border-t border-sidebar-border p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">Drive status</span>
-          <Badge variant="outline" className="text-xs font-normal">
-            Setup pending
-          </Badge>
+          <ConnectionStatusBadge />
         </div>
       </div>
     </aside>

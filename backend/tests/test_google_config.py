@@ -22,3 +22,4 @@ def test_settings_google_scope_and_callback_are_correct() -> None:
     settings = Settings()
     assert settings.google_drive_scopes == "https://www.googleapis.com/auth/drive.readonly"
     assert settings.google_redirect_uri.endswith("/auth/google/callback")
+    assert settings.frontend_url == "http://localhost:3000"

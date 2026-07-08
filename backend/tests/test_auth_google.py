@@ -49,8 +49,11 @@ async def test_google_login_returns_503_when_oauth_not_configured(
 
 @pytest.mark.asyncio
 async def test_google_callback_requires_code(async_client: AsyncClient) -> None:
-    """Callback endpoint should reject missing authorization code."""
-    response = await async_client.get("/api/v1/auth/google/callback")
+    """Callback endpoint should reject missing authorization code for JSON clients."""
+    response = await async_client.get(
+        "/api/v1/auth/google/callback",
+        headers={"Accept": "application/json"},
+    )
     assert response.status_code == 400
     assert response.json()["detail"] == "Missing OAuth authorization code"
 
@@ -72,6 +75,7 @@ async def test_google_callback_success_returns_user_payload(async_client: AsyncC
     response = await async_client.get(
         "/api/v1/auth/google/callback",
         params={"code": "abc", "state": "state-1"},
+        headers={"Accept": "application/json"},
     )
 
     app.dependency_overrides.clear()
@@ -80,6 +84,50 @@ async def test_google_callback_success_returns_user_payload(async_client: AsyncC
     assert body["status"] == "ok"
     assert body["email"] == "user@example.com"
     assert body["user_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_google_callback_success_redirects_to_frontend_settings(
+    async_client: AsyncClient,
+) -> None:
+    """Callback should redirect to the frontend settings page for browser OAuth flows."""
+    user_id = uuid.uuid4()
+    fake_service = MagicMock()
+    fake_service.handle_callback = AsyncMock(
+        return_value=OAuthCallbackResult(
+            user_id=user_id,
+            email="user@example.com",
+            google_id="google-123",
+        )
+    )
+    app.dependency_overrides[get_oauth_service] = lambda: fake_service
+
+    response = await async_client.get(
+        "/api/v1/auth/google/callback",
+        params={"code": "abc", "state": "state-1"},
+        follow_redirects=False,
+    )
+
+    app.dependency_overrides.clear()
+    assert response.status_code == 302
+    location = response.headers["location"]
+    assert location.startswith("http://localhost:3000/settings?")
+    assert "connected=true" in location
+    assert "email=user%40example.com" in location
+
+
+@pytest.mark.asyncio
+async def test_google_callback_missing_code_redirects_to_frontend_with_error(
+    async_client: AsyncClient,
+) -> None:
+    """Browser callback without code should redirect to settings with an error flag."""
+    response = await async_client.get(
+        "/api/v1/auth/google/callback",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://localhost:3000/settings?error=missing_oauth_code"
 
 
 @pytest.mark.asyncio
@@ -92,6 +140,7 @@ async def test_google_callback_invalid_state_returns_400(async_client: AsyncClie
     response = await async_client.get(
         "/api/v1/auth/google/callback",
         params={"code": "abc", "state": "bad-state"},
+        headers={"Accept": "application/json"},
     )
 
     app.dependency_overrides.clear()

@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChatApiStatusCard } from "@/components/chat/chat-api-status-card";
 
 export default function ChatPage() {
   return (
@@ -10,21 +10,7 @@ export default function ChatPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Coming in Milestone 7</CardTitle>
-          <CardDescription>
-            The chat composer, grounded answers, and citation cards will be wired to{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">POST /api/v1/chat</code> in
-            the next milestones.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          API traffic is proxied through{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">/api/v1</code> to the FastAPI
-          backend. Typed client wiring arrives in Milestone 2.
-        </CardContent>
-      </Card>
+      <ChatApiStatusCard />
     </div>
   );
 }
