@@ -1,23 +1,21 @@
-"""Tests for Drive sync and file listing API routes (Phase 3 Milestone 4)."""
+"""Tests for Drive sync and file listing API routes."""
 
 from __future__ import annotations
 
 from collections.abc import Generator
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 
 from app.api.files import get_drive_sync_service
 from app.api.index import get_drive_sync_service as get_index_sync_service
-from app.connectors.google_drive.client import DriveClientError
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.drive_file import DriveFile
 from app.db.models.indexing_job import IndexingJob
 from app.main import app
-from app.services.drive_sync_service import DriveSyncResult
 
 
 @pytest.fixture(autouse=True)
@@ -26,43 +24,44 @@ def clear_dependency_overrides() -> Generator[None, None, None]:
     app.dependency_overrides.clear()
 
 
+# ---------------------------------------------------------------------------
+# POST /index/sync  (now returns 202 immediately; actual sync runs in background)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_sync_drive_metadata_success(async_client: AsyncClient) -> None:
-    user_id = uuid.uuid4()
-    job_id = uuid.uuid4()
+async def test_sync_drive_metadata_accepted(async_client: AsyncClient) -> None:
+    """Connected account → 202 with started status."""
     fake_service = MagicMock()
-    fake_service.sync_metadata = AsyncMock(
-        return_value=DriveSyncResult(
-            job_id=job_id,
-            user_id=user_id,
-            mode="incremental",
-            created=2,
-            updated=1,
-            unchanged=0,
-            removed=0,
-            total_seen=3,
-        )
-    )
+    fake_service.is_connected = AsyncMock(return_value=True)
     app.dependency_overrides[get_index_sync_service] = lambda: fake_service
 
-    response = await async_client.post("/api/v1/index/sync")
+    with patch("app.api.index._bg_sync"):
+        response = await async_client.post("/api/v1/index/sync")
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     body = response.json()
-    assert body["message"] == "Drive metadata incremental sync completed"
-    assert body["mode"] == "incremental"
-    assert body["created"] == 2
-    assert body["updated"] == 1
-    assert body["total_seen"] == 3
-    assert body["job_id"] == str(job_id)
+    assert body["status"] == "started"
+
+
+@pytest.mark.asyncio
+async def test_sync_drive_metadata_full_scan_accepted(async_client: AsyncClient) -> None:
+    """full=true → still 202 with started status."""
+    fake_service = MagicMock()
+    fake_service.is_connected = AsyncMock(return_value=True)
+    app.dependency_overrides[get_index_sync_service] = lambda: fake_service
+
+    with patch("app.api.index._bg_sync"):
+        response = await async_client.post("/api/v1/index/sync?full=true")
+
+    assert response.status_code == 202
 
 
 @pytest.mark.asyncio
 async def test_sync_drive_metadata_no_connection_returns_503(async_client: AsyncClient) -> None:
+    """Not connected → 503 before any background work starts."""
     fake_service = MagicMock()
-    fake_service.sync_metadata = AsyncMock(
-        side_effect=ValueError("No Google Drive connection found. Complete OAuth first.")
-    )
+    fake_service.is_connected = AsyncMock(return_value=False)
     app.dependency_overrides[get_index_sync_service] = lambda: fake_service
 
     response = await async_client.post("/api/v1/index/sync")
@@ -72,15 +71,20 @@ async def test_sync_drive_metadata_no_connection_returns_503(async_client: Async
 
 
 @pytest.mark.asyncio
-async def test_sync_drive_metadata_drive_error_returns_502(async_client: AsyncClient) -> None:
+async def test_sync_connection_check_error_returns_503(async_client: AsyncClient) -> None:
+    """Exception during is_connected check → 503."""
     fake_service = MagicMock()
-    fake_service.sync_metadata = AsyncMock(side_effect=DriveClientError("Drive list failed"))
+    fake_service.is_connected = AsyncMock(side_effect=RuntimeError("DB gone"))
     app.dependency_overrides[get_index_sync_service] = lambda: fake_service
 
     response = await async_client.post("/api/v1/index/sync")
 
-    assert response.status_code == 502
-    assert "Drive list failed" in response.json()["detail"]
+    assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# GET /index/status
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -120,6 +124,40 @@ async def test_get_sync_status_with_latest_job(async_client: AsyncClient) -> Non
     body = response.json()
     assert body["connected"] is True
     assert body["job"]["status"] == "completed"
+
+
+# ---------------------------------------------------------------------------
+# POST /index/ingest, /chunk, /build  (also 202 background tasks)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ingest_returns_202(async_client: AsyncClient) -> None:
+    with patch("app.api.index._bg_ingest"):
+        response = await async_client.post("/api/v1/index/ingest")
+    assert response.status_code == 202
+    assert response.json()["status"] == "started"
+
+
+@pytest.mark.asyncio
+async def test_chunk_returns_202(async_client: AsyncClient) -> None:
+    with patch("app.api.index._bg_chunk"):
+        response = await async_client.post("/api/v1/index/chunk")
+    assert response.status_code == 202
+    assert response.json()["status"] == "started"
+
+
+@pytest.mark.asyncio
+async def test_build_returns_202(async_client: AsyncClient) -> None:
+    with patch("app.api.index._bg_build"):
+        response = await async_client.post("/api/v1/index/build")
+    assert response.status_code == 202
+    assert response.json()["status"] == "started"
+
+
+# ---------------------------------------------------------------------------
+# GET /files
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio

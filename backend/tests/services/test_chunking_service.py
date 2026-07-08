@@ -98,7 +98,8 @@ async def test_chunk_documents_creates_chunks_for_new_document(
 ) -> None:
     drive_file = _drive_file()
     document = _document()
-    mock_db.get = AsyncMock(return_value=USER)
+    # db.get called twice: once for User resolution, once for DriveFile in _replace_chunks
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file])
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[])),
@@ -154,7 +155,7 @@ async def test_chunk_documents_rechunks_when_text_hash_changes(
     document = _document(text="updated text for chunking")
     old_hash = compute_extracted_text_hash("stale text")
     existing = [_existing_chunk(text="stale text", text_hash=old_hash)]
-    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file])
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=existing)),
@@ -217,7 +218,7 @@ async def test_chunk_documents_empty_text_removes_stale_chunks(
     document = _document(text="")
     old_hash = compute_extracted_text_hash("previous content")
     existing = [_existing_chunk(text="previous content", text_hash=old_hash)]
-    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file])
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=existing)),
@@ -237,8 +238,10 @@ async def test_chunk_documents_batch_processes_all_documents(
     service: ChunkingService,
     mock_db: AsyncMock,
 ) -> None:
+    drive_file = _drive_file()
     documents = [_document(text="doc one"), _document(text="doc two")]
-    mock_db.get = AsyncMock(return_value=USER)
+    # db.get: once for User, then twice for DriveFile (once per document in _replace_chunks)
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file])
     mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
     mock_db.scalars = AsyncMock(
         side_effect=[

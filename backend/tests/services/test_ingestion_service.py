@@ -100,8 +100,7 @@ async def test_ingest_files_creates_document_for_new_file(
     assert result.unchanged == 0
     assert result.failed == 0
     assert result.total == 1
-    assert drive_file.status == DriveFileStatus.INDEXED
-    assert drive_file.indexed_at is not None
+    assert drive_file.status == DriveFileStatus.INDEXING
     added = [call.args[0] for call in mock_db.add.call_args_list]
     assert any(isinstance(item, Document) for item in added)
     assert any(isinstance(item, IndexingJob) for item in added)
@@ -144,7 +143,7 @@ async def test_ingest_files_skips_when_text_hash_unchanged(
     assert result.ingested == 0
     assert result.unchanged == 1
     assert result.failed == 0
-    assert drive_file.status == DriveFileStatus.INDEXED
+    assert drive_file.status == DriveFileStatus.INDEXING
 
 
 @pytest.mark.asyncio

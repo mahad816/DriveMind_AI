@@ -89,50 +89,28 @@ export type DriveSyncStatusResponse = {
   job: IndexingJobRead | null;
 };
 
-export type DriveSyncResponse = {
-  job_id: string;
-  user_id: string;
-  mode: string;
-  created: number;
-  updated: number;
-  unchanged: number;
-  removed: number;
-  total_seen: number;
+/** Returned immediately (HTTP 202) when an index job is kicked off in the background. */
+export type JobStartedResponse = {
+  status: "started";
   message: string;
 };
 
-export type IngestionResponse = {
-  job_id: string;
-  user_id: string;
-  ingested: number;
-  unchanged: number;
-  failed: number;
-  skipped: number;
-  total: number;
-  message: string;
+/** How many files still need each indexing step. */
+export type PendingCountsResponse = {
+  to_ingest: number;
+  to_chunk: number;
+  to_build: number;
+  any_pending: boolean;
 };
 
-export type ChunkingResponse = {
-  job_id: string;
-  user_id: string;
-  chunked: number;
-  unchanged: number;
-  skipped: number;
-  total: number;
-  message: string;
-};
-
-export type IndexBuildResponse = {
-  job_id: string;
-  user_id: string;
-  embedded: number;
-  unchanged: number;
-  skipped: number;
-  failed: number;
-  removed: number;
-  total: number;
-  message: string;
-};
+/** @deprecated kept for backwards-compat; endpoints now return JobStartedResponse */
+export type DriveSyncResponse = JobStartedResponse;
+/** @deprecated kept for backwards-compat */
+export type IngestionResponse = JobStartedResponse;
+/** @deprecated kept for backwards-compat */
+export type ChunkingResponse = JobStartedResponse;
+/** @deprecated kept for backwards-compat */
+export type IndexBuildResponse = JobStartedResponse;
 
 export type OAuthCallbackResponse = {
   status: string;

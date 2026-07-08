@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FileText, MessageSquareQuote, Sparkles } from "lucide-react";
+import { ExternalLink, FileText, Loader2, MessageSquareQuote, RefreshCw, Sparkles } from "lucide-react";
 
 import { FileStatusBadge } from "@/components/files/file-status-badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchFileTextPreview } from "@/lib/files/preview";
 import {
@@ -15,6 +15,7 @@ import {
   formatFileDate,
 } from "@/lib/files/utils";
 import type { DriveFileRead } from "@/lib/api/types";
+import { prepareSingleFile } from "@/lib/knowledge/prepare-file";
 import { filesCopy } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,8 @@ type FilePreviewPanelProps = {
 export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!file) {
@@ -74,6 +77,19 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
   }
 
   const askHref = buildAskAboutFileHref(file);
+  const needsPrepare = file.status !== "indexed";
+
+  async function handlePrepareFile() {
+    setPrepareError(null);
+    setIsPreparing(true);
+    try {
+      await prepareSingleFile(file.id);
+    } catch (error) {
+      setPrepareError(error instanceof Error ? error.message : "Could not prepare this file.");
+    } finally {
+      setIsPreparing(false);
+    }
+  }
 
   return (
     <div
@@ -124,6 +140,25 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
             Ask AI
           </p>
           <div className="flex flex-col gap-2">
+            {needsPrepare ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="justify-start rounded-xl"
+                disabled={isPreparing}
+                onClick={() => void handlePrepareFile()}
+              >
+                {isPreparing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-4" />
+                )}
+                {isPreparing ? "Preparing this file…" : "Prepare this file for chat"}
+              </Button>
+            ) : null}
+            {prepareError ? (
+              <p className="text-xs text-destructive">{prepareError}</p>
+            ) : null}
             <Link href={askHref} className={buttonVariants({ className: "justify-start rounded-xl" })}>
               <MessageSquareQuote className="size-4" />
               {filesCopy.askAboutFile}

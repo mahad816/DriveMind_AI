@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.db.enums import IndexingJobStatus
+from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -70,10 +70,19 @@ class ChunkingService:
         return drive_file
 
     async def _list_chunkable_documents(self, user_id: uuid.UUID) -> list[Document]:
+        """Return documents whose drive_file still needs chunking.
+
+        Excludes already-INDEXED files so we don't re-chunk hundreds of
+        unchanged documents on every run.
+        """
         result = await self.db.scalars(
             select(Document)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
-            .where(DriveFile.user_id == user_id)
+            .where(
+                DriveFile.user_id == user_id,
+                DriveFile.status != DriveFileStatus.INDEXED,
+                DriveFile.status != DriveFileStatus.SKIPPED,
+            )
             .order_by(Document.updated_at.desc())
         )
         return list(result.all())
@@ -114,13 +123,22 @@ class ChunkingService:
         if not existing and not text_chunks:
             return "unchanged"
 
+        # Load drive_file name so we can include it in the FTS search_vector.
+        # This lets users find chunks by asking about the filename.
+        drive_file = await self.db.get(DriveFile, document.drive_file_id)
+        filename = drive_file.name if drive_file else ""
+
         await self.db.execute(delete(Chunk).where(Chunk.document_id == document.id))
 
         for text_chunk in text_chunks:
             metadata = {
                 **text_chunk.metadata,
                 "extracted_text_hash": text_hash,
+                "filename": filename,
             }
+            # Build search_vector from both the chunk content AND the filename so
+            # that a query like "Tell me about HELLO TEST 3" can find it via FTS.
+            fts_source = f"{filename} {text_chunk.text}" if filename else text_chunk.text
             self.db.add(
                 Chunk(
                     document_id=document.id,
@@ -129,7 +147,7 @@ class ChunkingService:
                     metadata_json=metadata,
                     search_vector=func.to_tsvector(
                         self.settings.fts_language,
-                        text_chunk.text,
+                        fts_source,
                     ),
                 )
             )
@@ -155,12 +173,14 @@ class ChunkingService:
         """Chunk one synced file's document or all extracted documents for the user."""
         user = await self._resolve_user(user_id)
 
-        job = IndexingJob(user_id=user.id, status=IndexingJobStatus.QUEUED)
+        job = IndexingJob(
+            user_id=user.id,
+            status=IndexingJobStatus.RUNNING,
+            started_at=datetime.now(UTC),
+        )
         self.db.add(job)
-        await self.db.flush()
-
-        job.status = IndexingJobStatus.RUNNING
-        job.started_at = datetime.now(UTC)
+        await self.db.commit()
+        await self.db.refresh(job)
 
         chunked = unchanged = skipped = 0
         total = 0

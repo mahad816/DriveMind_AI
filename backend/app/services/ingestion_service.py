@@ -78,11 +78,21 @@ class IngestionService:
         return drive_file
 
     async def _list_ingestible_files(self, user_id: uuid.UUID) -> list[DriveFile]:
+        """Return only files that need (re-)ingestion.
+
+        INDEXED files whose content hasn't changed are skipped — the sync step
+        already resets them to DISCOVERED when their Drive modified_at changes.
+        This avoids re-downloading hundreds of unchanged files on every run.
+        """
         result = await self.db.scalars(
             select(DriveFile)
             .where(
                 DriveFile.user_id == user_id,
-                DriveFile.status != DriveFileStatus.SKIPPED,
+                DriveFile.status.in_([
+                    DriveFileStatus.DISCOVERED,
+                    DriveFileStatus.INDEXING,
+                    DriveFileStatus.FAILED,
+                ]),
                 DriveFile.mime_type.in_(list(SUPPORTED_MIME_TYPES)),
             )
             .order_by(DriveFile.modified_at.desc())
@@ -98,6 +108,26 @@ class IngestionService:
         )
         return document
 
+    @staticmethod
+    def _is_document_current(document: Document, drive_file: DriveFile) -> bool:
+        """Return True if the document's extracted text is still fresh.
+
+        Compares document.updated_at with drive_file.modified_at so we can skip
+        the expensive Google Drive download when neither has changed.
+        """
+        if not document.extracted_text:
+            return False
+        doc_ts = document.updated_at
+        file_ts = drive_file.modified_at
+        if doc_ts is None or file_ts is None:
+            return False
+        # Normalise to UTC-aware datetimes for a safe comparison.
+        if doc_ts.tzinfo is None:
+            doc_ts = doc_ts.replace(tzinfo=UTC)
+        if file_ts.tzinfo is None:
+            file_ts = file_ts.replace(tzinfo=UTC)
+        return doc_ts >= file_ts
+
     async def _ingest_single_file(
         self,
         drive_file: DriveFile,
@@ -108,6 +138,16 @@ class IngestionService:
 
         if not is_supported_mime_type(drive_file.mime_type):
             return "skipped"
+
+        # Fast-path: skip the Google Drive download if we already have a fresh
+        # document whose extracted text is newer than the file's last Drive
+        # modification.  This prevents re-downloading hundreds of unchanged
+        # files on every ingest run.
+        existing = await self._get_latest_document(drive_file.id)
+        if existing is not None and self._is_document_current(existing, drive_file):
+            drive_file.status = DriveFileStatus.INDEXING
+            await self.db.flush()
+            return "unchanged"
 
         drive_file.status = DriveFileStatus.INDEXING
 
@@ -128,12 +168,10 @@ class IngestionService:
             return "failed"
 
         text_hash = compute_extracted_text_hash(extraction.text)
-        existing = await self._get_latest_document(drive_file.id)
-        now = datetime.now(UTC)
 
         if existing is not None and existing.extracted_text_hash == text_hash:
-            drive_file.status = DriveFileStatus.INDEXED
-            drive_file.indexed_at = now
+            # Downloaded but hash still matches — content really hasn't changed.
+            drive_file.status = DriveFileStatus.INDEXING
             return "unchanged"
 
         if existing is not None:
@@ -150,8 +188,8 @@ class IngestionService:
                 )
             )
 
-        drive_file.status = DriveFileStatus.INDEXED
-        drive_file.indexed_at = now
+        # Mark as in-progress; build_index will set INDEXED once vectors are stored.
+        drive_file.status = DriveFileStatus.INDEXING
         return "ingested"
 
     async def ingest_files(
@@ -168,12 +206,15 @@ class IngestionService:
         else:
             drive_files = await self._list_ingestible_files(user.id)
 
-        job = IndexingJob(user_id=user.id, status=IndexingJobStatus.QUEUED)
+        job = IndexingJob(
+            user_id=user.id,
+            status=IndexingJobStatus.RUNNING,
+            started_at=datetime.now(UTC),
+        )
         self.db.add(job)
-        await self.db.flush()
-
-        job.status = IndexingJobStatus.RUNNING
-        job.started_at = datetime.now(UTC)
+        # Commit immediately so polling sessions can see the job as RUNNING.
+        await self.db.commit()
+        await self.db.refresh(job)
 
         ingested = unchanged = failed = skipped = 0
 

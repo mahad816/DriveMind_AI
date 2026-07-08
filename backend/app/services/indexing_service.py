@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
-from app.db.enums import IndexingJobStatus
+from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -83,10 +83,19 @@ class IndexingService:
         return drive_file
 
     async def _list_indexable_documents(self, user_id: uuid.UUID) -> list[Document]:
+        """Return documents whose drive_file is not yet fully INDEXED.
+
+        Skipping already-INDEXED files avoids redundant Qdrant hash checks for
+        hundreds of unchanged documents on every build run.
+        """
         result = await self.db.scalars(
             select(Document)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
-            .where(DriveFile.user_id == user_id)
+            .where(
+                DriveFile.user_id == user_id,
+                DriveFile.status != DriveFileStatus.INDEXED,
+                DriveFile.status != DriveFileStatus.SKIPPED,
+            )
             .order_by(Document.updated_at.desc())
         )
         return list(result.all())
@@ -168,6 +177,10 @@ class IndexingService:
             )
             embedded = len(points)
 
+        # Mark the drive file as fully indexed now that vectors are in Qdrant.
+        drive_file.status = DriveFileStatus.INDEXED
+        drive_file.indexed_at = datetime.now(UTC)
+
         return embedded, unchanged, 0, removed
 
     async def _index_document_safe(
@@ -210,12 +223,14 @@ class IndexingService:
             vector_size=self.embedding_service.embedding_dimension,
         )
 
-        job = IndexingJob(user_id=user.id, status=IndexingJobStatus.QUEUED)
+        job = IndexingJob(
+            user_id=user.id,
+            status=IndexingJobStatus.RUNNING,
+            started_at=datetime.now(UTC),
+        )
         self.db.add(job)
-        await self.db.flush()
-
-        job.status = IndexingJobStatus.RUNNING
-        job.started_at = datetime.now(UTC)
+        await self.db.commit()
+        await self.db.refresh(job)
 
         embedded = unchanged = skipped = failed = removed = 0
         total = 0

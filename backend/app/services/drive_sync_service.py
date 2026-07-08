@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.google_drive.client import (
@@ -212,11 +212,12 @@ class DriveSyncService:
             )
             return "created"
 
+        content_may_have_changed = existing.modified_at != modified_at
         changed = (
             existing.name != metadata.name
             or existing.mime_type != metadata.mime_type
             or existing.folder_path != folder_path
-            or existing.modified_at != modified_at
+            or content_may_have_changed
             or existing.status == DriveFileStatus.SKIPPED
         )
         if not changed:
@@ -226,8 +227,16 @@ class DriveSyncService:
         existing.mime_type = metadata.mime_type
         existing.folder_path = folder_path
         existing.modified_at = modified_at
+
         if existing.status == DriveFileStatus.SKIPPED:
+            # Re-enable previously removed files for re-ingestion.
             existing.status = DriveFileStatus.DISCOVERED
+        elif content_may_have_changed and existing.status == DriveFileStatus.INDEXED:
+            # File was edited in Drive — reset so the ingest step re-downloads and
+            # re-checks the content hash.  Build will restore INDEXED once vectors
+            # are current.
+            existing.status = DriveFileStatus.DISCOVERED
+
         return "updated"
 
     async def _mark_file_removed(self, user_id: uuid.UUID, drive_file_id: str) -> int:
@@ -330,12 +339,14 @@ class DriveSyncService:
         sync_state = await self._get_sync_state(user.id)
         mode: SyncMode = "full" if full or sync_state is None else "incremental"
 
-        job = IndexingJob(user_id=user.id, status=IndexingJobStatus.QUEUED)
+        job = IndexingJob(
+            user_id=user.id,
+            status=IndexingJobStatus.RUNNING,
+            started_at=datetime.now(UTC),
+        )
         self.db.add(job)
-        await self.db.flush()
-
-        job.status = IndexingJobStatus.RUNNING
-        job.started_at = datetime.now(UTC)
+        await self.db.commit()
+        await self.db.refresh(job)
 
         refreshed_tokens: list[DriveTokens] = []
         created = updated = unchanged = removed = 0
@@ -414,3 +425,76 @@ class DriveSyncService:
             select(GoogleOAuthToken).where(GoogleOAuthToken.user_id == user.id)
         )
         return token_row is not None
+
+    async def get_pending_counts(self, user_id: uuid.UUID | None = None) -> "PendingCounts":
+        """Return how many files still need each indexing step.
+
+        The frontend uses this to skip steps that have no pending work, making
+        routine "one new file" syncs dramatically faster.
+
+        - ``to_ingest``: files in DISCOVERED / FAILED state (need download + extract)
+        - ``to_chunk``:  files in INDEXING that have a Document but no matching chunks
+        - ``to_build``:  files in INDEXING whose chunks haven't been embedded into Qdrant yet
+        """
+        from app.db.models.chunk import Chunk
+        from app.db.models.document import Document
+
+        user = await self._resolve_user(user_id)
+        uid = user.id
+
+        # Files that still need text extraction from Google Drive
+        to_ingest_count: int = await self.db.scalar(
+            select(func.count(DriveFile.id)).where(
+                DriveFile.user_id == uid,
+                DriveFile.status.in_([DriveFileStatus.DISCOVERED, DriveFileStatus.FAILED]),
+            )
+        ) or 0
+
+        # Files in INDEXING that have a Document (text extracted) but zero chunks
+        to_chunk_sq = (
+            select(func.count(Chunk.id))
+            .join(Document, Chunk.document_id == Document.id)
+            .where(Document.drive_file_id == DriveFile.id)
+            .correlate(DriveFile)
+            .scalar_subquery()
+        )
+        to_chunk_count: int = await self.db.scalar(
+            select(func.count(DriveFile.id))
+            .join(Document, Document.drive_file_id == DriveFile.id)
+            .where(
+                DriveFile.user_id == uid,
+                DriveFile.status == DriveFileStatus.INDEXING,
+                to_chunk_sq == 0,
+            )
+        ) or 0
+
+        # Files in INDEXING that have chunks but no Qdrant vector ID stored
+        # We approximate this as: INDEXING files that do have at least one chunk
+        to_build_count: int = await self.db.scalar(
+            select(func.count(DriveFile.id.distinct()))
+            .join(Document, Document.drive_file_id == DriveFile.id)
+            .join(Chunk, Chunk.document_id == Document.id)
+            .where(
+                DriveFile.user_id == uid,
+                DriveFile.status == DriveFileStatus.INDEXING,
+            )
+        ) or 0
+
+        return PendingCounts(
+            to_ingest=to_ingest_count,
+            to_chunk=to_chunk_count,
+            to_build=to_build_count,
+        )
+
+
+@dataclass
+class PendingCounts:
+    """How many files still need each indexing step."""
+
+    to_ingest: int
+    to_chunk: int
+    to_build: int
+
+    @property
+    def any_pending(self) -> bool:
+        return self.to_ingest > 0 or self.to_chunk > 0 or self.to_build > 0

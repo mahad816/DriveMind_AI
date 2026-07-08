@@ -3,7 +3,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   buildVectorIndex,
   chunkDocuments,
+  getPendingCounts,
   ingestDriveFiles,
+  pollUntilJobDone,
   syncDriveMetadata,
 } from "@/lib/api/indexing";
 import { prepareKnowledge } from "@/lib/knowledge/prepare";
@@ -13,54 +15,27 @@ vi.mock("@/lib/api/indexing", () => ({
   ingestDriveFiles: vi.fn(),
   chunkDocuments: vi.fn(),
   buildVectorIndex: vi.fn(),
+  getPendingCounts: vi.fn(),
+  pollUntilJobDone: vi.fn(),
 }));
 
 describe("prepareKnowledge", () => {
   beforeEach(() => {
-    vi.mocked(syncDriveMetadata).mockResolvedValue({
-      job_id: "1",
-      user_id: "u",
-      mode: "incremental",
-      created: 1,
-      updated: 0,
-      unchanged: 0,
-      removed: 0,
-      total_seen: 1,
-      message: "ok",
-    });
-    vi.mocked(ingestDriveFiles).mockResolvedValue({
-      job_id: "2",
-      user_id: "u",
-      ingested: 1,
-      unchanged: 0,
-      failed: 0,
-      skipped: 0,
-      total: 1,
-      message: "ok",
-    });
-    vi.mocked(chunkDocuments).mockResolvedValue({
-      job_id: "3",
-      user_id: "u",
-      chunked: 1,
-      unchanged: 0,
-      skipped: 0,
-      total: 1,
-      message: "ok",
-    });
-    vi.mocked(buildVectorIndex).mockResolvedValue({
-      job_id: "4",
-      user_id: "u",
-      embedded: 1,
-      unchanged: 0,
-      skipped: 0,
-      failed: 0,
-      removed: 0,
-      total: 1,
-      message: "ok",
+    vi.clearAllMocks();
+    vi.mocked(syncDriveMetadata).mockResolvedValue({ status: "started", message: "ok" });
+    vi.mocked(ingestDriveFiles).mockResolvedValue({ status: "started", message: "ok" });
+    vi.mocked(chunkDocuments).mockResolvedValue({ status: "started", message: "ok" });
+    vi.mocked(buildVectorIndex).mockResolvedValue({ status: "started", message: "ok" });
+    vi.mocked(pollUntilJobDone).mockResolvedValue(undefined);
+    vi.mocked(getPendingCounts).mockResolvedValue({
+      to_ingest: 1,
+      to_chunk: 1,
+      to_build: 1,
+      any_pending: true,
     });
   });
 
-  it("runs sync, ingest, chunk, and build in order", async () => {
+  it("runs sync, ingest, chunk, and build when files are pending", async () => {
     const progress: number[] = [];
 
     await prepareKnowledge({
@@ -74,5 +49,21 @@ describe("prepareKnowledge", () => {
     expect(chunkDocuments).toHaveBeenCalledTimes(1);
     expect(buildVectorIndex).toHaveBeenCalledTimes(1);
     expect(progress.at(-1)).toBe(100);
+  });
+
+  it("skips ingest/chunk/build when nothing is pending after sync", async () => {
+    vi.mocked(getPendingCounts).mockResolvedValue({
+      to_ingest: 0,
+      to_chunk: 0,
+      to_build: 0,
+      any_pending: false,
+    });
+
+    await prepareKnowledge({});
+
+    expect(syncDriveMetadata).toHaveBeenCalledTimes(1);
+    expect(ingestDriveFiles).not.toHaveBeenCalled();
+    expect(chunkDocuments).not.toHaveBeenCalled();
+    expect(buildVectorIndex).not.toHaveBeenCalled();
   });
 });
