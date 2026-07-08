@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import uuid as uuid_module
 from typing import Any, Awaitable, Callable, cast
 
+from openai import APIError, AsyncOpenAI
+
 from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import QueryIntent, RetrievalPlan, RetrieverName
 from app.core.config import Settings
+from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.retrieval.base import Retriever
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
@@ -140,14 +144,60 @@ def make_grade_evidence_node(
     return _grade_evidence
 
 
-def rewrite_query(state: DriveGraphState) -> dict[str, Any]:
-    """Rewrite the query to improve retrieval (stub for M3)."""
+async def rewrite_query(state: DriveGraphState) -> dict[str, Any]:
+    """Rewrite query fallback node used by default graph."""
     next_count = state["rewrite_count"] + 1
-    refined = f"{state['working_query']} (refined {next_count})"
-    return {
-        "working_query": refined,
-        "rewrite_count": next_count,
-    }
+    refined = _heuristic_rewrite_query(
+        question=state["question"],
+        working_query=state["working_query"],
+        evidence_reason=state.get("evidence_reason", ""),
+    )
+    return {"working_query": refined, "rewrite_count": next_count}
+
+
+def make_rewrite_query_node(
+    *,
+    settings: Settings,
+    rewrite_fn: Callable[[str, str, str], Awaitable[str]] | None = None,
+) -> Callable[[DriveGraphState], Awaitable[dict[str, Any]]]:
+    """Create rewrite node with injectable LLM-backed or custom rewriter."""
+
+    async def _rewrite_query(state: DriveGraphState) -> dict[str, Any]:
+        next_count = state["rewrite_count"] + 1
+        question = state["question"]
+        working_query = state["working_query"]
+        reason = state.get("evidence_reason", "")
+
+        rewritten: str | None = None
+        if rewrite_fn is not None:
+            rewritten = await rewrite_fn(question, working_query, reason)
+        elif settings.openai_api_key:
+            rewritten = await _rewrite_with_openai(
+                settings=settings,
+                question=question,
+                working_query=working_query,
+                evidence_reason=reason,
+            )
+
+        if not rewritten or not rewritten.strip():
+            rewritten = _heuristic_rewrite_query(
+                question=question,
+                working_query=working_query,
+                evidence_reason=reason,
+            )
+        else:
+            rewritten = rewritten.strip()
+
+        if rewritten == working_query:
+            rewritten = _heuristic_rewrite_query(
+                question=question,
+                working_query=working_query,
+                evidence_reason=reason,
+            )
+
+        return {"working_query": rewritten, "rewrite_count": next_count}
+
+    return _rewrite_query
 
 
 def generate_answer(state: DriveGraphState) -> dict[str, Any]:
@@ -222,3 +272,76 @@ def build_retrieval_plan(intent: QueryIntent) -> RetrievalPlan:
         return RetrievalPlan(intent=intent, retrievers=("metadata",))
 
     return RetrievalPlan(intent=QueryIntent.UNKNOWN, retrievers=("vector", "keyword", "metadata"))
+
+
+def _heuristic_rewrite_query(*, question: str, working_query: str, evidence_reason: str) -> str:
+    """Fallback query rewrite when no LLM rewriter is available."""
+    base = working_query.strip() or question.strip()
+    if not base:
+        return "refined query"
+    if "exact terms" in base:
+        return base
+    if "keyword evidence is absent" in evidence_reason.lower():
+        return f"{base} with exact terms and filenames"
+    if "below minimum threshold" in evidence_reason.lower():
+        return f"{base} with more specific document keywords"
+    return f"{base} with precise keywords"
+
+
+async def _rewrite_with_openai(
+    *,
+    settings: Settings,
+    question: str,
+    working_query: str,
+    evidence_reason: str,
+) -> str | None:
+    """Use chat completion model to generate an improved retrieval query."""
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    user_prompt = (
+        "Original question:\n"
+        f"{question}\n\n"
+        "Current retrieval query:\n"
+        f"{working_query}\n\n"
+        "Evidence grade reason:\n"
+        f"{evidence_reason or 'No reason provided'}\n\n"
+        'Return JSON only: {"rewritten_query":"..."}'
+    )
+
+    try:
+        response = await client.chat.completions.create(
+            model=settings.chat_model,
+            messages=[
+                {"role": "system", "content": REWRITE_QUERY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+        )
+    except APIError:
+        return None
+
+    choice = response.choices[0] if response.choices else None
+    content = choice.message.content if choice and choice.message else None
+    if not content:
+        return None
+    return _extract_rewritten_query(content)
+
+
+def _extract_rewritten_query(content: str) -> str | None:
+    """Extract rewritten_query from JSON-like LLM output."""
+    text = content.strip()
+    try:
+        parsed = json.loads(text)
+        value = parsed.get("rewritten_query")
+        return value.strip() if isinstance(value, str) and value.strip() else None
+    except json.JSONDecodeError:
+        # Fallback: attempt to capture JSON object inside surrounding text.
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end < 0 or end <= start:
+            return None
+        try:
+            parsed = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+        value = parsed.get("rewritten_query")
+        return value.strip() if isinstance(value, str) and value.strip() else None

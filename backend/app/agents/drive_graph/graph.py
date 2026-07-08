@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, cast
+from typing import Any, Awaitable, Callable, cast
 
 from langgraph.graph import END, StateGraph
 
@@ -12,11 +12,11 @@ from app.agents.drive_graph.nodes import (
     generate_answer,
     make_grade_evidence_node,
     make_retrieve_node,
+    make_rewrite_query_node,
     make_rerank_node,
     plan_retrieval,
     receive_question,
     return_response,
-    rewrite_query,
     route_retriever,
     retrieve,
     verify_citations,
@@ -49,7 +49,7 @@ def _build_default_graph() -> Any:
     graph.add_node("retrieve", retrieve)
     graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings)))
     graph.add_node("grade_evidence", cast(Any, make_grade_evidence_node(settings=settings)))
-    graph.add_node("rewrite_query", rewrite_query)
+    graph.add_node("rewrite_query", cast(Any, make_rewrite_query_node(settings=settings)))
     graph.add_node("generate_answer", generate_answer)
     graph.add_node("verify_citations", verify_citations)
     graph.add_node("return_response", return_response)
@@ -85,6 +85,7 @@ def build_drive_graph(
     *,
     retrievers: dict[RetrieverName, Retriever] | None = None,
     settings: Settings | None = None,
+    rewrite_fn: Callable[[str, str, str], Awaitable[str]] | None = None,
 ) -> Any:
     """Build a DriveGraph.
 
@@ -107,7 +108,10 @@ def build_drive_graph(
     graph.add_node("retrieve", cast(Any, retrieve_node))
     graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings)))
     graph.add_node("grade_evidence", cast(Any, make_grade_evidence_node(settings=settings)))
-    graph.add_node("rewrite_query", rewrite_query)
+    graph.add_node(
+        "rewrite_query",
+        cast(Any, make_rewrite_query_node(settings=settings, rewrite_fn=rewrite_fn)),
+    )
     graph.add_node("generate_answer", generate_answer)
     graph.add_node("verify_citations", verify_citations)
     graph.add_node("return_response", return_response)

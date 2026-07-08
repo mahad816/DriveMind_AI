@@ -14,7 +14,8 @@ from app.core.config import Settings
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 
 
-def test_graph_compiles_and_runs_stub_pipeline() -> None:
+@pytest.mark.asyncio
+async def test_graph_compiles_and_runs_stub_pipeline() -> None:
     """Graph should compile and execute the rewrite loop cap."""
     settings = Settings(agent_max_rewrite_attempts=1)
     user_id = uuid.uuid4()
@@ -23,7 +24,7 @@ def test_graph_compiles_and_runs_stub_pipeline() -> None:
     state["max_rewrite_attempts"] = settings.agent_max_rewrite_attempts
 
     compiled = build_drive_graph()
-    final_state = compiled.invoke(state)
+    final_state = await compiled.ainvoke(state)
 
     assert final_state["rewrite_count"] == 1
     assert final_state["answer"] == NO_EVIDENCE_ANSWER

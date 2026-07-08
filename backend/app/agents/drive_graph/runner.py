@@ -29,7 +29,7 @@ async def run_drive_graph(
     state["max_rewrite_attempts"] = settings.agent_max_rewrite_attempts
 
     compiled = build_drive_graph()
-    final_state = compiled.invoke(state)
+    final_state = await compiled.ainvoke(state)
 
     query_id = final_state.get("query_id") or uuid.uuid4()
     return RagResult(
