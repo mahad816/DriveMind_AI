@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { AdvancedDiagnostics } from "@/components/knowledge/advanced-diagnostics";
 import { PrepareProgress } from "@/components/knowledge/prepare-progress";
@@ -52,7 +52,7 @@ export function PrepareKnowledgeView({
   const [hasPrepared, setHasPrepared] = useState(false);
   const [autoStarted, setAutoStarted] = useState(false);
 
-  const runPrepare = useCallback(async () => {
+  const runPrepare = useCallback(async (fullScan = false) => {
     if (!isConnected || isPreparing) {
       return;
     }
@@ -64,6 +64,7 @@ export function PrepareKnowledgeView({
     try {
       await prepareKnowledge({
         onProgress: setProgress,
+        fullScan,
       });
       setLastPreparedAt();
       setHasPrepared(true);
@@ -118,8 +119,35 @@ export function PrepareKnowledgeView({
 
       {progress.error ? (
         <Alert variant="destructive">
-          <AlertTitle>Preparation failed</AlertTitle>
-          <AlertDescription>{progress.error}</AlertDescription>
+          <AlertTitle>Setup failed</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>{progress.error}</p>
+            <p className="text-xs opacity-80">
+              If a new file isn't showing up, try a <strong>full scan</strong> to re-check all your Drive files.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={!isConnected || isPreparing}
+                onClick={() => void runPrepare(false)}
+              >
+                <RefreshCw className="mr-1.5 size-3" />
+                Retry
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!isConnected || isPreparing}
+                onClick={() => void runPrepare(true)}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              >
+                Full scan
+              </Button>
+            </div>
+          </AlertDescription>
         </Alert>
       ) : null}
 
@@ -143,16 +171,31 @@ export function PrepareKnowledgeView({
       )}
 
       {!showComplete ? (
-        <Button
-          type="button"
-          size="lg"
-          className="w-full"
-          disabled={!isConnected || isPreparing}
-          onClick={() => void runPrepare()}
-        >
-          {isPreparing ? <Loader2 className="size-4 animate-spin" /> : null}
-          {isPreparing ? prepareCopy.running : prepareCopy.cta}
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button
+            type="button"
+            size="lg"
+            className="w-full"
+            disabled={!isConnected || isPreparing}
+            onClick={() => void runPrepare(false)}
+          >
+            {isPreparing ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            {isPreparing ? prepareCopy.running : prepareCopy.cta}
+          </Button>
+          {isReady && !isPreparing ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full text-muted-foreground"
+              disabled={!isConnected || isPreparing}
+              onClick={() => void runPrepare(true)}
+            >
+              <RefreshCw className="mr-1.5 size-3.5" />
+              Full scan (picks up newly added files)
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       {variant === "page" ? (
