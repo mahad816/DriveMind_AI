@@ -3,7 +3,7 @@
 import uuid
 
 from sqlalchemy import ForeignKey, Index, Integer, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -35,5 +35,6 @@ class Chunk(TimestampMixin, Base):
         nullable=False,
         default=dict,
     )
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     document = relationship("Document", back_populates="chunks")

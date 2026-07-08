@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.sql.functions import Function
 
 from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
@@ -117,6 +118,7 @@ async def test_chunk_documents_creates_chunks_for_new_document(
     assert len(chunk_rows) == 1
     assert chunk_rows[0].text == "hello world"
     assert chunk_rows[0].metadata_json["extracted_text_hash"] == document.extracted_text_hash
+    assert isinstance(chunk_rows[0].search_vector, Function)
 
 
 @pytest.mark.asyncio

@@ -87,6 +87,21 @@ def test_upgrade_sql_contains_documents_extracted_text_column() -> None:
     assert "documents" in sql
 
 
+def test_upgrade_sql_contains_chunks_search_vector_and_gin_index() -> None:
+    """Offline upgrade SQL should add chunks FTS vector column and index."""
+    result = subprocess.run(
+        ["alembic", "upgrade", "head", "--sql"],
+        cwd=_backend_dir(),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    sql = result.stdout
+    assert "search_vector" in sql
+    assert "chunks" in sql
+    assert "ix_chunks_search_vector" in sql
+
+
 def test_documents_extracted_text_migration_metadata_is_consistent() -> None:
     """Revision metadata should remain stable for extracted_text migration."""
     migration_path = (
@@ -99,6 +114,22 @@ def test_documents_extracted_text_migration_metadata_is_consistent() -> None:
 
     assert migration_module.revision == "20260707_1800"
     assert migration_module.down_revision == "20260707_1700"
+    assert callable(migration_module.upgrade)
+    assert callable(migration_module.downgrade)
+
+
+def test_chunks_search_vector_migration_metadata_is_consistent() -> None:
+    """Revision metadata should remain stable for chunks FTS migration."""
+    migration_path = (
+        _backend_dir() / "alembic" / "versions" / "20260708_1400_add_chunks_search_vector.py"
+    )
+    spec = importlib.util.spec_from_file_location("phase7_m2_migration", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration_module)
+
+    assert migration_module.revision == "20260708_1400"
+    assert migration_module.down_revision == "20260707_1800"
     assert callable(migration_module.upgrade)
     assert callable(migration_module.downgrade)
 

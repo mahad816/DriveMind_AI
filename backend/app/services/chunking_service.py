@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -127,6 +127,10 @@ class ChunkingService:
                     chunk_index=text_chunk.chunk_index,
                     text=text_chunk.text,
                     metadata_json=metadata,
+                    search_vector=func.to_tsvector(
+                        self.settings.fts_language,
+                        text_chunk.text,
+                    ),
                 )
             )
 
