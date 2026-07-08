@@ -1,21 +1,21 @@
-"""LangGraph node implementations for Phase 8 M3 foundations."""
+"""LangGraph node implementations for the DriveMind agent workflow."""
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid as uuid_module
-import asyncio
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 from app.agents.drive_graph.state import DriveGraphState
-from app.agents.drive_graph.types import RetrieverName
-from app.agents.drive_graph.types import QueryIntent, RetrievalPlan
+from app.agents.drive_graph.types import QueryIntent, RetrievalPlan, RetrieverName
 from app.core.config import Settings
-from app.retrieval.base import Retriever
-from app.retrieval.types import RetrievedChunk, RetrievalSource
-from typing import cast
-from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.retrieval.base import Retriever
+from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
+from app.retrieval.merge import reciprocal_rank_fusion_merge
+from app.retrieval.rerank import weighted_fusion_rerank
+from app.retrieval.types import RetrievedChunk, RetrievalSource
 
 
 def receive_question(state: DriveGraphState) -> dict[str, Any]:
@@ -112,17 +112,32 @@ def make_retrieve_node(
     return _retrieve
 
 
-def rerank(state: DriveGraphState) -> dict[str, Any]:
-    """Rerank retrieved chunks (stub for M3)."""
-    return {}
+def make_rerank_node(*, settings: Settings) -> Callable[[DriveGraphState], dict[str, Any]]:
+    """Create a rerank node that applies weighted fusion to merged candidates."""
+
+    def _rerank(state: DriveGraphState) -> dict[str, Any]:
+        ranked = weighted_fusion_rerank(state["raw_chunks"], settings=settings)
+        return {"ranked_chunks": ranked}
+
+    return _rerank
 
 
-def grade_evidence(state: DriveGraphState) -> dict[str, Any]:
-    """Grade evidence sufficiency (stub: always insufficient in M3)."""
-    return {
-        "evidence_sufficient": False,
-        "evidence_reason": "M2 stub: no retrieval executed, so evidence is insufficient.",
-    }
+def make_grade_evidence_node(
+    *,
+    settings: Settings,
+) -> Callable[[DriveGraphState], dict[str, Any]]:
+    """Create an evidence grading node using Phase 7 threshold rules."""
+
+    def _grade_evidence(state: DriveGraphState) -> dict[str, Any]:
+        grade = grade_retrieval_evidence(state["ranked_chunks"], settings=settings)
+        return {
+            "evidence_sufficient": grade.sufficient,
+            "evidence_reason": grade.reason,
+            "ranked_chunks": grade.chunks,
+            "retrieval_count": len(grade.chunks),
+        }
+
+    return _grade_evidence
 
 
 def rewrite_query(state: DriveGraphState) -> dict[str, Any]:

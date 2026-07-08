@@ -76,7 +76,9 @@ async def test_retrieve_metadata_only_path_runs_metadata_retriever_only() -> Non
     mock_keyword.retrieve.assert_not_awaited()
     mock_vector.retrieve.assert_not_awaited()
 
-    assert final_state["retrieval_count"] == 1
+    assert len(final_state["raw_chunks"]) == 1
+    assert final_state["retrieval_count"] == 0
+    assert final_state["evidence_sufficient"] is False
     raw_chunks = final_state["raw_chunks"]
     assert len(raw_chunks) == 1
     assert set(raw_chunks[0].source_scores.keys()) == {"metadata"}

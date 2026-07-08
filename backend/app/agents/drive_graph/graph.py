@@ -9,26 +9,26 @@ from langgraph.graph import END, StateGraph
 
 from app.agents.drive_graph.nodes import (
     classify_intent,
-    grade_evidence,
     generate_answer,
+    make_grade_evidence_node,
+    make_retrieve_node,
+    make_rerank_node,
     plan_retrieval,
     receive_question,
     return_response,
     rewrite_query,
     route_retriever,
     retrieve,
-    rerank,
     verify_citations,
-    make_retrieve_node,
 )
 from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import RetrieverName
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.retrieval.base import Retriever
 
 
-def _should_rewrite(state: DriveGraphState) -> str:
-    """Conditional edge logic for the evidence grade stage."""
+def should_rewrite(state: DriveGraphState) -> str:
+    """Route to rewrite when evidence is weak and attempts remain."""
     if state.get("evidence_sufficient", False):
         return "generate_answer"
 
@@ -39,16 +39,16 @@ def _should_rewrite(state: DriveGraphState) -> str:
 @lru_cache(maxsize=1)
 def _build_default_graph() -> Any:
     """Compile and cache the Phase 8 DriveGraph skeleton using stub retrieval."""
+    settings = get_settings()
     graph = StateGraph(DriveGraphState)
 
-    # Core pipeline nodes (stubbed in M2).
     graph.add_node("receive_question", receive_question)
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("plan_retrieval", plan_retrieval)
     graph.add_node("route_retriever", route_retriever)
     graph.add_node("retrieve", retrieve)
-    graph.add_node("rerank", rerank)
-    graph.add_node("grade_evidence", grade_evidence)
+    graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings)))
+    graph.add_node("grade_evidence", cast(Any, make_grade_evidence_node(settings=settings)))
     graph.add_node("rewrite_query", rewrite_query)
     graph.add_node("generate_answer", generate_answer)
     graph.add_node("verify_citations", verify_citations)
@@ -66,7 +66,7 @@ def _build_default_graph() -> Any:
 
     graph.add_conditional_edges(
         "grade_evidence",
-        _should_rewrite,
+        should_rewrite,
         {
             "rewrite_query": "rewrite_query",
             "generate_answer": "generate_answer",
@@ -105,8 +105,8 @@ def build_drive_graph(
     graph.add_node("route_retriever", route_retriever)
     retrieve_node = make_retrieve_node(retrievers=retrievers, settings=settings)
     graph.add_node("retrieve", cast(Any, retrieve_node))
-    graph.add_node("rerank", rerank)
-    graph.add_node("grade_evidence", grade_evidence)
+    graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings)))
+    graph.add_node("grade_evidence", cast(Any, make_grade_evidence_node(settings=settings)))
     graph.add_node("rewrite_query", rewrite_query)
     graph.add_node("generate_answer", generate_answer)
     graph.add_node("verify_citations", verify_citations)
@@ -124,7 +124,7 @@ def build_drive_graph(
 
     graph.add_conditional_edges(
         "grade_evidence",
-        _should_rewrite,
+        should_rewrite,
         {
             "rewrite_query": "rewrite_query",
             "generate_answer": "generate_answer",
