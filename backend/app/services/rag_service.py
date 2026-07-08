@@ -85,6 +85,31 @@ class RagService:
             raise ValueError("Question must not be empty")
 
         user = await self._resolve_user(user_id)
+        if self.settings.agent_graph_enabled:
+            from app.agents.drive_graph.runner import run_drive_graph
+
+            graph_result = await run_drive_graph(
+                self.db,
+                self.settings,
+                question=normalized_question,
+                user_id=user.id,
+                chat_service=self.chat_service,
+            )
+            query_id = await self._persist_query_history(
+                user_id=user.id,
+                question=graph_result.question,
+                answer=graph_result.answer,
+                citations=graph_result.citations,
+            )
+            return RagResult(
+                query_id=query_id,
+                user_id=user.id,
+                question=graph_result.question,
+                answer=graph_result.answer,
+                citations=graph_result.citations,
+                retrieval_count=graph_result.retrieval_count,
+            )
+
         if self.settings.hybrid_retrieval_enabled and isinstance(self.retriever, HybridRetriever):
             evidence = await self.retriever.retrieve_with_grade(normalized_question)
             retrieved = evidence.chunks

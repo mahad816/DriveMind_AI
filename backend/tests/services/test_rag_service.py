@@ -16,7 +16,8 @@ from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.vector import VectorRetriever
-from app.services.rag_service import RagService
+from app.schemas.query import CitationItem
+from app.services.rag_service import RagResult, RagService
 
 USER_ID = uuid.uuid4()
 CHUNK_ID = uuid.uuid4()
@@ -81,7 +82,11 @@ def service(
 ) -> RagService:
     return RagService(
         db=mock_db,
-        settings=MagicMock(rag_max_context_chars=12000, hybrid_retrieval_enabled=False),
+        settings=Settings(
+            rag_max_context_chars=12000,
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
         retriever=mock_retriever,
         chat_service=mock_chat,
     )
@@ -274,7 +279,11 @@ async def test_ask_uses_evidence_grading_path_when_retriever_supports_it(
     )
     service = RagService(
         db=mock_db,
-        settings=MagicMock(rag_max_context_chars=12000, hybrid_retrieval_enabled=True),
+        settings=Settings(
+            rag_max_context_chars=12000,
+            hybrid_retrieval_enabled=True,
+            agent_graph_enabled=False,
+        ),
         retriever=graded_retriever,
         chat_service=mock_chat,
     )
@@ -290,4 +299,64 @@ async def test_ask_uses_evidence_grading_path_when_retriever_supports_it(
 
     assert result.answer == NO_EVIDENCE_ANSWER
     graded_retriever.retrieve_with_grade.assert_awaited_once_with("What is tensile strength?")
+    mock_chat.generate_grounded_answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ask_uses_drive_graph_when_agent_enabled(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        agent_graph_enabled=True,
+        hybrid_retrieval_enabled=False,
+        rag_max_context_chars=12000,
+    )
+    service = RagService(
+        db=mock_db,
+        settings=settings,
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    citation = CitationItem(
+        chunk_id=CHUNK_ID,
+        drive_file_id=DRIVE_FILE_ID,
+        filename="notes.txt",
+        snippet="graph citation",
+        score=0.8,
+    )
+
+    fake_graph_result = RagResult(
+        query_id=uuid.uuid4(),
+        user_id=USER_ID,
+        question="What is tensile strength?",
+        answer="Graph answer [1].",
+        citations=[citation],
+        retrieval_count=1,
+    )
+
+    async def fake_run_drive_graph(*args: object, **kwargs: object) -> RagResult:
+        return fake_graph_result
+
+    monkeypatch.setattr(
+        "app.agents.drive_graph.runner.run_drive_graph",
+        fake_run_drive_graph,
+    )
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
+
+    assert result.query_id == QUERY_ID
+    assert result.answer == "Graph answer [1]."
+    assert result.citations[0].snippet == "graph citation"
+    assert result.retrieval_count == 1
+    mock_retriever.retrieve.assert_not_awaited()
     mock_chat.generate_grounded_answer.assert_not_awaited()

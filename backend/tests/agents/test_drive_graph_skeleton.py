@@ -39,8 +39,24 @@ async def test_runner_returns_ragresult_for_stub_graph() -> None:
     settings = Settings(agent_max_rewrite_attempts=1)
     user_id = uuid.uuid4()
     db = AsyncMock()
+    mock_vector = AsyncMock()
+    mock_vector.retrieve = AsyncMock(return_value=[])
+    mock_keyword = AsyncMock()
+    mock_keyword.retrieve = AsyncMock(return_value=[])
+    mock_metadata = AsyncMock()
+    mock_metadata.retrieve = AsyncMock(return_value=[])
 
-    result = await run_drive_graph(db, settings, question="hello?", user_id=user_id)
+    result = await run_drive_graph(
+        db,
+        settings,
+        question="hello?",
+        user_id=user_id,
+        retrievers={
+            "vector": mock_vector,
+            "keyword": mock_keyword,
+            "metadata": mock_metadata,
+        },
+    )
 
     assert result.user_id == user_id
     assert result.answer == NO_EVIDENCE_ANSWER

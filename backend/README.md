@@ -10,6 +10,8 @@ Phase 6 adds vector RAG under `app/retrieval/`, `app/llm/`, `app/services/rag_se
 
 Phase 7 adds hybrid retrieval (metadata + keyword + vector) with merge, rerank, and evidence grading under `app/retrieval/`. See [PHASE_7_TRACKER.md](../docs/PHASE_7_TRACKER.md).
 
+Phase 8 adds LangGraph orchestration for intent routing, retrieval loops, answer generation, and citation verification under `app/agents/drive_graph/`. See [PHASE_8_TRACKER.md](../docs/PHASE_8_TRACKER.md).
+
 ## Phase 6 — RAG chat API
 
 Grounded question answering over indexed Drive content:
@@ -78,6 +80,35 @@ uv run alembic upgrade head
 
 # After metadata folder-path sync improvements (M4)
 curl -X POST http://localhost:8000/api/v1/index/sync
+```
+
+## Phase 8 — LangGraph Agent
+
+When enabled, chat requests are orchestrated through the Drive graph:
+
+```text
+receive_question -> classify_intent -> plan_retrieval -> route_retriever
+-> retrieve -> rerank -> grade_evidence
+-> (rewrite_query loop, capped) -> generate_answer -> verify_citations -> return_response
+```
+
+### Environment variables (Phase 8)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AGENT_GRAPH_ENABLED` | `false` | Toggle LangGraph orchestration inside `RagService` |
+| `AGENT_MAX_REWRITE_ATTEMPTS` | `2` | Max rewrite-query loop attempts before forcing answer path |
+
+### Manual operations tied to Phase 8
+
+```bash
+# After wiring M8 and before smoke testing graph path:
+# 1) Set AGENT_GRAPH_ENABLED=true in .env
+# 2) Restart backend server
+# 3) Run chat smoke test
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What is tensile strength?"}'
 ```
 
 ## System dependencies (Phase 4 image OCR)
