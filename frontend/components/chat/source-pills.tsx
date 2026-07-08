@@ -33,8 +33,10 @@ export function SourcePills({ citations, onSelect, className }: SourcePillsProps
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-1 gap-y-2", className)}>
-      <span className="text-source text-muted-foreground">Sources:</span>
+    <div className={cn("flex flex-wrap items-center gap-x-1.5 gap-y-2", className)}>
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Sources
+      </span>
       {unique.map((citation, index) => (
         <span key={citation.chunk_id} className="inline-flex items-center">
           {index > 0 ? (

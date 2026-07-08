@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CONVERSATIONS_CHANGED_EVENT } from "@/lib/conversations/events";
 import {
   createConversation,
   deleteConversation,
@@ -34,6 +35,12 @@ export function useConversations(): UseConversationsResult {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const onChanged = () => refresh();
+    window.addEventListener(CONVERSATIONS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(CONVERSATIONS_CHANGED_EVENT, onChanged);
   }, [refresh]);
 
   const groups = useMemo(() => groupConversationsByDate(conversations), [conversations]);

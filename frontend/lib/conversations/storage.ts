@@ -1,7 +1,9 @@
 import type { ConversationGroup, ConversationRecord } from "@/lib/conversations/types";
 import { deleteConversationMessages } from "@/lib/conversations/messages";
+import { notifyConversationsChanged } from "@/lib/conversations/events";
 
 const STORAGE_KEY = "drivemind:conversations";
+export const DEFAULT_CONVERSATION_TITLE = "New chat";
 
 function readAll(): ConversationRecord[] {
   if (typeof window === "undefined") {
@@ -25,6 +27,7 @@ function readAll(): ConversationRecord[] {
 
 function writeAll(conversations: ConversationRecord[]) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+  notifyConversationsChanged();
 }
 
 function isConversationRecord(value: unknown): value is ConversationRecord {
@@ -57,7 +60,7 @@ export function getConversation(id: string): ConversationRecord | null {
   return readAll().find((c) => c.id === id) ?? null;
 }
 
-export function createConversation(title = "New conversation"): ConversationRecord {
+export function createConversation(title = DEFAULT_CONVERSATION_TITLE): ConversationRecord {
   const now = new Date().toISOString();
   const conversation: ConversationRecord = {
     id: createConversationId(),

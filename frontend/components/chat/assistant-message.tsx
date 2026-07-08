@@ -3,17 +3,35 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { FollowUpChips } from "@/components/chat/follow-up-chips";
+import { MessageActionBar } from "@/components/chat/message-action-bar";
 import { SourcePills } from "@/components/chat/source-pills";
+import { formatSourceCount } from "@/lib/chat/source-label";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
 type AssistantMessageProps = {
   response: ChatResponse;
   onSourceSelect: (citation: CitationItem) => void;
+  onRegenerate?: () => void;
+  onFollowUp?: (question: string) => void;
+  followUpSuggestions?: string[];
+  isLatest?: boolean;
+  isLoading?: boolean;
 };
 
-export function AssistantMessage({ response, onSourceSelect }: AssistantMessageProps) {
+export function AssistantMessage({
+  response,
+  onSourceSelect,
+  onRegenerate,
+  onFollowUp,
+  followUpSuggestions = [],
+  isLatest = false,
+  isLoading = false,
+}: AssistantMessageProps) {
+  const sourceLabel = formatSourceCount(response.retrieval_count, response.citations);
+
   return (
-    <article className="space-y-4" aria-label="Assistant answer">
+    <article className="group/answer space-y-4" aria-label="Assistant answer">
       <div className="text-body-lg leading-relaxed text-foreground">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
@@ -27,7 +45,7 @@ export function AssistantMessage({ response, onSourceSelect }: AssistantMessageP
                   href={href}
                   target={isExternal ? "_blank" : undefined}
                   rel={isExternal ? "noreferrer" : undefined}
-                  className="underline underline-offset-4 hover:text-foreground"
+                  className="font-medium text-primary underline underline-offset-4 hover:text-primary/80"
                   {...props}
                 />
               );
@@ -39,7 +57,7 @@ export function AssistantMessage({ response, onSourceSelect }: AssistantMessageP
               if (inline) {
                 return (
                   <code
-                    className="rounded bg-muted px-1 py-0.5 font-mono text-sm"
+                    className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em] text-foreground"
                     {...rest}
                   >
                     {children}
@@ -47,7 +65,7 @@ export function AssistantMessage({ response, onSourceSelect }: AssistantMessageP
                 );
               }
               return (
-                <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-sm">
+                <pre className="overflow-x-auto rounded-xl border border-border bg-muted/60 p-4 text-sm">
                   <code className={className} {...rest}>
                     {children}
                   </code>
@@ -58,10 +76,23 @@ export function AssistantMessage({ response, onSourceSelect }: AssistantMessageP
               return <p className="mb-4 last:mb-0">{children}</p>;
             },
             ul({ children }) {
-              return <ul className="mb-4 list-disc space-y-1 pl-5 last:mb-0">{children}</ul>;
+              return <ul className="mb-4 list-disc space-y-1.5 pl-5 last:mb-0">{children}</ul>;
             },
             ol({ children }) {
-              return <ol className="mb-4 list-decimal space-y-1 pl-5 last:mb-0">{children}</ol>;
+              return <ol className="mb-4 list-decimal space-y-1.5 pl-5 last:mb-0">{children}</ol>;
+            },
+            h1({ children }) {
+              return <h3 className="mb-3 text-lg font-semibold">{children}</h3>;
+            },
+            h2({ children }) {
+              return <h4 className="mb-2 text-base font-semibold">{children}</h4>;
+            },
+            blockquote({ children }) {
+              return (
+                <blockquote className="mb-4 border-l-2 border-primary/30 pl-4 text-muted-foreground last:mb-0">
+                  {children}
+                </blockquote>
+              );
             },
           }}
         >
@@ -69,7 +100,22 @@ export function AssistantMessage({ response, onSourceSelect }: AssistantMessageP
         </ReactMarkdown>
       </div>
 
+      <MessageActionBar
+        answer={response.answer}
+        sourceLabel={sourceLabel}
+        onRegenerate={onRegenerate}
+        isLoading={isLoading}
+      />
+
       <SourcePills citations={response.citations} onSelect={onSourceSelect} />
+
+      {isLatest && onFollowUp && followUpSuggestions.length > 0 ? (
+        <FollowUpChips
+          suggestions={followUpSuggestions}
+          onSelect={onFollowUp}
+          disabled={isLoading}
+        />
+      ) : null}
     </article>
   );
 }

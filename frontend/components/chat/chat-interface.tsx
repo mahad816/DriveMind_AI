@@ -5,18 +5,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { ComposerDock } from "@/components/chat/composer-dock";
+import type { ChatComposerHandle } from "@/components/chat/chat-composer";
 import { EmptyStateHero } from "@/components/chat/empty-state-hero";
 import { MessageThread } from "@/components/chat/message-thread";
 import { SourcePanel } from "@/components/chat/source-panel";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { useConversations } from "@/lib/hooks/use-conversations";
+import { useChatShortcuts } from "@/lib/hooks/use-chat-shortcuts";
 import {
   getConversationMessages,
   saveConversationMessages,
   type StoredChatMessage,
 } from "@/lib/conversations/messages";
-import { getConversation } from "@/lib/conversations/storage";
+import { getConversation, DEFAULT_CONVERSATION_TITLE } from "@/lib/conversations/storage";
+import { conversationTitleFromQuestion } from "@/lib/conversations/title";
 import { isApiError } from "@/lib/api/errors";
 import { askQuestion } from "@/lib/api/chat";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
@@ -50,10 +53,8 @@ function createMessageId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function titleFromQuestion(question: string): string {
-  const trimmed = question.trim();
-  if (trimmed.length <= 48) return trimmed;
-  return `${trimmed.slice(0, 48)}…`;
+function isDefaultConversationTitle(title: string): boolean {
+  return title === DEFAULT_CONVERSATION_TITLE || title === "New conversation";
 }
 
 function fromStoredMessage(stored: StoredChatMessage): ChatMessageState {
@@ -124,7 +125,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     pollIntervalMs: 30_000,
   });
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
-  const { renameConversation, bumpConversation } = useConversations();
+  const { startNewConversation, renameConversation, bumpConversation } = useConversations();
 
   useEffect(() => {
     void refetch();
@@ -132,7 +133,9 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const isConnected = connection?.connected ?? false;
   const titledRef = useRef(false);
-  const prefilledRef = useRef(false);
+  const askHandledRef = useRef(false);
+  const pendingAskTitleRef = useRef<string | null>(null);
+  const composerRef = useRef<ChatComposerHandle>(null);
 
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessageState[]>([]);
@@ -154,8 +157,9 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
     const stored = getConversationMessages(conversationId);
     setMessages(stored.map(fromStoredMessage));
-    titledRef.current = record.title !== "New conversation" || stored.length > 0;
+    titledRef.current = !isDefaultConversationTitle(record.title) || stored.length > 0;
     setMessagesLoaded(true);
+    askHandledRef.current = false;
   }, [conversationId, router]);
 
   useEffect(() => {
@@ -168,38 +172,50 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   }, [messages.length, isSending]);
 
   useEffect(() => {
-    const ask = searchParams.get("ask");
-    if (!ask || prefilledRef.current) return;
-    prefilledRef.current = true;
-    setQuestion(ask);
-  }, [searchParams]);
+    if (!conversationId || !messagesLoaded || titledRef.current) return;
 
-  const send = useCallback(
-    async (overrideQuestion?: string) => {
-      const normalized = (overrideQuestion ?? question).trim();
+    const ask = pendingAskTitleRef.current;
+    if (!ask) return;
+
+    renameConversation(conversationId, conversationTitleFromQuestion(ask));
+    titledRef.current = true;
+    pendingAskTitleRef.current = null;
+  }, [conversationId, messagesLoaded, renameConversation]);
+
+  const submitQuestion = useCallback(
+    async (normalized: string, options?: { messageId?: string; replace?: boolean }) => {
       if (!isConnected || needsPrepare || isSending || normalized.length === 0) return;
 
-      const id = createMessageId();
+      const id = options?.messageId ?? createMessageId();
+      const replace = Boolean(options?.replace);
 
-      if (conversationId && !titledRef.current) {
-        renameConversation(conversationId, titleFromQuestion(normalized));
+      if (conversationId && !titledRef.current && !replace) {
+        renameConversation(conversationId, conversationTitleFromQuestion(normalized));
         titledRef.current = true;
       }
 
-      setQuestion("");
+      if (!replace) {
+        setQuestion("");
+      }
       setIsSending(true);
 
-      setMessages((prev) => [
-        ...prev,
-        { id, question: normalized, status: "loading", error: null },
-      ]);
+      setMessages((prev) => {
+        if (replace) {
+          return prev.map((message) =>
+            message.id === id
+              ? { id, question: normalized, status: "loading" as const, error: null }
+              : message,
+          );
+        }
+        return [...prev, { id, question: normalized, status: "loading" as const, error: null }];
+      });
 
       try {
         const response = await askQuestion({ question: normalized });
         setMessages((prev) =>
           prev.map((message) =>
             message.id === id
-              ? { id, question: message.question, status: "done", error: null, response }
+              ? { id, question: normalized, status: "done", error: null, response }
               : message,
           ),
         );
@@ -215,7 +231,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         setMessages((prev) =>
           prev.map((entry) =>
             entry.id === id
-              ? { id, question: entry.question, status: "error", error: message, response: null }
+              ? { id, question: normalized, status: "error", error: message, response: null }
               : entry,
           ),
         );
@@ -223,8 +239,80 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         setIsSending(false);
       }
     },
-    [bumpConversation, conversationId, isConnected, isSending, needsPrepare, question, renameConversation],
+    [
+      bumpConversation,
+      conversationId,
+      isConnected,
+      isSending,
+      needsPrepare,
+      renameConversation,
+    ],
   );
+
+  const send = useCallback(
+    (overrideQuestion?: string) => {
+      const normalized = (overrideQuestion ?? question).trim();
+      void submitQuestion(normalized);
+    },
+    [question, submitQuestion],
+  );
+
+  const retryMessage = useCallback(
+    (messageId: string, questionText: string) => {
+      void submitQuestion(questionText.trim(), { messageId, replace: true });
+    },
+    [submitQuestion],
+  );
+
+  const regenerateMessage = useCallback(
+    (messageId: string, questionText: string) => {
+      void submitQuestion(questionText.trim(), { messageId, replace: true });
+    },
+    [submitQuestion],
+  );
+
+  useEffect(() => {
+    const ask = searchParams.get("ask");
+    if (!ask || askHandledRef.current || !messagesLoaded) return;
+    askHandledRef.current = true;
+    pendingAskTitleRef.current = ask;
+
+    const canAutoSend =
+      Boolean(conversationId) &&
+      messages.length === 0 &&
+      isConnected &&
+      !needsPrepare &&
+      !isSending;
+
+    if (canAutoSend) {
+      router.replace(`/chat/${conversationId}`, { scroll: false });
+      void submitQuestion(ask.trim());
+      return;
+    }
+
+    setQuestion(ask);
+  }, [
+    conversationId,
+    isConnected,
+    isSending,
+    messages.length,
+    messagesLoaded,
+    needsPrepare,
+    router,
+    searchParams,
+    submitQuestion,
+  ]);
+
+  const handleNewChat = useCallback(() => {
+    const created = startNewConversation();
+    router.push(`/chat/${created.id}`);
+  }, [router, startNewConversation]);
+
+  useChatShortcuts({
+    onNewChat: handleNewChat,
+    onFocusComposer: () => composerRef.current?.focus(),
+    enabled: Boolean(conversationId),
+  });
 
   const handleSourceSelect = useCallback((citation: CitationItem) => {
     setSelectedCitation(citation);
@@ -250,21 +338,26 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
             needsConnect={needsConnect}
             needsPrepare={needsPrepare}
             isSending={isSending}
-            onSuggestionClick={(suggestion) => void send(suggestion)}
+            onSuggestionClick={(suggestion) => send(suggestion)}
           />
         ) : (
           <MessageThread
             messages={messages}
             onSourceSelect={handleSourceSelect}
+            onRetry={retryMessage}
+            onRegenerate={regenerateMessage}
+            onFollowUp={send}
+            isSending={isSending}
             endRef={endRef}
           />
         )}
       </div>
 
       <ComposerDock
+        ref={composerRef}
         value={question}
         onChange={setQuestion}
-        onSubmit={() => void send()}
+        onSubmit={() => send()}
         disabled={!isConnected || needsPrepare}
         isLoading={isSending}
       />

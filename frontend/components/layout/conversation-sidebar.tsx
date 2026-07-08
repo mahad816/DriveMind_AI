@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Files, MessageSquare, MessageSquarePlus } from "lucide-react";
+import { Files, MessageSquare, MessageSquarePlus, Search, X } from "lucide-react";
 
 import { ConversationItem } from "@/components/layout/conversation-item";
 import { UtilityNavLink } from "@/components/layout/utility-nav-link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useConversations } from "@/lib/hooks/use-conversations";
@@ -24,6 +27,7 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
   const { groups, isLoading, startNewConversation, renameConversation, removeConversation } =
     useConversations();
+  const [chatQuery, setChatQuery] = useState("");
 
   const handleNewChat = () => {
     const created = startNewConversation();
@@ -31,20 +35,36 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
     router.push(`/chat/${created.id}`);
   };
 
+  const filteredGroups = useMemo(() => {
+    const q = chatQuery.trim().toLowerCase();
+    if (!q) return groups;
+
+    return groups
+      .map((group) => ({
+        ...group,
+        conversations: group.conversations.filter((conversation) =>
+          conversation.title.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((group) => group.conversations.length > 0);
+  }, [chatQuery, groups]);
+
   const showSetupChip = needsConnect || needsPrepare;
   const hasChats = groups.some((g) => g.conversations.length > 0);
+  const hasFilteredChats = filteredGroups.some((g) => g.conversations.length > 0);
+  const isSearching = chatQuery.trim().length > 0;
 
   return (
     <aside
       className={cn(
-        "flex h-full w-[240px] shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground",
+        "flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground",
         className,
       )}
       aria-label="App navigation"
     >
       {/* Logo */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
           <MessageSquare className="size-4" />
         </div>
         <div className="min-w-0">
@@ -53,7 +73,7 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-col gap-1 px-3 pb-3">
+      <div className="flex shrink-0 flex-col gap-2 px-3 pb-3">
         <button
           type="button"
           onClick={handleNewChat}
@@ -68,10 +88,35 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
 
       {/* Chat history */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="px-3 pt-3 pb-1">
+        <div className="space-y-2 px-3 pt-3 pb-1">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {chatCopy.recentChats}
           </p>
+
+          {hasChats ? (
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={chatQuery}
+                onChange={(event) => setChatQuery(event.target.value)}
+                placeholder={chatCopy.searchChatsPlaceholder}
+                className="h-8 border-border/70 bg-background/60 pl-8 pr-8 text-xs"
+                aria-label={chatCopy.searchChatsPlaceholder}
+              />
+              {chatQuery ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-1/2 right-0.5 size-7 -translate-y-1/2 text-muted-foreground"
+                  onClick={() => setChatQuery("")}
+                  aria-label="Clear search"
+                >
+                  <X className="size-3.5" />
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <nav
@@ -84,8 +129,8 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : hasChats ? (
-            groups.map((group) => (
+          ) : hasFilteredChats ? (
+            filteredGroups.map((group) => (
               <div key={group.label} className="mb-3">
                 <p className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
                   {group.label}
@@ -103,6 +148,8 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
                 </div>
               </div>
             ))
+          ) : hasChats && isSearching ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">{chatCopy.noChatsMatch}</p>
           ) : (
             <p className="px-3 py-2 text-xs text-muted-foreground">{chatCopy.noChatsYet}</p>
           )}
