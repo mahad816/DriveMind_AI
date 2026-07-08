@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 6 complete (Basic RAG API). Phase 7 next.
+**Last updated:** Phase 7 in progress (M0 complete: tracker + docs alignment). Phase 6 complete.
 
 ## Completed Phases
 
@@ -15,6 +15,7 @@ Use this file to resume work in a new chat.
 | 4 | Complete | Text extractors, IngestionService, ingest API |
 | 5 | Complete | Chunking, embeddings, Qdrant vector index, build API |
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
+| 7 | In progress | Hybrid retrieval kickoff (M0 complete) |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -43,13 +44,29 @@ See [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) for full milestone log.
 - Build result: `embedded: 4888`, `unchanged: 1148`, `failed: 0`
 - Qdrant batched upsert fix committed (`fix(embeddings): batch qdrant upserts...`)
 
+## Phase 7 Summary (Hybrid Retrieval) — In Progress
+
+See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) for milestone-by-milestone progress.
+
+| Capability | Module | Status |
+|------------|--------|--------|
+| Metadata retriever | `app/retrieval/metadata.py` | Planned (M4) |
+| Keyword retriever | `app/retrieval/keyword.py` | Planned (M3) |
+| Hybrid merge + dedupe | `app/retrieval/merge.py` | Planned (M5) |
+| Weighted reranking | `app/retrieval/rerank.py` | Planned (M6) |
+| Evidence grading | `app/retrieval/grade.py` | Planned (M7) |
+| RAG integration | `app/retrieval/hybrid.py` + `app/services/rag_service.py` | Planned (M8) |
+
+**Current milestone:** M0 complete  
+**Next milestone:** M1 retrieval foundation (`types`, config, vector candidate pool)
+
 ## What's Next
 
-**Phase 7 — Hybrid Retrieval** — metadata + keyword + vector merge, reranking, evidence grading
+**Phase 7 M1** — Retrieval foundation (`retrieval` types/protocol + candidate pool config)
 
-Say in a new chat:
+Say in a new chat (if needed):
 
-> Continue DriveMind AI Phase 7 from `docs/ROADMAP.md` — hybrid retrieval.
+> Continue DriveMind AI Phase 7 from `docs/PHASE_7_TRACKER.md` — start at M1.
 
 ## Quick Commands
 
@@ -82,11 +99,13 @@ curl -X POST http://localhost:8000/api/v1/chat \
 - [x] Postgres + migrations applied
 - [x] Index built (`failed: 0`)
 - [x] `CHAT_MODEL` wired in settings
+- [ ] Re-sync after M4 for improved `folder_path` metadata
 
 ## Key Docs
 
 - [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — product vision
 - [ROADMAP.md](ROADMAP.md) — all phases
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design
+- [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) — Phase 7 log (active)
 - [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) — Phase 6 log (complete)
 - [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) — Phase 5 log (complete)

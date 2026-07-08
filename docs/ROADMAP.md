@@ -15,7 +15,7 @@ Phased execution plan for building DriveMind AI. Work **one phase at a time** �
 | 4 | Document Ingestion & Text Extraction | Complete — see [PHASE_4_TRACKER.md](PHASE_4_TRACKER.md) |
 | 5 | Chunking & Embeddings | Complete — see [PHASE_5_TRACKER.md](PHASE_5_TRACKER.md) |
 | 6 | Basic RAG API | Complete — see [PHASE_6_TRACKER.md](PHASE_6_TRACKER.md) |
-| 7 | Hybrid Retrieval | Not started |
+| 7 | Hybrid Retrieval | In progress — see [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md) |
 | 8 | LangGraph Agent | Not started |
 | 9 | Frontend Foundation | Not started |
 | 10 | Evaluation & Quality | Not started |
@@ -231,6 +231,8 @@ test(backend): add health endpoint tests
 
 **Goal:** Reliable retrieval for real Drive questions.
 
+**Status:** In progress. See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md).
+
 **Build:**
 
 - Metadata retriever (latest, type, folder, date)
@@ -246,6 +248,11 @@ test(backend): add health endpoint tests
 - `backend/app/retrieval/keyword.py`
 - `backend/app/retrieval/vector.py`
 - `backend/app/retrieval/hybrid.py`
+
+**Phase 7 progress (current):**
+
+- M0 complete: tracker + docs alignment
+- Next: M1 retrieval foundation (`types`, config, vector candidate pool)
 
 ---
 

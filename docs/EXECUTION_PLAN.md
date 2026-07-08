@@ -171,6 +171,24 @@ test(backend): add health endpoint tests
 
 **Goal:** Metadata + keyword + vector + merge + rerank + evidence grading.
 
+**Status:** In progress. See [PHASE_7_TRACKER.md](PHASE_7_TRACKER.md).
+
+**Milestones:**
+
+| # | Deliverable |
+|---|-------------|
+| M0 | Tracker + docs alignment |
+| M1 | Retrieval foundation (`types`, protocol, candidate pool config) |
+| M2 | PostgreSQL FTS migration + chunk search-vector sync |
+| M3 | Keyword retriever |
+| M4 | Metadata retriever + folder path sync fix |
+| M5 | Reciprocal rank fusion merge + dedupe |
+| M6 | Weighted fusion reranker |
+| M7 | Evidence grader |
+| M8 | Hybrid retriever wiring into `RagService` |
+| M9 | Test coverage for hybrid retrieval |
+| M10 | Verification + docs closure |
+
 **Files:**
 
 - `backend/app/retrieval/metadata.py`
