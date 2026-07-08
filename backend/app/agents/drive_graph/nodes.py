@@ -14,12 +14,16 @@ from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import QueryIntent, RetrievalPlan, RetrieverName
 from app.core.config import Settings
 from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
+from app.llm.base import ChatService
+from app.llm.factory import get_chat_service
 from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.llm.prompts import format_citation_snippet, select_prompt_chunks
 from app.retrieval.base import Retriever
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
 from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.rerank import weighted_fusion_rerank
 from app.retrieval.types import RetrievedChunk, RetrievalSource
+from app.schemas.query import CitationItem
 
 
 def receive_question(state: DriveGraphState) -> dict[str, Any]:
@@ -200,23 +204,76 @@ def make_rewrite_query_node(
     return _rewrite_query
 
 
-def generate_answer(state: DriveGraphState) -> dict[str, Any]:
-    """Generate the final answer (stub for M3)."""
-    return {
-        "answer": NO_EVIDENCE_ANSWER,
-        "citations": [],
-    }
+def make_generate_answer_node(
+    *,
+    settings: Settings,
+    chat_service: ChatService | None = None,
+) -> Callable[[DriveGraphState], Awaitable[dict[str, Any]]]:
+    """Create grounded answer generation node with citation construction."""
+    service = chat_service or get_chat_service(settings)
+
+    async def _generate_answer(state: DriveGraphState) -> dict[str, Any]:
+        ranked = state["ranked_chunks"]
+        question = state["question"]
+        if not ranked:
+            return {"answer": NO_EVIDENCE_ANSWER, "citations": []}
+
+        answer = await service.generate_grounded_answer(
+            question,
+            ranked,
+            max_context_chars=settings.rag_max_context_chars,
+        )
+        prompt_chunks = select_prompt_chunks(
+            question,
+            ranked,
+            max_context_chars=settings.rag_max_context_chars,
+        )
+        citations = [build_citation(chunk) for chunk in prompt_chunks]
+        return {"answer": answer, "citations": citations}
+
+    return _generate_answer
 
 
 def verify_citations(state: DriveGraphState) -> dict[str, Any]:
-    """Verify bracket citations (stub: no-op for M3)."""
-    return {}
+    """Remove invalid citation references and align citation payload."""
+    answer = state.get("answer", "")
+    citations = state.get("citations", [])
+    if not answer or not citations:
+        return {}
+
+    refs = [int(match) for match in re.findall(r"\[(\d+)\]", answer)]
+    if not refs:
+        return {}
+
+    valid_indices = {index for index in refs if 1 <= index <= len(citations)}
+    invalid_indices = {index for index in refs if index < 1 or index > len(citations)}
+
+    sanitized_answer = answer
+    for invalid in sorted(invalid_indices, reverse=True):
+        sanitized_answer = re.sub(rf"\[{invalid}\]", "", sanitized_answer)
+    sanitized_answer = re.sub(r"\s{2,}", " ", sanitized_answer).strip()
+
+    if not valid_indices:
+        return {"answer": sanitized_answer, "citations": []}
+
+    ordered_valid = sorted(valid_indices)
+    selected_citations = [citations[index - 1] for index in ordered_valid]
+    old_to_new = {old: new for new, old in enumerate(ordered_valid, start=1)}
+
+    normalized_answer = sanitized_answer
+    for old_index, new_index in old_to_new.items():
+        if old_index != new_index:
+            normalized_answer = re.sub(rf"\[{old_index}\]", f"[{new_index}]", normalized_answer)
+
+    return {"answer": normalized_answer, "citations": selected_citations}
 
 
 def return_response(state: DriveGraphState) -> dict[str, Any]:
-    """Finalize the state for a RagResult (stub)."""
+    """Finalize response envelope values used by the graph runner."""
+    citations = state.get("citations", [])
     return {
         "query_id": uuid_module.uuid4(),
+        "retrieval_count": len(citations) or state["retrieval_count"],
     }
 
 
@@ -345,3 +402,17 @@ def _extract_rewritten_query(content: str) -> str | None:
             return None
         value = parsed.get("rewritten_query")
         return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def build_citation(chunk: RetrievedChunk) -> CitationItem:
+    """Create API citation payload from retrieved chunk."""
+    snippet = format_citation_snippet(chunk.text)
+    if not snippet:
+        snippet = chunk.filename
+    return CitationItem(
+        chunk_id=chunk.chunk_id,
+        drive_file_id=chunk.drive_file_id,
+        filename=chunk.filename,
+        snippet=snippet,
+        score=chunk.score,
+    )

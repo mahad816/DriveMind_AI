@@ -63,8 +63,14 @@ async def test_retrieve_metadata_only_path_runs_metadata_retriever_only() -> Non
         dict[RetrieverName, Retriever],
         retrievers,
     )
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="No evidence.")
 
-    compiled = build_drive_graph(retrievers=retrievers_typed, settings=settings)
+    compiled = build_drive_graph(
+        retrievers=retrievers_typed,
+        settings=settings,
+        chat_service=chat,
+    )
     state = create_initial_state(
         question="Show only PDFs in my Projects folder", user_id=uuid.uuid4()
     )
@@ -110,8 +116,14 @@ async def test_retrieve_keyword_search_path_runs_keyword_and_vector_only() -> No
         dict[RetrieverName, Retriever],
         retrievers,
     )
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="CoreChain appears in [1].")
 
-    compiled = build_drive_graph(retrievers=retrievers_typed, settings=settings)
+    compiled = build_drive_graph(
+        retrievers=retrievers_typed,
+        settings=settings,
+        chat_service=chat,
+    )
     state = create_initial_state(question="Files mentioning CoreChain", user_id=uuid.uuid4())
     state["max_rewrite_attempts"] = 0
 

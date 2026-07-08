@@ -151,8 +151,14 @@ async def test_graph_skips_rewrite_when_evidence_is_sufficient() -> None:
         dict[RetrieverName, Retriever],
         retrievers,
     )
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="Tensile strength is discussed in [1].")
 
-    compiled = build_drive_graph(retrievers=retrievers_typed, settings=settings)
+    compiled = build_drive_graph(
+        retrievers=retrievers_typed,
+        settings=settings,
+        chat_service=chat,
+    )
     state = create_initial_state(question="What is tensile strength?", user_id=uuid.uuid4())
     state["max_rewrite_attempts"] = settings.agent_max_rewrite_attempts
 
@@ -189,8 +195,14 @@ async def test_graph_rewrites_once_when_evidence_is_insufficient() -> None:
         dict[RetrieverName, Retriever],
         retrievers,
     )
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="No evidence found.")
 
-    compiled = build_drive_graph(retrievers=retrievers_typed, settings=settings)
+    compiled = build_drive_graph(
+        retrievers=retrievers_typed,
+        settings=settings,
+        chat_service=chat,
+    )
     state = create_initial_state(question="What is tensile strength?", user_id=uuid.uuid4())
     state["max_rewrite_attempts"] = settings.agent_max_rewrite_attempts
 

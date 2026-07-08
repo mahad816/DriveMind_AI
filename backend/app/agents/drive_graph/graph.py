@@ -9,7 +9,7 @@ from langgraph.graph import END, StateGraph
 
 from app.agents.drive_graph.nodes import (
     classify_intent,
-    generate_answer,
+    make_generate_answer_node,
     make_grade_evidence_node,
     make_retrieve_node,
     make_rewrite_query_node,
@@ -24,6 +24,7 @@ from app.agents.drive_graph.nodes import (
 from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import RetrieverName
 from app.core.config import Settings, get_settings
+from app.llm.base import ChatService
 from app.retrieval.base import Retriever
 
 
@@ -50,7 +51,7 @@ def _build_default_graph() -> Any:
     graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings)))
     graph.add_node("grade_evidence", cast(Any, make_grade_evidence_node(settings=settings)))
     graph.add_node("rewrite_query", cast(Any, make_rewrite_query_node(settings=settings)))
-    graph.add_node("generate_answer", generate_answer)
+    graph.add_node("generate_answer", cast(Any, make_generate_answer_node(settings=settings)))
     graph.add_node("verify_citations", verify_citations)
     graph.add_node("return_response", return_response)
 
@@ -86,6 +87,7 @@ def build_drive_graph(
     retrievers: dict[RetrieverName, Retriever] | None = None,
     settings: Settings | None = None,
     rewrite_fn: Callable[[str, str, str], Awaitable[str]] | None = None,
+    chat_service: ChatService | None = None,
 ) -> Any:
     """Build a DriveGraph.
 
@@ -112,7 +114,10 @@ def build_drive_graph(
         "rewrite_query",
         cast(Any, make_rewrite_query_node(settings=settings, rewrite_fn=rewrite_fn)),
     )
-    graph.add_node("generate_answer", generate_answer)
+    graph.add_node(
+        "generate_answer",
+        cast(Any, make_generate_answer_node(settings=settings, chat_service=chat_service)),
+    )
     graph.add_node("verify_citations", verify_citations)
     graph.add_node("return_response", return_response)
 
