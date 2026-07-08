@@ -15,6 +15,7 @@ from app.db.models.user import User
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
+from app.retrieval.vector import VectorRetriever
 from app.services.rag_service import RagService
 
 USER_ID = uuid.uuid4()
@@ -245,6 +246,15 @@ def test_service_uses_hybrid_retriever_when_enabled(mock_db: AsyncMock) -> None:
         chat_service=AsyncMock(),
     )
     assert isinstance(service.retriever, HybridRetriever)
+
+
+def test_service_uses_vector_retriever_when_hybrid_disabled(mock_db: AsyncMock) -> None:
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False),
+        chat_service=AsyncMock(),
+    )
+    assert isinstance(service.retriever, VectorRetriever)
 
 
 @pytest.mark.asyncio

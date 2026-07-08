@@ -75,3 +75,54 @@ async def test_hybrid_retriever_returns_insufficient_for_empty_question() -> Non
     evidence = await retriever.retrieve_with_grade("   ")
     assert evidence.sufficient is False
     assert evidence.chunks == []
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_retrieve_returns_empty_for_insufficient_evidence() -> None:
+    vector = AsyncMock()
+    keyword = AsyncMock()
+    metadata = AsyncMock()
+    vector.retrieve = AsyncMock(return_value=[_chunk(score=0.2, source="vector")])
+    keyword.retrieve = AsyncMock(return_value=[])
+    metadata.retrieve = AsyncMock(return_value=[])
+
+    retriever = HybridRetriever(
+        db=AsyncMock(),
+        settings=Settings(
+            retrieval_candidate_k=8,
+            retrieval_top_k=4,
+            hybrid_rrf_k=20,
+            hybrid_weight_vector=0.5,
+            hybrid_weight_keyword=0.3,
+            hybrid_weight_metadata=0.2,
+            evidence_min_fusion_score=0.9,
+            retrieval_score_threshold=0.35,
+        ),
+        vector_retriever=vector,
+        keyword_retriever=keyword,
+        metadata_retriever=metadata,
+    )
+
+    chunks = await retriever.retrieve("latest pdf")
+    assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_hybrid_retriever_returns_grade_reason() -> None:
+    vector = AsyncMock()
+    keyword = AsyncMock()
+    metadata = AsyncMock()
+    vector.retrieve = AsyncMock(return_value=[])
+    keyword.retrieve = AsyncMock(return_value=[])
+    metadata.retrieve = AsyncMock(return_value=[])
+
+    retriever = HybridRetriever(
+        db=AsyncMock(),
+        settings=Settings(),
+        vector_retriever=vector,
+        keyword_retriever=keyword,
+        metadata_retriever=metadata,
+    )
+    evidence = await retriever.retrieve_with_grade("latest file")
+    assert evidence.sufficient is False
+    assert "No retrieval evidence" in evidence.reason

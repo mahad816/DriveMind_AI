@@ -7,14 +7,14 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.config import Settings
 from app.retrieval.grade import grade_evidence
-from app.retrieval.types import RetrievedChunk
+from app.retrieval.types import RetrievalSource, RetrievedChunk
 
 
 def _chunk(
     *,
     score: float,
     fusion_score: float | None = None,
-    source_scores: dict[str, float] | None = None,
+    source_scores: dict[RetrievalSource, float] | None = None,
     modified_at: datetime | None = None,
 ) -> RetrievedChunk:
     return RetrievedChunk(
@@ -27,7 +27,7 @@ def _chunk(
         chunk_index=0,
         text="chunk",
         score=score,
-        source_scores=(source_scores or {}),  # type: ignore[arg-type]
+        source_scores=(source_scores or {}),
         fusion_score=fusion_score,
     )
 
@@ -95,3 +95,22 @@ def test_grade_evidence_accepts_with_keyword_signal() -> None:
     )
     assert grade.sufficient is True
     assert len(grade.chunks) == 1
+
+
+def test_grade_evidence_accepts_strong_vector_signal() -> None:
+    chunks = [
+        _chunk(
+            score=0.42,
+            fusion_score=0.42,
+            source_scores={"vector": 0.42},
+        )
+    ]
+    grade = grade_evidence(
+        chunks,
+        settings=Settings(
+            evidence_min_fusion_score=0.15,
+            retrieval_score_threshold=0.35,
+        ),
+    )
+    assert grade.sufficient is True
+    assert "sufficient" in grade.reason.lower()

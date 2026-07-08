@@ -39,8 +39,8 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 8 (hybrid retriever integration in `RagService`)
-- **Next milestone:** Milestone 9 — retrieval and API test coverage
+- **Last completed milestone:** Milestone 9 (retrieval and API test coverage)
+- **Next milestone:** Milestone 10 — verification + Phase 7 docs closure
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -62,7 +62,7 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 - [x] Milestone 6 — Weighted fusion reranker
 - [x] Milestone 7 — Evidence grader
 - [x] Milestone 8 — Hybrid retriever integration in `RagService`
-- [ ] Milestone 9 — Retrieval and API test coverage
+- [x] Milestone 9 — Retrieval and API test coverage
 - [ ] Milestone 10 — Verification + Phase 7 docs closure
 
 ## Commit Plan
