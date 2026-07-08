@@ -2,7 +2,7 @@
 
 Use this file to resume work in a new chat.
 
-**Last updated:** Phase 9 in progress (Frontend Foundation). M0–M6 complete.
+**Last updated:** Phase 9 — Frontend Foundation. M0–M8 complete (chat + source viewer included).
 
 ## Completed Phases
 
@@ -17,7 +17,7 @@ Use this file to resume work in a new chat.
 | 6 | Complete | Vector RAG, chat API, source viewer, 240 tests |
 | 7 | Complete | Hybrid retrieval, rerank, evidence grading, RAG integration |
 | 8 | Complete | LangGraph agent — intent routing, rewrite loop, citation verify |
-| 9 | In progress | Next.js frontend — M0–M6 complete (app shell + settings + indexing + files) |
+| 9 | In progress | Next.js frontend — M0–M8 complete (app shell + settings + indexing + files + chat + sources) |
 
 ## Phase 6 Summary (Basic RAG API) — Complete
 
@@ -97,7 +97,7 @@ See [PHASE_9_TRACKER.md](PHASE_9_TRACKER.md) for milestone-by-milestone progress
 | App shell + pages | `frontend/components/layout/` | Done (M3) |
 | Settings page | `frontend/app/settings/page.tsx` | Done (M4) |
 
-**Next milestone:** M7 — Chat interface.
+**Next milestone:** M8 — Source citation viewer.
 
 ## Quick Commands
 

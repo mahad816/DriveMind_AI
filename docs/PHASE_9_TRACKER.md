@@ -16,8 +16,8 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 | Settings page | Drive OAuth connect, theme toggle | Done (M4) |
 | Indexing dashboard | Pipeline stepper, job status, file stats | Done (M5) |
 | Files browser | Table, filters, per-file re-ingest | Done (M6) |
-| Chat interface | Composer, markdown answers, citation cards | Pending (M7) |
-| Source viewer | `/sources/[chunkId]` citation drill-down | Pending (M8) |
+| Chat interface | Composer, markdown answers, citation cards | Done (M7) |
+| Source viewer | `/sources/[chunkId]` citation drill-down | Done (M8) |
 | Polish + tests | Error/empty states, vitest coverage | Pending (M9) |
 
 ## Explicitly Out of Scope (Phase 9)
@@ -41,8 +41,8 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 6 (Files browser — filters + per-file reindex actions)
-- **Next milestone:** Milestone 7 — Chat interface
+- **Last completed milestone:** Milestone 8 (Source viewer — `/sources/[chunkId]`)
+- **Next milestone:** Milestone 9 — Polish + frontend tests
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -64,8 +64,8 @@ Deliver a professional single-user Next.js UI that consumes the backend REST API
 - [x] Milestone 4 — Settings page
 - [x] Milestone 5 — Indexing dashboard
 - [x] Milestone 6 — Files browser
-- [ ] Milestone 7 — Chat interface
-- [ ] Milestone 8 — Source citation viewer
+- [x] Milestone 7 — Chat interface
+- [x] Milestone 8 — Source citation viewer
 - [ ] Milestone 9 — Polish + frontend tests
 - [ ] Milestone 10 — Verification + Phase 9 docs closure
 
