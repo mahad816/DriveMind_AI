@@ -124,7 +124,11 @@ def make_rerank_node(*, settings: Settings) -> Callable[[DriveGraphState], dict[
     """Create a rerank node that applies weighted fusion to merged candidates."""
 
     def _rerank(state: DriveGraphState) -> dict[str, Any]:
-        ranked = weighted_fusion_rerank(state["raw_chunks"], settings=settings)
+        ranked = weighted_fusion_rerank(
+            state["raw_chunks"],
+            settings=settings,
+            question=state["question"],
+        )
         return {"ranked_chunks": ranked}
 
     return _rerank

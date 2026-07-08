@@ -61,5 +61,9 @@ class HybridRetriever:
             },
             settings=self.settings,
         )
-        reranked = weighted_fusion_rerank(merged, settings=self.settings)
+        reranked = weighted_fusion_rerank(
+            merged,
+            settings=self.settings,
+            question=normalized,
+        )
         return grade_evidence(reranked, settings=self.settings)
