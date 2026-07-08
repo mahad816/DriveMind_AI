@@ -360,3 +360,46 @@ async def test_ask_uses_drive_graph_when_agent_enabled(
     assert result.retrieval_count == 1
     mock_retriever.retrieve.assert_not_awaited()
     mock_chat.generate_grounded_answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ask_uses_linear_path_when_agent_disabled_even_if_graph_available(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agent flag off should continue using the existing linear retrieval path."""
+    settings = Settings(
+        agent_graph_enabled=False,
+        hybrid_retrieval_enabled=False,
+        rag_max_context_chars=12000,
+    )
+    service = RagService(
+        db=mock_db,
+        settings=settings,
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def fail_if_called(*args: object, **kwargs: object) -> RagResult:
+        raise AssertionError(
+            "run_drive_graph should not be called when agent_graph_enabled is false"
+        )
+
+    monkeypatch.setattr(
+        "app.agents.drive_graph.runner.run_drive_graph",
+        fail_if_called,
+    )
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
+
+    assert result.query_id == QUERY_ID
+    assert result.answer == "Tensile strength is discussed in [1]."
+    mock_retriever.retrieve.assert_awaited_once_with("What is tensile strength?")
