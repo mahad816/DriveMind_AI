@@ -19,21 +19,22 @@ Vector search alone fails on real Drive questions:
 
 ## Query routing
 
-`classify_query()` in `app/retrieval/query_router.py` assigns one of four routes **in priority order**:
+`classify_query()` in `app/retrieval/query_router.py` — priority order from source:
+
+1. CHITCHAT → 2. FILE_INVENTORY → 3. FILE_TARGET → 4. GROUNDED_RAG
 
 ```mermaid
 flowchart TD
     Q[User question] --> R{classify_query}
 
-    R -->|social / greeting| C[CHITCHAT]
-    R -->|how many, list, count| I[FILE_INVENTORY]
-    R -->|quoted filename| T[FILE_TARGET]
+    R -->|pure social| C[CHITCHAT<br/>no citations]
+    R -->|how many / list| I[FILE_INVENTORY<br/>no citations]
+    R -->|named file| T[FILE_TARGET<br/>with citations]
     R -->|default| G[GROUNDED_RAG]
 
-    C --> D1[Direct LLM answer]
-    I --> D2[SQL file inventory]
-    T --> D3[All chunks for matched file]
-    G --> D4[Hybrid retrieval path]
+    G --> Flag{AGENT_GRAPH_ENABLED?}
+    Flag -->|true| Agent[LangGraph agent]
+    Flag -->|false| Linear[HybridRetriever]
 ```
 
 ### Route details

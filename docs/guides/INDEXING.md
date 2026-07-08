@@ -19,6 +19,8 @@ flowchart LR
     Build --> IDX[indexed]
 ```
 
+> Ingest writes to PostgreSQL only. **Build** (`IndexingService`) embeds chunks and upserts Qdrant.
+
 ```mermaid
 stateDiagram-v2
     [*] --> discovered: New or edited file

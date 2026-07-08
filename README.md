@@ -14,7 +14,7 @@ Single-user MVP · read-only Drive access · grounded answers with sources
 |-------|--------|
 | **Purpose** | Portfolio-grade full-stack AI app demonstrating RAG, hybrid retrieval, and LangGraph orchestration |
 | **Data source** | Your personal Google Drive (read-only) |
-| **Answers** | Generated only from retrieved chunks — with clickable source citations |
+| **Answers** | Grounded from retrieved chunks when applicable; chitchat/inventory paths use direct LLM without source citations |
 | **Agent** | LangGraph workflow: intent routing → retrieval planning → rerank → evidence grading → rewrite loop → citation verify |
 | **UI** | Next.js app: chat, file browser, indexing pipeline, settings, source viewer |
 | **Status** | Phases 0–8 complete · Phase 9 complete · Phase 11 docs complete · Phase 10 planned |
@@ -49,7 +49,7 @@ Single-user MVP · read-only Drive access · grounded answers with sources
 
 ## How it works
 
-DriveMind has three main flows: **indexing** (Drive → searchable index), **query routing** (pick the right strategy), and **grounded answers** (retrieve evidence → cite sources).
+DriveMind has three main flows: **indexing**, **query routing**, and **grounded answers**. Diagrams match `rag_service.py`, `query_router.py`, `hybrid.py`, and `drive_graph/graph.py`.
 
 ### System overview
 
@@ -59,20 +59,20 @@ flowchart TB
         U[Browser]
     end
 
-    subgraph Frontend [Next.js Frontend]
+    subgraph Frontend [Next.js - proxies /api/v1]
         Chat[Chat]
-        Files[Files Library]
+        Files[Files]
         IndexUI[Build Knowledge]
         Settings[Settings]
     end
 
-    subgraph Backend [FastAPI Backend]
-        API[REST API /api/v1]
-        RAG[RAG Service]
-        Agent[LangGraph Agent]
-        Retrieval[Hybrid Retrieval]
-        Ingest[Ingestion Pipeline]
-        DriveConn[Drive Connector]
+    subgraph Backend [FastAPI]
+        API[REST API]
+        RAG[RagService.ask]
+        Agent[LangGraph - GROUNDED_RAG only]
+        Hybrid[HybridRetriever]
+        Sync[DriveSyncService]
+        Ingest[IngestionService]
     end
 
     subgraph Storage [Storage]
@@ -88,21 +88,24 @@ flowchart TB
     U --> Chat & Files & IndexUI & Settings
     Chat & Files & IndexUI & Settings --> API
     API --> RAG
-    RAG --> Agent
-    RAG --> Retrieval
-    API --> Ingest
-    Ingest --> DriveConn
-    DriveConn --> GD
+    API --> Sync & Ingest & Build[IndexingService build]
+    Sync --> GD
+    Ingest --> GD
+    Sync --> PG
     Ingest --> PG
-    Ingest --> QD
-    Ingest --> OAI
-    Retrieval --> PG
-    Retrieval --> QD
+    Build --> PG
+    Build --> QD
+    Build --> OAI
+    RAG -->|GROUNDED_RAG + agent flag| Agent
+    RAG -->|GROUNDED_RAG linear| Hybrid
+    RAG -->|inventory / file-target| PG
+    Agent --> Hybrid
+    Hybrid --> PG & QD
     Agent --> OAI
     RAG --> OAI
 ```
 
-> The frontend only calls the backend API. It never talks to Drive, Qdrant, or OpenAI directly.
+> **Accurate:** Sync/ingest/chunk write to PostgreSQL. **Build** embeds chunks and upserts Qdrant. LangGraph only runs for `GROUNDED_RAG` when `AGENT_GRAPH_ENABLED=true`. CHITCHAT and FILE_INVENTORY return **no citations**.
 
 [Full architecture →](docs/ARCHITECTURE.md)
 
@@ -149,23 +152,21 @@ stateDiagram-v2
 
 ### 2. Query routing
 
-Every question is classified before retrieval. This avoids using vector search for greetings, file counts, or named-file lookups.
+`classify_query()` runs on **every** `POST /chat` request before retrieval. Priority: CHITCHAT → FILE_INVENTORY → FILE_TARGET → GROUNDED_RAG.
 
 ```mermaid
 flowchart TD
     Q[User question] --> Router{classify_query}
 
-    Router -->|hi, thanks| Chitchat[CHITCHAT<br/>direct LLM]
-    Router -->|how many, list files| Inventory[FILE_INVENTORY<br/>SQL search]
-    Router -->|tell me about filename| Target[FILE_TARGET<br/>all chunks for file]
-    Router -->|everything else| RAG[GROUNDED_RAG<br/>hybrid retrieval]
+    Router -->|pure social| Chitchat[CHITCHAT]
+    Router -->|how many / list| Inventory[FILE_INVENTORY]
+    Router -->|named file| Target[FILE_TARGET]
+    Router -->|default| GR[GROUNDED_RAG]
 
-    Chitchat --> Ans[Answer]
-    Inventory --> Ans
-    Target --> Ans
-    RAG --> Ans
-
-    Ans --> Cit[Citations + source pills]
+    Chitchat --> A1[Direct LLM<br/>no citations]
+    Inventory --> A2[SQL inventory + LLM<br/>no citations]
+    Target --> A3[FileTargetRetriever<br/>with citations]
+    GR --> A4[Hybrid or LangGraph<br/>with citations]
 ```
 
 [Retrieval guide →](docs/guides/RETRIEVAL.md)
@@ -196,7 +197,7 @@ flowchart TD
 
 ### 4. LangGraph agent
 
-When `AGENT_GRAPH_ENABLED=true`, the `GROUNDED_RAG` path uses a LangGraph workflow with intent planning, selective retrievers, and a rewrite loop when evidence is weak.
+Runs only when route is **GROUNDED_RAG** and `AGENT_GRAPH_ENABLED=true`. Otherwise the linear `HybridRetriever` path is used.
 
 ```mermaid
 flowchart TD
@@ -223,25 +224,28 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant UI as Next.js Chat
-    participant API as FastAPI
-    participant RAG as RAG Service
-    participant DB as PostgreSQL / Qdrant
+    participant UI as Next.js
+    participant API as POST /chat
+    participant RAG as RagService
+    participant DB as Postgres / Qdrant
     participant LLM as OpenAI
 
     U->>UI: Ask question
-    UI->>API: POST /api/v1/chat
-    API->>RAG: classify + retrieve
-    RAG->>DB: Hybrid search chunks
-    DB-->>RAG: Ranked evidence
-    RAG->>LLM: Grounded prompt + chunks
-    LLM-->>RAG: Answer with refs
-    RAG-->>API: Answer + citations
-    API-->>UI: JSON response
-    UI-->>U: Markdown answer + source pills
-    U->>UI: Click source
-    UI->>API: GET /sources/chunk_id
-    API-->>UI: Full excerpt
+    UI->>API: question JSON
+    API->>RAG: ask()
+    RAG->>RAG: classify_query()
+    alt CHITCHAT or FILE_INVENTORY
+        RAG->>LLM: direct or inventory prompt
+        LLM-->>RAG: answer, no citations
+    else FILE_TARGET or GROUNDED_RAG
+        RAG->>DB: retrieve chunks
+        DB-->>RAG: evidence
+        RAG->>LLM: grounded prompt
+        LLM-->>RAG: answer with refs
+    end
+    RAG-->>API: RagResult
+    API-->>UI: ChatResponse
+    UI-->>U: answer + source pills when cited
 ```
 
 ---

@@ -24,6 +24,20 @@ Professional documentation for setup, architecture, and portfolio presentation.
 
 ## Diagrams (Mermaid)
 
+Rendered automatically on GitHub. Each diagram is verified against the codebase.
+
+| Flow | File | Source modules |
+|------|------|----------------|
+| System overview | [README](../README.md#system-overview) | `api/`, `services/rag_service.py` |
+| Indexing + file statuses | [INDEXING](guides/INDEXING.md) | `drive_sync_service.py`, `ingestion_service.py` |
+| Query routing + hybrid | [RETRIEVAL](guides/RETRIEVAL.md) | `query_router.py`, `hybrid.py` |
+| LangGraph agent loop | [LANGGRAPH](guides/LANGGRAPH.md) | `agents/drive_graph/graph.py` |
+| OAuth sequence | [GOOGLE_OAUTH](guides/GOOGLE_OAUTH.md) | `api/auth.py` |
+| Deployment topology | [DEPLOYMENT](guides/DEPLOYMENT.md) | — |
+| Full architecture set | [ARCHITECTURE](ARCHITECTURE.md) | — |
+
+## Diagrams (Mermaid)
+
 GitHub renders these automatically in markdown files.
 
 | Flow | Where to view |
