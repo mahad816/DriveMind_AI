@@ -39,8 +39,8 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 ## Current Snapshot
 
 - **Phase status:** In progress
-- **Last completed milestone:** Milestone 5 (hybrid merge + dedupe)
-- **Next milestone:** Milestone 6 — weighted fusion reranker
+- **Last completed milestone:** Milestone 6 (weighted fusion reranker)
+- **Next milestone:** Milestone 7 — evidence grader
 - **Blocker:** None
 
 ## Your Action Items (manual setup)
@@ -59,7 +59,7 @@ Improve retrieval quality for real Drive questions by combining metadata, keywor
 - [x] Milestone 3 — Keyword retriever (`app/retrieval/keyword.py`)
 - [x] Milestone 4 — Metadata retriever + folder path population fix
 - [x] Milestone 5 — Hybrid merge + dedupe (`RRF`)
-- [ ] Milestone 6 — Weighted fusion reranker
+- [x] Milestone 6 — Weighted fusion reranker
 - [ ] Milestone 7 — Evidence grader
 - [ ] Milestone 8 — Hybrid retriever integration in `RagService`
 - [ ] Milestone 9 — Retrieval and API test coverage
