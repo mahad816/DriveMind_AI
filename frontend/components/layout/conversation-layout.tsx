@@ -6,8 +6,8 @@ type ConversationLayoutProps = {
 };
 
 /**
- * Full-height conversation canvas — replaces PageContainer on chat routes.
- * Sidebar is provided by AppShell; this is the main content column only.
+ * Full-height conversation canvas — full width so the scroll bar sits on the
+ * right edge of the main column. Content centering is handled inside ChatInterface.
  */
 export function ConversationLayout({ children, className }: ConversationLayoutProps) {
   return (
@@ -17,9 +17,7 @@ export function ConversationLayout({ children, className }: ConversationLayoutPr
         className,
       )}
     >
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-1 flex-col px-4 py-4 md:px-6 md:py-6">
-        {children}
-      </div>
+      {children}
     </div>
   );
 }

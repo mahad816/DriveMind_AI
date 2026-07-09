@@ -6,7 +6,6 @@ import {
   ChatComposer,
   type ChatComposerHandle,
 } from "@/components/chat/chat-composer";
-import { ComposerShortcutHint } from "@/components/chat/message-action-bar";
 import { cn } from "@/lib/utils";
 
 type ComposerDockProps = {
@@ -38,7 +37,6 @@ export const ComposerDock = forwardRef<ChatComposerHandle, ComposerDockProps>(
           disabled={disabled}
           isLoading={isLoading}
         />
-        <ComposerShortcutHint className="mt-2 hidden sm:block" />
       </div>
     );
   },

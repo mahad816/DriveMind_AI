@@ -86,16 +86,3 @@ export function MessageActionBar({
     </div>
   );
 }
-
-export function ComposerShortcutHint({ className }: { className?: string }) {
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
-  return (
-    <p className={cn("text-center text-[11px] text-muted-foreground/80", className)}>
-      {isMac ? "⌘K" : "Ctrl+K"} {chatCopy.focusComposerHint}
-      <span className="mx-2 text-border">·</span>
-      {isMac ? "⌘N" : "Ctrl+N"} {chatCopy.newChatHint}
-    </p>
-  );
-}

@@ -322,10 +322,12 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {connectionError ? (
-        <Alert variant="destructive" className="mb-4 shrink-0">
-          <AlertTitle>Connection status error</AlertTitle>
-          <AlertDescription>{connectionError}</AlertDescription>
-        </Alert>
+        <div className="mx-auto w-full max-w-3xl shrink-0 px-4 md:px-6">
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>Connection status error</AlertTitle>
+            <AlertDescription>{connectionError}</AlertDescription>
+          </Alert>
+        </div>
       ) : null}
 
       <div
@@ -333,34 +335,40 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         aria-busy={isSending}
         aria-label="Conversation"
       >
-        {messages.length === 0 ? (
-          <EmptyStateHero
-            needsConnect={needsConnect}
-            needsPrepare={needsPrepare}
-            isSending={isSending}
-            onSuggestionClick={(suggestion) => send(suggestion)}
-          />
-        ) : (
-          <MessageThread
-            messages={messages}
-            onSourceSelect={handleSourceSelect}
-            onRetry={retryMessage}
-            onRegenerate={regenerateMessage}
-            onFollowUp={send}
-            isSending={isSending}
-            endRef={endRef}
-          />
-        )}
+        <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-6 md:py-6">
+          {messages.length === 0 ? (
+            <EmptyStateHero
+              needsConnect={needsConnect}
+              needsPrepare={needsPrepare}
+              isSending={isSending}
+              onSuggestionClick={(suggestion) => send(suggestion)}
+            />
+          ) : (
+            <MessageThread
+              messages={messages}
+              onSourceSelect={handleSourceSelect}
+              onRetry={retryMessage}
+              onRegenerate={regenerateMessage}
+              onFollowUp={send}
+              isSending={isSending}
+              endRef={endRef}
+            />
+          )}
+        </div>
       </div>
 
-      <ComposerDock
-        ref={composerRef}
-        value={question}
-        onChange={setQuestion}
-        onSubmit={() => send()}
-        disabled={!isConnected || needsPrepare}
-        isLoading={isSending}
-      />
+      <div className="shrink-0 px-4 pb-4 md:px-6">
+        <div className="mx-auto w-full max-w-3xl">
+          <ComposerDock
+            ref={composerRef}
+            value={question}
+            onChange={setQuestion}
+            onSubmit={() => send()}
+            disabled={!isConnected || needsPrepare}
+            isLoading={isSending}
+          />
+        </div>
+      </div>
 
       <SourcePanel
         citation={selectedCitation}
