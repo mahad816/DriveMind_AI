@@ -51,7 +51,23 @@ Single-user MVP · read-only Drive access · grounded answers with sources
 
 DriveMind has three main flows: **indexing**, **query routing**, and **grounded answers**. Diagrams match `rag_service.py`, `query_router.py`, `hybrid.py`, and `drive_graph/graph.py`.
 
-### System overview
+### End-to-end system flow
+
+High-level path from Drive ingestion to cited answers. Indexing runs offline; each chat reads from PostgreSQL and Qdrant — not Google Drive directly.
+
+<p align="center">
+  <img
+    src="docs/assets/drivemind-system-flow.png"
+    alt="DriveMind AI system flow: offline ingestion from Google Drive through extract, chunk, and embed to PostgreSQL and Qdrant; online query path through LangGraph hybrid retrieval to source-backed answers"
+    width="900"
+  />
+</p>
+
+> **Accurate:** Indexing writes to storage once. Each chat request reads from PostgreSQL and Qdrant through the agent graph — Google Drive is not queried directly at answer time.
+
+### System overview (components)
+
+Layer view of the frontend, backend services, storage, and external APIs.
 
 ```mermaid
 flowchart TB
