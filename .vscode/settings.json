@@ -1,0 +1,17 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/bin/python",
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.analysis.typeCheckingMode": "off",
+  "basedpyright.analysis.diagnosticMode": "workspace",
+  "basedpyright.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "files.watcherExclude": {
+    "**/backend/.venv/**": true,
+    "**/frontend/node_modules/**": true,
+    "**/frontend/.next/**": true
+  },
+  "search.exclude": {
+    "**/backend/.venv": true,
+    "**/frontend/node_modules": true,
+    "**/frontend/.next": true
+  }
+}

@@ -33,8 +33,9 @@ async def _cleanup_stuck_jobs() -> None:
             )
         )
         await db.commit()
-        if result.rowcount:
-            logger.warning("Cleaned up %d stuck RUNNING job(s) on startup", result.rowcount)
+        cleaned = int(getattr(result, "rowcount", 0) or 0)
+        if cleaned:
+            logger.warning("Cleaned up %d stuck RUNNING job(s) on startup", cleaned)
 
 
 @asynccontextmanager
