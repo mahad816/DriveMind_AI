@@ -630,11 +630,11 @@ async def test_grounded_rag_citations_filtered_to_referenced_only(
 
 
 @pytest.mark.asyncio
-async def test_grounded_rag_no_citations_when_llm_uses_no_brackets(
+async def test_grounded_rag_keeps_citations_when_llm_omits_brackets(
     mock_db: AsyncMock,
     mock_chat: AsyncMock,
 ) -> None:
-    """If the LLM answer has no [N] refs, zero citations must be returned."""
+    """If the LLM omits [N] refs, still return grounded sources for the UI."""
     mock_retriever = AsyncMock()
     mock_retriever.retrieve = AsyncMock(return_value=[_retrieved_chunk()])
     mock_chat.generate_grounded_answer = AsyncMock(
@@ -656,7 +656,8 @@ async def test_grounded_rag_no_citations_when_llm_uses_no_brackets(
 
     result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
-    assert result.citations == []
+    assert len(result.citations) == 1
+    assert result.citations[0].filename == "notes.txt"
 
 
 # ── Phase A: routing applies before agent_graph_enabled ───────────────────────

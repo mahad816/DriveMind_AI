@@ -5,8 +5,6 @@ import remarkGfm from "remark-gfm";
 
 import { FollowUpChips } from "@/components/chat/follow-up-chips";
 import { MessageActionBar } from "@/components/chat/message-action-bar";
-import { SourcePills } from "@/components/chat/source-pills";
-import { formatSourceCount } from "@/lib/chat/source-label";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
 type AssistantMessageProps = {
@@ -28,8 +26,6 @@ export function AssistantMessage({
   isLatest = false,
   isLoading = false,
 }: AssistantMessageProps) {
-  const sourceLabel = formatSourceCount(response.retrieval_count, response.citations);
-
   return (
     <article className="group/answer space-y-4" aria-label="Assistant answer">
       <div className="text-body-lg leading-relaxed text-foreground">
@@ -102,12 +98,12 @@ export function AssistantMessage({
 
       <MessageActionBar
         answer={response.answer}
-        sourceLabel={sourceLabel}
+        citations={response.citations}
+        retrievalCount={response.retrieval_count}
+        onSourceSelect={onSourceSelect}
         onRegenerate={onRegenerate}
         isLoading={isLoading}
       />
-
-      <SourcePills citations={response.citations} onSelect={onSourceSelect} />
 
       {isLatest && onFollowUp && followUpSuggestions.length > 0 ? (
         <FollowUpChips

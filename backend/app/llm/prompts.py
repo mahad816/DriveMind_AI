@@ -180,22 +180,22 @@ def filter_citations_to_answer(
     answer: str,
     citations: list[object],
 ) -> list[object]:
-    """Return only citation items whose [N] reference appears in the answer.
+    """Return citation items that support the answer for the UI source panel.
 
-    If the LLM answer contains no bracket references at all (e.g. for conversational
-    or chitchat answers), an empty list is returned so no spurious sources are shown.
-
-    Works with any citation list type — generically typed to avoid a circular
-    import dependency on CitationItem.
+    Prefer citations whose ``[N]`` reference appears in the answer. If the model
+    omits bracket markers but retrieval still produced evidence, return all
+    prompt citations so the user can inspect the grounded sources.
     """
     if not answer or not citations:
         return []
 
     refs = {int(m) for m in re.findall(r"\[(\d+)\]", answer)}
     if not refs:
-        return []
+        return list(citations)
 
     valid_refs = sorted(ref for ref in refs if 1 <= ref <= len(citations))
+    if not valid_refs:
+        return list(citations)
     return [citations[ref - 1] for ref in valid_refs]
 
 
