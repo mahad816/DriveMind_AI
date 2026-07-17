@@ -5,7 +5,7 @@ import { ConversationItem } from "@/components/layout/conversation-item";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/chat",
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
 describe("ConversationItem", () => {

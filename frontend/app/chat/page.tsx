@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { NewChatRedirect } from "@/components/chat/new-chat-redirect";
+import { ChatInterface } from "@/components/chat/chat-interface";
 import { ConversationLayout } from "@/components/layout/conversation-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -13,11 +13,15 @@ function ChatLoadingFallback() {
   );
 }
 
+/**
+ * Empty chat canvas — does not create a history entry until the user clicks
+ * New Chat or sends the first message / ask deep-link.
+ */
 export default function ChatPage() {
   return (
     <ConversationLayout>
       <Suspense fallback={<ChatLoadingFallback />}>
-        <NewChatRedirect />
+        <ChatInterface />
       </Suspense>
     </ConversationLayout>
   );

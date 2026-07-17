@@ -153,7 +153,7 @@ export const chatCopy = {
   notReadyCta: "Set up my assistant",
   connectBody: "Connect Google Drive in Settings to get started.",
   recentChats: "Chats",
-  noChatsYet: "No chats yet — start a new conversation.",
+  noChatsYet: "No chats yet — click New Chat to start.",
   searchChatsPlaceholder: "Search chats…",
   noChatsMatch: "No chats match your search.",
   copyAnswer: "Copy",

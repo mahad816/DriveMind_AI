@@ -1,9 +1,13 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
+import { saveConversationMessages } from "@/lib/conversations/messages";
 import {
   createConversation,
+  findEmptyDraftConversation,
+  getOrCreateDraftConversation,
   groupConversationsByDate,
   listConversations,
+  pruneEmptyDraftConversations,
   updateConversationTitle,
 } from "@/lib/conversations/storage";
 
@@ -42,6 +46,38 @@ describe("conversation storage", () => {
     const updated = updateConversationTitle(created.id, "Resume questions");
     expect(updated?.title).toBe("Resume questions");
     expect(listConversations()[0]?.title).toBe("Resume questions");
+  });
+
+  it("reuses an empty New chat draft instead of creating duplicates", () => {
+    const first = getOrCreateDraftConversation();
+    const second = getOrCreateDraftConversation();
+    expect(second.id).toBe(first.id);
+    expect(listConversations()).toHaveLength(1);
+    expect(findEmptyDraftConversation()?.id).toBe(first.id);
+  });
+
+  it("prunes empty New chat drafts but keeps chats with messages", () => {
+    const empty = createConversation();
+    const titled = createConversation("Resume questions");
+    const withMessages = createConversation();
+    saveConversationMessages(withMessages.id, [
+      {
+        id: "m1",
+        question: "Hello",
+        status: "done",
+        answer: "Hi",
+        citations: [],
+        retrievalCount: 0,
+        error: null,
+      },
+    ]);
+
+    const removed = pruneEmptyDraftConversations();
+    expect(removed).toBe(1);
+    const ids = listConversations().map((c) => c.id);
+    expect(ids).toContain(titled.id);
+    expect(ids).toContain(withMessages.id);
+    expect(ids).not.toContain(empty.id);
   });
 
   it("groups conversations by relative date labels", () => {

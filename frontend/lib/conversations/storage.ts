@@ -1,9 +1,16 @@
 import type { ConversationGroup, ConversationRecord } from "@/lib/conversations/types";
-import { deleteConversationMessages } from "@/lib/conversations/messages";
+import {
+  deleteConversationMessages,
+  getConversationMessages,
+} from "@/lib/conversations/messages";
 import { notifyConversationsChanged } from "@/lib/conversations/events";
 
 const STORAGE_KEY = "drivemind:conversations";
 export const DEFAULT_CONVERSATION_TITLE = "New chat";
+
+export function isDefaultConversationTitle(title: string): boolean {
+  return title === DEFAULT_CONVERSATION_TITLE || title === "New conversation";
+}
 
 function readAll(): ConversationRecord[] {
   if (typeof window === "undefined") {
@@ -72,6 +79,49 @@ export function createConversation(title = DEFAULT_CONVERSATION_TITLE): Conversa
   const all = readAll();
   writeAll([conversation, ...all]);
   return conversation;
+}
+
+/** Reuse an empty "New chat" draft instead of stacking duplicates. */
+export function findEmptyDraftConversation(): ConversationRecord | null {
+  return (
+    listConversations().find(
+      (conversation) =>
+        isDefaultConversationTitle(conversation.title) &&
+        getConversationMessages(conversation.id).length === 0,
+    ) ?? null
+  );
+}
+
+export function getOrCreateDraftConversation(): ConversationRecord {
+  return findEmptyDraftConversation() ?? createConversation();
+}
+
+/**
+ * Remove empty default-titled chats from history.
+ * Keeps `keepId` so the open draft is not deleted mid-session.
+ */
+export function pruneEmptyDraftConversations(keepId?: string): number {
+  const all = readAll();
+  const kept = all.filter((conversation) => {
+    if (keepId && conversation.id === keepId) return true;
+    if (!isDefaultConversationTitle(conversation.title)) return true;
+    return getConversationMessages(conversation.id).length > 0;
+  });
+
+  if (kept.length === all.length) return 0;
+  writeAll(kept);
+  return all.length - kept.length;
+}
+
+let hasPrunedEmptyDraftsThisSession = false;
+
+/** One-time cleanup for orphan empty "New chat" entries from older auto-create bugs. */
+export function pruneEmptyDraftConversationsOnce(): number {
+  if (typeof window === "undefined" || hasPrunedEmptyDraftsThisSession) {
+    return 0;
+  }
+  hasPrunedEmptyDraftsThisSession = true;
+  return pruneEmptyDraftConversations();
 }
 
 export function updateConversationTitle(id: string, title: string): ConversationRecord | null {

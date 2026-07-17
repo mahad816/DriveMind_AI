@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CONVERSATIONS_CHANGED_EVENT } from "@/lib/conversations/events";
 import {
-  createConversation,
   deleteConversation,
+  getOrCreateDraftConversation,
   groupConversationsByDate,
   listConversations,
+  pruneEmptyDraftConversationsOnce,
   touchConversation,
   updateConversationTitle,
 } from "@/lib/conversations/storage";
@@ -34,6 +35,7 @@ export function useConversations(): UseConversationsResult {
   }, []);
 
   useEffect(() => {
+    pruneEmptyDraftConversationsOnce();
     refresh();
   }, [refresh]);
 
@@ -46,7 +48,8 @@ export function useConversations(): UseConversationsResult {
   const groups = useMemo(() => groupConversationsByDate(conversations), [conversations]);
 
   const startNewConversation = useCallback(() => {
-    const created = createConversation();
+    // Reuse an existing empty "New chat" so repeated clicks don't stack drafts.
+    const created = getOrCreateDraftConversation();
     refresh();
     return created;
   }, [refresh]);

@@ -18,7 +18,7 @@ import {
   saveConversationMessages,
   type StoredChatMessage,
 } from "@/lib/conversations/messages";
-import { getConversation, DEFAULT_CONVERSATION_TITLE } from "@/lib/conversations/storage";
+import { getConversation, isDefaultConversationTitle } from "@/lib/conversations/storage";
 import { conversationTitleFromQuestion } from "@/lib/conversations/title";
 import { isApiError } from "@/lib/api/errors";
 import { askQuestion } from "@/lib/api/chat";
@@ -51,10 +51,6 @@ function createMessageId() {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function isDefaultConversationTitle(title: string): boolean {
-  return title === DEFAULT_CONVERSATION_TITLE || title === "New conversation";
 }
 
 function fromStoredMessage(stored: StoredChatMessage): ChatMessageState {
@@ -186,10 +182,18 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     async (normalized: string, options?: { messageId?: string; replace?: boolean }) => {
       if (!isConnected || needsPrepare || isSending || normalized.length === 0) return;
 
+      // Empty /chat canvas: create one history entry, then continue on that route.
+      if (!conversationId) {
+        const created = startNewConversation();
+        renameConversation(created.id, conversationTitleFromQuestion(normalized));
+        router.replace(`/chat/${created.id}?ask=${encodeURIComponent(normalized)}`);
+        return;
+      }
+
       const id = options?.messageId ?? createMessageId();
       const replace = Boolean(options?.replace);
 
-      if (conversationId && !titledRef.current && !replace) {
+      if (!titledRef.current && !replace) {
         renameConversation(conversationId, conversationTitleFromQuestion(normalized));
         titledRef.current = true;
       }
@@ -219,9 +223,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
               : message,
           ),
         );
-        if (conversationId) {
-          bumpConversation(conversationId);
-        }
+        bumpConversation(conversationId);
       } catch (err) {
         const message = isApiError(err)
           ? err.detail
@@ -246,6 +248,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       isSending,
       needsPrepare,
       renameConversation,
+      router,
+      startNewConversation,
     ],
   );
 
@@ -277,8 +281,14 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     askHandledRef.current = true;
     pendingAskTitleRef.current = ask;
 
+    // Deep-link from Files / sources: create one chat and auto-send there.
+    if (!conversationId) {
+      const created = startNewConversation();
+      router.replace(`/chat/${created.id}?ask=${encodeURIComponent(ask)}`);
+      return;
+    }
+
     const canAutoSend =
-      Boolean(conversationId) &&
       messages.length === 0 &&
       isConnected &&
       !needsPrepare &&
@@ -300,6 +310,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     needsPrepare,
     router,
     searchParams,
+    startNewConversation,
     submitQuestion,
   ]);
 
@@ -311,7 +322,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   useChatShortcuts({
     onNewChat: handleNewChat,
     onFocusComposer: () => composerRef.current?.focus(),
-    enabled: Boolean(conversationId),
+    enabled: true,
   });
 
   const handleSourceSelect = useCallback((citation: CitationItem) => {
