@@ -4,6 +4,86 @@ How to measure DriveMind retrieval and answer quality. Phase 10 will implement t
 
 ---
 
+## Current Evaluation Checkpoint — 2026-09-19
+
+### Stabilization
+
+DriveMind has completed its pre-evaluation stabilization pass. Important checkpoints include internal RAG evaluation tracing, partial-ingestion continuation, exact `INDEXING`-only chunk/build eligibility, citation normalization, reliable indexing/job-state semantics, and routing short substantive queries to retrieval.
+
+### Evaluation tracing
+
+Internal evaluation tracing can observe the route and execution path; raw per-retriever, RRF, and reranked candidates; evidence grading; LangGraph rewrite attempts; selected prompt chunks; raw and final answers/citations; abstention/outcome; coarse timings; and fatal errors. Tracing is internal only and does not change the public `/chat` response.
+
+### Controlled Corpus v1
+
+The Google Drive folder `DriveMind_Eval_Corpus_v1` contains exactly these nine controlled files:
+
+- `CoreChain_Project.txt`
+- `DriveMind_Project.txt`
+- `PTCL_Internship.txt`
+- `Resume_v1.txt`
+- `Resume_v2.txt`
+- `Cloud_Computing_Notes.txt`
+- `Machine_Learning_Notes.txt`
+- `Meeting_Notes_July.txt`
+- `Expense_Report_2025.txt`
+
+Verified corpus state:
+
+- 9/9 files are `INDEXED`, searchable, chunked, and represented in Qdrant.
+- PostgreSQL has 16 corpus chunks and Qdrant has 16 matching points.
+- There are no duplicate `DriveFile` rows, current documents, or chunk indices.
+- All controlled anchors and resume-version facts were verified.
+
+Controlled anchors:
+
+- CoreChain: Cedar Falcon
+- DriveMind: Silver Atlas
+- PTCL: Amber Signal
+- Cloud notes: Nimbus Seven
+- Machine-learning notes: Vector Orchard
+- Meeting notes: Marble Lantern
+- Expense report: Copper Ledger
+
+Resume version facts:
+
+- `Resume_v1`: CGPA 2.40; expected graduation December 2026; DriveMind is absent from the actual project section.
+- `Resume_v2`: CGPA 2.70; expected graduation January 2027; DriveMind is present.
+
+Corpus v1 is **FROZEN**. Do not edit these nine files during baseline evaluation. If their content must change materially, create a new corpus version.
+
+### Partial-ingestion reliability
+
+Corpus preparation exposed 15 unrelated historical PDFs that failed ingestion. Previously, the frontend treated the failed ingestion batch as wholly fatal and prevented healthy files from reaching chunk/build.
+
+The production flow now keeps the ingestion batch truthfully `FAILED`, leaves failed files `FAILED`, and lets successfully ingested `INDEXING` files continue through the normal chunk/build stages. Chunk/build eligibility is restricted to exactly `INDEXING`, preventing stale failed content from being resurrected. When healthy files finish successfully, setup becomes usable with a visible warning. The real UI flow was verified successfully.
+
+The 15 historical failed PDF rows remain unavailable and are not part of the controlled corpus. Do not treat them as Corpus v1 failures.
+
+### Frontend development caution
+
+Do not run `npm run build` concurrently with a running `npm run dev`/`next dev` process in the same frontend checkout. Both use `frontend/.next`; doing so caused missing Turbopack development manifests and HTTP 500 responses.
+
+Before a production build, stop the dev server, run the build, and restart dev afterward if needed. If `.next` becomes inconsistent, stop dev, delete only `frontend/.next`, and restart `npm run dev`. No source-code fix is required for this runtime artifact issue.
+
+### Next evaluation step
+
+Do not tune retrieval or install DeepEval yet. The next task is **Step 4 — build the manually verified gold evaluation dataset**, starting with approximately 20–25 human-labeled cases covering routing/chitchat, file inventory, file targeting, exact and semantic retrieval, multi-document retrieval, resume/version/latest behavior, distractor resistance, missing-information/abstention, citation support, and query rewriting.
+
+Continue in this order:
+
+```text
+gold dataset
+→ deterministic runner/metrics
+→ untouched baseline
+→ manual failure analysis
+→ human answer scoring
+→ later DeepEval/LLM-judge calibration
+→ controlled one-variable-at-a-time experiments
+```
+
+---
+
 ## Goals
 
 DriveMind is portfolio-grade — evaluation should demonstrate **AI engineering rigor**, not just "it works on my laptop."

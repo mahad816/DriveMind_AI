@@ -34,6 +34,41 @@ Main stack: Next.js 15, React 19, TypeScript, FastAPI, SQLAlchemy/asyncpg, Postg
 1. **Indexing:** `POST /index/sync` discovers or updates Drive metadata and change cursors. `POST /index/ingest` downloads/exports supported files, extracts normalized text, hashes it, and persists `Document` rows. `POST /index/chunk` creates overlapping chunks and PostgreSQL full-text vectors. `POST /index/build` embeds pending chunks, reconciles per-file Qdrant points, and marks files indexed. These are separate in-process background jobs; the frontend sequences and polls them.
 2. **Query:** `POST /chat` calls `RagService.ask`, which classifies the route. Grounded retrieval uses vector, PostgreSQL keyword, and metadata candidates as selected by the linear or LangGraph path, then merges/reranks and grades evidence. Bounded prompt context is passed to the chat model. Citation payloads are derived from prompt chunks, filtered/verified, persisted with query history, and resolved through `/sources/{chunk_id}`.
 
+## Stabilization Baseline
+
+Pre-evaluation stabilization A1-A6, A7/A9, and A11 is complete, reviewed, tested, committed, and pushed. Treat these behaviors as the current baseline and do not revisit them unless a later task directly requires it.
+
+Relevant stabilization commits on `main`:
+
+- `d1b0e47` — exclude non-indexed files from retrieval.
+- `7f752af` — reconcile missing files during full Drive sync.
+- `47edbbf` — handle trashed and unsupported Drive changes.
+- `4cfa8c8` — capture the Drive change token before full sync.
+- `f9a599e` — normalize RAG citations consistently.
+- `60770b1` — make indexing job states reliable (A7/A9).
+- `4791d20` — route short knowledge queries to retrieval (A11).
+
+### Final indexing/job semantics (A7/A9)
+
+- Successful extraction with empty or whitespace-only searchable text sets the `DriveFile` to `SKIPPED`, counts as skipped, and does not fail the stage job. Existing coherent document/chunk data is not overwritten merely to store empty content.
+- A zero-chunk result sets the parent file to `SKIPPED`; stale PostgreSQL chunks are removed when chunk replacement produces zero chunks. Index build also defensively maps zero chunks to `SKIPPED`.
+- Explicit chunk/build requests for an already-`SKIPPED` file stop before loading or processing preserved stale content. They count the file as skipped and cannot restore it to `INDEXED`.
+- Caught extraction/fetch, embedding, and vector-store failures set the affected file to `FAILED`. Successful files in the same batch retain their successful states.
+- In ingestion and index build, `failed == 0` means job `COMPLETED`; `failed > 0` means job `FAILED` with a concise stage-specific `job.error`. An unexpected guarded exception also fails the persisted job.
+- Index-build jobs are created and committed before `ensure_collection()` runs, so collection-setup failure produces a visible terminal `FAILED` job.
+- `COMPLETED` means the stage finished without file-processing failures; it does not imply that any file became `INDEXED`.
+- No new status, schema, migration, API contract, frontend polling behavior, or physical stale-vector cleanup was introduced.
+
+### Final top-level routing semantics (A11)
+
+- `CHITCHAT` is positively identified from a narrow normalized exact-phrase set covering greetings, acknowledgements, farewells, simple social conversation, and the explicit capability/identity questions `what can you do` and `who are you`.
+- Query length is not a chitchat signal. The former five-word fallback and finite knowledge-keyword exception list were removed.
+- Uncertain substantive queries fall through to existing specialized routing or `GROUNDED_RAG`. Examples such as `CoreChain architecture`, `machine learning`, `notes`, and `Python` reach grounded retrieval rather than bypassing the knowledge base.
+- Quoted-file handling, `FILE_INVENTORY`, `FILE_TARGET`, and grounded linear/LangGraph execution retain their prior precedence and behavior.
+- The existing ambiguity where unquoted `Tell me about CoreChain` routes to `FILE_TARGET` is intentional and remains out of scope pending routing evaluation.
+
+At this stabilization checkpoint, focused and full backend verification passed (`562 passed`) together with Ruff, Ruff formatting, mypy, basedpyright, and `git diff --check`.
+
 ## Development
 
 Run commands from the repository root unless a `cd` is shown.
