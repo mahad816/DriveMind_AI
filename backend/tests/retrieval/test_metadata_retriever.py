@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.config import Settings
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -30,6 +31,7 @@ def _drive_file(
     mime_type: str,
     modified_at: datetime,
     folder_path: str | None = None,
+    status: DriveFileStatus = DriveFileStatus.INDEXED,
 ) -> DriveFile:
     return DriveFile(
         id=file_id,
@@ -39,6 +41,7 @@ def _drive_file(
         mime_type=mime_type,
         folder_path=folder_path,
         modified_at=modified_at,
+        status=status,
         created_at=modified_at,
         updated_at=modified_at,
     )
@@ -172,6 +175,51 @@ async def test_retrieve_limits_results_to_candidate_k(
     results = await retriever.retrieve("latest pdf")
 
     assert len(results) == settings.retrieval_candidate_k
+
+
+@pytest.mark.asyncio
+async def test_retrieve_excludes_skipped_files(
+    retriever: MetadataRetriever,
+    mock_db: AsyncMock,
+) -> None:
+    now = datetime.now(UTC)
+    skipped_file = _drive_file(
+        file_id=FILE_A_ID,
+        name="removed_latest.pdf",
+        mime_type="application/pdf",
+        modified_at=now,
+        status=DriveFileStatus.SKIPPED,
+    )
+    indexed_file = _drive_file(
+        file_id=FILE_B_ID,
+        name="available.pdf",
+        mime_type="application/pdf",
+        modified_at=now - timedelta(hours=1),
+    )
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(
+            all=MagicMock(
+                return_value=[
+                    _chunk(
+                        chunk_id=CHUNK_A_ID,
+                        document_id=DOC_A_ID,
+                        drive_file=skipped_file,
+                        text="removed content",
+                    ),
+                    _chunk(
+                        chunk_id=CHUNK_B_ID,
+                        document_id=DOC_B_ID,
+                        drive_file=indexed_file,
+                        text="available content",
+                    ),
+                ]
+            )
+        ),
+    )
+
+    results = await retriever.retrieve("latest pdf")
+
+    assert [result.chunk_id for result in results] == [CHUNK_B_ID]
 
 
 def test_parse_query_extracts_mime_and_latest_signals() -> None:

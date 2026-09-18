@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
+from app.db.models.drive_file import DriveFile
 from app.embeddings.base import EmbeddingService
 from app.embeddings.factory import get_embedding_service
 from app.embeddings.vector_store import QdrantVectorStore
@@ -60,7 +62,11 @@ class VectorRetriever:
                 continue
             document = chunk.document
             drive_file = document.drive_file if document is not None else None
-            if document is None or drive_file is None:
+            if (
+                document is None
+                or drive_file is None
+                or drive_file.status != DriveFileStatus.INDEXED
+            ):
                 continue
             retrieved.append(
                 RetrievedChunk(
@@ -85,7 +91,12 @@ class VectorRetriever:
 
         result = await self.db.scalars(
             select(Chunk)
-            .where(Chunk.id.in_(chunk_ids))
+            .join(Document, Chunk.document_id == Document.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                Chunk.id.in_(chunk_ids),
+                DriveFile.status == DriveFileStatus.INDEXED,
+            )
             .options(
                 selectinload(Chunk.document).selectinload(Document.drive_file),
             )

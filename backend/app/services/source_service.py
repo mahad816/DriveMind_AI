@@ -8,8 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
+from app.db.models.drive_file import DriveFile
 from app.schemas.source import SourceChunkRead
 
 
@@ -23,7 +25,12 @@ class SourceService:
         """Return chunk source details when the chunk exists."""
         chunk = await self.db.scalar(
             select(Chunk)
-            .where(Chunk.id == chunk_id)
+            .join(Document, Chunk.document_id == Document.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                Chunk.id == chunk_id,
+                DriveFile.status == DriveFileStatus.INDEXED,
+            )
             .options(
                 selectinload(Chunk.document).selectinload(Document.drive_file),
             )
@@ -33,7 +40,7 @@ class SourceService:
 
         document = chunk.document
         drive_file = document.drive_file if document is not None else None
-        if document is None or drive_file is None:
+        if document is None or drive_file is None or drive_file.status != DriveFileStatus.INDEXED:
             return None
 
         return SourceChunkRead(

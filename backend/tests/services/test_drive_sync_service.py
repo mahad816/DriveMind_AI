@@ -304,6 +304,28 @@ async def test_mark_file_removed_skips_missing_rows(
 
 
 @pytest.mark.asyncio
+async def test_mark_file_removed_marks_existing_file_skipped(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    existing = DriveFile(
+        id=uuid.uuid4(),
+        user_id=USER_ID,
+        drive_file_id="file-1",
+        name="notes.txt",
+        mime_type="text/plain",
+        modified_at=datetime.now(UTC),
+        status=DriveFileStatus.INDEXED,
+    )
+    mock_db.scalar = AsyncMock(return_value=existing)
+
+    result = await service._mark_file_removed(USER_ID, "file-1")
+
+    assert result == 1
+    assert existing.status == DriveFileStatus.SKIPPED
+
+
+@pytest.mark.asyncio
 async def test_upsert_file_restores_skipped_file(
     service: DriveSyncService,
     mock_db: AsyncMock,

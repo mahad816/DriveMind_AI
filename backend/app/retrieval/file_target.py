@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -87,7 +88,11 @@ class FileTargetRetriever:
 
         for target in targets:
             file_row = await self._resolve_single_target(user_id, target)
-            if file_row is not None and file_row.id not in seen_ids:
+            if (
+                file_row is not None
+                and file_row.status != DriveFileStatus.SKIPPED
+                and file_row.id not in seen_ids
+            ):
                 seen_ids.add(file_row.id)
                 resolved.append(file_row)
 
@@ -107,6 +112,7 @@ class FileTargetRetriever:
         exact = await self.db.scalar(
             select(DriveFile).where(
                 DriveFile.user_id == user_id,
+                DriveFile.status != DriveFileStatus.SKIPPED,
                 func.lower(DriveFile.name) == normalized.lower(),
             )
         )
@@ -119,6 +125,7 @@ class FileTargetRetriever:
             by_base = await self.db.scalar(
                 select(DriveFile).where(
                     DriveFile.user_id == user_id,
+                    DriveFile.status != DriveFileStatus.SKIPPED,
                     func.lower(DriveFile.name) == target_base.lower(),
                 )
             )
@@ -132,6 +139,7 @@ class FileTargetRetriever:
                     select(DriveFile)
                     .where(
                         DriveFile.user_id == user_id,
+                        DriveFile.status != DriveFileStatus.SKIPPED,
                         or_(
                             DriveFile.name.ilike(normalized),
                             DriveFile.name.ilike(f"%{normalized}%"),
@@ -153,11 +161,18 @@ class FileTargetRetriever:
         return None
 
     async def _load_chunks_for_files(self, files: list[DriveFile]) -> list[RetrievedChunk]:
-        file_ids = [f.id for f in files]
+        file_ids = [f.id for f in files if f.status == DriveFileStatus.INDEXED]
+        if not file_ids:
+            return []
+
         result = await self.db.scalars(
             select(Chunk)
             .join(Document, Chunk.document_id == Document.id)
-            .where(Document.drive_file_id.in_(file_ids))
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                Document.drive_file_id.in_(file_ids),
+                DriveFile.status == DriveFileStatus.INDEXED,
+            )
             .options(selectinload(Chunk.document).selectinload(Document.drive_file))
             .order_by(Document.drive_file_id, Chunk.chunk_index.asc())
         )
@@ -167,7 +182,11 @@ class FileTargetRetriever:
         for chunk in chunks:
             document = chunk.document
             drive_file = document.drive_file if document is not None else None
-            if document is None or drive_file is None:
+            if (
+                document is None
+                or drive_file is None
+                or drive_file.status != DriveFileStatus.INDEXED
+            ):
                 continue
             retrieved.append(
                 RetrievedChunk(

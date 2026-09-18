@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.config import Settings, get_settings
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -96,7 +97,11 @@ class KeywordRetriever:
                 continue
             document = chunk.document
             drive_file = document.drive_file if document is not None else None
-            if document is None or drive_file is None:
+            if (
+                document is None
+                or drive_file is None
+                or drive_file.status != DriveFileStatus.INDEXED
+            ):
                 continue
             score = score_by_id[chunk.id]
             retrieved.append(
@@ -192,7 +197,10 @@ class KeywordRetriever:
             select(Chunk.id, combined_score.label("score"))
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
-            .where(Chunk.search_vector.op("@@")(ts_query))
+            .where(
+                DriveFile.status == DriveFileStatus.INDEXED,
+                Chunk.search_vector.op("@@")(ts_query),
+            )
             .order_by(combined_score.desc(), Chunk.chunk_index.asc())
             .limit(self.settings.retrieval_candidate_k)
         )
@@ -235,7 +243,10 @@ class KeywordRetriever:
             select(Chunk.id)
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
-            .where(or_(*filters))
+            .where(
+                DriveFile.status == DriveFileStatus.INDEXED,
+                or_(*filters),
+            )
             .order_by(DriveFile.modified_at.desc(), Chunk.chunk_index.asc())
             .limit(self.settings.retrieval_candidate_k)
         )
@@ -261,7 +272,12 @@ class KeywordRetriever:
 
         result = await self.db.execute(
             select(Chunk.id)
-            .where(Chunk.text.ilike(f"%{escaped}%", escape="\\"))
+            .join(Document, Chunk.document_id == Document.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                DriveFile.status == DriveFileStatus.INDEXED,
+                Chunk.text.ilike(f"%{escaped}%", escape="\\"),
+            )
             .order_by(Chunk.chunk_index.asc())
             .limit(self.settings.retrieval_candidate_k)
         )
@@ -341,7 +357,12 @@ class KeywordRetriever:
             return {}
         result = await self.db.scalars(
             select(Chunk)
-            .where(Chunk.id.in_(chunk_ids))
+            .join(Document, Chunk.document_id == Document.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                Chunk.id.in_(chunk_ids),
+                DriveFile.status == DriveFileStatus.INDEXED,
+            )
             .options(selectinload(Chunk.document).selectinload(Document.drive_file))
         )
         return {chunk.id: chunk for chunk in result.all()}

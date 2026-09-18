@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -18,7 +19,9 @@ DOCUMENT_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
 
 
-def _chunk_bundle() -> Chunk:
+def _chunk_bundle(
+    status: DriveFileStatus = DriveFileStatus.INDEXED,
+) -> Chunk:
     drive_file = DriveFile(
         id=DRIVE_FILE_ID,
         user_id=uuid.uuid4(),
@@ -26,6 +29,7 @@ def _chunk_bundle() -> Chunk:
         name="notes.txt",
         mime_type="text/plain",
         modified_at=datetime.now(UTC),
+        status=status,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
@@ -86,6 +90,18 @@ async def test_get_source_chunk_returns_none_when_missing(
     mock_db: AsyncMock,
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
+
+    source = await service.get_source_chunk(CHUNK_ID)
+
+    assert source is None
+
+
+@pytest.mark.asyncio
+async def test_get_source_chunk_returns_none_for_skipped_file(
+    service: SourceService,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.scalar = AsyncMock(return_value=_chunk_bundle(DriveFileStatus.SKIPPED))
 
     source = await service.get_source_chunk(CHUNK_ID)
 

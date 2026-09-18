@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.config import Settings
+from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -20,7 +21,9 @@ DRIVE_FILE_ID = uuid.uuid4()
 USER_ID = uuid.uuid4()
 
 
-def _drive_file() -> DriveFile:
+def _drive_file(
+    status: DriveFileStatus = DriveFileStatus.INDEXED,
+) -> DriveFile:
     return DriveFile(
         id=DRIVE_FILE_ID,
         user_id=USER_ID,
@@ -28,12 +31,13 @@ def _drive_file() -> DriveFile:
         name="materials_notes.txt",
         mime_type="text/plain",
         modified_at=datetime.now(UTC),
+        status=status,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
 
 
-def _document() -> Document:
+def _document(status: DriveFileStatus = DriveFileStatus.INDEXED) -> Document:
     document = Document(
         id=DOCUMENT_ID,
         drive_file_id=DRIVE_FILE_ID,
@@ -43,11 +47,11 @@ def _document() -> Document:
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
-    document.drive_file = _drive_file()
+    document.drive_file = _drive_file(status)
     return document
 
 
-def _chunk() -> Chunk:
+def _chunk(status: DriveFileStatus = DriveFileStatus.INDEXED) -> Chunk:
     chunk = Chunk(
         id=CHUNK_ID,
         document_id=DOCUMENT_ID,
@@ -57,7 +61,7 @@ def _chunk() -> Chunk:
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
-    chunk.document = _document()
+    chunk.document = _document(status)
     return chunk
 
 
@@ -122,6 +126,36 @@ async def test_retrieve_drops_missing_chunks_from_hydration(
 
     assert len(results) == 1
     assert results[0].chunk_id == CHUNK_ID
+
+
+@pytest.mark.asyncio
+async def test_retrieve_drops_keyword_hit_for_skipped_file(
+    retriever: KeywordRetriever,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.execute = AsyncMock(side_effect=[[(CHUNK_ID, 0.77)], []])
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[_chunk(DriveFileStatus.SKIPPED)])),
+    )
+
+    results = await retriever.retrieve("materials tensile")
+
+    assert results == []
+
+
+@pytest.mark.asyncio
+async def test_candidate_queries_require_indexed_files(
+    retriever: KeywordRetriever,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.execute = AsyncMock(side_effect=[[], [], [], []])
+
+    await retriever._search_hits('find "this is a very specific sentence that appears verbatim"')
+
+    assert mock_db.execute.await_count == 4
+    for call in mock_db.execute.await_args_list:
+        statement = call.args[0]
+        assert "drive_files.status" in str(statement)
 
 
 @pytest.mark.asyncio
