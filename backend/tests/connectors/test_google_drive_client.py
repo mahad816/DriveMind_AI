@@ -382,6 +382,7 @@ def test_list_changes_returns_parsed_changes_and_new_token() -> None:
                             "id": "file-2",
                             "name": "notes.txt",
                             "mimeType": TXT_MIME,
+                            "trashed": True,
                         },
                     },
                 ],
@@ -398,6 +399,7 @@ def test_list_changes_returns_parsed_changes_and_new_token() -> None:
     assert changes[0].removed is True
     assert changes[1].file is not None
     assert changes[1].file.mime_type == TXT_MIME
+    assert changes[1].file.trashed is True
     assert files_resource.change_list_calls[0]["pageToken"] == "old-token"
 
 
@@ -406,3 +408,11 @@ def test_drive_change_from_api_handles_removed_entries() -> None:
     assert change.file_id == "abc"
     assert change.removed is True
     assert change.file is None
+
+
+def test_drive_file_metadata_defaults_trashed_to_false() -> None:
+    metadata = DriveFileMetadata.from_api(
+        {"id": "file-1", "name": "notes.txt", "mimeType": TXT_MIME}
+    )
+
+    assert metadata.trashed is False

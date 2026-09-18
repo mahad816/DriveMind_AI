@@ -60,6 +60,7 @@ class DriveFileMetadata:
     created_time: str | None = None
     size: int | None = None
     parents: list[str] = field(default_factory=list)
+    trashed: bool = False
     web_view_link: str | None = None
     md5_checksum: str | None = None
 
@@ -76,6 +77,7 @@ class DriveFileMetadata:
             created_time=payload.get("createdTime"),
             size=size,
             parents=list(payload.get("parents", [])),
+            trashed=bool(payload.get("trashed", False)),
             web_view_link=payload.get("webViewLink"),
             md5_checksum=payload.get("md5Checksum"),
         )

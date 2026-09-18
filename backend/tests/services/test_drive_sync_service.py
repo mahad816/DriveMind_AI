@@ -35,6 +35,7 @@ def _metadata(
     mime: str = "application/pdf",
     modified: str = "2026-07-07T10:00:00.000Z",
     parents: list[str] | None = None,
+    trashed: bool = False,
 ) -> DriveFileMetadata:
     return DriveFileMetadata(
         id=file_id,
@@ -42,6 +43,7 @@ def _metadata(
         mime_type=mime,
         modified_time=modified,
         parents=parents or [],
+        trashed=trashed,
     )
 
 
@@ -245,7 +247,9 @@ async def test_sync_metadata_incremental_applies_changes(
 
     with (
         patch.object(service, "_build_drive_client", return_value=mock_client),
-        patch.object(service, "_mark_file_removed", new_callable=AsyncMock, return_value=1),
+        patch.object(
+            service, "_mark_file_removed", new_callable=AsyncMock, return_value=1
+        ) as mark_removed,
         patch.object(service, "_upsert_file", new_callable=AsyncMock, return_value="updated"),
         patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as mock_save_state,
@@ -255,8 +259,139 @@ async def test_sync_metadata_incremental_applies_changes(
     assert result.mode == "incremental"
     assert result.removed == 1
     assert result.updated == 1
+    mark_removed.assert_awaited_once_with(USER_ID, "removed-1")
     mock_client.list_changes.assert_called_once_with("old-token")
     mock_save_state.assert_awaited_once_with(USER_ID, "new-token")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        _metadata(trashed=True),
+        _metadata(mime="application/zip"),
+    ],
+    ids=["trashed", "unsupported"],
+)
+async def test_incremental_sync_marks_unavailable_tracked_file_removed(
+    service: DriveSyncService,
+    metadata: DriveFileMetadata,
+) -> None:
+    sync_state = DriveSyncState(user_id=USER_ID, changes_page_token="old-token")
+    mock_client = MagicMock()
+    mock_client.list_changes.return_value = (
+        [DriveChange(file_id=metadata.id, removed=False, file=metadata)],
+        "new-token",
+    )
+
+    with (
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(
+            service, "_mark_file_removed", new_callable=AsyncMock, return_value=1
+        ) as mark_removed,
+        patch.object(service, "_upsert_file", new_callable=AsyncMock) as upsert,
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock),
+    ):
+        created, updated, unchanged, removed = await service._run_incremental_sync(
+            USER, mock_client, sync_state
+        )
+
+    assert (created, updated, unchanged, removed) == (0, 0, 0, 1)
+    mark_removed.assert_awaited_once_with(USER_ID, metadata.id)
+    upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        _metadata(trashed=True),
+        _metadata(mime="application/zip"),
+    ],
+    ids=["trashed", "unsupported"],
+)
+async def test_incremental_sync_does_not_recount_skipped_unavailable_file(
+    service: DriveSyncService,
+    metadata: DriveFileMetadata,
+) -> None:
+    sync_state = DriveSyncState(user_id=USER_ID, changes_page_token="old-token")
+    mock_client = MagicMock()
+    mock_client.list_changes.return_value = (
+        [DriveChange(file_id=metadata.id, removed=False, file=metadata)],
+        "new-token",
+    )
+
+    with (
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(
+            service, "_mark_file_removed", new_callable=AsyncMock, return_value=0
+        ) as mark_removed,
+        patch.object(service, "_upsert_file", new_callable=AsyncMock) as upsert,
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock),
+    ):
+        created, updated, unchanged, removed = await service._run_incremental_sync(
+            USER, mock_client, sync_state
+        )
+
+    assert (created, updated, unchanged, removed) == (0, 0, 0, 0)
+    mark_removed.assert_awaited_once_with(USER_ID, metadata.id)
+    upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_ignores_untracked_unsupported_file(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    sync_state = DriveSyncState(user_id=USER_ID, changes_page_token="old-token")
+    metadata = _metadata(mime="application/zip")
+    mock_client = MagicMock()
+    mock_client.list_changes.return_value = (
+        [DriveChange(file_id=metadata.id, removed=False, file=metadata)],
+        "new-token",
+    )
+    mock_db.scalar = AsyncMock(return_value=None)
+
+    with (
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(service, "_upsert_file", new_callable=AsyncMock) as upsert,
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock),
+    ):
+        created, updated, unchanged, removed = await service._run_incremental_sync(
+            USER, mock_client, sync_state
+        )
+
+    assert (created, updated, unchanged, removed) == (0, 0, 0, 0)
+    upsert.assert_not_awaited()
+    mock_db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_incremental_sync_restores_supported_skipped_file(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    sync_state = DriveSyncState(user_id=USER_ID, changes_page_token="old-token")
+    existing = _drive_file("file-1", DriveFileStatus.SKIPPED)
+    metadata = _metadata(name="restored.txt", mime="text/plain")
+    mock_client = MagicMock()
+    mock_client.list_changes.return_value = (
+        [DriveChange(file_id=metadata.id, removed=False, file=metadata)],
+        "new-token",
+    )
+    mock_db.scalar = AsyncMock(return_value=existing)
+
+    with (
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock),
+    ):
+        created, updated, unchanged, removed = await service._run_incremental_sync(
+            USER, mock_client, sync_state
+        )
+
+    assert (created, updated, unchanged, removed) == (0, 1, 0, 0)
+    assert existing.status == DriveFileStatus.DISCOVERED
+    assert existing.name == "restored.txt"
 
 
 @pytest.mark.asyncio
@@ -440,6 +575,20 @@ async def test_mark_file_removed_skips_missing_rows(
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
     assert await service._mark_file_removed(USER_ID, "missing") == 0
+
+
+@pytest.mark.asyncio
+async def test_mark_file_removed_does_not_recount_skipped_file(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    existing = _drive_file("file-1", DriveFileStatus.SKIPPED)
+    mock_db.scalar = AsyncMock(return_value=existing)
+
+    result = await service._mark_file_removed(USER_ID, "file-1")
+
+    assert result == 0
+    assert existing.status == DriveFileStatus.SKIPPED
 
 
 @pytest.mark.asyncio

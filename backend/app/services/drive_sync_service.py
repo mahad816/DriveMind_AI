@@ -333,7 +333,8 @@ class DriveSyncService:
             removed += await self._process_change(user.id, change)
             if change.removed or change.file is None:
                 continue
-            if not is_supported_mime_type(change.file.mime_type):
+            if change.file.trashed or not is_supported_mime_type(change.file.mime_type):
+                removed += await self._mark_file_removed(user.id, change.file_id)
                 continue
             folder_path = self._resolve_folder_path(change.file, folder_lookup)
             c, u, n = await self._apply_metadata(
