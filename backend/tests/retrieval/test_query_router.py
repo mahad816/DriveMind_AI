@@ -41,6 +41,8 @@ from app.retrieval.query_router import QueryRoute, classify_query
         "how are you doing",
         "whats up",
         "what's up",
+        "what can you do?",
+        "who are you?",
     ],
 )
 def test_pure_social_phrases_are_chitchat(question: str) -> None:
@@ -50,19 +52,37 @@ def test_pure_social_phrases_are_chitchat(question: str) -> None:
 @pytest.mark.parametrize(
     "question",
     [
-        # Knowledge signals override social words
+        # Social words inside substantive requests are not exact chitchat phrases.
         "hi, find my resume",
         "hello, what files do I have?",
         "hey, summarize my documents",
         "thanks, now find my CV",
         "ok, list my certificates",
-        # Short but has knowledge signal
+        # Short retrieval requests remain non-chitchat.
         "find resume",
         "show files",
     ],
 )
-def test_social_plus_knowledge_signal_is_not_chitchat(question: str) -> None:
+def test_substantive_requests_with_social_words_are_not_chitchat(question: str) -> None:
     assert classify_query(question) is not QueryRoute.CHITCHAT
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "CoreChain architecture",
+        "DriveMind architecture",
+        "cloud computing notes",
+        "federated learning",
+        "meeting notes",
+        "machine learning",
+        "architecture",
+        "notes",
+        "Python",
+    ],
+)
+def test_short_substantive_topics_route_to_grounded_rag(question: str) -> None:
+    assert classify_query(question) is QueryRoute.GROUNDED_RAG
 
 
 # ── File inventory ─────────────────────────────────────────────────────────────
@@ -114,6 +134,13 @@ def test_file_inventory_questions_route_correctly(question: str) -> None:
         "Summarize everything about CoreChain",
         "Find everything related to machine learning",
         "Which files mention LangGraph or RAG?",
+        "PTCL internship",
+        "project requirements",
+        "expense report",
+        "What is CoreChain?",
+        "Explain CoreChain",
+        "How does CoreChain work?",
+        "What did I do at PTCL?",
     ],
 )
 def test_knowledge_questions_route_to_grounded_rag(question: str) -> None:

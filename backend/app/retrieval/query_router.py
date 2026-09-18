@@ -68,25 +68,9 @@ _CHITCHAT_EXACT: frozenset[str] = frozenset(
         "whats up",
         "how is it going",
         "hows it going",
+        "what can you do",
+        "who are you",
     }
-)
-
-# Any match here overrides chitchat classification — the message has knowledge intent.
-_KNOWLEDGE_SIGNALS_RE = re.compile(
-    r"\b("
-    r"file|files|document|documents|folder|folders|drive|"
-    r"resume|cv|certificate|transcript|report|thesis|portfolio|"
-    r"pdf|docx|doc|txt|"
-    r"find|search|show|list|get|fetch|look|check|"
-    r"what|how|why|when|where|which|who|"
-    r"explain|summarize|summary|describe|"
-    r"tell me|count|how many|total|number of|"
-    r"latest|recent|newest|last|"
-    r"name|named|called|mention|mentions|contain|contains|include|"
-    r"gpa|grade|project|internship|work|experience|skill|"
-    r"certification|award|achievement|internship"
-    r")\b",
-    re.IGNORECASE,
 )
 
 # ── File-inventory detection ───────────────────────────────────────────────────
@@ -147,7 +131,7 @@ def classify_query(question: str) -> QueryRoute:
     """Classify a question into the appropriate processing route.
 
     Priority order:
-      1. Chitchat — pure social, no knowledge signals.
+      1. Chitchat — high-confidence conversational phrases.
       2. File inventory — counts, lists, resume/CV searches.
       3. File target — asking about a specific named file.
       4. Grounded RAG — default hybrid retrieval.
@@ -182,21 +166,11 @@ def classify_query(question: str) -> QueryRoute:
 
 
 def _is_chitchat(lower: str) -> bool:
-    """Return True for purely social messages with no knowledge-seeking content."""
+    """Return True only for high-confidence conversational messages."""
     # Strip leading/trailing punctuation before exact phrase matching.
     cleaned = re.sub(r"[!?.,;'\"\-]+$", "", lower).strip()
     cleaned = re.sub(r"^[!?.,;'\"\-]+", "", cleaned).strip()
-
-    if cleaned in _CHITCHAT_EXACT:
-        return True
-
-    # Any knowledge signal overrides social classification.
-    if _KNOWLEDGE_SIGNALS_RE.search(lower):
-        return False
-
-    # Short messages without knowledge signals are treated as social.
-    words = lower.split()
-    return len(words) <= 5
+    return cleaned in _CHITCHAT_EXACT
 
 
 def _is_file_inventory(lower: str) -> bool:

@@ -24,6 +24,10 @@ def test_tell_me_about_far611_routes_to_file_target() -> None:
     assert classify_query('Tell me about "Far611"') is QueryRoute.FILE_TARGET
 
 
+def test_unquoted_tell_me_about_corechain_remains_file_target() -> None:
+    assert classify_query("Tell me about CoreChain") is QueryRoute.FILE_TARGET
+
+
 def test_tell_me_about_hi_with_followup_routes_to_file_target() -> None:
     q = 'Tell me about "HI" content what boy is named'
     assert classify_query(q) is QueryRoute.FILE_TARGET

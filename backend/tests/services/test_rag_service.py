@@ -494,6 +494,27 @@ async def test_ask_chitchat_persists_history_with_empty_citations(
     assert added.citations_json == []
 
 
+@pytest.mark.asyncio
+async def test_ask_short_substantive_topic_uses_grounded_retrieval(
+    service: RagService,
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    await service.ask("CoreChain architecture", user_id=USER_ID)
+
+    mock_retriever.retrieve.assert_awaited_once_with("CoreChain architecture")
+    mock_chat.generate_grounded_answer.assert_awaited_once()
+    mock_chat.generate_direct_answer.assert_not_awaited()
+
+
 # ── File inventory path ────────────────────────────────────────────────────────
 
 
