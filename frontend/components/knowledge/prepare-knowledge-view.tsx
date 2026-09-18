@@ -123,7 +123,7 @@ export function PrepareKnowledgeView({
           <AlertDescription className="space-y-3">
             <p>{progress.error}</p>
             <p className="text-xs opacity-80">
-              If a new file isn't showing up, try a <strong>full scan</strong> to re-check all your Drive files.
+              If a new file isn&apos;t showing up, try a <strong>full scan</strong> to re-check all your Drive files.
             </p>
             <div className="flex gap-2 pt-1">
               <Button

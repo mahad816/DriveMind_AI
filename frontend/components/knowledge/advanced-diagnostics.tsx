@@ -13,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { PipelineStepCard, type PipelineStepResultRow } from "@/components/indexing/pipeline-step-card";
+import { PipelineStepCard } from "@/components/indexing/pipeline-step-card";
 import { listDriveFiles } from "@/lib/api/files";
 import {
   buildVectorIndex,
@@ -22,13 +22,7 @@ import {
   syncDriveMetadata,
 } from "@/lib/api/indexing";
 import { ApiError } from "@/lib/api/errors";
-import type {
-  ChunkingResponse,
-  DriveFileListResponse,
-  DriveSyncResponse,
-  IndexBuildResponse,
-  IngestionResponse,
-} from "@/lib/api/types";
+import type { DriveFileListResponse, JobStartedResponse } from "@/lib/api/types";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 
 function apiErrorToMessage(err: unknown): string {
@@ -93,10 +87,10 @@ export function AdvancedDiagnostics() {
   const [chunkError, setChunkError] = useState<string | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
 
-  const [syncResult, setSyncResult] = useState<DriveSyncResponse | null>(null);
-  const [ingestResult, setIngestResult] = useState<IngestionResponse | null>(null);
-  const [chunkResult, setChunkResult] = useState<ChunkingResponse | null>(null);
-  const [buildResult, setBuildResult] = useState<IndexBuildResponse | null>(null);
+  const [syncResult, setSyncResult] = useState<JobStartedResponse | null>(null);
+  const [ingestResult, setIngestResult] = useState<JobStartedResponse | null>(null);
+  const [chunkResult, setChunkResult] = useState<JobStartedResponse | null>(null);
+  const [buildResult, setBuildResult] = useState<JobStartedResponse | null>(null);
 
   const fileCounts = useMemo(() => {
     const files = filesState.data?.files ?? [];
@@ -134,46 +128,6 @@ export function AdvancedDiagnostics() {
     [refetch, refreshFiles],
   );
 
-  const syncRows: PipelineStepResultRow[] = useMemo(() => {
-    if (!syncResult) return [];
-    return [
-      { label: "Created", value: syncResult.created },
-      { label: "Updated", value: syncResult.updated },
-      { label: "Unchanged", value: syncResult.unchanged },
-      { label: "Removed", value: syncResult.removed },
-    ];
-  }, [syncResult]);
-
-  const ingestRows: PipelineStepResultRow[] = useMemo(() => {
-    if (!ingestResult) return [];
-    return [
-      { label: "Ingested", value: ingestResult.ingested },
-      { label: "Unchanged", value: ingestResult.unchanged },
-      { label: "Failed", value: ingestResult.failed },
-      { label: "Skipped", value: ingestResult.skipped },
-    ];
-  }, [ingestResult]);
-
-  const chunkRows: PipelineStepResultRow[] = useMemo(() => {
-    if (!chunkResult) return [];
-    return [
-      { label: "Chunked", value: chunkResult.chunked },
-      { label: "Unchanged", value: chunkResult.unchanged },
-      { label: "Skipped", value: chunkResult.skipped },
-      { label: "Total", value: chunkResult.total },
-    ];
-  }, [chunkResult]);
-
-  const buildRows: PipelineStepResultRow[] = useMemo(() => {
-    if (!buildResult) return [];
-    return [
-      { label: "Embedded", value: buildResult.embedded },
-      { label: "Unchanged", value: buildResult.unchanged },
-      { label: "Skipped", value: buildResult.skipped },
-      { label: "Failed", value: buildResult.failed },
-    ];
-  }, [buildResult]);
-
   return (
     <div className="space-y-4">
       {connectionError ? (
@@ -201,7 +155,6 @@ export function AdvancedDiagnostics() {
             })
           }
           lastMessage={syncResult?.message ?? null}
-          resultRows={syncRows}
           error={syncError}
         />
 
@@ -222,7 +175,6 @@ export function AdvancedDiagnostics() {
             })
           }
           lastMessage={ingestResult?.message ?? null}
-          resultRows={ingestRows}
           error={ingestError}
         />
 
@@ -243,7 +195,6 @@ export function AdvancedDiagnostics() {
             })
           }
           lastMessage={chunkResult?.message ?? null}
-          resultRows={chunkRows}
           error={chunkError}
         />
 
@@ -264,7 +215,6 @@ export function AdvancedDiagnostics() {
             })
           }
           lastMessage={buildResult?.message ?? null}
-          resultRows={buildRows}
           error={buildError}
         />
       </div>

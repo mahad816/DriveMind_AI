@@ -28,6 +28,7 @@ NOW = datetime.now(UTC)
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 def _drive_file(
     *,
     name: str,
@@ -82,6 +83,7 @@ def mock_db() -> AsyncMock:
 
 # ── extract_search_terms ──────────────────────────────────────────────────────
 
+
 def test_extract_terms_from_resume_and_cv_question() -> None:
     q = "can you check all files which have resume name or CV and tell how many in total"
     terms = extract_search_terms(q)
@@ -128,6 +130,7 @@ def test_extract_terms_multi_word_variant() -> None:
 
 
 # ── FileInventoryRetriever ────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_search_returns_empty_for_non_inventory_question(mock_db: AsyncMock) -> None:
@@ -177,9 +180,7 @@ async def test_search_fetches_content_chunks_from_latest_file(mock_db: AsyncMock
         ]
     )
     # "mentions GPA" triggers content check; scalar returns matching chunk text
-    mock_db.scalar = AsyncMock(
-        return_value="Education: BSc Computer Science. GPA: 3.8/4.0"
-    )
+    mock_db.scalar = AsyncMock(return_value="Education: BSc Computer Science. GPA: 3.8/4.0")
 
     retriever = FileInventoryRetriever(db=mock_db)
     result = await retriever.search("find my latest resume and check if it mentions GPA")
@@ -197,9 +198,7 @@ async def test_search_fetches_content_chunks_from_latest_file(mock_db: AsyncMock
 
 @pytest.mark.asyncio
 async def test_search_no_results_when_no_files_matched(mock_db: AsyncMock) -> None:
-    mock_db.scalars = AsyncMock(
-        return_value=MagicMock(all=MagicMock(return_value=[]))
-    )
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
     retriever = FileInventoryRetriever(db=mock_db)
     result = await retriever.search("find all my resumes")
 
@@ -210,6 +209,7 @@ async def test_search_no_results_when_no_files_matched(mock_db: AsyncMock) -> No
 
 
 # ── build_inventory_context ───────────────────────────────────────────────────
+
 
 def test_build_inventory_context_no_results() -> None:
     result = InventoryResult(
@@ -290,15 +290,14 @@ def test_build_inventory_context_search_terms_shown() -> None:
 
 # ── Global file-count path (Phase B) ─────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_search_global_count_triggers_all_files_query(mock_db: AsyncMock) -> None:
     """'list total number of files' with no domain terms should use _query_all_files."""
     file1 = _drive_file(name="Resume_2024.pdf", modified_at=NOW)
     file2 = _drive_file(name="Notes.txt", modified_at=NOW - timedelta(days=1))
 
-    mock_db.scalars = AsyncMock(
-        return_value=MagicMock(all=MagicMock(return_value=[file1, file2]))
-    )
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[file1, file2])))
 
     retriever = FileInventoryRetriever(db=mock_db)
     result = await retriever.search("list total number of files")
@@ -382,6 +381,7 @@ def test_build_inventory_context_global_count_format() -> None:
 
 # ── Content checks (Phase C) ──────────────────────────────────────────────────
 
+
 def test_extract_content_check_terms_gpa_mention() -> None:
     """'does it include any mention of GPA' should extract GPA check."""
     terms = extract_content_check_terms("does it include any mention of GPA or no")
@@ -419,9 +419,7 @@ def test_extract_content_check_terms_deduplicates() -> None:
 async def test_run_content_checks_found_in_chunk(mock_db: AsyncMock) -> None:
     """When a chunk contains the search term, ContentCheckItem is found=True."""
     file = _drive_file(name="Resume.pdf", modified_at=NOW)
-    mock_db.scalar = AsyncMock(
-        return_value="Education: BSc Computer Science. GPA: 3.8/4.0"
-    )
+    mock_db.scalar = AsyncMock(return_value="Education: BSc Computer Science. GPA: 3.8/4.0")
 
     retriever = FileInventoryRetriever(db=mock_db)
     results = await retriever._run_content_checks(file, [("gpa", "GPA")])
@@ -476,15 +474,13 @@ async def test_run_content_checks_multiple_terms(mock_db: AsyncMock) -> None:
     mock_db.scalar = AsyncMock(
         side_effect=[
             "GPA: 3.8/4.0",  # chunk match for gpa
-            None,             # chunk search for skill → not found
-            None,             # extracted_text for skill → not found
+            None,  # chunk search for skill → not found
+            None,  # extracted_text for skill → not found
         ]
     )
 
     retriever = FileInventoryRetriever(db=mock_db)
-    results = await retriever._run_content_checks(
-        file, [("gpa", "GPA"), ("skill", "skills")]
-    )
+    results = await retriever._run_content_checks(file, [("gpa", "GPA"), ("skill", "skills")])
 
     assert len(results) == 2
     gpa_check = next(r for r in results if r.term == "GPA")

@@ -9,6 +9,7 @@ from app.retrieval.query_router import QueryRoute, classify_query
 
 # ── Chitchat ──────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "question",
     [
@@ -66,6 +67,7 @@ def test_social_plus_knowledge_signal_is_not_chitchat(question: str) -> None:
 
 # ── File inventory ─────────────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "question",
     [
@@ -99,6 +101,7 @@ def test_file_inventory_questions_route_correctly(question: str) -> None:
 
 # ── Grounded RAG ──────────────────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "question",
     [
@@ -129,6 +132,7 @@ def test_broad_topic_questions_route_to_grounded_rag(question: str) -> None:
 
 # ── Edge cases ────────────────────────────────────────────────────────────────
 
+
 def test_empty_string_routes_to_grounded_rag() -> None:
     assert classify_query("") is QueryRoute.GROUNDED_RAG
 
@@ -153,6 +157,7 @@ def test_find_latest_cv_is_file_inventory() -> None:
 
 
 # ── General file-count queries (Phase B) ───────────────────────────────────────
+
 
 @pytest.mark.parametrize(
     "question",

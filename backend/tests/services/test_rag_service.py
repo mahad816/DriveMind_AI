@@ -408,6 +408,7 @@ async def test_ask_uses_linear_path_when_agent_disabled_even_if_graph_available(
 
 # ── Chitchat bypass ────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_ask_chitchat_bypasses_retrieval_and_has_no_citations(
     mock_db: AsyncMock,
@@ -415,9 +416,7 @@ async def test_ask_chitchat_bypasses_retrieval_and_has_no_citations(
     mock_chat: AsyncMock,
 ) -> None:
     """Greeting messages must not trigger retrieval or produce source citations."""
-    mock_chat.generate_direct_answer = AsyncMock(
-        return_value="Hello! How can I help you today?"
-    )
+    mock_chat.generate_direct_answer = AsyncMock(return_value="Hello! How can I help you today?")
     service = RagService(
         db=mock_db,
         settings=Settings(
@@ -478,6 +477,7 @@ async def test_ask_chitchat_persists_history_with_empty_citations(
 
 
 # ── File inventory path ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_ask_file_inventory_bypasses_chunk_retrieval(
@@ -584,6 +584,7 @@ async def test_ask_file_inventory_retrieval_count_reflects_file_count(
 
 # ── Citation hygiene ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_grounded_rag_citations_filtered_to_referenced_only(
     mock_db: AsyncMock,
@@ -661,6 +662,7 @@ async def test_grounded_rag_keeps_citations_when_llm_omits_brackets(
 
 
 # ── Phase A: routing applies before agent_graph_enabled ───────────────────────
+
 
 @pytest.mark.asyncio
 async def test_ask_chitchat_bypasses_graph_when_agent_enabled(

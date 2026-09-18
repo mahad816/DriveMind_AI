@@ -91,6 +91,7 @@ def test_build_retrieval_plan_unknown_defaults_to_full_hybrid() -> None:
 
 # ── Intent priority fix (Phase 4c) ────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "question",
     [

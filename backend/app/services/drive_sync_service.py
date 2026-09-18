@@ -443,12 +443,15 @@ class DriveSyncService:
         uid = user.id
 
         # Files that still need text extraction from Google Drive
-        to_ingest_count: int = await self.db.scalar(
-            select(func.count(DriveFile.id)).where(
-                DriveFile.user_id == uid,
-                DriveFile.status.in_([DriveFileStatus.DISCOVERED, DriveFileStatus.FAILED]),
+        to_ingest_count: int = (
+            await self.db.scalar(
+                select(func.count(DriveFile.id)).where(
+                    DriveFile.user_id == uid,
+                    DriveFile.status.in_([DriveFileStatus.DISCOVERED, DriveFileStatus.FAILED]),
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # Files in INDEXING that have a Document (text extracted) but zero chunks
         to_chunk_sq = (
@@ -458,27 +461,33 @@ class DriveSyncService:
             .correlate(DriveFile)
             .scalar_subquery()
         )
-        to_chunk_count: int = await self.db.scalar(
-            select(func.count(DriveFile.id))
-            .join(Document, Document.drive_file_id == DriveFile.id)
-            .where(
-                DriveFile.user_id == uid,
-                DriveFile.status == DriveFileStatus.INDEXING,
-                to_chunk_sq == 0,
+        to_chunk_count: int = (
+            await self.db.scalar(
+                select(func.count(DriveFile.id))
+                .join(Document, Document.drive_file_id == DriveFile.id)
+                .where(
+                    DriveFile.user_id == uid,
+                    DriveFile.status == DriveFileStatus.INDEXING,
+                    to_chunk_sq == 0,
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # Files in INDEXING that have chunks but no Qdrant vector ID stored
         # We approximate this as: INDEXING files that do have at least one chunk
-        to_build_count: int = await self.db.scalar(
-            select(func.count(DriveFile.id.distinct()))
-            .join(Document, Document.drive_file_id == DriveFile.id)
-            .join(Chunk, Chunk.document_id == Document.id)
-            .where(
-                DriveFile.user_id == uid,
-                DriveFile.status == DriveFileStatus.INDEXING,
+        to_build_count: int = (
+            await self.db.scalar(
+                select(func.count(DriveFile.id.distinct()))
+                .join(Document, Document.drive_file_id == DriveFile.id)
+                .join(Chunk, Chunk.document_id == Document.id)
+                .where(
+                    DriveFile.user_id == uid,
+                    DriveFile.status == DriveFileStatus.INDEXING,
+                )
             )
-        ) or 0
+            or 0
+        )
 
         return PendingCounts(
             to_ingest=to_ingest_count,

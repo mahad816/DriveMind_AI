@@ -184,6 +184,7 @@ def test_parse_query_extracts_mime_and_latest_signals() -> None:
 
 # ── Domain term extraction (Phase 4b fixes) ───────────────────────────────────
 
+
 def test_parse_query_latest_resume_adds_resume_to_filename_terms() -> None:
     """'latest resume' must filter to resume-named files, not globally latest."""
     spec = MetadataRetriever._parse_query("Find my latest resume")

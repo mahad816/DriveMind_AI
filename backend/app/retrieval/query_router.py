@@ -142,6 +142,7 @@ _GENERAL_FILE_COUNT_RE = re.compile(
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
+
 def classify_query(question: str) -> QueryRoute:
     """Classify a question into the appropriate processing route.
 
@@ -178,6 +179,7 @@ def classify_query(question: str) -> QueryRoute:
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
+
 
 def _is_chitchat(lower: str) -> bool:
     """Return True for purely social messages with no knowledge-seeking content."""

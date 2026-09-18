@@ -71,7 +71,10 @@ async def _bg_build(file_id: uuid.UUID | None) -> None:
 # Shared response model for kicked-off background jobs
 # ---------------------------------------------------------------------------
 
-_STARTED_RESPONSE = {"status": "started", "message": "Job started — poll /index/status for progress"}
+_STARTED_RESPONSE = {
+    "status": "started",
+    "message": "Job started — poll /index/status for progress",
+}
 
 
 class PendingCountsResponse(BaseModel):
@@ -100,7 +103,7 @@ async def sync_drive_metadata(
         description="Force a full Drive scan. Default uses incremental sync.",
     ),
     service: DriveSyncService = Depends(get_drive_sync_service),
-) -> dict:
+) -> dict[str, str]:
     """Kick off Drive metadata sync as a background task; returns 202 immediately.
 
     Poll ``GET /index/status`` to track progress.
@@ -169,7 +172,7 @@ async def get_pending_counts(
 async def ingest_drive_files(
     background_tasks: BackgroundTasks,
     file_id: uuid.UUID | None = Query(default=None),
-) -> dict:
+) -> dict[str, str]:
     """Kick off file ingestion as a background task; returns 202 immediately."""
     background_tasks.add_task(_bg_ingest, file_id)
     return _STARTED_RESPONSE
@@ -183,7 +186,7 @@ async def ingest_drive_files(
 async def chunk_extracted_documents(
     background_tasks: BackgroundTasks,
     file_id: uuid.UUID | None = Query(default=None),
-) -> dict:
+) -> dict[str, str]:
     """Kick off chunking as a background task; returns 202 immediately."""
     background_tasks.add_task(_bg_chunk, file_id)
     return _STARTED_RESPONSE
@@ -197,7 +200,7 @@ async def chunk_extracted_documents(
 async def build_vector_index(
     background_tasks: BackgroundTasks,
     file_id: uuid.UUID | None = Query(default=None),
-) -> dict:
+) -> dict[str, str]:
     """Kick off vector index build as a background task; returns 202 immediately."""
     background_tasks.add_task(_bg_build, file_id)
     return _STARTED_RESPONSE

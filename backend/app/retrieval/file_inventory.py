@@ -47,19 +47,96 @@ _DOMAIN_TERMS: dict[str, list[str]] = {
 # Stopwords that should never be used as filename search terms.
 _STOPWORDS: frozenset[str] = frozenset(
     {
-        "the", "a", "an", "my", "your", "our", "their", "its",
-        "all", "every", "any", "each", "some",
-        "and", "or", "in", "on", "at", "for", "of", "to", "from",
-        "is", "are", "was", "were", "have", "has", "do", "does", "did",
-        "can", "could", "should", "would", "will",
-        "find", "show", "list", "check", "get", "tell", "give",
-        "how", "many", "which", "what", "who", "when", "where", "why",
-        "file", "files", "document", "documents", "latest", "recent",
-        "newest", "last", "total", "count", "number", "name", "named",
-        "called", "with", "also", "then", "than", "about",
-        "me", "i", "it", "no", "not", "yes", "gpa", "date", "time",
-        "mention", "mentions", "include", "includes", "contain", "contains",
-        "there", "this", "that", "these", "those",
+        "the",
+        "a",
+        "an",
+        "my",
+        "your",
+        "our",
+        "their",
+        "its",
+        "all",
+        "every",
+        "any",
+        "each",
+        "some",
+        "and",
+        "or",
+        "in",
+        "on",
+        "at",
+        "for",
+        "of",
+        "to",
+        "from",
+        "is",
+        "are",
+        "was",
+        "were",
+        "have",
+        "has",
+        "do",
+        "does",
+        "did",
+        "can",
+        "could",
+        "should",
+        "would",
+        "will",
+        "find",
+        "show",
+        "list",
+        "check",
+        "get",
+        "tell",
+        "give",
+        "how",
+        "many",
+        "which",
+        "what",
+        "who",
+        "when",
+        "where",
+        "why",
+        "file",
+        "files",
+        "document",
+        "documents",
+        "latest",
+        "recent",
+        "newest",
+        "last",
+        "total",
+        "count",
+        "number",
+        "name",
+        "named",
+        "called",
+        "with",
+        "also",
+        "then",
+        "than",
+        "about",
+        "me",
+        "i",
+        "it",
+        "no",
+        "not",
+        "yes",
+        "gpa",
+        "date",
+        "time",
+        "mention",
+        "mentions",
+        "include",
+        "includes",
+        "contain",
+        "contains",
+        "there",
+        "this",
+        "that",
+        "these",
+        "those",
     }
 )
 
@@ -141,11 +218,12 @@ _COUNT_INTENT_RE = re.compile(
 
 # ── Result types ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ContentCheckItem:
     """Result of checking whether a specific term appears in the latest matched file."""
 
-    term: str          # Display label, e.g. "GPA"
+    term: str  # Display label, e.g. "GPA"
     found: bool
     excerpt: str | None = None  # Short surrounding context excerpt if found
 
@@ -186,6 +264,7 @@ class InventoryResult:
 
 
 # ── Retriever ─────────────────────────────────────────────────────────────────
+
 
 class FileInventoryRetriever:
     """Search drive_files by filename pattern and return a structured inventory."""
@@ -343,9 +422,7 @@ class FileInventoryRetriever:
 
             if chunk_text is not None:
                 excerpt = _extract_excerpt(str(chunk_text), search_str)
-                results.append(
-                    ContentCheckItem(term=display_label, found=True, excerpt=excerpt)
-                )
+                results.append(ContentCheckItem(term=display_label, found=True, excerpt=excerpt))
                 continue
 
             # 2. Fallback: search documents.extracted_text for this file.
@@ -360,18 +437,15 @@ class FileInventoryRetriever:
 
             if extracted_text is not None:
                 excerpt = _extract_excerpt(str(extracted_text), search_str)
-                results.append(
-                    ContentCheckItem(term=display_label, found=True, excerpt=excerpt)
-                )
+                results.append(ContentCheckItem(term=display_label, found=True, excerpt=excerpt))
             else:
-                results.append(
-                    ContentCheckItem(term=display_label, found=False, excerpt=None)
-                )
+                results.append(ContentCheckItem(term=display_label, found=False, excerpt=None))
 
         return results
 
 
 # ── Context builder ───────────────────────────────────────────────────────────
+
 
 def build_inventory_context(result: InventoryResult) -> str:
     """Render a structured plain-text context block for the LLM.
@@ -423,9 +497,7 @@ def build_inventory_context(result: InventoryResult) -> str:
     if result.latest_file:
         lines.append("")
         lines.append(f"Most recently modified: {result.latest_file.name}")
-        lines.append(
-            f"  Modified: {result.latest_file.modified_at.strftime('%Y-%m-%d %H:%M UTC')}"
-        )
+        lines.append(f"  Modified: {result.latest_file.modified_at.strftime('%Y-%m-%d %H:%M UTC')}")
         if result.latest_file.folder_path:
             lines.append(f"  Folder: {result.latest_file.folder_path}")
 
@@ -450,14 +522,13 @@ def build_inventory_context(result: InventoryResult) -> str:
                 excerpt_str = f' — excerpt: "{check.excerpt}"' if check.excerpt else ""
                 lines.append(f"  - {check.term} mentioned: YES{excerpt_str}")
             else:
-                lines.append(
-                    f"  - {check.term} mentioned: NO — not found in indexed content."
-                )
+                lines.append(f"  - {check.term} mentioned: NO — not found in indexed content.")
 
     return "\n".join(lines)
 
 
 # ── Term extraction ───────────────────────────────────────────────────────────
+
 
 def extract_search_terms(question: str) -> list[str]:
     """Extract filename search terms from a user question.
@@ -470,11 +541,7 @@ def extract_search_terms(question: str) -> list[str]:
     """
     lower = question.lower()
 
-    quoted = [
-        m.group(1).strip()
-        for m in _QUOTED_RE.finditer(lower)
-        if m.group(1).strip()
-    ]
+    quoted = [m.group(1).strip() for m in _QUOTED_RE.finditer(lower) if m.group(1).strip()]
     found: list[str] = list(dict.fromkeys(quoted))
 
     for variants in _DOMAIN_TERMS.values():
@@ -516,6 +583,7 @@ def extract_content_check_terms(question: str) -> list[tuple[str, str]]:
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _extract_excerpt(text: str, search_term: str, max_chars: int = _MAX_EXCERPT_CHARS) -> str:
     """Return a short context window centred on the first occurrence of search_term."""

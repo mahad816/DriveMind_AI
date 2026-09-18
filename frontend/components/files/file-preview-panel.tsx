@@ -78,12 +78,13 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
 
   const askHref = buildAskAboutFileHref(file);
   const needsPrepare = file.status !== "indexed";
+  const selectedFile = file;
 
   async function handlePrepareFile() {
     setPrepareError(null);
     setIsPreparing(true);
     try {
-      await prepareSingleFile(file.id);
+      await prepareSingleFile(selectedFile.id);
     } catch (error) {
       setPrepareError(error instanceof Error ? error.message : "Could not prepare this file.");
     } finally {

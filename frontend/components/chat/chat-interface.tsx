@@ -81,7 +81,7 @@ function fromStoredMessage(stored: StoredChatMessage): ChatMessageState {
 }
 
 function toStoredMessages(messages: ChatMessageState[]): StoredChatMessage[] {
-  return messages.flatMap((message) => {
+  return messages.flatMap<StoredChatMessage>((message) => {
     if (message.status === "loading") return [];
     if (message.status === "error") {
       return [

@@ -91,7 +91,7 @@ async def test_retrieve_returns_keyword_scored_chunks(
     mock_db.execute = AsyncMock(
         side_effect=[
             [(CHUNK_ID, 0.77)],  # FTS hit
-            [],                   # always-on filename: no file matches
+            [],  # always-on filename: no file matches
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -146,6 +146,7 @@ def test_query_terms_normalize_and_deduplicate() -> None:
 
 # ── Filename signal detection ──────────────────────────────────────────────────
 
+
 @pytest.mark.parametrize(
     "question",
     [
@@ -188,9 +189,9 @@ async def test_retrieve_merges_filename_only_hits_when_fts_empty(
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [(fn_chunk_id,)],    # quoted-target / exact name
-            [],                  # FTS → empty
-            [(fn_chunk_id,)],    # filename-explicit path
+            [(fn_chunk_id,)],  # quoted-target / exact name
+            [],  # FTS → empty
+            [(fn_chunk_id,)],  # filename-explicit path
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -232,9 +233,9 @@ async def test_fts_score_kept_when_higher_than_filename_score(
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [(CHUNK_ID,)],                 # quoted-target / exact name
+            [(CHUNK_ID,)],  # quoted-target / exact name
             [(CHUNK_ID, high_fts_score)],  # FTS: high score
-            [(CHUNK_ID,)],                 # filename-explicit
+            [(CHUNK_ID,)],  # filename-explicit
         ]
     )
     mock_db.scalars = AsyncMock(
@@ -248,6 +249,7 @@ async def test_fts_score_kept_when_higher_than_filename_score(
 
 
 # ── Phrase search (Phase D) ────────────────────────────────────────────────────
+
 
 def test_extract_phrase_from_quoted_text() -> None:
     """Quoted phrase of 10+ chars should be extracted."""
@@ -301,15 +303,13 @@ async def test_phrase_search_runs_when_quoted_phrase_detected(
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [],                  # quoted-target: no exact filename match
+            [],  # quoted-target: no exact filename match
             [(CHUNK_ID, 0.3)],  # FTS: low-score hit
-            [],                  # always-on filename: no match
-            [(CHUNK_ID,)],       # phrase ILIKE: same chunk (score 0.6 wins)
+            [],  # always-on filename: no match
+            [(CHUNK_ID,)],  # phrase ILIKE: same chunk (score 0.6 wins)
         ]
     )
-    mock_db.scalars = AsyncMock(
-        return_value=MagicMock(all=MagicMock(return_value=[_chunk()]))
-    )
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
 
     results = await retriever.retrieve(
         'Which file contains "Connects to a user\'s Google Drive and stores file metadata"?'
@@ -333,15 +333,13 @@ async def test_phrase_search_finds_chunk_when_fts_empty(
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [],            # quoted-target → empty (long phrase is not a filename)
-            [],            # FTS → empty
-            [],            # always-on filename → empty
-            [(CHUNK_ID,)], # phrase ILIKE → found
+            [],  # quoted-target → empty (long phrase is not a filename)
+            [],  # FTS → empty
+            [],  # always-on filename → empty
+            [(CHUNK_ID,)],  # phrase ILIKE → found
         ]
     )
-    mock_db.scalars = AsyncMock(
-        return_value=MagicMock(all=MagicMock(return_value=[_chunk()]))
-    )
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
 
     results = await retriever.retrieve(
         '"Connects to a user\'s Google Drive and stores file metadata in PostgreSQL"'
@@ -381,15 +379,13 @@ async def test_phrase_score_beats_fts_score_for_exact_phrase(
 
     mock_db.execute = AsyncMock(
         side_effect=[
-            [],                            # quoted-target: no filename match
-            [(CHUNK_ID, low_fts_score)],   # FTS: low score
-            [],                            # always-on filename: no match
-            [(CHUNK_ID,)],                 # phrase: same chunk, score 0.6 wins
+            [],  # quoted-target: no filename match
+            [(CHUNK_ID, low_fts_score)],  # FTS: low score
+            [],  # always-on filename: no match
+            [(CHUNK_ID,)],  # phrase: same chunk, score 0.6 wins
         ]
     )
-    mock_db.scalars = AsyncMock(
-        return_value=MagicMock(all=MagicMock(return_value=[_chunk()]))
-    )
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
 
     results = await retriever.retrieve(
         'find "this is a very specific sentence that appears verbatim in one document"'

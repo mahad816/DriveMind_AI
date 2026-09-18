@@ -88,11 +88,13 @@ class IngestionService:
             select(DriveFile)
             .where(
                 DriveFile.user_id == user_id,
-                DriveFile.status.in_([
-                    DriveFileStatus.DISCOVERED,
-                    DriveFileStatus.INDEXING,
-                    DriveFileStatus.FAILED,
-                ]),
+                DriveFile.status.in_(
+                    [
+                        DriveFileStatus.DISCOVERED,
+                        DriveFileStatus.INDEXING,
+                        DriveFileStatus.FAILED,
+                    ]
+                ),
                 DriveFile.mime_type.in_(list(SUPPORTED_MIME_TYPES)),
             )
             .order_by(DriveFile.modified_at.desc())

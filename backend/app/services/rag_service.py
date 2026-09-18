@@ -134,9 +134,7 @@ class RagService:
             inv_retriever = FileInventoryRetriever(self.db)
             inv_result = await inv_retriever.search(normalized_question)
             context = build_inventory_context(inv_result)
-            answer = await self.chat_service.generate_inventory_answer(
-                normalized_question, context
-            )
+            answer = await self.chat_service.generate_inventory_answer(normalized_question, context)
             query_id = await self._persist_query_history(
                 user_id=user.id,
                 question=normalized_question,
@@ -169,7 +167,7 @@ class RagService:
                     max_context_chars=self.settings.rag_max_context_chars,
                 )
                 all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
-                citations = cast(
+                file_citations = cast(
                     list[CitationItem],
                     filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]
                 )
@@ -177,14 +175,14 @@ class RagService:
                     user_id=user.id,
                     question=normalized_question,
                     answer=answer,
-                    citations=citations,
+                    citations=file_citations,
                 )
                 return RagResult(
                     query_id=query_id,
                     user_id=user.id,
                     question=normalized_question,
                     answer=answer,
-                    citations=citations,
+                    citations=file_citations,
                     retrieval_count=len(target_result.chunks),
                 )
 
