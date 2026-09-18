@@ -297,6 +297,7 @@ class DriveSyncService:
         user: User,
         client: GoogleDriveClient,
     ) -> tuple[int, int, int, int, int]:
+        page_token = await asyncio.to_thread(client.get_start_page_token)
         folder_lookup = await asyncio.to_thread(self._build_folder_lookup, client)
         drive_files = await asyncio.to_thread(client.list_files, supported_only=True)
         seen_drive_file_ids = {metadata.id for metadata in drive_files}
@@ -313,7 +314,6 @@ class DriveSyncService:
             unchanged += n
 
         removed = await self._reconcile_missing_files(user.id, seen_drive_file_ids)
-        page_token = await asyncio.to_thread(client.get_start_page_token)
         await self._save_sync_state(user.id, page_token)
         return created, updated, unchanged, removed, len(drive_files)
 

@@ -224,6 +224,132 @@ async def test_sync_metadata_full_mode_success(
 
 
 @pytest.mark.asyncio
+async def test_full_sync_captures_token_before_scan_and_saves_after_success(
+    service: DriveSyncService,
+) -> None:
+    events: list[str] = []
+    metadata = _metadata("file-1")
+    mock_client = MagicMock()
+
+    def get_start_page_token() -> str:
+        events.append("token")
+        return "early-token"
+
+    def list_files(*, supported_only: bool) -> list[DriveFileMetadata]:
+        assert supported_only is True
+        events.append("files")
+        return [metadata]
+
+    async def apply_metadata(
+        _user_id: uuid.UUID,
+        _metadata: DriveFileMetadata,
+        *,
+        folder_path: str | None,
+    ) -> tuple[int, int, int]:
+        assert folder_path is None
+        events.append("upsert")
+        return 1, 0, 0
+
+    async def reconcile(_user_id: uuid.UUID, seen_ids: set[str]) -> int:
+        assert seen_ids == {"file-1"}
+        events.append("reconcile")
+        return 0
+
+    async def save_state(_user_id: uuid.UUID, page_token: str) -> None:
+        assert page_token == "early-token"
+        events.append("save")
+
+    mock_client.get_start_page_token.side_effect = get_start_page_token
+    mock_client.list_files.side_effect = list_files
+
+    with (
+        patch.object(
+            service,
+            "_build_folder_lookup",
+            side_effect=lambda _client: events.append("folders") or {},
+        ),
+        patch.object(service, "_apply_metadata", side_effect=apply_metadata),
+        patch.object(service, "_reconcile_missing_files", side_effect=reconcile),
+        patch.object(service, "_save_sync_state", side_effect=save_state),
+    ):
+        result = await service._run_full_sync(USER, mock_client)
+
+    assert result == (1, 0, 0, 0, 1)
+    assert events == ["token", "folders", "files", "upsert", "reconcile", "save"]
+
+
+@pytest.mark.asyncio
+async def test_full_sync_start_token_failure_prevents_scan(
+    service: DriveSyncService,
+) -> None:
+    mock_client = MagicMock()
+    mock_client.get_start_page_token.side_effect = DriveClientError("token failed")
+
+    with (
+        patch.object(service, "_build_folder_lookup") as folder_lookup,
+        patch.object(service, "_apply_metadata", new_callable=AsyncMock) as apply_metadata,
+        patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
+    ):
+        with pytest.raises(DriveClientError, match="token failed"):
+            await service._run_full_sync(USER, mock_client)
+
+    folder_lookup.assert_not_called()
+    mock_client.list_files.assert_not_called()
+    apply_metadata.assert_not_awaited()
+    reconcile.assert_not_awaited()
+    save_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_full_sync_folder_listing_failure_does_not_save_token(
+    service: DriveSyncService,
+) -> None:
+    mock_client = MagicMock()
+    mock_client.get_start_page_token.return_value = "early-token"
+
+    with (
+        patch.object(
+            service,
+            "_build_folder_lookup",
+            side_effect=DriveClientError("folder listing failed"),
+        ),
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
+    ):
+        with pytest.raises(DriveClientError, match="folder listing failed"):
+            await service._run_full_sync(USER, mock_client)
+
+    mock_client.get_start_page_token.assert_called_once_with()
+    mock_client.list_files.assert_not_called()
+    save_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_full_sync_reconciliation_failure_does_not_save_token(
+    service: DriveSyncService,
+) -> None:
+    mock_client = MagicMock()
+    mock_client.get_start_page_token.return_value = "early-token"
+    mock_client.list_files.return_value = []
+
+    with (
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(
+            service,
+            "_reconcile_missing_files",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("reconcile failed"),
+        ),
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
+    ):
+        with pytest.raises(RuntimeError, match="reconcile failed"):
+            await service._run_full_sync(USER, mock_client)
+
+    mock_client.get_start_page_token.assert_called_once_with()
+    save_state.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_sync_metadata_incremental_applies_changes(
     service: DriveSyncService,
     mock_db: AsyncMock,
@@ -413,12 +539,14 @@ async def test_sync_metadata_force_full_even_with_sync_state(
         patch.object(
             service, "_reconcile_missing_files", new_callable=AsyncMock, return_value=0
         ) as reconcile,
-        patch.object(service, "_save_sync_state", new_callable=AsyncMock),
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
         result = await service.sync_metadata(full=True)
 
     assert result.mode == "full"
     reconcile.assert_awaited_once_with(USER_ID, set())
+    mock_client.get_start_page_token.assert_called_once_with()
+    save_state.assert_awaited_once_with(USER_ID, "fresh-token")
     mock_client.list_changes.assert_not_called()
 
 
@@ -431,17 +559,21 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
+    mock_client.get_start_page_token.return_value = "early-token"
     mock_client.list_files.side_effect = DriveClientError("Drive API down")
 
     with (
         patch.object(service, "_build_drive_client", return_value=mock_client),
         patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
         with pytest.raises(DriveClientError, match="Drive API down"):
             await service.sync_metadata()
 
+    mock_client.get_start_page_token.assert_called_once_with()
     reconcile.assert_not_awaited()
+    save_state.assert_not_awaited()
 
     mock_db.commit.assert_awaited()
     added_job = mock_db.add.call_args_list[0][0][0]
@@ -458,6 +590,7 @@ async def test_full_sync_does_not_reconcile_when_upsert_fails(
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, None])
     mock_db.get = AsyncMock(return_value=USER)
     mock_client = MagicMock()
+    mock_client.get_start_page_token.return_value = "early-token"
     mock_client.list_files.return_value = [_metadata("file-1")]
 
     with (
@@ -470,12 +603,14 @@ async def test_full_sync_does_not_reconcile_when_upsert_fails(
             side_effect=RuntimeError("upsert failed"),
         ),
         patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
+        patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
         with pytest.raises(DriveClientError, match="upsert failed"):
             await service.sync_metadata()
 
+    mock_client.get_start_page_token.assert_called_once_with()
     reconcile.assert_not_awaited()
-    mock_client.get_start_page_token.assert_not_called()
+    save_state.assert_not_awaited()
 
 
 @pytest.mark.asyncio
