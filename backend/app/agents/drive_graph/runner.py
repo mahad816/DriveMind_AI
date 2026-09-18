@@ -10,6 +10,7 @@ from app.agents.drive_graph.graph import build_drive_graph
 from app.agents.drive_graph.state import create_initial_state
 from app.agents.drive_graph.types import RetrieverName
 from app.core.config import Settings
+from app.evaluation.trace import EvalTraceCollector
 from app.llm.base import ChatService
 from app.retrieval.base import Retriever
 from app.retrieval.keyword import KeywordRetriever
@@ -26,6 +27,7 @@ async def run_drive_graph(
     user_id: uuid.UUID,
     chat_service: ChatService | None = None,
     retrievers: dict[RetrieverName, Retriever] | None = None,
+    trace: EvalTraceCollector | None = None,
 ) -> RagResult:
     """Execute the DriveMind LangGraph workflow for a single question."""
     active_retrievers = retrievers or {
@@ -41,8 +43,14 @@ async def run_drive_graph(
         retrievers=active_retrievers,
         settings=settings,
         chat_service=chat_service,
+        trace=trace,
     )
-    final_state = await compiled.ainvoke(state)
+    try:
+        final_state = await compiled.ainvoke(state)
+    except Exception as exc:
+        if trace is not None:
+            trace.record_error(exc)
+        raise
 
     query_id = final_state.get("query_id") or uuid.uuid4()
     return RagResult(

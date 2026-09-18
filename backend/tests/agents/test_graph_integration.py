@@ -13,6 +13,8 @@ from app.agents.drive_graph.graph import build_drive_graph
 from app.agents.drive_graph.state import create_initial_state
 from app.agents.drive_graph.types import RetrieverName
 from app.core.config import Settings
+from app.evaluation.trace import EvalTraceCollector, TraceOutcome
+from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.retrieval.base import Retriever
 from app.retrieval.types import RetrievedChunk
 
@@ -177,3 +179,97 @@ async def test_graph_returns_no_citations_when_answer_has_no_markers() -> None:
 
     assert final_state["answer"] == "Grounded answer without markers."
     assert final_state["citations"] == []
+
+
+@pytest.mark.asyncio
+async def test_graph_does_not_infer_retrieval_abstention_from_answer_text() -> None:
+    settings = Settings(
+        agent_max_rewrite_attempts=0,
+        evidence_min_fusion_score=0.1,
+        retrieval_score_threshold=0.05,
+    )
+    chunk = _chunk(text="sufficient grounded evidence", score=0.8, source="vector")
+    vector = AsyncMock()
+    vector.retrieve = AsyncMock(return_value=[chunk])
+    keyword = AsyncMock()
+    keyword.retrieve = AsyncMock(return_value=[])
+    metadata = AsyncMock()
+    metadata.retrieve = AsyncMock(return_value=[])
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value=NO_EVIDENCE_ANSWER)
+    retrievers: dict[RetrieverName, Retriever] = {
+        "vector": vector,
+        "keyword": keyword,
+        "metadata": metadata,
+    }
+    collector = EvalTraceCollector()
+    collector.start("What is the evidence?")
+    compiled = build_drive_graph(
+        retrievers=retrievers,
+        settings=settings,
+        chat_service=chat,
+        trace=collector,
+    )
+    state = create_initial_state(question="What is the evidence?", user_id=uuid.uuid4())
+    state["max_rewrite_attempts"] = 0
+
+    final_state = await compiled.ainvoke(state)
+
+    assert final_state["answer"] == NO_EVIDENCE_ANSWER
+    assert final_state["evidence_sufficient"] is True
+    assert final_state["ranked_chunks"]
+    assert collector.trace.outcome is TraceOutcome.ANSWERED
+    assert collector.trace.abstention_reason is None
+
+
+@pytest.mark.asyncio
+async def test_graph_trace_preserves_plan_rewrite_and_separate_attempts() -> None:
+    settings = Settings(
+        agent_max_rewrite_attempts=1,
+        evidence_min_fusion_score=0.15,
+        retrieval_score_threshold=0.35,
+        rag_max_context_chars=12000,
+    )
+    weak = _chunk(text="weak chunk", score=0.1, source="vector")
+    strong = _chunk(text="strong tensile evidence", score=0.8, source="vector")
+    vector = AsyncMock()
+    vector.retrieve = AsyncMock(side_effect=[[weak], [strong]])
+    keyword = AsyncMock()
+    keyword.retrieve = AsyncMock(return_value=[])
+    metadata = AsyncMock()
+    metadata.retrieve = AsyncMock(return_value=[])
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="Answer [1].")
+    rewrite_fn = AsyncMock(return_value="refined tensile query")
+    retrievers: dict[RetrieverName, Retriever] = {
+        "vector": vector,
+        "keyword": keyword,
+        "metadata": metadata,
+    }
+    collector = EvalTraceCollector()
+    collector.start("What is tensile strength?")
+    compiled = build_drive_graph(
+        retrievers=retrievers,
+        settings=settings,
+        rewrite_fn=rewrite_fn,
+        chat_service=chat,
+        trace=collector,
+    )
+    state = create_initial_state(question="What is tensile strength?", user_id=uuid.uuid4())
+    state["max_rewrite_attempts"] = 1
+
+    final_state = await compiled.ainvoke(state)
+
+    assert final_state["answer"] == "Answer [1]."
+    assert collector.trace.graph_intent == "semantic_question"
+    assert collector.trace.retrieval_plan == ("vector", "keyword")
+    assert len(collector.trace.attempts) == 2
+    assert collector.trace.attempts[0].working_query == "What is tensile strength?"
+    assert collector.trace.attempts[1].working_query == "refined tensile query"
+    assert collector.trace.attempts[0].reranked_candidates[0].chunk_id == weak.chunk_id
+    assert collector.trace.attempts[1].reranked_candidates[0].chunk_id == strong.chunk_id
+    assert collector.trace.rewrites[0].source == "custom"
+    assert collector.trace.rewrites[0].output_query == "refined tensile query"
+    assert collector.trace.raw_answer == "Answer [1]."
+    assert collector.trace.final_answer == "Answer [1]."
+    assert collector.trace.prompt_chunks[0].chunk_id == strong.chunk_id

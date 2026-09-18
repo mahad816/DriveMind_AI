@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -12,7 +13,8 @@ from app.core.config import Settings
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
-from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.evaluation.trace import AbstentionReason, EvalTraceCollector, TraceOutcome
+from app.llm.prompts import NO_EVIDENCE_ANSWER, select_prompt_chunks
 from app.retrieval.file_target import FileTargetResult
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
@@ -694,7 +696,12 @@ async def test_grounded_rag_normalizes_sparse_citations_before_persistence(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("What evidence is available?", user_id=USER_ID)
+    trace = EvalTraceCollector()
+    result = await service.ask(
+        "What evidence is available?",
+        user_id=USER_ID,
+        trace=trace,
+    )
 
     assert result.answer == "Compare [1] with [2], and ignore invalid."
     assert [citation.filename for citation in result.citations] == [
@@ -705,6 +712,17 @@ async def test_grounded_rag_normalizes_sparse_citations_before_persistence(
     assert isinstance(added, QueryHistory)
     assert added.answer == result.answer
     assert [citation["filename"] for citation in added.citations_json] == [
+        "source-3.txt",
+        "source-1.txt",
+    ]
+    assert trace.trace.raw_answer == "Compare [3] with [1], and ignore invalid [9]."
+    assert [citation.filename for citation in trace.trace.pre_normalization_citations] == [
+        "source-1.txt",
+        "source-2.txt",
+        "source-3.txt",
+    ]
+    assert trace.trace.final_answer == result.answer
+    assert [citation.filename for citation in trace.trace.final_citations] == [
         "source-3.txt",
         "source-1.txt",
     ]
@@ -897,3 +915,320 @@ async def test_ask_file_inventory_bypasses_graph_when_agent_enabled(
     assert result.citations == []
     mock_chat.generate_inventory_answer.assert_awaited_once()
     mock_retriever.retrieve.assert_not_awaited()
+
+
+# ── Internal evaluation tracing ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_vector_only_trace_records_real_stages_and_prompt_selection(
+    service: RagService,
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+    first = replace(
+        _retrieved_chunk(),
+        text="Tensile strength evidence. " * 30,
+    )
+    second = RetrievedChunk(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        drive_file_id=uuid.uuid4(),
+        filename="second-source.txt",
+        mime_type="text/plain",
+        modified_at=datetime.now(UTC),
+        chunk_index=1,
+        text="This later chunk should be excluded by the prompt budget.",
+        score=0.8,
+    )
+    retrieved = [first, second]
+    mock_retriever.retrieve = AsyncMock(return_value=retrieved)
+    service.settings.rag_max_context_chars = 180
+    collector = EvalTraceCollector()
+
+    result = await service.ask(
+        "What is tensile strength?",
+        user_id=USER_ID,
+        trace=collector,
+    )
+
+    expected_prompt = select_prompt_chunks(
+        "What is tensile strength?",
+        retrieved,
+        max_context_chars=180,
+    )
+    original_text = {chunk.chunk_id: chunk.text for chunk in retrieved}
+    attempt = collector.trace.attempts[0]
+    assert result.answer == collector.trace.final_answer
+    assert collector.trace.route is not None
+    assert collector.trace.route.value == "grounded_rag"
+    assert collector.trace.execution_path == "linear"
+    assert attempt.active_retrievers == ("vector",)
+    assert [item.retriever for item in attempt.retriever_results] == ["vector"]
+    assert attempt.merged_candidates == ()
+    assert attempt.reranked_candidates == ()
+    assert attempt.evidence is None
+    assert len(expected_prompt) == 1
+    assert expected_prompt[0].text != first.text
+    assert [
+        (chunk.chunk_id, chunk.text, chunk.text_truncated)
+        for chunk in collector.trace.prompt_chunks
+    ] == [
+        (
+            chunk.chunk_id,
+            chunk.text,
+            chunk.text != original_text[chunk.chunk_id],
+        )
+        for chunk in expected_prompt
+    ]
+    assert collector.trace.outcome is TraceOutcome.ANSWERED
+    assert collector.trace.total_duration_ms is not None
+
+
+@pytest.mark.asyncio
+async def test_trace_records_chitchat_and_inventory_routes(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.retrieval.file_inventory import InventoryResult
+
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+    mock_chat.generate_direct_answer = AsyncMock(return_value="Hello!")
+    chitchat_service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    chitchat_trace = EvalTraceCollector()
+
+    await chitchat_service.ask("hi", user_id=USER_ID, trace=chitchat_trace)
+
+    assert chitchat_trace.trace.execution_path == "chitchat"
+    assert chitchat_trace.trace.attempts == []
+    assert chitchat_trace.trace.raw_answer == "Hello!"
+
+    inventory_result = InventoryResult(
+        search_terms=["resume"],
+        total_count=2,
+        files=[],
+        latest_file=None,
+    )
+
+    async def fake_search(self: object, question: str) -> InventoryResult:
+        return inventory_result
+
+    monkeypatch.setattr(
+        "app.retrieval.file_inventory.FileInventoryRetriever.search",
+        fake_search,
+    )
+    mock_chat.generate_inventory_answer = AsyncMock(return_value="Found 2 files.")
+    inventory_trace = EvalTraceCollector()
+
+    await chitchat_service.ask(
+        "find all resume files",
+        user_id=USER_ID,
+        trace=inventory_trace,
+    )
+
+    assert inventory_trace.trace.execution_path == "file_inventory"
+    assert inventory_trace.trace.inventory_total_count == 2
+    assert inventory_trace.trace.inventory_context is not None
+    assert inventory_trace.trace.attempts == []
+
+
+@pytest.mark.asyncio
+async def test_trace_records_file_target_abstention_reasons(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False),
+        retriever=AsyncMock(),
+        chat_service=mock_chat,
+    )
+
+    async def missing_search(*args: object, **kwargs: object) -> FileTargetResult:
+        return FileTargetResult(files=[], chunks=[], targets=["missing.txt"])
+
+    monkeypatch.setattr("app.services.rag_service.FileTargetRetriever.search", missing_search)
+    missing_trace = EvalTraceCollector()
+    await service.ask(
+        'Tell me about "missing.txt"',
+        user_id=USER_ID,
+        trace=missing_trace,
+    )
+    assert missing_trace.trace.execution_path == "file_target"
+    assert missing_trace.trace.abstention_reason is AbstentionReason.FILE_NOT_FOUND
+
+    pending_file = MagicMock()
+    pending_file.drive_file_id = "google-file-id"
+    pending_file.name = "pending.txt"
+    pending_file.status = "discovered"
+
+    async def pending_search(*args: object, **kwargs: object) -> FileTargetResult:
+        return FileTargetResult(files=[pending_file], chunks=[], targets=["pending.txt"])
+
+    monkeypatch.setattr("app.services.rag_service.FileTargetRetriever.search", pending_search)
+    pending_trace = EvalTraceCollector()
+    await service.ask(
+        'Tell me about "pending.txt"',
+        user_id=USER_ID,
+        trace=pending_trace,
+    )
+    assert pending_trace.trace.abstention_reason is AbstentionReason.FILE_NOT_INDEXED
+
+
+@pytest.mark.asyncio
+async def test_trace_distinguishes_no_evidence_from_grade_rejection(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+    vector_only = AsyncMock()
+    vector_only.retrieve = AsyncMock(return_value=[])
+    vector_service = RagService(
+        db=mock_db,
+        settings=Settings(
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=vector_only,
+        chat_service=mock_chat,
+    )
+    no_evidence_trace = EvalTraceCollector()
+    await vector_service.ask(
+        "What is absent?",
+        user_id=USER_ID,
+        trace=no_evidence_trace,
+    )
+    assert no_evidence_trace.trace.abstention_reason is AbstentionReason.NO_RETRIEVAL_EVIDENCE
+
+    weak = _retrieved_chunk()
+    weak = replace(weak, score=0.1, source_scores={"vector": 0.1})
+    vector = AsyncMock()
+    keyword = AsyncMock()
+    metadata = AsyncMock()
+    vector.retrieve = AsyncMock(return_value=[weak])
+    keyword.retrieve = AsyncMock(return_value=[])
+    metadata.retrieve = AsyncMock(return_value=[])
+    settings = Settings(
+        hybrid_retrieval_enabled=True,
+        agent_graph_enabled=False,
+        evidence_min_fusion_score=0.9,
+    )
+    hybrid = HybridRetriever(
+        mock_db,
+        settings,
+        vector_retriever=vector,
+        keyword_retriever=keyword,
+        metadata_retriever=metadata,
+    )
+    hybrid_service = RagService(
+        db=mock_db,
+        settings=settings,
+        retriever=hybrid,
+        chat_service=mock_chat,
+    )
+    rejected_trace = EvalTraceCollector()
+    await hybrid_service.ask(
+        "What is weak?",
+        user_id=USER_ID,
+        trace=rejected_trace,
+    )
+    assert rejected_trace.trace.abstention_reason is AbstentionReason.EVIDENCE_REJECTED
+
+
+@pytest.mark.asyncio
+async def test_trace_records_error_and_reraises_original_exception(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    error = RuntimeError("retrieval exploded")
+    retriever = AsyncMock()
+    retriever.retrieve = AsyncMock(side_effect=error)
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+    collector = EvalTraceCollector()
+
+    with pytest.raises(RuntimeError) as caught:
+        await service.ask(
+            "What failed?",
+            user_id=USER_ID,
+            trace=collector,
+        )
+
+    assert caught.value is error
+    assert collector.trace.outcome is TraceOutcome.FAILED
+    assert collector.trace.error is not None
+    assert collector.trace.error.stage == "retrieval"
+    assert collector.trace.error.component == "vector"
+    assert collector.trace.error.exception_type == "RuntimeError"
+    assert collector.trace.error.message == "retrieval exploded"
+    assert len(collector.trace.attempts) == 1
+    assert collector.trace.attempts[0].retriever_results == ()
+    assert collector.trace.attempts[0].duration_ms is not None
+    assert collector.trace.total_duration_ms is not None
+    mock_db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_traced_and_untraced_calls_have_equivalent_results_and_persistence(
+    service: RagService,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    untraced = await service.ask("What is tensile strength?", user_id=USER_ID)
+    traced = await service.ask(
+        "What is tensile strength?",
+        user_id=USER_ID,
+        trace=EvalTraceCollector(),
+    )
+
+    assert traced == untraced
+    first_history, second_history = [call.args[0] for call in mock_db.add.call_args_list]
+    assert isinstance(first_history, QueryHistory)
+    assert isinstance(second_history, QueryHistory)
+    assert second_history.question == first_history.question
+    assert second_history.answer == first_history.answer
+    assert second_history.citations_json == first_history.citations_json

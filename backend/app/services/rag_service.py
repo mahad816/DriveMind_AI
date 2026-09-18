@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from time import perf_counter
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,13 @@ from app.core.config import Settings, get_settings
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
+from app.evaluation.trace import (
+    AbstentionReason,
+    EvalTraceCollector,
+    FileSnapshot,
+    TraceOutcome,
+    elapsed_ms,
+)
 from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
 from app.llm.prompts import (
@@ -92,6 +100,8 @@ class RagService:
         self,
         question: str,
         user_id: uuid.UUID | None = None,
+        *,
+        trace: EvalTraceCollector | None = None,
     ) -> RagResult:
         """Answer a question and persist query history.
 
@@ -102,17 +112,55 @@ class RagService:
           GROUNDED_RAG   → hybrid retrieval (LangGraph or linear).
         """
         normalized_question = question.strip()
-        if not normalized_question:
-            raise ValueError("Question must not be empty")
+        if trace is not None:
+            trace.start(normalized_question)
+
+        try:
+            if not normalized_question:
+                raise ValueError("Question must not be empty")
+            return await self._ask_normalized(normalized_question, user_id, trace=trace)
+        except Exception as exc:
+            if trace is not None:
+                trace.record_error(exc)
+            raise
+        finally:
+            if trace is not None:
+                trace.finish()
+
+    async def _ask_normalized(
+        self,
+        normalized_question: str,
+        user_id: uuid.UUID | None,
+        *,
+        trace: EvalTraceCollector | None,
+    ) -> RagResult:
+        """Execute the existing routed pipeline for an already-normalized question."""
+        if trace is not None:
+            trace.set_stage("user_resolution")
 
         user = await self._resolve_user(user_id)
 
         # ── Route first — applies to ALL execution paths ──────────────────────
+        if trace is not None:
+            trace.set_stage("routing")
         route = classify_query(normalized_question)
 
         # ── 1. Chitchat bypass ────────────────────────────────────────────────
         if route is QueryRoute.CHITCHAT:
+            generation_started = 0.0
+            if trace is not None:
+                trace.record_route(route, "chitchat")
+                trace.set_stage("generation")
+                generation_started = perf_counter()
             answer = await self.chat_service.generate_direct_answer(normalized_question)
+            if trace is not None:
+                trace.record_raw_generation(
+                    answer,
+                    [],
+                    duration_ms=elapsed_ms(generation_started),
+                )
+                trace.record_final(answer, [])
+                trace.set_stage("persistence")
             query_id = await self._persist_query_history(
                 user_id=user.id,
                 question=normalized_question,
@@ -130,10 +178,37 @@ class RagService:
 
         # ── 2. File inventory path ────────────────────────────────────────────
         if route is QueryRoute.FILE_INVENTORY:
+            retrieval_started = 0.0
+            if trace is not None:
+                trace.record_route(route, "file_inventory")
+                trace.set_stage("inventory_lookup")
+                retrieval_started = perf_counter()
             inv_retriever = FileInventoryRetriever(self.db)
             inv_result = await inv_retriever.search(normalized_question)
             context = build_inventory_context(inv_result)
+            if trace is not None:
+                trace.add_retrieval_duration(elapsed_ms(retrieval_started))
+                trace.record_inventory(
+                    total_count=inv_result.total_count,
+                    files=tuple(
+                        FileSnapshot(file_id=file.drive_file_id, filename=file.name)
+                        for file in inv_result.files
+                    ),
+                    context=context,
+                )
+                trace.set_stage("generation")
+                generation_started = perf_counter()
+            else:
+                generation_started = 0.0
             answer = await self.chat_service.generate_inventory_answer(normalized_question, context)
+            if trace is not None:
+                trace.record_raw_generation(
+                    answer,
+                    [],
+                    duration_ms=elapsed_ms(generation_started),
+                )
+                trace.record_final(answer, [])
+                trace.set_stage("persistence")
             query_id = await self._persist_query_history(
                 user_id=user.id,
                 question=normalized_question,
@@ -151,25 +226,71 @@ class RagService:
 
         # ── 3. Named file target path ─────────────────────────────────────────
         if route is QueryRoute.FILE_TARGET:
+            retrieval_started = 0.0
+            if trace is not None:
+                trace.record_route(route, "file_target")
+                trace.set_stage("file_target_lookup")
+                retrieval_started = perf_counter()
             target_result = await FileTargetRetriever(self.db).search(
                 normalized_question, user_id=user.id
             )
+            if trace is not None:
+                trace.add_retrieval_duration(elapsed_ms(retrieval_started))
+                trace.record_file_target(
+                    targets=tuple(target_result.targets),
+                    files=tuple(
+                        FileSnapshot(
+                            file_id=file.drive_file_id,
+                            filename=file.name,
+                            status=str(file.status),
+                        )
+                        for file in target_result.files
+                    ),
+                    chunks=target_result.chunks,
+                )
             if target_result.found:
+                generation_started = 0.0
+                if trace is not None:
+                    trace.set_stage("context_selection")
+                    # OpenAIChatService uses this same deterministic selector internally.
+                    # The trace mirrors its output without changing the chat protocol.
+                    traced_prompt_chunks = select_prompt_chunks(
+                        normalized_question,
+                        target_result.chunks,
+                        max_context_chars=self.settings.rag_max_context_chars,
+                    )
+                    trace.record_prompt_chunks(
+                        traced_prompt_chunks,
+                        original_chunks=target_result.chunks,
+                    )
+                    trace.set_stage("generation")
+                    generation_started = perf_counter()
                 answer = await self.chat_service.generate_file_target_answer(
                     normalized_question,
                     target_result.chunks,
                     max_context_chars=self.settings.rag_max_context_chars,
                 )
+                generation_duration = elapsed_ms(generation_started) if trace is not None else 0.0
                 prompt_chunks = select_prompt_chunks(
                     normalized_question,
                     target_result.chunks,
                     max_context_chars=self.settings.rag_max_context_chars,
                 )
                 all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
+                if trace is not None:
+                    trace.record_raw_generation(
+                        answer,
+                        all_citations,
+                        duration_ms=generation_duration,
+                    )
+                    trace.set_stage("citation_normalization")
                 answer, file_citations = normalize_answer_citations(
                     answer,
                     all_citations,
                 )
+                if trace is not None:
+                    trace.record_final(answer, file_citations)
+                    trace.set_stage("persistence")
                 query_id = await self._persist_query_history(
                     user_id=user.id,
                     question=normalized_question,
@@ -192,6 +313,9 @@ class RagService:
                     "Go to **Build knowledge** and run **Set up my assistant** to finish indexing it, "
                     "then ask again."
                 )
+                if trace is not None:
+                    trace.record_abstention(AbstentionReason.FILE_NOT_INDEXED, answer)
+                    trace.set_stage("persistence")
                 query_id = await self._persist_query_history(
                     user_id=user.id,
                     question=normalized_question,
@@ -213,6 +337,9 @@ class RagService:
                     f"I could not find a file named {names} in your synced Google Drive. "
                     "Try **Build knowledge → Set up my assistant** if you added it recently."
                 )
+                if trace is not None:
+                    trace.record_abstention(AbstentionReason.FILE_NOT_FOUND, answer)
+                    trace.set_stage("persistence")
                 query_id = await self._persist_query_history(
                     user_id=user.id,
                     question=normalized_question,
@@ -233,13 +360,19 @@ class RagService:
         if self.settings.agent_graph_enabled:
             from app.agents.drive_graph.runner import run_drive_graph
 
+            if trace is not None:
+                trace.record_route(route, "langgraph")
+                trace.set_stage("retrieval")
             graph_result = await run_drive_graph(
                 self.db,
                 self.settings,
                 question=normalized_question,
                 user_id=user.id,
                 chat_service=self.chat_service,
+                trace=trace,
             )
+            if trace is not None:
+                trace.set_stage("persistence")
             query_id = await self._persist_query_history(
                 user_id=user.id,
                 question=graph_result.question,
@@ -256,32 +389,103 @@ class RagService:
             )
 
         # ── 5. Grounded RAG — linear path ─────────────────────────────────────
+        if trace is not None:
+            trace.record_route(route, "linear")
+            trace.set_stage("retrieval")
+        evidence = None
         if self.settings.hybrid_retrieval_enabled and isinstance(self.retriever, HybridRetriever):
-            evidence = await self.retriever.retrieve_with_grade(normalized_question)
+            if trace is None:
+                evidence = await self.retriever.retrieve_with_grade(normalized_question)
+            else:
+                evidence = await self.retriever.retrieve_with_grade(
+                    normalized_question,
+                    trace=trace,
+                )
             retrieved = evidence.chunks
         else:
-            retrieved = await self.retriever.retrieve(normalized_question)
+            if trace is None:
+                retrieved = await self.retriever.retrieve(normalized_question)
+            else:
+                trace.begin_attempt(
+                    attempt_number=1,
+                    working_query=normalized_question,
+                    active_retrievers=("vector",),
+                )
+                retrieval_started = perf_counter()
+                try:
+                    retrieved = await self.retriever.retrieve(normalized_question)
+                except Exception as exc:
+                    trace.record_error(exc, stage="retrieval", component="vector")
+                    trace.finish_attempt(1)
+                    raise
+                trace.record_retriever_result(
+                    1,
+                    "vector",
+                    retrieved,
+                    elapsed_ms(retrieval_started),
+                )
+                trace.finish_attempt(1)
 
         if not retrieved:
             answer = NO_EVIDENCE_ANSWER
             citations: list[CitationItem] = []
+            if trace is not None:
+                rejected = bool(
+                    evidence is not None
+                    and trace.trace.attempts
+                    and trace.trace.attempts[0].reranked_candidates
+                )
+                trace.record_abstention(
+                    AbstentionReason.EVIDENCE_REJECTED
+                    if rejected
+                    else AbstentionReason.NO_RETRIEVAL_EVIDENCE,
+                    answer,
+                )
         else:
+            generation_started = 0.0
+            if trace is not None:
+                trace.set_stage("context_selection")
+                # This mirrors the deterministic selector used by the current chat
+                # provider without changing ChatService or the production prompt API.
+                traced_prompt_chunks = select_prompt_chunks(
+                    normalized_question,
+                    retrieved,
+                    max_context_chars=self.settings.rag_max_context_chars,
+                )
+                trace.record_prompt_chunks(
+                    traced_prompt_chunks,
+                    original_chunks=retrieved,
+                )
+                trace.set_stage("generation")
+                generation_started = perf_counter()
             answer = await self.chat_service.generate_grounded_answer(
                 normalized_question,
                 retrieved,
                 max_context_chars=self.settings.rag_max_context_chars,
             )
+            generation_duration = elapsed_ms(generation_started) if trace is not None else 0.0
             prompt_chunks = select_prompt_chunks(
                 normalized_question,
                 retrieved,
                 max_context_chars=self.settings.rag_max_context_chars,
             )
             all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
+            if trace is not None:
+                trace.record_raw_generation(
+                    answer,
+                    all_citations,
+                    duration_ms=generation_duration,
+                )
+                trace.set_stage("citation_normalization")
             answer, citations = normalize_answer_citations(
                 answer,
                 all_citations,
             )
+            if trace is not None:
+                trace.record_final(answer, citations, outcome=TraceOutcome.ANSWERED)
 
+        if trace is not None:
+            trace.set_stage("persistence")
         query_id = await self._persist_query_history(
             user_id=user.id,
             question=normalized_question,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from time import perf_counter
 import uuid as uuid_module
 from typing import Any, Awaitable, Callable, cast
 
@@ -14,6 +15,7 @@ from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import QueryIntent, RetrievalPlan, RetrieverName
 from app.core.config import Settings
 from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
+from app.evaluation.trace import AbstentionReason, EvalTraceCollector, elapsed_ms
 from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
 from app.llm.prompts import NO_EVIDENCE_ANSWER, normalize_answer_citations
@@ -79,6 +81,7 @@ def make_retrieve_node(
     *,
     retrievers: dict[RetrieverName, Retriever],
     settings: Settings,
+    trace: EvalTraceCollector | None = None,
 ) -> Callable[[DriveGraphState], Awaitable[dict[str, Any]]]:
     """Create a routed retrieval node using only active retrievers.
 
@@ -91,9 +94,26 @@ def make_retrieve_node(
             return {"raw_chunks": [], "ranked_chunks": [], "retrieval_count": 0}
 
         working_query = state["working_query"]
+        attempt_number = state["rewrite_count"] + 1
+        if trace is not None:
+            intent = state.get("intent")
+            plan = state.get("retrieval_plan")
+            if intent is not None and plan is not None:
+                trace.record_graph_plan(
+                    intent=intent.value,
+                    retrievers=tuple(plan.retrievers),
+                )
+            trace.set_stage("retrieval")
+            trace.begin_attempt(
+                attempt_number=attempt_number,
+                working_query=working_query,
+                active_retrievers=tuple(active),
+            )
 
         tasks: list[Awaitable[list[RetrievedChunk]]] = []
         source_order: list[RetrieverName] = []
+        durations_by_source: dict[RetrieverName, float] = {}
+        active_trace = trace
         for raw_name in active:
             if raw_name not in {"vector", "keyword", "metadata"}:
                 raise ValueError(f"Unsupported active retriever name: {raw_name}")
@@ -102,14 +122,52 @@ def make_retrieve_node(
             retriever = retrievers.get(name)
             if retriever is None:
                 raise ValueError(f"Missing retriever for active name: {name}")
-            tasks.append(retriever.retrieve(working_query))
+            if active_trace is None:
+                tasks.append(retriever.retrieve(working_query))
+            else:
+
+                async def timed_retrieve(
+                    active_name: RetrieverName = name,
+                    active_retriever: Retriever = retriever,
+                ) -> list[RetrievedChunk]:
+                    started_at = perf_counter()
+                    try:
+                        chunks = await active_retriever.retrieve(working_query)
+                    except Exception as exc:
+                        active_trace.record_error(
+                            exc,
+                            stage="retrieval",
+                            component=active_name,
+                        )
+                        raise
+                    durations_by_source[active_name] = elapsed_ms(started_at)
+                    return chunks
+
+                tasks.append(timed_retrieve())
             source_order.append(name)
 
-        results = await asyncio.gather(*tasks)
+        try:
+            results = await asyncio.gather(*tasks)
+        except Exception:
+            if trace is not None:
+                trace.finish_attempt(attempt_number)
+            raise
+        if trace is not None:
+            for name, chunks in zip(source_order, results):
+                trace.record_retriever_result(
+                    attempt_number,
+                    name,
+                    chunks,
+                    durations_by_source[name],
+                )
         chunks_by_source: dict[RetrievalSource, list[RetrievedChunk]] = {
             cast(RetrievalSource, name): chunks for name, chunks in zip(source_order, results)
         }
+        if trace is not None:
+            trace.set_stage("fusion")
         merged = reciprocal_rank_fusion_merge(chunks_by_source, settings=settings)
+        if trace is not None:
+            trace.record_merged(attempt_number, merged)
 
         return {
             "raw_chunks": merged,
@@ -120,15 +178,23 @@ def make_retrieve_node(
     return _retrieve
 
 
-def make_rerank_node(*, settings: Settings) -> Callable[[DriveGraphState], dict[str, Any]]:
+def make_rerank_node(
+    *,
+    settings: Settings,
+    trace: EvalTraceCollector | None = None,
+) -> Callable[[DriveGraphState], dict[str, Any]]:
     """Create a rerank node that applies weighted fusion to merged candidates."""
 
     def _rerank(state: DriveGraphState) -> dict[str, Any]:
+        if trace is not None:
+            trace.set_stage("reranking")
         ranked = weighted_fusion_rerank(
             state["raw_chunks"],
             settings=settings,
             question=state["question"],
         )
+        if trace is not None:
+            trace.record_reranked(state["rewrite_count"] + 1, ranked)
         return {"ranked_chunks": ranked}
 
     return _rerank
@@ -137,11 +203,23 @@ def make_rerank_node(*, settings: Settings) -> Callable[[DriveGraphState], dict[
 def make_grade_evidence_node(
     *,
     settings: Settings,
+    trace: EvalTraceCollector | None = None,
 ) -> Callable[[DriveGraphState], dict[str, Any]]:
     """Create an evidence grading node using Phase 7 threshold rules."""
 
     def _grade_evidence(state: DriveGraphState) -> dict[str, Any]:
+        if trace is not None:
+            trace.set_stage("evidence_grading")
         grade = grade_retrieval_evidence(state["ranked_chunks"], settings=settings)
+        if trace is not None:
+            attempt_number = state["rewrite_count"] + 1
+            trace.record_evidence(
+                attempt_number,
+                sufficient=grade.sufficient,
+                reason=grade.reason,
+                chunks=grade.chunks,
+            )
+            trace.finish_attempt(attempt_number)
         return {
             "evidence_sufficient": grade.sufficient,
             "evidence_reason": grade.reason,
@@ -167,6 +245,7 @@ def make_rewrite_query_node(
     *,
     settings: Settings,
     rewrite_fn: Callable[[str, str, str], Awaitable[str]] | None = None,
+    trace: EvalTraceCollector | None = None,
 ) -> Callable[[DriveGraphState], Awaitable[dict[str, Any]]]:
     """Create rewrite node with injectable LLM-backed or custom rewriter."""
 
@@ -175,11 +254,17 @@ def make_rewrite_query_node(
         question = state["question"]
         working_query = state["working_query"]
         reason = state.get("evidence_reason", "")
+        if trace is not None:
+            trace.set_stage("query_rewrite")
+        rewrite_started = perf_counter() if trace is not None else 0.0
 
         rewritten: str | None = None
+        source = "heuristic"
         if rewrite_fn is not None:
+            source = "custom"
             rewritten = await rewrite_fn(question, working_query, reason)
         elif settings.openai_api_key:
+            source = "openai"
             rewritten = await _rewrite_with_openai(
                 settings=settings,
                 question=question,
@@ -188,6 +273,8 @@ def make_rewrite_query_node(
             )
 
         if not rewritten or not rewritten.strip():
+            if source != "heuristic":
+                source = "heuristic_fallback"
             rewritten = _heuristic_rewrite_query(
                 question=question,
                 working_query=working_query,
@@ -197,10 +284,21 @@ def make_rewrite_query_node(
             rewritten = rewritten.strip()
 
         if rewritten == working_query:
+            source = "heuristic_fallback"
             rewritten = _heuristic_rewrite_query(
                 question=question,
                 working_query=working_query,
                 evidence_reason=reason,
+            )
+
+        if trace is not None:
+            trace.record_rewrite(
+                after_attempt=state["rewrite_count"] + 1,
+                input_query=working_query,
+                output_query=rewritten,
+                evidence_reason=reason,
+                source=source,
+                duration_ms=elapsed_ms(rewrite_started),
             )
 
         return {"working_query": rewritten, "rewrite_count": next_count}
@@ -212,6 +310,7 @@ def make_generate_answer_node(
     *,
     settings: Settings,
     chat_service: ChatService | None = None,
+    trace: EvalTraceCollector | None = None,
 ) -> Callable[[DriveGraphState], Awaitable[dict[str, Any]]]:
     """Create grounded answer generation node with citation construction."""
     service = chat_service or get_chat_service(settings)
@@ -222,17 +321,37 @@ def make_generate_answer_node(
         if not ranked:
             return {"answer": NO_EVIDENCE_ANSWER, "citations": []}
 
+        generation_started = 0.0
+        if trace is not None:
+            trace.set_stage("context_selection")
+            # This mirrors the deterministic selector used by OpenAIChatService
+            # without adding evaluation concerns to the chat protocol.
+            traced_prompt_chunks = select_prompt_chunks(
+                question,
+                ranked,
+                max_context_chars=settings.rag_max_context_chars,
+            )
+            trace.record_prompt_chunks(traced_prompt_chunks, original_chunks=ranked)
+            trace.set_stage("generation")
+            generation_started = perf_counter()
         answer = await service.generate_grounded_answer(
             question,
             ranked,
             max_context_chars=settings.rag_max_context_chars,
         )
+        generation_duration = elapsed_ms(generation_started) if trace is not None else 0.0
         prompt_chunks = select_prompt_chunks(
             question,
             ranked,
             max_context_chars=settings.rag_max_context_chars,
         )
         all_citations = [build_citation(chunk) for chunk in prompt_chunks]
+        if trace is not None:
+            trace.record_raw_generation(
+                answer,
+                all_citations,
+                duration_ms=generation_duration,
+            )
         return {"answer": answer, "citations": all_citations}
 
     return _generate_answer
@@ -244,6 +363,37 @@ def verify_citations(state: DriveGraphState) -> dict[str, Any]:
     citations = state.get("citations", [])
     normalized_answer, normalized_citations = normalize_answer_citations(answer, citations)
     return {"answer": normalized_answer, "citations": normalized_citations}
+
+
+def make_verify_citations_node(
+    trace: EvalTraceCollector,
+) -> Callable[[DriveGraphState], dict[str, Any]]:
+    """Wrap authoritative citation normalization with trace recording."""
+
+    def _verify_citations(state: DriveGraphState) -> dict[str, Any]:
+        trace.set_stage("citation_normalization")
+        update = verify_citations(state)
+        answer = cast(str, update["answer"])
+        citations = cast(list[CitationItem], update["citations"])
+        if not state["ranked_chunks"]:
+            latest = trace.trace.attempts[-1] if trace.trace.attempts else None
+            rejected = bool(
+                latest is not None
+                and latest.reranked_candidates
+                and latest.evidence is not None
+                and not latest.evidence.sufficient
+            )
+            trace.record_abstention(
+                AbstentionReason.EVIDENCE_REJECTED
+                if rejected
+                else AbstentionReason.NO_RETRIEVAL_EVIDENCE,
+                answer,
+            )
+        else:
+            trace.record_final(answer, citations)
+        return update
+
+    return _verify_citations
 
 
 def return_response(state: DriveGraphState) -> dict[str, Any]:

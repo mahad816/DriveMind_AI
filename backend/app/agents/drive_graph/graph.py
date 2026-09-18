@@ -14,6 +14,7 @@ from app.agents.drive_graph.nodes import (
     make_retrieve_node,
     make_rewrite_query_node,
     make_rerank_node,
+    make_verify_citations_node,
     plan_retrieval,
     receive_question,
     return_response,
@@ -24,6 +25,7 @@ from app.agents.drive_graph.nodes import (
 from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import RetrieverName
 from app.core.config import Settings, get_settings
+from app.evaluation.trace import EvalTraceCollector
 from app.llm.base import ChatService
 from app.retrieval.base import Retriever
 
@@ -88,6 +90,7 @@ def build_drive_graph(
     settings: Settings | None = None,
     rewrite_fn: Callable[[str, str, str], Awaitable[str]] | None = None,
     chat_service: ChatService | None = None,
+    trace: EvalTraceCollector | None = None,
 ) -> Any:
     """Build a DriveGraph.
 
@@ -106,19 +109,43 @@ def build_drive_graph(
     graph.add_node("classify_intent", classify_intent)
     graph.add_node("plan_retrieval", plan_retrieval)
     graph.add_node("route_retriever", route_retriever)
-    retrieve_node = make_retrieve_node(retrievers=retrievers, settings=settings)
+    retrieve_node = make_retrieve_node(
+        retrievers=retrievers,
+        settings=settings,
+        trace=trace,
+    )
     graph.add_node("retrieve", cast(Any, retrieve_node))
-    graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings)))
-    graph.add_node("grade_evidence", cast(Any, make_grade_evidence_node(settings=settings)))
+    graph.add_node("rerank", cast(Any, make_rerank_node(settings=settings, trace=trace)))
+    graph.add_node(
+        "grade_evidence",
+        cast(Any, make_grade_evidence_node(settings=settings, trace=trace)),
+    )
     graph.add_node(
         "rewrite_query",
-        cast(Any, make_rewrite_query_node(settings=settings, rewrite_fn=rewrite_fn)),
+        cast(
+            Any,
+            make_rewrite_query_node(
+                settings=settings,
+                rewrite_fn=rewrite_fn,
+                trace=trace,
+            ),
+        ),
     )
     graph.add_node(
         "generate_answer",
-        cast(Any, make_generate_answer_node(settings=settings, chat_service=chat_service)),
+        cast(
+            Any,
+            make_generate_answer_node(
+                settings=settings,
+                chat_service=chat_service,
+                trace=trace,
+            ),
+        ),
     )
-    graph.add_node("verify_citations", verify_citations)
+    graph.add_node(
+        "verify_citations",
+        cast(Any, make_verify_citations_node(trace)) if trace is not None else verify_citations,
+    )
     graph.add_node("return_response", return_response)
 
     graph.set_entry_point("receive_question")
