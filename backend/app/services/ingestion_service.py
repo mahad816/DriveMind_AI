@@ -117,7 +117,7 @@ class IngestionService:
         Compares document.updated_at with drive_file.modified_at so we can skip
         the expensive Google Drive download when neither has changed.
         """
-        if not document.extracted_text:
+        if not document.extracted_text.strip():
             return False
         doc_ts = document.updated_at
         file_ts = drive_file.modified_at
@@ -168,6 +168,12 @@ class IngestionService:
         except (ValueError, DriveClientError, UnsupportedMimeTypeError, ExtractionError):
             drive_file.status = DriveFileStatus.FAILED
             return "failed"
+
+        if not extraction.text.strip():
+            # Keep any previously persisted document/chunks coherent with each
+            # other, but exclude them from retrieval via the file status.
+            drive_file.status = DriveFileStatus.SKIPPED
+            return "skipped"
 
         text_hash = compute_extracted_text_hash(extraction.text)
 
@@ -232,7 +238,11 @@ class IngestionService:
                 else:
                     skipped += 1
 
-            job.status = IndexingJobStatus.COMPLETED
+            if failed:
+                job.status = IndexingJobStatus.FAILED
+                job.error = f"{failed} of {len(drive_files)} files failed during ingestion."
+            else:
+                job.status = IndexingJobStatus.COMPLETED
             job.completed_at = datetime.now(UTC)
             await self.db.commit()
         except Exception as exc:

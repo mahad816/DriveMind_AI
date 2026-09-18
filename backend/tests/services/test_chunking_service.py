@@ -33,7 +33,7 @@ TOKEN_ROW = GoogleOAuthToken(
 )
 
 
-def _drive_file() -> DriveFile:
+def _drive_file(*, status: DriveFileStatus = DriveFileStatus.INDEXED) -> DriveFile:
     return DriveFile(
         id=FILE_ID,
         user_id=USER_ID,
@@ -41,7 +41,7 @@ def _drive_file() -> DriveFile:
         name="notes.txt",
         mime_type="text/plain",
         modified_at=datetime.now(UTC),
-        status=DriveFileStatus.INDEXED,
+        status=status,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
@@ -190,13 +190,43 @@ async def test_chunk_documents_skips_file_without_document(
 
 
 @pytest.mark.asyncio
-async def test_chunk_documents_empty_text_without_existing_chunks_is_unchanged(
+async def test_chunk_documents_explicit_skipped_file_does_not_process_stale_document(
     service: ChunkingService,
     mock_db: AsyncMock,
 ) -> None:
-    drive_file = _drive_file()
-    document = _document(text="")
+    drive_file = _drive_file(status=DriveFileStatus.SKIPPED)
+    stale_document = _document(text="old searchable content")
+    stale_chunk = _existing_chunk(
+        text="old searchable content",
+        text_hash=stale_document.extracted_text_hash,
+    )
     mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
+    )
+
+    result = await service.chunk_documents(file_id=FILE_ID)
+
+    assert result.chunked == 0
+    assert result.unchanged == 0
+    assert result.skipped == 1
+    assert drive_file.status == DriveFileStatus.SKIPPED
+    assert mock_db.scalar.await_count == 2
+    mock_db.scalars.assert_not_awaited()
+    mock_db.execute.assert_not_awaited()
+    added = [call.args[0] for call in mock_db.add.call_args_list]
+    assert not any(isinstance(item, Chunk) for item in added)
+
+
+@pytest.mark.asyncio
+async def test_chunk_documents_empty_text_without_existing_chunks_is_skipped(
+    service: ChunkingService,
+    mock_db: AsyncMock,
+) -> None:
+    drive_file = _drive_file(status=DriveFileStatus.INDEXING)
+    document = _document(text="")
+    mock_db.get = AsyncMock(side_effect=[USER, drive_file])
     mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[])),
@@ -204,8 +234,10 @@ async def test_chunk_documents_empty_text_without_existing_chunks_is_unchanged(
 
     result = await service.chunk_documents(file_id=FILE_ID)
 
-    assert result.unchanged == 1
+    assert result.unchanged == 0
     assert result.chunked == 0
+    assert result.skipped == 1
+    assert drive_file.status == DriveFileStatus.SKIPPED
     mock_db.execute.assert_not_awaited()
 
 
@@ -214,7 +246,7 @@ async def test_chunk_documents_empty_text_removes_stale_chunks(
     service: ChunkingService,
     mock_db: AsyncMock,
 ) -> None:
-    drive_file = _drive_file()
+    drive_file = _drive_file(status=DriveFileStatus.INDEXING)
     document = _document(text="")
     old_hash = compute_extracted_text_hash("previous content")
     existing = [_existing_chunk(text="previous content", text_hash=old_hash)]
@@ -226,8 +258,10 @@ async def test_chunk_documents_empty_text_removes_stale_chunks(
 
     result = await service.chunk_documents(file_id=FILE_ID)
 
-    assert result.chunked == 1
+    assert result.chunked == 0
     assert result.unchanged == 0
+    assert result.skipped == 1
+    assert drive_file.status == DriveFileStatus.SKIPPED
     mock_db.execute.assert_awaited_once()
     added = [call.args[0] for call in mock_db.add.call_args_list]
     assert not any(isinstance(item, Chunk) for item in added)

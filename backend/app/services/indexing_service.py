@@ -147,7 +147,8 @@ class IndexingService:
         )
 
         if not chunks:
-            return 0, 0, 0, removed
+            drive_file.status = DriveFileStatus.SKIPPED
+            return 0, 0, 1, removed
 
         stored_hashes = await self.vector_store.get_stored_hashes([chunk.id for chunk in chunks])
         pending: list[Chunk] = []
@@ -203,6 +204,8 @@ class IndexingService:
             embedded, unchanged, skipped, removed = await self._index_document(document)
             return embedded, unchanged, skipped, removed, 0
         except (EmbeddingError, VectorStoreError) as exc:
+            if resolved_drive_file is not None:
+                resolved_drive_file.status = DriveFileStatus.FAILED
             logger.warning(
                 "Skipping vector index for document %s (%s): %s",
                 document.id,
@@ -219,9 +222,6 @@ class IndexingService:
     ) -> IndexBuildResult:
         """Chunk documents, embed pending chunks, and upsert vectors into Qdrant."""
         user = await self._resolve_user(user_id)
-        await self.vector_store.ensure_collection(
-            vector_size=self.embedding_service.embedding_dimension,
-        )
 
         job = IndexingJob(
             user_id=user.id,
@@ -236,25 +236,32 @@ class IndexingService:
         total = 0
 
         try:
+            await self.vector_store.ensure_collection(
+                vector_size=self.embedding_service.embedding_dimension,
+            )
+
             if file_id is not None:
                 drive_file = await self._get_drive_file(user.id, file_id)
                 total = 1
-                document = await self._get_latest_document(drive_file.id)
-                if document is None:
+                if drive_file.status == DriveFileStatus.SKIPPED:
                     skipped = 1
                 else:
-                    (
-                        doc_embedded,
-                        doc_unchanged,
-                        doc_skipped,
-                        doc_removed,
-                        doc_failed,
-                    ) = await self._index_document_safe(document, drive_file=drive_file)
-                    embedded += doc_embedded
-                    unchanged += doc_unchanged
-                    skipped += doc_skipped
-                    removed += doc_removed
-                    failed += doc_failed
+                    document = await self._get_latest_document(drive_file.id)
+                    if document is None:
+                        skipped = 1
+                    else:
+                        (
+                            doc_embedded,
+                            doc_unchanged,
+                            doc_skipped,
+                            doc_removed,
+                            doc_failed,
+                        ) = await self._index_document_safe(document, drive_file=drive_file)
+                        embedded += doc_embedded
+                        unchanged += doc_unchanged
+                        skipped += doc_skipped
+                        removed += doc_removed
+                        failed += doc_failed
             else:
                 documents = await self._list_indexable_documents(user.id)
                 total = len(documents)
@@ -272,7 +279,11 @@ class IndexingService:
                     removed += doc_removed
                     failed += doc_failed
 
-            job.status = IndexingJobStatus.COMPLETED
+            if failed:
+                job.status = IndexingJobStatus.FAILED
+                job.error = f"{failed} of {total} files failed during index build."
+            else:
+                job.status = IndexingJobStatus.COMPLETED
             job.completed_at = datetime.now(UTC)
             await self.db.commit()
         except Exception as exc:

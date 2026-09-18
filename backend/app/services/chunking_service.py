@@ -112,15 +112,20 @@ class ChunkingService:
         )
 
     async def _replace_chunks(self, document: Document) -> str:
-        """Chunk one document. Returns 'chunked' or 'unchanged'."""
+        """Chunk one document. Returns 'chunked', 'unchanged', or 'skipped'."""
         existing = await self._get_existing_chunks(document.id)
         text_hash = document.extracted_text_hash
+        text_chunks = chunk_text(document.extracted_text, config=self.chunking_config)
+
+        if not text_chunks:
+            drive_file = await self.db.get(DriveFile, document.drive_file_id)
+            if existing:
+                await self.db.execute(delete(Chunk).where(Chunk.document_id == document.id))
+            if drive_file is not None:
+                drive_file.status = DriveFileStatus.SKIPPED
+            return "skipped"
 
         if existing and self._chunks_are_current(existing, text_hash):
-            return "unchanged"
-
-        text_chunks = chunk_text(document.extracted_text, config=self.chunking_config)
-        if not existing and not text_chunks:
             return "unchanged"
 
         # Load drive_file name so we can include it in the FTS search_vector.
@@ -159,6 +164,8 @@ class ChunkingService:
         return await self._replace_chunks(document)
 
     async def _chunk_drive_file(self, drive_file: DriveFile) -> str:
+        if drive_file.status == DriveFileStatus.SKIPPED:
+            return "skipped"
         document = await self._get_latest_document(drive_file.id)
         if document is None:
             return "skipped"
@@ -203,6 +210,8 @@ class ChunkingService:
                     outcome = await self._replace_chunks(document)
                     if outcome == "chunked":
                         chunked += 1
+                    elif outcome == "skipped":
+                        skipped += 1
                     else:
                         unchanged += 1
 
