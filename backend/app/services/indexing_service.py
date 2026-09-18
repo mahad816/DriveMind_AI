@@ -83,18 +83,13 @@ class IndexingService:
         return drive_file
 
     async def _list_indexable_documents(self, user_id: uuid.UUID) -> list[Document]:
-        """Return documents whose drive_file is not yet fully INDEXED.
-
-        Skipping already-INDEXED files avoids redundant Qdrant hash checks for
-        hundreds of unchanged documents on every build run.
-        """
+        """Return documents whose drive_file is eligible for vector indexing."""
         result = await self.db.scalars(
             select(Document)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
                 DriveFile.user_id == user_id,
-                DriveFile.status != DriveFileStatus.INDEXED,
-                DriveFile.status != DriveFileStatus.SKIPPED,
+                DriveFile.status == DriveFileStatus.INDEXING,
             )
             .order_by(Document.updated_at.desc())
         )
@@ -243,7 +238,7 @@ class IndexingService:
             if file_id is not None:
                 drive_file = await self._get_drive_file(user.id, file_id)
                 total = 1
-                if drive_file.status == DriveFileStatus.SKIPPED:
+                if drive_file.status != DriveFileStatus.INDEXING:
                     skipped = 1
                 else:
                     document = await self._get_latest_document(drive_file.id)

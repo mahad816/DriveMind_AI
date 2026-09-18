@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
@@ -39,7 +40,7 @@ def _drive_file(
     *,
     file_id: uuid.UUID = FILE_ID,
     name: str = "notes.txt",
-    status: DriveFileStatus = DriveFileStatus.INDEXED,
+    status: DriveFileStatus = DriveFileStatus.INDEXING,
 ) -> DriveFile:
     return DriveFile(
         id=file_id,
@@ -261,6 +262,63 @@ async def test_build_index_explicit_skipped_file_does_not_index_stale_chunks(
     mock_vector_store.delete_points_for_drive_file_except.assert_not_awaited()
     mock_vector_store.get_stored_hashes.assert_not_awaited()
     mock_vector_store.upsert_points.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [DriveFileStatus.FAILED, DriveFileStatus.INDEXED])
+async def test_build_index_explicit_non_indexing_file_does_not_index_stale_chunks(
+    service: IndexingService,
+    mock_db: AsyncMock,
+    mock_chunking: AsyncMock,
+    mock_embedding: AsyncMock,
+    mock_vector_store: AsyncMock,
+    status: DriveFileStatus,
+) -> None:
+    drive_file = _drive_file(status=status)
+    stale_document = _document(text="old searchable content")
+    stale_chunk = _chunk(
+        text="old searchable content",
+        text_hash=stale_document.extracted_text_hash,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
+    )
+
+    result = await service.build_index(file_id=FILE_ID)
+
+    assert result.embedded == 0
+    assert result.unchanged == 0
+    assert result.skipped == 1
+    assert result.failed == 0
+    assert drive_file.status == status
+    assert mock_db.scalar.await_count == 2
+    mock_db.scalars.assert_not_awaited()
+    mock_chunking.sync_document_chunks.assert_not_awaited()
+    mock_embedding.embed_texts.assert_not_awaited()
+    mock_vector_store.delete_points_for_drive_file_except.assert_not_awaited()
+    mock_vector_store.get_stored_hashes.assert_not_awaited()
+    mock_vector_store.upsert_points.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_batch_build_selector_requires_indexing_status(
+    service: IndexingService,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+
+    await service._list_indexable_documents(USER_ID)
+
+    statement = mock_db.scalars.await_args.args[0]
+    sql = str(
+        statement.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "drive_files.status = 'INDEXING'" in sql
 
 
 @pytest.mark.asyncio

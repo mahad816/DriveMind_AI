@@ -44,6 +44,8 @@ export const prepareCopy = {
   running: "Setting up your assistant…",
   complete: "Your assistant is ready",
   completeHint: "Ask your first question whenever you're ready.",
+  partialTitle: "Setup completed with some file failures",
+  partialHint: "Other eligible files were prepared and are available for search.",
   durationHint: "This usually takes a few minutes.",
   advanced: "Advanced",
   lastPrepared: "Last set up",

@@ -2,6 +2,7 @@ import { apiFetch, buildQueryString } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
   DriveSyncStatusResponse,
+  IndexingJobRead,
   JobStartedResponse,
   PendingCountsResponse,
 } from "@/lib/api/types";
@@ -46,13 +47,13 @@ export async function buildVectorIndex(fileId?: string): Promise<JobStartedRespo
  * Poll GET /index/status every `intervalMs` until the latest job reaches
  * "completed" or "failed". Only considers jobs created on or after `after`.
  *
- * Throws if the job fails or if `timeoutMs` is exceeded.
+ * Throws if the job fails (unless explicitly allowed) or if `timeoutMs` is exceeded.
  */
 export async function pollUntilJobDone(
   after: Date,
-  options: { intervalMs?: number; timeoutMs?: number } = {},
-): Promise<void> {
-  const { intervalMs = 2000, timeoutMs = 180_000 } = options;
+  options: { intervalMs?: number; timeoutMs?: number; allowFailed?: boolean } = {},
+): Promise<IndexingJobRead> {
+  const { intervalMs = 2000, timeoutMs = 180_000, allowFailed = false } = options;
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
@@ -72,8 +73,9 @@ export async function pollUntilJobDone(
     // Only care about jobs that started after we fired the request
     if (new Date(job.created_at) < after) continue;
 
-    if (job.status === "completed") return;
+    if (job.status === "completed") return job;
     if (job.status === "failed") {
+      if (allowFailed) return job;
       throw new ApiError(500, job.error ?? "Job failed");
     }
     // "queued" or "running" — keep waiting

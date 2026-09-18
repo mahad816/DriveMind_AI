@@ -70,18 +70,13 @@ class ChunkingService:
         return drive_file
 
     async def _list_chunkable_documents(self, user_id: uuid.UUID) -> list[Document]:
-        """Return documents whose drive_file still needs chunking.
-
-        Excludes already-INDEXED files so we don't re-chunk hundreds of
-        unchanged documents on every run.
-        """
+        """Return documents whose drive_file is eligible for chunking."""
         result = await self.db.scalars(
             select(Document)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
                 DriveFile.user_id == user_id,
-                DriveFile.status != DriveFileStatus.INDEXED,
-                DriveFile.status != DriveFileStatus.SKIPPED,
+                DriveFile.status == DriveFileStatus.INDEXING,
             )
             .order_by(Document.updated_at.desc())
         )
@@ -164,7 +159,7 @@ class ChunkingService:
         return await self._replace_chunks(document)
 
     async def _chunk_drive_file(self, drive_file: DriveFile) -> str:
-        if drive_file.status == DriveFileStatus.SKIPPED:
+        if drive_file.status != DriveFileStatus.INDEXING:
             return "skipped"
         document = await self._get_latest_document(drive_file.id)
         if document is None:

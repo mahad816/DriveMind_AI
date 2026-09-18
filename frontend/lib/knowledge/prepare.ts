@@ -38,11 +38,16 @@ export type PrepareKnowledgeOptions = {
   fullScan?: boolean;
 };
 
+export type PrepareKnowledgeResult = {
+  warning: string | null;
+};
+
 export async function prepareKnowledge(
   options: PrepareKnowledgeOptions = {},
-): Promise<void> {
+): Promise<PrepareKnowledgeResult> {
   const { onProgress, fullScan = false } = options;
   let steps = createInitialSteps();
+  let ingestionWarning: string | null = null;
 
   const emit = (
     partial: Partial<PrepareProgress> & {
@@ -103,7 +108,7 @@ export async function prepareKnowledge(
     steps = updateStep(steps, "search", "complete");
     steps = updateStep(steps, "ready", "complete");
     emit({ progressPercent: 100, currentStepId: "ready" });
-    return;
+    return { warning: null };
   }
 
   // Step 2: download + extract text (only if files need it).
@@ -111,10 +116,27 @@ export async function prepareKnowledge(
     await runStep("read", 35, 60, async () => {
       const before = new Date();
       await ingestDriveFiles();
-      await pollUntilJobDone(before, { timeoutMs: 180_000 });
+      const job = await pollUntilJobDone(before, {
+        timeoutMs: 180_000,
+        allowFailed: true,
+      });
+
+      if (job.status === "failed") {
+        const originalError = job.error ?? "Job failed";
+        try {
+          pending = await getPendingCounts();
+        } catch {
+          throw new ApiError(500, originalError);
+        }
+        if (pending.to_chunk === 0 && pending.to_build === 0) {
+          throw new ApiError(500, originalError);
+        }
+        ingestionWarning = originalError;
+      } else {
+        // Preserve the existing best-effort refresh after successful ingestion.
+        pending = await getPendingCounts().catch(() => pending);
+      }
     });
-    // Refresh pending counts after ingest.
-    pending = await getPendingCounts().catch(() => pending);
   } else {
     steps = updateStep(steps, "read", "complete");
     emit({ progressPercent: 60, currentStepId: "read" });
@@ -127,10 +149,14 @@ export async function prepareKnowledge(
         const before = new Date();
         await chunkDocuments();
         await pollUntilJobDone(before, { timeoutMs: 120_000 });
+        // Chunking changes build eligibility, so use authoritative fresh counts.
+        pending = await getPendingCounts();
       }
-      const before2 = new Date();
-      await buildVectorIndex();
-      await pollUntilJobDone(before2, { timeoutMs: 180_000 });
+      if (pending.to_build > 0) {
+        const before = new Date();
+        await buildVectorIndex();
+        await pollUntilJobDone(before, { timeoutMs: 180_000 });
+      }
     });
   } else {
     steps = updateStep(steps, "search", "complete");
@@ -139,4 +165,5 @@ export async function prepareKnowledge(
 
   steps = updateStep(steps, "ready", "complete");
   emit({ progressPercent: 100, currentStepId: "ready" });
+  return { warning: ingestionWarning };
 }

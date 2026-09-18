@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.functions import Function
 
 from app.db.enums import DriveFileStatus
@@ -33,7 +34,7 @@ TOKEN_ROW = GoogleOAuthToken(
 )
 
 
-def _drive_file(*, status: DriveFileStatus = DriveFileStatus.INDEXED) -> DriveFile:
+def _drive_file(*, status: DriveFileStatus = DriveFileStatus.INDEXING) -> DriveFile:
     return DriveFile(
         id=FILE_ID,
         user_id=USER_ID,
@@ -217,6 +218,57 @@ async def test_chunk_documents_explicit_skipped_file_does_not_process_stale_docu
     mock_db.execute.assert_not_awaited()
     added = [call.args[0] for call in mock_db.add.call_args_list]
     assert not any(isinstance(item, Chunk) for item in added)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [DriveFileStatus.FAILED, DriveFileStatus.INDEXED])
+async def test_chunk_documents_explicit_non_indexing_file_does_not_process_stale_document(
+    service: ChunkingService,
+    mock_db: AsyncMock,
+    status: DriveFileStatus,
+) -> None:
+    drive_file = _drive_file(status=status)
+    stale_document = _document(text="old searchable content")
+    stale_chunk = _existing_chunk(
+        text="old searchable content",
+        text_hash=stale_document.extracted_text_hash,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalars = AsyncMock(
+        return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
+    )
+
+    result = await service.chunk_documents(file_id=FILE_ID)
+
+    assert result.chunked == 0
+    assert result.unchanged == 0
+    assert result.skipped == 1
+    assert drive_file.status == status
+    assert mock_db.scalar.await_count == 2
+    mock_db.scalars.assert_not_awaited()
+    mock_db.execute.assert_not_awaited()
+    added = [call.args[0] for call in mock_db.add.call_args_list]
+    assert not any(isinstance(item, Chunk) for item in added)
+
+
+@pytest.mark.asyncio
+async def test_batch_chunk_selector_requires_indexing_status(
+    service: ChunkingService,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+
+    await service._list_chunkable_documents(USER_ID)
+
+    statement = mock_db.scalars.await_args.args[0]
+    sql = str(
+        statement.compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "drive_files.status = 'INDEXING'" in sql
 
 
 @pytest.mark.asyncio

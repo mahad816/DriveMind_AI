@@ -50,6 +50,7 @@ export function PrepareKnowledgeView({
   const [progress, setProgress] = useState<PrepareProgressState>(INITIAL_PROGRESS);
   const [isPreparing, setIsPreparing] = useState(false);
   const [hasPrepared, setHasPrepared] = useState(false);
+  const [completionWarning, setCompletionWarning] = useState<string | null>(null);
   const [autoStarted, setAutoStarted] = useState(false);
 
   const runPrepare = useCallback(async (fullScan = false) => {
@@ -59,13 +60,15 @@ export function PrepareKnowledgeView({
 
     setIsPreparing(true);
     setHasPrepared(false);
+    setCompletionWarning(null);
     setProgress(INITIAL_PROGRESS);
 
     try {
-      await prepareKnowledge({
+      const result = await prepareKnowledge({
         onProgress: setProgress,
         fullScan,
       });
+      setCompletionWarning(result.warning);
       setLastPreparedAt();
       setHasPrepared(true);
       markOnboardingComplete();
@@ -147,6 +150,16 @@ export function PrepareKnowledgeView({
                 Full scan
               </Button>
             </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {completionWarning ? (
+        <Alert className="border-warning/30 bg-warning/10 text-foreground">
+          <AlertTitle>{prepareCopy.partialTitle}</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>{completionWarning}</p>
+            <p>{prepareCopy.partialHint}</p>
           </AlertDescription>
         </Alert>
       ) : null}
