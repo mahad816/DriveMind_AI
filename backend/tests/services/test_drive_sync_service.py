@@ -45,6 +45,21 @@ def _metadata(
     )
 
 
+def _drive_file(
+    file_id: str,
+    status: DriveFileStatus,
+) -> DriveFile:
+    return DriveFile(
+        id=uuid.uuid4(),
+        user_id=USER_ID,
+        drive_file_id=file_id,
+        name=f"{file_id}.txt",
+        mime_type="text/plain",
+        modified_at=datetime.now(UTC),
+        status=status,
+    )
+
+
 @pytest.fixture
 def mock_db() -> AsyncMock:
     db = AsyncMock()
@@ -190,14 +205,18 @@ async def test_sync_metadata_full_mode_success(
         patch.object(service, "_build_drive_client", return_value=mock_client),
         patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_upsert_file", side_effect=always_create),
+        patch.object(
+            service, "_reconcile_missing_files", new_callable=AsyncMock, return_value=2
+        ) as reconcile,
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as mock_save_state,
     ):
         result = await service.sync_metadata()
 
     assert result.mode == "full"
     assert result.created == 2
-    assert result.removed == 0
+    assert result.removed == 2
     assert result.total_seen == 2
+    reconcile.assert_awaited_once_with(USER_ID, {"file-1", "file-2"})
     mock_save_state.assert_awaited_once_with(USER_ID, "changes-token")
     mock_db.commit.assert_awaited()
 
@@ -256,11 +275,15 @@ async def test_sync_metadata_force_full_even_with_sync_state(
     with (
         patch.object(service, "_build_drive_client", return_value=mock_client),
         patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(
+            service, "_reconcile_missing_files", new_callable=AsyncMock, return_value=0
+        ) as reconcile,
         patch.object(service, "_save_sync_state", new_callable=AsyncMock),
     ):
         result = await service.sync_metadata(full=True)
 
     assert result.mode == "full"
+    reconcile.assert_awaited_once_with(USER_ID, set())
     mock_client.list_changes.assert_not_called()
 
 
@@ -275,15 +298,131 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
     mock_client = MagicMock()
     mock_client.list_files.side_effect = DriveClientError("Drive API down")
 
-    with patch.object(service, "_build_drive_client", return_value=mock_client):
+    with (
+        patch.object(service, "_build_drive_client", return_value=mock_client),
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
+    ):
         with pytest.raises(DriveClientError, match="Drive API down"):
             await service.sync_metadata()
+
+    reconcile.assert_not_awaited()
 
     mock_db.commit.assert_awaited()
     added_job = mock_db.add.call_args_list[0][0][0]
     assert isinstance(added_job, IndexingJob)
     assert added_job.status == IndexingJobStatus.FAILED
     assert added_job.error == "Drive API down"
+
+
+@pytest.mark.asyncio
+async def test_full_sync_does_not_reconcile_when_upsert_fails(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, None])
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_client = MagicMock()
+    mock_client.list_files.return_value = [_metadata("file-1")]
+
+    with (
+        patch.object(service, "_build_drive_client", return_value=mock_client),
+        patch.object(service, "_build_folder_lookup", return_value={}),
+        patch.object(
+            service,
+            "_upsert_file",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("upsert failed"),
+        ),
+        patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
+    ):
+        with pytest.raises(DriveClientError, match="upsert failed"):
+            await service.sync_metadata()
+
+    reconcile.assert_not_awaited()
+    mock_client.get_start_page_token.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reconcile_keeps_listed_file_active(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    listed = _drive_file("file-1", DriveFileStatus.INDEXED)
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[listed])))
+
+    removed = await service._reconcile_missing_files(USER_ID, {"file-1"})
+
+    assert removed == 0
+    assert listed.status == DriveFileStatus.INDEXED
+
+
+@pytest.mark.asyncio
+async def test_reconcile_marks_absent_indexed_file_skipped(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    missing = _drive_file("missing", DriveFileStatus.INDEXED)
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[missing])))
+
+    removed = await service._reconcile_missing_files(USER_ID, {"file-1"})
+
+    assert removed == 1
+    assert missing.status == DriveFileStatus.SKIPPED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial_status",
+    [
+        DriveFileStatus.DISCOVERED,
+        DriveFileStatus.INDEXING,
+        DriveFileStatus.FAILED,
+    ],
+)
+async def test_reconcile_marks_absent_active_file_skipped(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+    initial_status: DriveFileStatus,
+) -> None:
+    missing = _drive_file("missing", initial_status)
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[missing])))
+
+    removed = await service._reconcile_missing_files(USER_ID, set())
+
+    assert removed == 1
+    assert missing.status == DriveFileStatus.SKIPPED
+
+
+@pytest.mark.asyncio
+async def test_reconcile_does_not_recount_already_skipped_file(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    skipped = _drive_file("missing", DriveFileStatus.SKIPPED)
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[skipped])))
+
+    removed = await service._reconcile_missing_files(USER_ID, set())
+
+    assert removed == 0
+    assert skipped.status == DriveFileStatus.SKIPPED
+
+
+@pytest.mark.asyncio
+async def test_reconcile_empty_listing_skips_all_active_files(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+) -> None:
+    active_files = [
+        _drive_file("file-1", DriveFileStatus.INDEXED),
+        _drive_file("file-2", DriveFileStatus.DISCOVERED),
+    ]
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=active_files)))
+
+    removed = await service._reconcile_missing_files(USER_ID, set())
+
+    assert removed == 2
+    assert all(file.status == DriveFileStatus.SKIPPED for file in active_files)
 
 
 @pytest.mark.asyncio
@@ -343,5 +482,9 @@ async def test_upsert_file_restores_skipped_file(
 
     outcome = await service._upsert_file(USER_ID, _metadata(), folder_path=None)
 
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[existing])))
+    removed = await service._reconcile_missing_files(USER_ID, {"file-1"})
+
     assert outcome == "updated"
+    assert removed == 0
     assert existing.status == DriveFileStatus.DISCOVERED

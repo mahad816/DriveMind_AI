@@ -268,13 +268,38 @@ class DriveSyncService:
             return 0, 1, 0
         return 0, 0, 1
 
+    async def _reconcile_missing_files(
+        self,
+        user_id: uuid.UUID,
+        seen_drive_file_ids: set[str],
+    ) -> int:
+        """Mark active database files absent from a completed full listing as skipped."""
+        result = await self.db.scalars(
+            select(DriveFile).where(
+                DriveFile.user_id == user_id,
+                DriveFile.status != DriveFileStatus.SKIPPED,
+            )
+        )
+
+        removed = 0
+        for drive_file in result.all():
+            if (
+                drive_file.status == DriveFileStatus.SKIPPED
+                or drive_file.drive_file_id in seen_drive_file_ids
+            ):
+                continue
+            drive_file.status = DriveFileStatus.SKIPPED
+            removed += 1
+        return removed
+
     async def _run_full_sync(
         self,
         user: User,
         client: GoogleDriveClient,
-    ) -> tuple[int, int, int, int]:
+    ) -> tuple[int, int, int, int, int]:
         folder_lookup = await asyncio.to_thread(self._build_folder_lookup, client)
         drive_files = await asyncio.to_thread(client.list_files, supported_only=True)
+        seen_drive_file_ids = {metadata.id for metadata in drive_files}
         created = updated = unchanged = 0
         for metadata in drive_files:
             folder_path = self._resolve_folder_path(metadata, folder_lookup)
@@ -287,9 +312,10 @@ class DriveSyncService:
             updated += u
             unchanged += n
 
+        removed = await self._reconcile_missing_files(user.id, seen_drive_file_ids)
         page_token = await asyncio.to_thread(client.get_start_page_token)
         await self._save_sync_state(user.id, page_token)
-        return created, updated, unchanged, len(drive_files)
+        return created, updated, unchanged, removed, len(drive_files)
 
     async def _run_incremental_sync(
         self,
@@ -355,7 +381,9 @@ class DriveSyncService:
         try:
             client = self._build_drive_client(token_row, refreshed_tokens)
             if mode == "full":
-                created, updated, unchanged, total_seen = await self._run_full_sync(user, client)
+                created, updated, unchanged, removed, total_seen = await self._run_full_sync(
+                    user, client
+                )
             else:
                 assert sync_state is not None
                 created, updated, unchanged, removed = await self._run_incremental_sync(
