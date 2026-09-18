@@ -13,6 +13,7 @@ from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
 from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.retrieval.file_target import FileTargetResult
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.vector import VectorRetriever
@@ -47,6 +48,23 @@ def _retrieved_chunk() -> RetrievedChunk:
         text="Tensile strength is a key materials property.",
         score=0.91,
     )
+
+
+def _numbered_chunks(count: int = 3) -> list[RetrievedChunk]:
+    return [
+        RetrievedChunk(
+            chunk_id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+            drive_file_id=uuid.uuid4(),
+            filename=f"source-{index}.txt",
+            mime_type="text/plain",
+            modified_at=datetime.now(UTC),
+            chunk_index=0,
+            text=f"Evidence from source {index}.",
+            score=1.0 - (index / 10),
+        )
+        for index in range(1, count + 1)
+    ]
 
 
 @pytest.fixture
@@ -631,11 +649,51 @@ async def test_grounded_rag_citations_filtered_to_referenced_only(
 
 
 @pytest.mark.asyncio
-async def test_grounded_rag_keeps_citations_when_llm_omits_brackets(
+async def test_grounded_rag_normalizes_sparse_citations_before_persistence(
     mock_db: AsyncMock,
     mock_chat: AsyncMock,
 ) -> None:
-    """If the LLM omits [N] refs, still return grounded sources for the UI."""
+    chunks = _numbered_chunks()
+    mock_retriever = AsyncMock()
+    mock_retriever.retrieve = AsyncMock(return_value=chunks)
+    mock_chat.generate_grounded_answer = AsyncMock(
+        return_value="Compare [3] with [1], and ignore invalid [9]."
+    )
+
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask("What evidence is available?", user_id=USER_ID)
+
+    assert result.answer == "Compare [1] with [2], and ignore invalid."
+    assert [citation.filename for citation in result.citations] == [
+        "source-3.txt",
+        "source-1.txt",
+    ]
+    added = mock_db.add.call_args.args[0]
+    assert isinstance(added, QueryHistory)
+    assert added.answer == result.answer
+    assert [citation["filename"] for citation in added.citations_json] == [
+        "source-3.txt",
+        "source-1.txt",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_grounded_rag_returns_no_citations_when_llm_omits_brackets(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
     mock_retriever = AsyncMock()
     mock_retriever.retrieve = AsyncMock(return_value=[_retrieved_chunk()])
     mock_chat.generate_grounded_answer = AsyncMock(
@@ -657,8 +715,50 @@ async def test_grounded_rag_keeps_citations_when_llm_omits_brackets(
 
     result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
-    assert len(result.citations) == 1
-    assert result.citations[0].filename == "notes.txt"
+    assert result.answer == "Tensile strength describes the maximum stress a material can sustain."
+    assert result.citations == []
+    added = mock_db.add.call_args.args[0]
+    assert isinstance(added, QueryHistory)
+    assert added.citations_json == []
+
+
+@pytest.mark.asyncio
+async def test_file_target_normalizes_sparse_citation_markers(
+    mock_db: AsyncMock,
+    mock_chat: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = _numbered_chunks()
+
+    async def fake_search(*args: object, **kwargs: object) -> FileTargetResult:
+        return FileTargetResult(files=[MagicMock()], chunks=chunks, targets=["notes.txt"])
+
+    monkeypatch.setattr(
+        "app.services.rag_service.FileTargetRetriever.search",
+        fake_search,
+    )
+    mock_chat.generate_file_target_answer = AsyncMock(return_value="See [3].")
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=AsyncMock(),
+        chat_service=mock_chat,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    async def refresh_history(history: QueryHistory) -> None:
+        history.id = QUERY_ID
+
+    mock_db.refresh = AsyncMock(side_effect=refresh_history)
+
+    result = await service.ask('Tell me about "notes.txt"', user_id=USER_ID)
+
+    assert result.answer == "See [1]."
+    assert [citation.filename for citation in result.citations] == ["source-3.txt"]
+    added = mock_db.add.call_args.args[0]
+    assert isinstance(added, QueryHistory)
+    assert added.answer == "See [1]."
+    assert [citation["filename"] for citation in added.citations_json] == ["source-3.txt"]
 
 
 # ── Phase A: routing applies before agent_graph_enabled ───────────────────────

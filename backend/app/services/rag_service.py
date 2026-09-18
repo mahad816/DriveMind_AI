@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,8 +16,8 @@ from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
 from app.llm.prompts import (
     NO_EVIDENCE_ANSWER,
-    filter_citations_to_answer,
     format_citation_snippet,
+    normalize_answer_citations,
     select_prompt_chunks,
 )
 from app.retrieval.base import Retriever
@@ -167,9 +166,9 @@ class RagService:
                     max_context_chars=self.settings.rag_max_context_chars,
                 )
                 all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
-                file_citations = cast(
-                    list[CitationItem],
-                    filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]
+                answer, file_citations = normalize_answer_citations(
+                    answer,
+                    all_citations,
                 )
                 query_id = await self._persist_query_history(
                     user_id=user.id,
@@ -278,9 +277,9 @@ class RagService:
                 max_context_chars=self.settings.rag_max_context_chars,
             )
             all_citations = [_build_citation(chunk) for chunk in prompt_chunks]
-            citations = cast(
-                list[CitationItem],
-                filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]
+            answer, citations = normalize_answer_citations(
+                answer,
+                all_citations,
             )
 
         query_id = await self._persist_query_history(

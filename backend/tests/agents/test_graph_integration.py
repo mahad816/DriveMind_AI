@@ -103,16 +103,19 @@ async def test_graph_verifies_and_reindexes_citations_integration() -> None:
     )
     c1 = _chunk(text="first chunk", score=0.8, source="vector")
     c2 = _chunk(text="second chunk", score=0.7, source="keyword")
+    c3 = _chunk(text="third chunk", score=0.6, source="vector")
 
     mock_vector = AsyncMock()
-    mock_vector.retrieve = AsyncMock(return_value=[c1])
+    mock_vector.retrieve = AsyncMock(return_value=[c1, c3])
     mock_keyword = AsyncMock()
     mock_keyword.retrieve = AsyncMock(return_value=[c2])
     mock_metadata = AsyncMock()
     mock_metadata.retrieve = AsyncMock(return_value=[])
 
     chat = AsyncMock()
-    chat.generate_grounded_answer = AsyncMock(return_value="Uses [1], [2], and bad [9].")
+    chat.generate_grounded_answer = AsyncMock(
+        return_value="Compare [3] with [1], and ignore bad [9]."
+    )
 
     retrievers = {
         "vector": mock_vector,
@@ -134,5 +137,43 @@ async def test_graph_verifies_and_reindexes_citations_integration() -> None:
 
     final_state = await compiled.ainvoke(state)
 
-    assert "[9]" not in final_state["answer"]
+    assert final_state["answer"] == "Compare [1] with [2], and ignore bad."
     assert len(final_state["citations"]) == 2
+    assert len(final_state["ranked_chunks"]) == 3
+    assert final_state["citations"][0].chunk_id == final_state["ranked_chunks"][2].chunk_id
+    assert final_state["citations"][1].chunk_id == final_state["ranked_chunks"][0].chunk_id
+
+
+@pytest.mark.asyncio
+async def test_graph_returns_no_citations_when_answer_has_no_markers() -> None:
+    settings = Settings(
+        agent_max_rewrite_attempts=0,
+        evidence_min_fusion_score=0.1,
+        retrieval_score_threshold=0.05,
+    )
+    chunk = _chunk(text="grounded evidence", score=0.8, source="vector")
+    mock_vector = AsyncMock()
+    mock_vector.retrieve = AsyncMock(return_value=[chunk])
+    mock_keyword = AsyncMock()
+    mock_keyword.retrieve = AsyncMock(return_value=[])
+    mock_metadata = AsyncMock()
+    mock_metadata.retrieve = AsyncMock(return_value=[])
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="Grounded answer without markers.")
+    retrievers: dict[RetrieverName, Retriever] = {
+        "vector": mock_vector,
+        "keyword": mock_keyword,
+        "metadata": mock_metadata,
+    }
+    compiled = build_drive_graph(
+        retrievers=retrievers,
+        settings=settings,
+        chat_service=chat,
+    )
+    state = create_initial_state(question="What is the evidence?", user_id=uuid.uuid4())
+    state["max_rewrite_attempts"] = 0
+
+    final_state = await compiled.ainvoke(state)
+
+    assert final_state["answer"] == "Grounded answer without markers."
+    assert final_state["citations"] == []

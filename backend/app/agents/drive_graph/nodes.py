@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
 from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
-from app.llm.prompts import NO_EVIDENCE_ANSWER, filter_citations_to_answer
+from app.llm.prompts import NO_EVIDENCE_ANSWER, normalize_answer_citations
 from app.llm.prompts import format_citation_snippet, select_prompt_chunks
 from app.retrieval.base import Retriever
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
@@ -233,50 +233,17 @@ def make_generate_answer_node(
             max_context_chars=settings.rag_max_context_chars,
         )
         all_citations = [build_citation(chunk) for chunk in prompt_chunks]
-        # Only include citations the LLM actually referenced with [N] markers.
-        citations = cast(
-            list[CitationItem],
-            filter_citations_to_answer(answer, all_citations),  # type: ignore[arg-type]
-        )
-        return {"answer": answer, "citations": citations}
+        return {"answer": answer, "citations": all_citations}
 
     return _generate_answer
 
 
 def verify_citations(state: DriveGraphState) -> dict[str, Any]:
-    """Remove invalid citation references and align citation payload."""
+    """Normalize citation references and their payload atomically."""
     answer = state.get("answer", "")
     citations = state.get("citations", [])
-    if not answer or not citations:
-        return {}
-
-    refs = [int(match) for match in re.findall(r"\[(\d+)\]", answer)]
-    if not refs:
-        # No bracket references in the answer — clear all citations so the UI
-        # does not show irrelevant source pills (e.g. for chitchat responses).
-        return {"citations": []}
-
-    valid_indices = {index for index in refs if 1 <= index <= len(citations)}
-    invalid_indices = {index for index in refs if index < 1 or index > len(citations)}
-
-    sanitized_answer = answer
-    for invalid in sorted(invalid_indices, reverse=True):
-        sanitized_answer = re.sub(rf"\[{invalid}\]", "", sanitized_answer)
-    sanitized_answer = re.sub(r"\s{2,}", " ", sanitized_answer).strip()
-
-    if not valid_indices:
-        return {"answer": sanitized_answer, "citations": []}
-
-    ordered_valid = sorted(valid_indices)
-    selected_citations = [citations[index - 1] for index in ordered_valid]
-    old_to_new = {old: new for new, old in enumerate(ordered_valid, start=1)}
-
-    normalized_answer = sanitized_answer
-    for old_index, new_index in old_to_new.items():
-        if old_index != new_index:
-            normalized_answer = re.sub(rf"\[{old_index}\]", f"[{new_index}]", normalized_answer)
-
-    return {"answer": normalized_answer, "citations": selected_citations}
+    normalized_answer, normalized_citations = normalize_answer_citations(answer, citations)
+    return {"answer": normalized_answer, "citations": normalized_citations}
 
 
 def return_response(state: DriveGraphState) -> dict[str, Any]:

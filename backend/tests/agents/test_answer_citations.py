@@ -13,7 +13,7 @@ from app.agents.drive_graph.nodes import build_citation, make_generate_answer_no
 from app.agents.drive_graph.state import create_initial_state
 from app.agents.drive_graph.types import RetrieverName
 from app.core.config import Settings
-from app.llm.prompts import NO_EVIDENCE_ANSWER
+from app.llm.prompts import NO_EVIDENCE_ANSWER, normalize_answer_citations
 from app.retrieval.base import Retriever
 from app.retrieval.types import RetrievedChunk
 
@@ -69,6 +69,29 @@ async def test_generate_answer_node_builds_citations_from_prompt_chunks() -> Non
     assert "Tensile strength" in update["citations"][0].snippet
 
 
+@pytest.mark.asyncio
+async def test_generate_answer_node_preserves_all_prompt_citations_for_verification() -> None:
+    settings = Settings(rag_max_context_chars=12000)
+    chat = AsyncMock()
+    chat.generate_grounded_answer = AsyncMock(return_value="See [3].")
+    node = make_generate_answer_node(settings=settings, chat_service=chat)
+    chunks = [_chunk(text=f"chunk {index}", idx=index - 1) for index in range(1, 4)]
+    state = create_initial_state(question="Q?", user_id=uuid.uuid4())
+    state["ranked_chunks"] = chunks
+
+    update = await node(state)
+
+    assert update["answer"] == "See [3]."
+    assert len(update["citations"]) == 3
+
+    state["answer"] = update["answer"]
+    state["citations"] = update["citations"]
+    verified = verify_citations(state)
+
+    assert verified["answer"] == "See [1]."
+    assert verified["citations"][0].chunk_id == chunks[2].chunk_id
+
+
 def test_verify_citations_strips_invalid_references_and_reindexes() -> None:
     """Verification should drop invalid references and align citation list."""
     c1 = build_citation(_chunk(text="chunk one", idx=0))
@@ -84,6 +107,37 @@ def test_verify_citations_strips_invalid_references_and_reindexes() -> None:
     assert update["answer"].count("[1]") >= 1
     assert update["answer"].count("[2]") >= 1  # [3] reindexed to [2]
     assert len(update["citations"]) == 2
+
+
+def test_langgraph_verification_matches_shared_linear_normalization() -> None:
+    citations = [
+        build_citation(_chunk(text=f"chunk {index}", idx=index - 1)) for index in range(1, 4)
+    ]
+    answer = "Compare [3] and [1], repeat [3], ignore [9]."
+    expected_answer, expected_citations = normalize_answer_citations(answer, citations)
+    state = create_initial_state(question="Q?", user_id=uuid.uuid4())
+    state["answer"] = answer
+    state["citations"] = citations
+
+    update = verify_citations(state)
+
+    assert update == {
+        "answer": expected_answer,
+        "citations": expected_citations,
+    }
+    assert update["answer"] == "Compare [1] and [2], repeat [1], ignore."
+    assert update["citations"] == [citations[2], citations[0]]
+
+
+def test_verify_citations_returns_no_citations_without_markers() -> None:
+    citation = build_citation(_chunk(text="chunk one"))
+    state = create_initial_state(question="Q?", user_id=uuid.uuid4())
+    state["answer"] = "Answer without markers."
+    state["citations"] = [citation]
+
+    update = verify_citations(state)
+
+    assert update == {"answer": "Answer without markers.", "citations": []}
 
 
 @pytest.mark.asyncio

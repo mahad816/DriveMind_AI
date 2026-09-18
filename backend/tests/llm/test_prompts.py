@@ -11,6 +11,7 @@ from app.llm.base import ChatError
 from app.llm.prompts import (
     build_grounded_user_message,
     format_citation_snippet,
+    normalize_answer_citations,
     select_context_chunks,
     select_prompt_chunks,
 )
@@ -79,6 +80,64 @@ def test_format_citation_snippet_normalizes_whitespace_and_truncates() -> None:
     assert "\n" not in snippet
     assert snippet.endswith("...")
     assert len(snippet) <= 40
+
+
+@pytest.mark.parametrize(
+    ("answer", "citations", "expected_answer", "expected_citations"),
+    [
+        ("See [1].", ["c1", "c2", "c3"], "See [1].", ["c1"]),
+        ("See [3].", ["c1", "c2", "c3"], "See [1].", ["c3"]),
+        (
+            "Compare [1] and [3].",
+            ["c1", "c2", "c3"],
+            "Compare [1] and [2].",
+            ["c1", "c3"],
+        ),
+        (
+            "Compare [3] and [1].",
+            ["c1", "c2", "c3"],
+            "Compare [1] and [2].",
+            ["c3", "c1"],
+        ),
+        ("[3] then [3].", ["c1", "c2", "c3"], "[1] then [1].", ["c3"]),
+        ("Invalid [0] and [4].", ["c1", "c2", "c3"], "Invalid and.", []),
+        (
+            "Use [2] and ignore [9].",
+            ["c1", "c2", "c3"],
+            "Use [1] and ignore.",
+            ["c2"],
+        ),
+        ("Only invalid [9].", ["c1"], "Only invalid.", []),
+        ("[9] Invalid at start.", ["c1"], "Invalid at start.", []),
+        ("No citation markers.", ["c1"], "No citation markers.", []),
+        (
+            "Keep [abc] and [1,2].",
+            ["c1", "c2"],
+            "Keep [abc] and [1,2].",
+            [],
+        ),
+        ("See [12].", [f"c{i}" for i in range(1, 13)], "See [1].", ["c12"]),
+    ],
+)
+def test_normalize_answer_citations(
+    answer: str,
+    citations: list[str],
+    expected_answer: str,
+    expected_citations: list[str],
+) -> None:
+    normalized_answer, normalized_citations = normalize_answer_citations(answer, citations)
+
+    assert normalized_answer == expected_answer
+    assert normalized_citations == expected_citations
+
+
+def test_normalize_answer_citations_preserves_markdown_paragraphs() -> None:
+    answer = "First claim [9].  \n\n- Second claim [1]."
+
+    normalized_answer, citations = normalize_answer_citations(answer, ["c1"])
+
+    assert normalized_answer == "First claim.  \n\n- Second claim [1]."
+    assert citations == ["c1"]
 
 
 def test_build_grounded_user_message_rejects_empty_question() -> None:

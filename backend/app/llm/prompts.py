@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import re
+from typing import TypeVar
 
 from app.llm.base import ChatError
 from app.retrieval.filename_targets import prioritize_filename_targets
 from app.retrieval.types import RetrievedChunk
 
 DEFAULT_CITATION_SNIPPET_LENGTH = 300
+CitationT = TypeVar("CitationT")
+_CITATION_MARKER_PATTERN = re.compile(r"\[(\d+)\]")
+_CITATION_MARKER_REWRITE_PATTERN = re.compile(
+    r"(?P<leading>[ \t]?)\[(?P<index>\d+)\](?P<trailing>[ \t]?)"
+)
 
 NO_EVIDENCE_ANSWER = (
     "I could not find relevant information in your indexed Google Drive files "
@@ -176,27 +182,34 @@ def format_citation_snippet(text: str, *, max_length: int = DEFAULT_CITATION_SNI
     return normalized[: max_length - 3].rstrip() + "..."
 
 
-def filter_citations_to_answer(
+def normalize_answer_citations(
     answer: str,
-    citations: list[object],
-) -> list[object]:
-    """Return citation items that support the answer for the UI source panel.
+    citations: list[CitationT],
+) -> tuple[str, list[CitationT]]:
+    """Align answer markers and citations using first-reference order."""
+    matches = list(_CITATION_MARKER_PATTERN.finditer(answer))
+    if not matches:
+        return answer, []
 
-    Prefer citations whose ``[N]`` reference appears in the answer. If the model
-    omits bracket markers but retrieval still produced evidence, return all
-    prompt citations so the user can inspect the grounded sources.
-    """
-    if not answer or not citations:
-        return []
+    original_to_final: dict[int, int] = {}
+    retained_indices: list[int] = []
+    for match in matches:
+        original_index = int(match.group(1))
+        if not 1 <= original_index <= len(citations):
+            continue
+        if original_index not in original_to_final:
+            retained_indices.append(original_index)
+            original_to_final[original_index] = len(retained_indices)
 
-    refs = {int(m) for m in re.findall(r"\[(\d+)\]", answer)}
-    if not refs:
-        return list(citations)
+    def replace_marker(match: re.Match[str]) -> str:
+        final_index = original_to_final.get(int(match.group("index")))
+        if final_index is None:
+            return " " if match.group("leading") and match.group("trailing") else ""
+        return f"{match.group('leading')}[{final_index}]{match.group('trailing')}"
 
-    valid_refs = sorted(ref for ref in refs if 1 <= ref <= len(citations))
-    if not valid_refs:
-        return list(citations)
-    return [citations[ref - 1] for ref in valid_refs]
+    normalized_answer = _CITATION_MARKER_REWRITE_PATTERN.sub(replace_marker, answer)
+    retained_citations = [citations[index - 1] for index in retained_indices]
+    return normalized_answer, retained_citations
 
 
 def _format_context_block(*, index: int, chunk: RetrievedChunk) -> str:
