@@ -70,9 +70,11 @@ class RagService:
         *,
         retriever: Retriever | None = None,
         chat_service: ChatService | None = None,
+        persist_query_history: bool = True,
     ) -> None:
         self.db = db
         self.settings = settings or get_settings()
+        self.persist_query_history = persist_query_history
         if retriever is not None:
             self.retriever = retriever
         elif self.settings.hybrid_retrieval_enabled:
@@ -510,6 +512,9 @@ class RagService:
         answer: str,
         citations: list[CitationItem],
     ) -> uuid.UUID:
+        if not self.persist_query_history:
+            return uuid.uuid4()
+
         history = QueryHistory(
             user_id=user_id,
             question=question,

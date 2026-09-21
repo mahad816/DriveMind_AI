@@ -148,6 +148,87 @@ async def test_ask_generates_answer_and_persists_history(
 
 
 @pytest.mark.asyncio
+async def test_disabled_query_history_returns_ephemeral_id_without_persistence(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            rag_max_context_chars=12000,
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+        persist_query_history=False,
+    )
+    mock_db.get = AsyncMock(return_value=USER)
+
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
+
+    assert isinstance(result.query_id, uuid.UUID)
+    assert result.answer == "Tensile strength is discussed in [1]."
+    assert result.retrieval_count == 1
+    assert result.citations[0].chunk_id == CHUNK_ID
+    mock_db.add.assert_not_called()
+    mock_db.commit.assert_not_awaited()
+    mock_db.refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persistence_flag_changes_only_query_history_side_effects(
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    persisted_db = AsyncMock()
+    persisted_db.add = MagicMock()
+    persisted_db.commit = AsyncMock()
+    persisted_db.refresh = AsyncMock(side_effect=lambda history: setattr(history, "id", QUERY_ID))
+    persisted_db.get = AsyncMock(return_value=USER)
+    evaluation_db = AsyncMock()
+    evaluation_db.add = MagicMock()
+    evaluation_db.commit = AsyncMock()
+    evaluation_db.refresh = AsyncMock()
+    evaluation_db.get = AsyncMock(return_value=USER)
+    settings = Settings(
+        rag_max_context_chars=12000,
+        hybrid_retrieval_enabled=False,
+        agent_graph_enabled=False,
+    )
+    persisted_service = RagService(
+        persisted_db,
+        settings,
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+    evaluation_service = RagService(
+        evaluation_db,
+        settings,
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+        persist_query_history=False,
+    )
+
+    persisted = await persisted_service.ask("What is tensile strength?", user_id=USER_ID)
+    unpersisted = await evaluation_service.ask("What is tensile strength?", user_id=USER_ID)
+
+    assert unpersisted.user_id == persisted.user_id
+    assert unpersisted.question == persisted.question
+    assert unpersisted.answer == persisted.answer
+    assert unpersisted.citations == persisted.citations
+    assert unpersisted.retrieval_count == persisted.retrieval_count
+    assert unpersisted.query_id != persisted.query_id
+    persisted_db.add.assert_called_once()
+    persisted_db.commit.assert_awaited_once()
+    persisted_db.refresh.assert_awaited_once()
+    evaluation_db.add.assert_not_called()
+    evaluation_db.commit.assert_not_awaited()
+    evaluation_db.refresh.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_ask_returns_no_evidence_answer_without_retrieval(
     service: RagService,
     mock_db: AsyncMock,
