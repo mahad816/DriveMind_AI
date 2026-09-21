@@ -46,6 +46,7 @@ from app.evaluation.trace import (
     RetrievalAttemptTrace,
     TraceOutcome,
 )
+from app.ingestion.hash_util import compute_extracted_text_hash
 from app.services.rag_service import RagResult, RagService
 from evaluation.dataset import EvaluationCase, EvaluationDataset, load_dataset
 from evaluation.metrics import (
@@ -377,6 +378,15 @@ async def verify_corpus(
                 f"Expected one Document for {filename!r}; found {len(documents)}"
             )
         document = documents[0]
+        if not document.extracted_text or not document.extracted_text.strip():
+            raise EvaluationPreflightError(
+                f"Corpus file {filename!r} has empty extracted document text"
+            )
+        computed_text_hash = compute_extracted_text_hash(document.extracted_text)
+        if document.extracted_text_hash != computed_text_hash:
+            raise EvaluationPreflightError(
+                f"Stored Document hash is stale for corpus file {filename!r}"
+            )
         chunks = list(
             (
                 await db.scalars(
@@ -388,6 +398,12 @@ async def verify_corpus(
         )
         if not chunks:
             raise EvaluationPreflightError(f"Corpus file {filename!r} has no chunks")
+        for chunk in chunks:
+            chunk_text_hash = chunk.metadata_json.get("extracted_text_hash")
+            if chunk_text_hash != document.extracted_text_hash:
+                raise EvaluationPreflightError(
+                    f"Chunk source hash is stale for corpus file {filename!r} chunk {chunk.id}"
+                )
 
         chunk_entries = [
             {
@@ -409,7 +425,7 @@ async def verify_corpus(
                 "modified_at": drive_file.modified_at.isoformat(),
                 "indexed_at": drive_file.indexed_at.isoformat() if drive_file.indexed_at else None,
                 "document_id": str(document.id),
-                "extracted_text_sha256": _text_sha256(document.extracted_text),
+                "extracted_text_sha256": computed_text_hash,
                 "stored_extracted_text_hash": document.extracted_text_hash,
                 "chunk_count": len(chunks),
                 "qdrant_point_count": len(points),

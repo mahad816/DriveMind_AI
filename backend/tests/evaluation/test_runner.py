@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -29,6 +31,7 @@ from app.evaluation.trace import (
     RewriteTrace,
     TraceOutcome,
 )
+from app.ingestion.hash_util import compute_extracted_text_hash
 from app.retrieval.query_router import QueryRoute
 from app.services.rag_service import RagResult
 from evaluation.dataset import EvaluationCase, EvaluationDataset
@@ -55,6 +58,8 @@ USER_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
 CHUNK_ID = uuid.uuid4()
 NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
+SYNTHETIC_TEXT = "Controlled synthetic evidence."
+SYNTHETIC_HASH = compute_extracted_text_hash(SYNTHETIC_TEXT)
 
 
 def _case(
@@ -175,6 +180,21 @@ def test_default_cli_refuses_execution(capsys: pytest.CaptureFixture[str]) -> No
     assert "--execute-gold" in capsys.readouterr().err
 
 
+def test_runner_help_imports_in_fresh_process() -> None:
+    backend_root = Path(__file__).parents[2]
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "evaluation.runner", "--help"],
+        cwd=backend_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--execute-gold" in completed.stdout
+
+
 def test_explicit_cli_opt_in_invokes_injected_command(tmp_path: Path) -> None:
     artifact = tmp_path / "synthetic.json"
     calls: list[dict[str, Any]] = []
@@ -260,15 +280,15 @@ async def test_corpus_preflight_verifies_indexed_document_chunks_and_qdrant() ->
     document = Document(
         id=uuid.uuid4(),
         drive_file_id=DRIVE_FILE_ID,
-        extracted_text="Controlled synthetic evidence.",
-        extracted_text_hash="stored-hash",
+        extracted_text=SYNTHETIC_TEXT,
+        extracted_text_hash=SYNTHETIC_HASH,
     )
     chunk = Chunk(
         id=CHUNK_ID,
         document_id=document.id,
         chunk_index=0,
-        text="Controlled synthetic evidence.",
-        metadata_json={"extracted_text_hash": "stored-hash"},
+        text=SYNTHETIC_TEXT,
+        metadata_json={"extracted_text_hash": SYNTHETIC_HASH},
     )
     db = AsyncMock()
     db.scalars = AsyncMock(
@@ -286,7 +306,7 @@ async def test_corpus_preflight_verifies_indexed_document_chunks_and_qdrant() ->
                 chunk_id=str(CHUNK_ID),
                 drive_file_id=str(DRIVE_FILE_ID),
                 filename="alpha.txt",
-                extracted_text_hash="stored-hash",
+                extracted_text_hash=SYNTHETIC_HASH,
             ),
         )
     )
@@ -307,6 +327,146 @@ async def test_corpus_preflight_verifies_indexed_document_chunks_and_qdrant() ->
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("extracted_text", ["", " \n\t "])
+async def test_corpus_preflight_rejects_empty_document_text(extracted_text: str) -> None:
+    drive_file = DriveFile(
+        id=DRIVE_FILE_ID,
+        user_id=USER_ID,
+        drive_file_id="google-alpha",
+        name="alpha.txt",
+        mime_type="text/plain",
+        modified_at=NOW,
+        indexed_at=NOW,
+        status=DriveFileStatus.INDEXED,
+    )
+    document = Document(
+        id=uuid.uuid4(),
+        drive_file_id=DRIVE_FILE_ID,
+        extracted_text=extracted_text,
+        extracted_text_hash=compute_extracted_text_hash(extracted_text),
+    )
+    db = AsyncMock()
+    db.scalars = AsyncMock(side_effect=[_ScalarRows([drive_file]), _ScalarRows([document])])
+    vector_reader = AsyncMock()
+
+    with pytest.raises(EvaluationPreflightError, match="empty extracted document text"):
+        await verify_corpus(cast(AsyncSession, db), vector_reader, USER_ID, ["alpha.txt"])
+
+    vector_reader.points_for_drive_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_corpus_preflight_rejects_stale_document_hash() -> None:
+    drive_file = DriveFile(
+        id=DRIVE_FILE_ID,
+        user_id=USER_ID,
+        drive_file_id="google-alpha",
+        name="alpha.txt",
+        mime_type="text/plain",
+        modified_at=NOW,
+        indexed_at=NOW,
+        status=DriveFileStatus.INDEXED,
+    )
+    document = Document(
+        id=uuid.uuid4(),
+        drive_file_id=DRIVE_FILE_ID,
+        extracted_text=SYNTHETIC_TEXT,
+        extracted_text_hash="stale-document-hash",
+    )
+    db = AsyncMock()
+    db.scalars = AsyncMock(side_effect=[_ScalarRows([drive_file]), _ScalarRows([document])])
+    vector_reader = AsyncMock()
+
+    with pytest.raises(EvaluationPreflightError, match="Stored Document hash is stale"):
+        await verify_corpus(cast(AsyncSession, db), vector_reader, USER_ID, ["alpha.txt"])
+
+    vector_reader.points_for_drive_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_corpus_preflight_rejects_stale_chunk_source_hash() -> None:
+    drive_file = DriveFile(
+        id=DRIVE_FILE_ID,
+        user_id=USER_ID,
+        drive_file_id="google-alpha",
+        name="alpha.txt",
+        mime_type="text/plain",
+        modified_at=NOW,
+        indexed_at=NOW,
+        status=DriveFileStatus.INDEXED,
+    )
+    document = Document(
+        id=uuid.uuid4(),
+        drive_file_id=DRIVE_FILE_ID,
+        extracted_text=SYNTHETIC_TEXT,
+        extracted_text_hash=SYNTHETIC_HASH,
+    )
+    chunk = Chunk(
+        id=CHUNK_ID,
+        document_id=document.id,
+        chunk_index=0,
+        text=SYNTHETIC_TEXT,
+        metadata_json={"extracted_text_hash": "stale-chunk-hash"},
+    )
+    db = AsyncMock()
+    db.scalars = AsyncMock(
+        side_effect=[_ScalarRows([drive_file]), _ScalarRows([document]), _ScalarRows([chunk])]
+    )
+    vector_reader = AsyncMock()
+
+    with pytest.raises(EvaluationPreflightError, match="Chunk source hash is stale"):
+        await verify_corpus(cast(AsyncSession, db), vector_reader, USER_ID, ["alpha.txt"])
+
+    vector_reader.points_for_drive_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_corpus_preflight_rejects_stale_qdrant_hash() -> None:
+    drive_file = DriveFile(
+        id=DRIVE_FILE_ID,
+        user_id=USER_ID,
+        drive_file_id="google-alpha",
+        name="alpha.txt",
+        mime_type="text/plain",
+        modified_at=NOW,
+        indexed_at=NOW,
+        status=DriveFileStatus.INDEXED,
+    )
+    document = Document(
+        id=uuid.uuid4(),
+        drive_file_id=DRIVE_FILE_ID,
+        extracted_text=SYNTHETIC_TEXT,
+        extracted_text_hash=SYNTHETIC_HASH,
+    )
+    chunk = Chunk(
+        id=CHUNK_ID,
+        document_id=document.id,
+        chunk_index=0,
+        text=SYNTHETIC_TEXT,
+        metadata_json={"extracted_text_hash": SYNTHETIC_HASH},
+    )
+    db = AsyncMock()
+    db.scalars = AsyncMock(
+        side_effect=[_ScalarRows([drive_file]), _ScalarRows([document]), _ScalarRows([chunk])]
+    )
+    vector_reader = AsyncMock()
+    vector_reader.points_for_drive_file = AsyncMock(
+        return_value=(
+            VectorPayloadSnapshot(
+                point_id=str(CHUNK_ID),
+                chunk_id=str(CHUNK_ID),
+                drive_file_id=str(DRIVE_FILE_ID),
+                filename="alpha.txt",
+                extracted_text_hash="stale-qdrant-hash",
+            ),
+        )
+    )
+
+    with pytest.raises(EvaluationPreflightError, match="Qdrant payload hash is stale"):
+        await verify_corpus(cast(AsyncSession, db), vector_reader, USER_ID, ["alpha.txt"])
+
+
+@pytest.mark.asyncio
 async def test_corpus_preflight_rejects_missing_qdrant_point() -> None:
     drive_file = DriveFile(
         id=DRIVE_FILE_ID,
@@ -321,15 +481,15 @@ async def test_corpus_preflight_rejects_missing_qdrant_point() -> None:
     document = Document(
         id=uuid.uuid4(),
         drive_file_id=DRIVE_FILE_ID,
-        extracted_text="Controlled synthetic evidence.",
-        extracted_text_hash="stored-hash",
+        extracted_text=SYNTHETIC_TEXT,
+        extracted_text_hash=SYNTHETIC_HASH,
     )
     chunk = Chunk(
         id=CHUNK_ID,
         document_id=document.id,
         chunk_index=0,
-        text="Controlled synthetic evidence.",
-        metadata_json={"extracted_text_hash": "stored-hash"},
+        text=SYNTHETIC_TEXT,
+        metadata_json={"extracted_text_hash": SYNTHETIC_HASH},
     )
     db = AsyncMock()
     db.scalars = AsyncMock(

@@ -11,12 +11,13 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 from time import perf_counter
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 import uuid
 
-from app.retrieval.query_router import QueryRoute
-from app.retrieval.types import RetrievedChunk
-from app.schemas.query import CitationItem
+if TYPE_CHECKING:
+    from app.retrieval.query_router import QueryRoute
+    from app.retrieval.types import RetrievedChunk
+    from app.schemas.query import CitationItem
 
 ExecutionPath = Literal["chitchat", "file_inventory", "file_target", "linear", "langgraph"]
 
