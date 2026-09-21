@@ -73,6 +73,20 @@ class StageFileSurvival:
     all_expected_files: bool | None
 
 
+@dataclass(frozen=True)
+class CitationMetrics:
+    """Structural and source-file citation diagnostics, not semantic faithfulness."""
+
+    citation_count: int
+    marker_count: int
+    marker_indices: tuple[int, ...]
+    markers_valid: bool
+    cited_filenames: tuple[str, ...]
+    expected_file_recall: float | None
+    all_expected_files_cited: bool | None
+    unexpected_cited_files: tuple[str, ...]
+
+
 def normalize_text(value: str) -> str:
     """Normalize common formatting variants for deterministic lexical matching."""
     normalized = unicodedata.normalize("NFKC", value).translate(_TYPOGRAPHIC_TRANSLATION)
@@ -211,6 +225,41 @@ def route_matches(expected_route: str, observed_route: QueryRoute | str | None) 
     expected_name = _route_name(expected_route)
     observed_name = _route_name(observed_route)
     return expected_name is not None and expected_name == observed_name
+
+
+def citation_metrics(
+    answer: str,
+    citation_filenames: Sequence[str],
+    expected_files: Sequence[str],
+) -> CitationMetrics:
+    """Score citation numbering and source filenames without judging claim support."""
+    marker_indices = tuple(int(value) for value in re.findall(r"\[(\d+)\]", answer))
+    valid_indices = set(range(1, len(citation_filenames) + 1))
+    observed_indices = set(marker_indices)
+    markers_valid = observed_indices == valid_indices and all(index > 0 for index in marker_indices)
+
+    cited_filenames = _unique(citation_filenames)
+    expected = set(expected_files)
+    cited = set(cited_filenames)
+    if expected:
+        recall: float | None = len(expected.intersection(cited)) / len(expected)
+        all_cited: bool | None = expected.issubset(cited)
+    else:
+        recall = None
+        all_cited = None
+
+    return CitationMetrics(
+        citation_count=len(citation_filenames),
+        marker_count=len(marker_indices),
+        marker_indices=marker_indices,
+        markers_valid=markers_valid,
+        cited_filenames=cited_filenames,
+        expected_file_recall=recall,
+        all_expected_files_cited=all_cited,
+        unexpected_cited_files=tuple(
+            filename for filename in cited_filenames if filename not in expected
+        ),
+    )
 
 
 def _route_name(route: QueryRoute | str | None) -> str | None:

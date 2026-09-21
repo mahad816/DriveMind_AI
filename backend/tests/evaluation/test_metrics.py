@@ -7,6 +7,7 @@ import pytest
 from app.retrieval.query_router import QueryRoute
 from evaluation.metrics import (
     all_expected_files_at_k,
+    citation_metrics,
     expected_file_stage_survival,
     file_hit_at_k,
     file_ranking_metrics,
@@ -144,3 +145,40 @@ def test_stage_survival_preserves_stage_order_and_expected_file_set() -> None:
     assert survival[0].expected_file_recall == 1.0
     assert survival[1].expected_file_recall == 0.5
     assert survival[2].any_expected_file is False
+
+
+def test_citation_metrics_check_structure_and_expected_sources() -> None:
+    metrics = citation_metrics(
+        "Alpha is supported [1], and Beta is supported [2].",
+        ["alpha.txt", "beta.txt"],
+        ["alpha.txt", "beta.txt"],
+    )
+
+    assert metrics.citation_count == 2
+    assert metrics.marker_count == 2
+    assert metrics.marker_indices == (1, 2)
+    assert metrics.markers_valid is True
+    assert metrics.expected_file_recall == 1.0
+    assert metrics.all_expected_files_cited is True
+    assert metrics.unexpected_cited_files == ()
+
+
+def test_citation_metrics_detect_invalid_and_unexpected_sources() -> None:
+    metrics = citation_metrics(
+        "Only the second source is cited [2].",
+        ["alpha.txt", "noise.txt"],
+        ["alpha.txt", "beta.txt"],
+    )
+
+    assert metrics.markers_valid is False
+    assert metrics.expected_file_recall == 0.5
+    assert metrics.all_expected_files_cited is False
+    assert metrics.unexpected_cited_files == ("noise.txt",)
+
+
+def test_citation_source_metrics_are_not_applicable_without_expected_files() -> None:
+    metrics = citation_metrics("A direct answer.", [], [])
+
+    assert metrics.markers_valid is True
+    assert metrics.expected_file_recall is None
+    assert metrics.all_expected_files_cited is None
