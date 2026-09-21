@@ -1,0 +1,173 @@
+{
+  "review_id": "drivemind_gold_v1_baseline_human_review",
+  "schema_version": "1.0",
+  "review_type": "human_semantic_review",
+  "baseline_artifact": {
+    "path": "backend/evaluation/results/drivemind_gold_v1__20260921T143023Z__f93736aa.json",
+    "sha256": "f22435ec26a561a248b782bba5f8ded2d3b6ae2bb759db30712e795af53d61db",
+    "git_sha": "f93736aa3c901ee0ca4589f6fd3f4473612433ba",
+    "dataset_sha256": "9f223c2143e452cea5d85d20d25d0ea6e081bfb92b09d8d13855f0630526e8a0",
+    "corpus_fingerprint": "f8c8c6de3e563c37d84f8b89c6588a0a4a4cd4465a50543fe41d3cf2ea90efc8"
+  },
+  "review_method": {
+    "reviewed_case_count": 14,
+    "review_scope": "Suspicious, failed, citation, distractor, and evaluator-edge cases from the untouched Gold v1 baseline.",
+    "notes": "Human judgments were assigned after reviewing the saved baseline artifact and Gold reference data. No benchmark cases were rerun."
+  },
+  "cases": [
+    {
+      "case_id": "routing_001",
+      "answer_quality": "CORRECT",
+      "grounding": "NOT_APPLICABLE",
+      "citation_quality": "NOT_APPLICABLE",
+      "primary_cause": "ROUTING",
+      "notes": "The final reply was appropriate, but DriveMind unnecessarily used grounded retrieval instead of the chitchat path.",
+      "batch": "A",
+      "expected_route": "CHITCHAT",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "routing_002",
+      "answer_quality": "INCORRECT",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "NOT_APPLICABLE",
+      "primary_cause": "ROUTING",
+      "notes": "The system answered from retrieved prose instead of querying the actual file inventory, so the response cannot be trusted as a complete knowledge-base listing.",
+      "batch": "A",
+      "expected_route": "FILE_INVENTORY",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "routing_003",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "MISSING",
+      "primary_cause": "ROUTING",
+      "notes": "The content answer was strong and used the expected file, but the system took the wrong route and emitted no citation markers.",
+      "batch": "A",
+      "expected_route": "FILE_TARGET",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "resume_003",
+      "answer_quality": "PARTIAL",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "MISSING",
+      "primary_cause": "ROUTING",
+      "notes": "The answer correctly reported January 2027 for Resume v2 but missed December 2026 for Resume v1 because the query was incorrectly routed to FILE_INVENTORY instead of grounded retrieval.",
+      "batch": "A",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "FILE_INVENTORY"
+    },
+    {
+      "case_id": "crossdoc_001",
+      "answer_quality": "INCORRECT",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "INCORRECT",
+      "primary_cause": "PROMPT_SELECTION",
+      "notes": "Retrieval had found the correct CoreChain and DriveMind files earlier, but the prompt selector excluded both and filled the prompt with DriveMind implementation-guide chunks. The DriveMind half was mostly correct, but the CoreChain half was wrong and described it as RAG-based.",
+      "batch": "B",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "crossdoc_002",
+      "answer_quality": "CORRECT",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "MISSING",
+      "primary_cause": "PROMPT_SELECTION",
+      "notes": "The factual answer was broadly correct, but DriveMind_Project.txt was lost during prompt selection. The DriveMind portion was supported instead by implementation-guide chunks, and the answer emitted no citation markers.",
+      "batch": "B",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "corechain_003",
+      "answer_quality": "INCORRECT",
+      "grounding": "UNSUPPORTED",
+      "citation_quality": "INCORRECT",
+      "primary_cause": "DISTRACTOR_ATTRIBUTION",
+      "notes": "The answer correctly stated that CoreChain's budget was not specified, but then attached unrelated budget figures from Expense_Report_2025.txt to the CoreChain question. Those figures were not evidence about CoreChain.",
+      "batch": "C",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "corechain_004",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "PARTIAL",
+      "primary_cause": "CITATION",
+      "notes": "The answer correctly gave a grounded negative response. The expected CoreChain source was cited, but an additional CoreChain-related PDF was also cited unnecessarily.",
+      "batch": "C",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "ptcl_003",
+      "answer_quality": "INCORRECT",
+      "grounding": "UNSUPPORTED",
+      "citation_quality": "INCORRECT",
+      "primary_cause": "DISTRACTOR_ATTRIBUTION",
+      "notes": "The PTCL source did not contain salary information, but the model imported PKR 25,000 from a different internship report and attributed it to the PTCL internship.",
+      "batch": "C",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "resume_001",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "PARTIAL",
+      "primary_cause": "CITATION",
+      "notes": "The answer was correct and both resume versions were available in context, but only Resume_v1.txt was cited. The Version 2 claim should also have been attributed to Resume_v2.txt.",
+      "batch": "D",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "resume_004",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "MISSING",
+      "primary_cause": "CITATION",
+      "notes": "The answer correctly synthesized the differences between both resume versions and all required facts were present, but no citations were emitted despite both source files being available.",
+      "batch": "D",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "semantic_001",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "PARTIAL",
+      "primary_cause": "CITATION",
+      "notes": "The core answer was correct and the expected DriveMind project source was cited. Additional implementation-guide citations were unnecessary but did not make the answer incorrect.",
+      "batch": "D",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "meeting_001",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_cause": "EVALUATOR_FALSE_NEGATIVE",
+      "notes": "The answer was fully correct and properly cited. The deterministic lexical matcher failed because it treated \"July 28\" and \"28 July\" as different.",
+      "batch": "E",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    },
+    {
+      "case_id": "ptcl_002",
+      "answer_quality": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_cause": "EVALUATOR_FALSE_NEGATIVE",
+      "notes": "The answer was correct and cited the expected PTCL source. The lexical metric failed because it did not normalize \"8B\" and \"8 billion\" as equivalent.",
+      "batch": "E",
+      "expected_route": "GROUNDED_RAG",
+      "observed_route": "GROUNDED_RAG"
+    }
+  ]
+}
