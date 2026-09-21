@@ -1,0 +1,346 @@
+{
+  "dataset_id": "drivemind_gold_v1",
+  "schema_version": "1.0",
+  "corpus_id": "DriveMind_Eval_Corpus_v1",
+  "case_count": 24,
+  "description": "Human-authored baseline evaluation set for DriveMind RAG. Ground truth was defined before running the benchmark against DriveMind.",
+  "evaluation_notes": {
+    "expected_files": "Gold source files that contain the evidence required to answer the question correctly. Distractor files must not be listed as expected_files.",
+    "must_include": "Critical factual anchors expected in a correct final answer. Later scoring should normalize formatting and not require identical prose.",
+    "must_not_include": "Incorrect factual assertions that must not be presented as true. These are propositions, not simple forbidden-word substring matches.",
+    "evidence_anchors": "Facts or terms expected in relevant retrieved evidence. These help distinguish retrieval failures from generation failures.",
+    "should_answer_false": "The requested factual value is unsupported. DriveMind should not invent it, but may explicitly state that the corpus does not provide the information."
+  },
+  "cases": [
+    {
+      "id": "routing_001",
+      "question": "Hey, how are you?",
+      "expected_route": "CHITCHAT",
+      "expected_files": [],
+      "should_answer": true,
+      "reference_answer": null,
+      "must_include": [],
+      "must_not_include": [],
+      "evidence_anchors": [],
+      "tags": ["routing", "chitchat"]
+    },
+    {
+      "id": "routing_002",
+      "question": "What files do I have in my knowledge base?",
+      "expected_route": "FILE_INVENTORY",
+      "expected_files": [],
+      "should_answer": true,
+      "reference_answer": null,
+      "must_include": [],
+      "must_not_include": [],
+      "evidence_anchors": [],
+      "tags": ["routing", "inventory"]
+    },
+    {
+      "id": "routing_003",
+      "question": "Tell me about the file CoreChain_Project.txt",
+      "expected_route": "FILE_TARGET",
+      "expected_files": ["CoreChain_Project.txt"],
+      "should_answer": true,
+      "reference_answer": null,
+      "must_include": [],
+      "must_not_include": [],
+      "evidence_anchors": ["CoreChain_Project.txt"],
+      "tags": ["routing", "file_target"]
+    },
+    {
+      "id": "corechain_001",
+      "question": "What was CoreChain's internal codename?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["CoreChain_Project.txt"],
+      "should_answer": true,
+      "reference_answer": "CoreChain's internal codename was Cedar Falcon.",
+      "must_include": ["Cedar Falcon"],
+      "must_not_include": [],
+      "evidence_anchors": ["Cedar Falcon"],
+      "tags": ["single_doc", "exact_fact"]
+    },
+    {
+      "id": "ptcl_001",
+      "question": "What accuracy was reported for the PTCL internship sentiment system?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["PTCL_Internship.txt"],
+      "should_answer": true,
+      "reference_answer": "The reported accuracy was 78.79% on the controlled 99-review sample.",
+      "must_include": ["78.79%"],
+      "must_not_include": [],
+      "evidence_anchors": ["78.79%", "99"],
+      "tags": ["single_doc", "exact_fact", "numeric"]
+    },
+    {
+      "id": "meeting_001",
+      "question": "When was the follow-up meeting scheduled after the July evaluation meeting?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Meeting_Notes_July.txt"],
+      "should_answer": true,
+      "reference_answer": "The follow-up meeting was scheduled for July 28 at 11:00 AM.",
+      "must_include": ["July 28", "11:00 AM"],
+      "must_not_include": [],
+      "evidence_anchors": ["July 28", "11:00 AM"],
+      "tags": ["single_doc", "exact_fact", "date_time"]
+    },
+    {
+      "id": "drivemind_001",
+      "question": "Where does DriveMind keep vector embeddings for document search?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["DriveMind_Project.txt"],
+      "should_answer": true,
+      "reference_answer": "DriveMind stores its vector embeddings in Qdrant.",
+      "must_include": ["Qdrant"],
+      "must_not_include": ["PostgreSQL stores DriveMind's vector embeddings"],
+      "evidence_anchors": ["Qdrant", "vector"],
+      "tags": ["semantic_retrieval", "single_doc", "architecture"]
+    },
+    {
+      "id": "ptcl_002",
+      "question": "Which model was used locally to analyze telecom reviews during the internship?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["PTCL_Internship.txt"],
+      "should_answer": true,
+      "reference_answer": "A locally run quantized Llama 3.1 model of roughly 8B parameters was used.",
+      "must_include": ["Llama 3.1", "8B"],
+      "must_not_include": ["GPT-4 was used as the local review-analysis model"],
+      "evidence_anchors": ["Llama 3.1", "8B", "Q4"],
+      "tags": ["semantic_retrieval", "single_doc", "distractor_resistance"]
+    },
+    {
+      "id": "cloud_001",
+      "question": "Which AWS service in my notes is described as managed relational database infrastructure?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Cloud_Computing_Notes.txt"],
+      "should_answer": true,
+      "reference_answer": "Amazon RDS.",
+      "must_include": ["RDS"],
+      "must_not_include": [
+        "S3 is the managed relational database service",
+        "EC2 is the managed relational database service",
+        "Lambda is the managed relational database service"
+      ],
+      "evidence_anchors": ["RDS", "relational database"],
+      "tags": ["semantic_retrieval", "single_doc", "concept_mapping"]
+    },
+    {
+      "id": "ml_001",
+      "question": "Which metric in my machine learning notes balances precision and recall?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Machine_Learning_Notes.txt"],
+      "should_answer": true,
+      "reference_answer": "F1 score balances precision and recall.",
+      "must_include": ["F1"],
+      "must_not_include": ["Accuracy is the metric that balances precision and recall"],
+      "evidence_anchors": ["F1", "precision", "recall"],
+      "tags": ["semantic_retrieval", "single_doc", "distractor_resistance"]
+    },
+    {
+      "id": "corechain_002",
+      "question": "What protected communication between participants in CoreChain?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["CoreChain_Project.txt"],
+      "should_answer": true,
+      "reference_answer": "CoreChain used TLS-secured gRPC over HTTP/2 for communication.",
+      "must_include": ["TLS"],
+      "must_not_include": [],
+      "evidence_anchors": ["TLS", "gRPC", "HTTP/2"],
+      "tags": ["semantic_retrieval", "single_doc", "security", "distractor_resistance"]
+    },
+    {
+      "id": "expense_001",
+      "question": "Which category consumed the most money in the 2025 expense report?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Expense_Report_2025.txt"],
+      "should_answer": true,
+      "reference_answer": "Cloud was the largest expense category at PKR 210,000.",
+      "must_include": ["Cloud", "210,000"],
+      "must_not_include": ["Travel was the largest expense category"],
+      "evidence_anchors": ["Cloud", "210,000"],
+      "tags": ["semantic_retrieval", "numeric", "ranking", "single_doc"]
+    },
+    {
+      "id": "resume_001",
+      "question": "Which version of my resume includes the DriveMind project?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Resume_v1.txt", "Resume_v2.txt"],
+      "should_answer": true,
+      "reference_answer": "DriveMind is included in Resume Version 2 and is not included as a project in Resume Version 1.",
+      "must_include": ["Resume Version 2", "DriveMind"],
+      "must_not_include": ["Resume Version 1 includes DriveMind as a project"],
+      "evidence_anchors": ["Resume Version 1", "Resume Version 2", "DriveMind"],
+      "tags": ["multi_doc", "versioning", "conflict_resolution"]
+    },
+    {
+      "id": "resume_002",
+      "question": "How did the CGPA change between my two resume versions?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Resume_v1.txt", "Resume_v2.txt"],
+      "should_answer": true,
+      "reference_answer": "Resume Version 1 lists a CGPA of 2.40, while Resume Version 2 lists 2.70, an increase of 0.30.",
+      "must_include": ["2.40", "2.70"],
+      "must_not_include": ["Either resume lists a CGPA of 3.50"],
+      "evidence_anchors": ["CGPA", "2.40", "2.70"],
+      "tags": ["multi_doc", "versioning", "numeric", "comparison"]
+    },
+    {
+      "id": "resume_003",
+      "question": "What graduation date does each resume version give?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Resume_v1.txt", "Resume_v2.txt"],
+      "should_answer": true,
+      "reference_answer": "Resume Version 1 gives an expected graduation date of December 2026, while Resume Version 2 gives January 2027.",
+      "must_include": ["December 2026", "January 2027"],
+      "must_not_include": ["Either resume gives June 2026 as the expected graduation date"],
+      "evidence_anchors": ["Expected Graduation", "December 2026", "January 2027"],
+      "tags": ["multi_doc", "versioning", "conflicting_facts"]
+    },
+    {
+      "id": "resume_004",
+      "question": "What are the main differences between Resume Version 1 and Resume Version 2?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Resume_v1.txt", "Resume_v2.txt"],
+      "should_answer": true,
+      "reference_answer": "Version 2 changes the CGPA from 2.40 to 2.70, changes expected graduation from December 2026 to January 2027, and adds DriveMind and the n8n automation project while retaining the main internship experience.",
+      "must_include": [
+        "2.40",
+        "2.70",
+        "December 2026",
+        "January 2027",
+        "DriveMind",
+        "n8n"
+      ],
+      "must_not_include": [
+        "Version 2 adds OpenAI employment",
+        "Version 2 adds a completed UAE internship"
+      ],
+      "evidence_anchors": ["CGPA", "Expected Graduation", "DriveMind", "n8n"],
+      "tags": ["multi_doc", "versioning", "synthesis", "harder_generation"]
+    },
+    {
+      "id": "crossdoc_001",
+      "question": "How does CoreChain handle healthcare training data, and where does DriveMind store indexed document data and embeddings?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["CoreChain_Project.txt", "DriveMind_Project.txt"],
+      "should_answer": true,
+      "reference_answer": "CoreChain keeps raw healthcare training data at the participating institutions and exchanges model updates for federated learning, while DriveMind uses PostgreSQL for indexed document/application data and Qdrant for vector embeddings.",
+      "must_include": ["CoreChain", "DriveMind", "PostgreSQL", "Qdrant"],
+      "must_not_include": ["CoreChain stores its document embeddings in Qdrant"],
+      "evidence_anchors": [
+        "raw healthcare datasets",
+        "model updates",
+        "PostgreSQL",
+        "Qdrant"
+      ],
+      "tags": ["multi_doc", "cross_project", "semantic_retrieval", "synthesis"]
+    },
+    {
+      "id": "crossdoc_002",
+      "question": "What security-related mechanisms are mentioned for CoreChain and DriveMind?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["CoreChain_Project.txt", "DriveMind_Project.txt"],
+      "should_answer": true,
+      "reference_answer": "CoreChain mentions TLS-secured gRPC over HTTP/2 communication, Paillier homomorphic encryption, SHA-256 auditing, and JWT roles. DriveMind's controlled project description emphasizes read-only Google Drive access and its RAG architecture rather than those same CoreChain cryptographic mechanisms.",
+      "must_include": ["TLS", "Paillier", "SHA-256", "read-only", "Google Drive"],
+      "must_not_include": [
+        "DriveMind uses Paillier homomorphic encryption",
+        "DriveMind uses blockchain for document storage"
+      ],
+      "evidence_anchors": ["TLS", "Paillier", "SHA-256", "read-only"],
+      "tags": ["multi_doc", "cross_project", "distractor_resistance", "fact_attribution"]
+    },
+    {
+      "id": "corechain_003",
+      "question": "What was the budget for the CoreChain project?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["CoreChain_Project.txt"],
+      "should_answer": false,
+      "reference_answer": "The available CoreChain document does not specify a project budget.",
+      "must_include": [],
+      "must_not_include": [
+        "CoreChain's budget was PKR 1,200,000",
+        "CoreChain spent PKR 986,500"
+      ],
+      "evidence_anchors": ["budget"],
+      "tags": ["abstention", "missing_fact", "hallucination_resistance"]
+    },
+    {
+      "id": "corechain_004",
+      "question": "Which hospital deployed CoreChain in production?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["CoreChain_Project.txt"],
+      "should_answer": false,
+      "reference_answer": "The controlled CoreChain document does not identify any hospital that deployed the system in production.",
+      "must_include": [],
+      "must_not_include": [
+        "Shifa deployed CoreChain in production",
+        "PIMS deployed CoreChain in production",
+        "Aga Khan deployed CoreChain in production"
+      ],
+      "evidence_anchors": ["hospital", "production"],
+      "tags": ["abstention", "false_premise", "hallucination_resistance"]
+    },
+    {
+      "id": "ptcl_003",
+      "question": "How much was I paid during the PTCL internship?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["PTCL_Internship.txt"],
+      "should_answer": false,
+      "reference_answer": "The PTCL internship document does not specify a salary or stipend.",
+      "must_include": [],
+      "must_not_include": [
+        "The PTCL internship paid PKR 80,000",
+        "The PTCL internship paid PKR 100,000"
+      ],
+      "evidence_anchors": ["salary", "stipend"],
+      "tags": ["abstention", "missing_fact", "personal_fact", "hallucination_resistance"]
+    },
+    {
+      "id": "distractor_001",
+      "question": "What monthly hosting cost does the DriveMind project document specify?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["DriveMind_Project.txt"],
+      "should_answer": false,
+      "reference_answer": "The controlled DriveMind project document does not specify a monthly hosting cost.",
+      "must_include": [],
+      "must_not_include": [
+        "DriveMind's monthly hosting cost was PKR 1,200,000",
+        "DriveMind's monthly hosting cost was PKR 986,500",
+        "DriveMind's monthly hosting cost was PKR 210,000"
+      ],
+      "evidence_anchors": ["monthly hosting cost", "does not specify"],
+      "tags": ["abstention", "distractor_resistance", "fact_attribution", "hallucination_resistance"]
+    },
+    {
+      "id": "resume_005",
+      "question": "Which resume version says my CGPA is 3.50?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["Resume_v1.txt", "Resume_v2.txt"],
+      "should_answer": false,
+      "reference_answer": "Neither resume version lists a CGPA of 3.50. Version 1 lists 2.40 and Version 2 lists 2.70.",
+      "must_include": ["2.40", "2.70"],
+      "must_not_include": [
+        "Resume Version 1 says 3.50",
+        "Resume Version 2 says 3.50"
+      ],
+      "evidence_anchors": ["2.40", "2.70"],
+      "tags": ["multi_doc", "false_premise", "versioning", "hallucination_resistance"]
+    },
+    {
+      "id": "semantic_001",
+      "question": "In the system I built for searching my Drive, what prevents deleted or failed documents from being used as evidence?",
+      "expected_route": "GROUNDED_RAG",
+      "expected_files": ["DriveMind_Project.txt"],
+      "should_answer": true,
+      "reference_answer": "DriveMind only allows documents whose DriveFile status is INDEXED to participate in retrieval, so failed, skipped, deleted, or otherwise non-indexed files are excluded from searchable evidence.",
+      "must_include": ["INDEXED"],
+      "must_not_include": [
+        "FAILED files are searchable",
+        "SKIPPED files are searchable"
+      ],
+      "evidence_anchors": ["INDEXED", "searchable"],
+      "tags": ["semantic_retrieval", "query_rewrite_candidate", "architecture", "harder_query"]
+    }
+  ]
+}
