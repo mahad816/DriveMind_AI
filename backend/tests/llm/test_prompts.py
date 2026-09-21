@@ -22,12 +22,19 @@ DOCUMENT_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
 
 
-def _chunk(*, text: str, chunk_index: int = 0, score: float = 0.9) -> RetrievedChunk:
+def _chunk(
+    *,
+    text: str,
+    chunk_index: int = 0,
+    score: float = 0.9,
+    drive_file_id: uuid.UUID = DRIVE_FILE_ID,
+    filename: str = "notes.txt",
+) -> RetrievedChunk:
     return RetrievedChunk(
         chunk_id=uuid.uuid4(),
         document_id=DOCUMENT_ID,
-        drive_file_id=DRIVE_FILE_ID,
-        filename="notes.txt",
+        drive_file_id=drive_file_id,
+        filename=filename,
         mime_type="text/plain",
         modified_at=datetime.now(UTC),
         chunk_index=chunk_index,
@@ -177,3 +184,213 @@ def test_select_prompt_chunks_matches_build_grounded_user_message_selection() ->
 
     assert len(selected) >= 1
     assert selected[0].text[:20] in message
+
+
+def test_select_prompt_chunks_uses_stable_source_diverse_order() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    source_c = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", chunk_index=1, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", chunk_index=2, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", chunk_index=1, drive_file_id=source_b, filename="b.txt"),
+        _chunk(text="A3", chunk_index=3, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="C1", chunk_index=1, drive_file_id=source_c, filename="c.txt"),
+        _chunk(text="B2", chunk_index=2, drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "B1", "C1", "A2", "A3", "B2"]
+
+
+def test_select_prompt_chunks_uses_drive_file_id_for_source_identity() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(
+            text="A1",
+            chunk_index=1,
+            drive_file_id=source_a,
+            filename="shared.txt",
+        ),
+        _chunk(
+            text="A2",
+            chunk_index=2,
+            drive_file_id=source_a,
+            filename="renamed-a.txt",
+        ),
+        _chunk(
+            text="B1",
+            chunk_index=1,
+            drive_file_id=source_b,
+            filename="shared.txt",
+        ),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "B1", "A2"]
+
+
+def test_source_diverse_selection_preserves_all_chunk_ids_once() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    selected_ids = [chunk.chunk_id for chunk in selected]
+    assert len(selected_ids) == len(chunks)
+    assert len(set(selected_ids)) == len(chunks)
+    assert set(selected_ids) == {chunk.chunk_id for chunk in chunks}
+
+
+def test_source_diverse_selection_preserves_single_source_order() -> None:
+    source_a = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", chunk_index=1, drive_file_id=source_a),
+        _chunk(text="A2", chunk_index=2, drive_file_id=source_a),
+        _chunk(text="A3", chunk_index=3, drive_file_id=source_a),
+    ]
+
+    selected = select_prompt_chunks("Summarize the source", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "A2", "A3"]
+
+
+def test_select_prompt_chunks_applies_filename_priority_before_source_diversity() -> None:
+    unrelated_id = uuid.uuid4()
+    target_id = uuid.uuid4()
+    other_id = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", drive_file_id=unrelated_id, filename="unrelated.txt"),
+        _chunk(text="B1", drive_file_id=target_id, filename="target.txt"),
+        _chunk(text="B2", drive_file_id=target_id, filename="target.txt"),
+        _chunk(text="C1", drive_file_id=other_id, filename="other.txt"),
+    ]
+
+    selected = select_prompt_chunks(
+        'Tell me about "target.txt"',
+        chunks,
+        max_context_chars=5000,
+    )
+
+    assert [chunk.text for chunk in selected] == ["B1", "A1", "C1", "B2"]
+
+
+def test_build_grounded_user_message_never_exceeds_max_context_chars() -> None:
+    chunks = [
+        _chunk(text="a" * 120, drive_file_id=uuid.uuid4(), filename="a.txt"),
+        _chunk(text="b" * 120, drive_file_id=uuid.uuid4(), filename="b.txt"),
+        _chunk(text="c" * 120, drive_file_id=uuid.uuid4(), filename="c.txt"),
+    ]
+    max_context_chars = 350
+
+    message = build_grounded_user_message(
+        "Compare the sources",
+        chunks,
+        max_context_chars=max_context_chars,
+    )
+
+    assert len(message) <= max_context_chars
+
+
+def test_select_context_chunks_stops_at_later_nonfitting_chunk() -> None:
+    source_a = uuid.uuid4()
+    first = _chunk(text="a" * 80, chunk_index=1, drive_file_id=source_a)
+    nonfitting = _chunk(text="b" * 300, chunk_index=2, drive_file_id=source_a)
+    later_fitting = _chunk(text="c", chunk_index=3, drive_file_id=source_a)
+
+    selected = select_context_chunks(
+        [first, nonfitting, later_fitting],
+        max_context_chars=180,
+    )
+
+    assert [chunk.chunk_id for chunk in selected] == [first.chunk_id]
+
+
+def test_prompt_selection_preserves_selected_chunk_citation_metadata() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(
+            text="A1",
+            chunk_index=4,
+            drive_file_id=source_a,
+            filename="alpha.txt",
+        ),
+        _chunk(
+            text="B1",
+            chunk_index=7,
+            drive_file_id=source_b,
+            filename="beta.txt",
+        ),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    original_metadata = {
+        chunk.chunk_id: (chunk.drive_file_id, chunk.filename, chunk.chunk_index) for chunk in chunks
+    }
+    assert {
+        chunk.chunk_id: (chunk.drive_file_id, chunk.filename, chunk.chunk_index)
+        for chunk in selected
+    } == original_metadata
+
+
+def test_select_prompt_chunks_prevents_repeated_source_budget_domination() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1" + ("a" * 98), chunk_index=1, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2" + ("a" * 98), chunk_index=2, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A3" + ("a" * 98), chunk_index=3, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1" + ("b" * 98), chunk_index=1, drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=350)
+
+    assert [chunk.text[:2] for chunk in selected] == ["A1", "B1"]
+
+
+def test_source_diverse_promotion_preserves_distractor_identity() -> None:
+    gold_id = uuid.uuid4()
+    distractor_id = uuid.uuid4()
+    gold_first = _chunk(
+        text="gold-1",
+        chunk_index=1,
+        drive_file_id=gold_id,
+        filename="gold.txt",
+    )
+    gold_second = _chunk(
+        text="gold-2",
+        chunk_index=2,
+        drive_file_id=gold_id,
+        filename="gold.txt",
+    )
+    distractor = _chunk(
+        text="distractor",
+        chunk_index=9,
+        drive_file_id=distractor_id,
+        filename="distractor.txt",
+    )
+
+    selected = select_prompt_chunks(
+        "Compare the sources",
+        [gold_first, gold_second, distractor],
+        max_context_chars=5000,
+    )
+
+    assert [chunk.chunk_id for chunk in selected] == [
+        gold_first.chunk_id,
+        distractor.chunk_id,
+        gold_second.chunk_id,
+    ]
+    assert selected[1].drive_file_id == distractor_id
+    assert selected[1].filename == "distractor.txt"
+    assert selected[1].chunk_index == 9

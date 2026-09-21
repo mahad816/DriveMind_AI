@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from typing import TypeVar
 
 from app.llm.base import ChatError
@@ -134,8 +135,9 @@ def select_prompt_chunks(
     if not normalized_question or not chunks:
         return []
     prioritized = prioritize_filename_targets(chunks, normalized_question)
+    source_diverse = _source_diverse_order(prioritized)
     return select_context_chunks(
-        prioritized,
+        source_diverse,
         max_context_chars=_context_budget(
             question=normalized_question,
             max_context_chars=max_context_chars,
@@ -170,6 +172,25 @@ def select_context_chunks(
         used_chars += separator_len + len(block)
 
     return selected
+
+
+def _source_diverse_order(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Prioritize each file's first chunk while preserving stable input order."""
+    seen_file_ids: set[uuid.UUID] = set()
+    representative_positions: set[int] = set()
+    representatives: list[RetrievedChunk] = []
+
+    for position, chunk in enumerate(chunks):
+        if chunk.drive_file_id in seen_file_ids:
+            continue
+        seen_file_ids.add(chunk.drive_file_id)
+        representative_positions.add(position)
+        representatives.append(chunk)
+
+    remaining = [
+        chunk for position, chunk in enumerate(chunks) if position not in representative_positions
+    ]
+    return representatives + remaining
 
 
 def format_citation_snippet(text: str, *, max_length: int = DEFAULT_CITATION_SNIPPET_LENGTH) -> str:
