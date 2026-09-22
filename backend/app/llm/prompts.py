@@ -11,6 +11,7 @@ from app.retrieval.filename_targets import prioritize_filename_targets
 from app.retrieval.types import RetrievedChunk
 
 DEFAULT_CITATION_SNIPPET_LENGTH = 300
+_SOURCE_DIVERSITY_PROMOTION_RATIO = 0.90
 CitationT = TypeVar("CitationT")
 _CITATION_MARKER_PATTERN = re.compile(r"\[(\d+)\]")
 _CITATION_MARKER_REWRITE_PATTERN = re.compile(
@@ -175,15 +176,23 @@ def select_context_chunks(
 
 
 def _source_diverse_order(chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
-    """Prioritize each file's first chunk while preserving stable input order."""
+    """Promote competitive source representatives while preserving stable order."""
     seen_file_ids: set[uuid.UUID] = set()
     representative_positions: set[int] = set()
     representatives: list[RetrievedChunk] = []
+    deferred_repeated: RetrievedChunk | None = None
 
     for position, chunk in enumerate(chunks):
         if chunk.drive_file_id in seen_file_ids:
+            if deferred_repeated is None:
+                deferred_repeated = chunk
             continue
         seen_file_ids.add(chunk.drive_file_id)
+        if (
+            deferred_repeated is not None
+            and chunk.score < deferred_repeated.score * _SOURCE_DIVERSITY_PROMOTION_RATIO
+        ):
+            continue
         representative_positions.add(position)
         representatives.append(chunk)
 

@@ -204,6 +204,122 @@ def test_select_prompt_chunks_uses_stable_source_diverse_order() -> None:
     assert [chunk.text for chunk in selected] == ["A1", "B1", "C1", "A2", "A3", "B2"]
 
 
+def test_source_diversity_does_not_promote_below_threshold() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", score=0.899, drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "A2", "B1"]
+
+
+def test_source_diversity_promotes_at_threshold() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", score=0.9, drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "B1", "A2"]
+
+
+def test_source_diversity_promotes_above_threshold() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", score=0.91, drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "B1", "A2"]
+
+
+def test_source_diversity_promotes_ptcl_like_boundary_ratio() -> None:
+    report_id = uuid.uuid4()
+    expected_id = uuid.uuid4()
+    chunks = [
+        _chunk(text="report-1", score=1.0, drive_file_id=report_id, filename="report.txt"),
+        _chunk(text="report-2", score=1.0, drive_file_id=report_id, filename="report.txt"),
+        _chunk(
+            text="expected-1",
+            score=0.9045,
+            drive_file_id=expected_id,
+            filename="expected.txt",
+        ),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["report-1", "expected-1", "report-2"]
+
+
+def test_source_diversity_does_not_promote_weak_distractor_ratio() -> None:
+    source_a = uuid.uuid4()
+    distractor_id = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(
+            text="distractor",
+            score=0.72,
+            drive_file_id=distractor_id,
+            filename="distractor.txt",
+        ),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "A2", "distractor"]
+
+
+def test_denied_source_cannot_substitute_a_later_chunk_for_promotion() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", score=0.72, drive_file_id=source_b, filename="b.txt"),
+        _chunk(text="B2", score=0.95, drive_file_id=source_b, filename="b.txt"),
+    ]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.text for chunk in selected] == ["A1", "A2", "B1", "B2"]
+
+
+def test_denied_promotion_preserves_stable_objects_and_scores() -> None:
+    source_a = uuid.uuid4()
+    source_b = uuid.uuid4()
+    chunks = [
+        _chunk(text="A1", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="A2", score=1.0, drive_file_id=source_a, filename="a.txt"),
+        _chunk(text="B1", score=0.72, drive_file_id=source_b, filename="b.txt"),
+        _chunk(text="A3", score=0.7, drive_file_id=source_a, filename="a.txt"),
+    ]
+    original_ids = [chunk.chunk_id for chunk in chunks]
+    original_scores = [chunk.score for chunk in chunks]
+
+    selected = select_prompt_chunks("Compare the sources", chunks, max_context_chars=5000)
+
+    assert [chunk.chunk_id for chunk in selected] == original_ids
+    assert [chunk.score for chunk in selected] == original_scores
+    assert all(
+        selected_chunk is original_chunk for selected_chunk, original_chunk in zip(selected, chunks)
+    )
+
+
 def test_select_prompt_chunks_uses_drive_file_id_for_source_identity() -> None:
     source_a = uuid.uuid4()
     source_b = uuid.uuid4()
