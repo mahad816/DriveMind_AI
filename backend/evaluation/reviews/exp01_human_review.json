@@ -1,0 +1,98 @@
+{
+  "review_id": "drivemind_gold_v1_exp01_human_review",
+  "schema_version": "1.0",
+  "review_type": "human_semantic_review",
+  "experiment_artifact": {
+    "path": "backend/evaluation/results/drivemind_gold_v1__20260922T101951Z__42b59a1b.json",
+    "sha256": "f32e5d85eab34366a963609411875cba3b94ba025f3a9e395da3bc700c5d115e",
+    "git_sha": "42b59a1b48f0c6d027de8df064a44f458fed3e7e",
+    "dataset_sha256": "9f223c2143e452cea5d85d20d25d0ea6e081bfb92b09d8d13855f0630526e8a0"
+  },
+  "review_method": {
+    "reviewed_case_count": 10,
+    "review_scope": "Targeted materially changed cases only.",
+    "notes": "Human judgments were assigned after reviewing the saved EXP-01 artifact against Gold reference data. This is not a full 24-case human review, and no benchmark cases were rerun."
+  },
+  "cases": [
+    {
+      "case_id": "crossdoc_001",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "EXP-01 repaired the evidence-to-prompt failure. Both expected sources reached generation and were correctly used and cited."
+    },
+    {
+      "case_id": "crossdoc_002",
+      "answer_correctness": "PARTIAL",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "MISSING",
+      "primary_failure_cause": "GENERATION",
+      "notes": "Both expected files reached the prompt, but the answer omitted DriveMind's read-only Google Drive mechanism and provided no citations. Prompt selection was repaired; downstream generation failed to use the available evidence."
+    },
+    {
+      "case_id": "corechain_003",
+      "answer_correctness": "INCORRECT",
+      "grounding": "UNSUPPORTED",
+      "citation_quality": "INCORRECT",
+      "primary_failure_cause": "DISTRACTOR_ATTRIBUTION",
+      "notes": "The answer directly misattributed PKR 1,200,000 and related Expense Report figures to CoreChain, even though the controlled CoreChain source does not specify a budget."
+    },
+    {
+      "case_id": "ptcl_003",
+      "answer_correctness": "INCORRECT",
+      "grounding": "UNSUPPORTED",
+      "citation_quality": "MISSING",
+      "primary_failure_cause": "DISTRACTOR_ATTRIBUTION",
+      "notes": "The PTCL source does not specify salary or stipend, but EXP-01 asserted PKR 20,000 and attributed it to PTCL without a valid citation."
+    },
+    {
+      "case_id": "distractor_001",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "PARTIAL",
+      "primary_failure_cause": "CITATION",
+      "notes": "The negative answer is correct and supported by DriveMind_Project.txt, but Expense_Report_2025.txt was unnecessarily introduced and cited as confirming the claim."
+    },
+    {
+      "case_id": "corechain_002",
+      "answer_correctness": "PARTIAL",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "PARTIAL",
+      "primary_failure_cause": "GENERATION",
+      "notes": "The expected CoreChain source was present and TLS was correctly mentioned, but the answer omitted the key gRPC over HTTP/2 communication detail and added tangential material."
+    },
+    {
+      "case_id": "resume_002",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "PARTIAL",
+      "primary_failure_cause": "CITATION",
+      "notes": "The CGPA comparison is correct and grounded in both resume versions, but only Resume_v2.txt was cited, so source attribution is incomplete."
+    },
+    {
+      "case_id": "routing_003",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "ROUTING",
+      "notes": "The system still used GROUNDED_RAG instead of the expected FILE_TARGET route, but the answer itself was accurate, grounded, and correctly cited CoreChain_Project.txt."
+    },
+    {
+      "case_id": "resume_004",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "The answer correctly captured the main differences between both resume versions and cited both expected sources."
+    },
+    {
+      "case_id": "semantic_001",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "The answer correctly states that only indexed files are eligible for retrieval and that failed/deleted files are excluded. EXP-01 also improved citation discipline by citing only DriveMind_Project.txt."
+    }
+  ]
+}
