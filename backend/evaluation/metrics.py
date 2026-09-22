@@ -74,6 +74,15 @@ class StageFileSurvival:
 
 
 @dataclass(frozen=True)
+class PromptSourceMetrics:
+    """Expected-source precision and ordered prompt-noise diagnostics."""
+
+    precision: float | None
+    unexpected_count: int | None
+    unexpected_sources: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CitationMetrics:
     """Structural and source-file citation diagnostics, not semantic faithfulness."""
 
@@ -218,6 +227,30 @@ def expected_file_stage_survival(
             )
         )
     return tuple(results)
+
+
+def prompt_source_metrics(
+    prompt_filenames: Sequence[str],
+    expected_files: Sequence[str],
+) -> PromptSourceMetrics:
+    """Measure expected sources among distinct prompt files.
+
+    This is a deterministic Gold-source diagnostic, not proof that an unexpected
+    source is semantically irrelevant. Cases without expected files or prompt
+    sources are not applicable.
+    """
+    expected = set(expected_files)
+    prompt_sources = _unique(prompt_filenames)
+    if not expected or not prompt_sources:
+        return PromptSourceMetrics(None, None, ())
+
+    expected_count = sum(filename in expected for filename in prompt_sources)
+    unexpected = tuple(filename for filename in prompt_sources if filename not in expected)
+    return PromptSourceMetrics(
+        precision=expected_count / len(prompt_sources),
+        unexpected_count=len(unexpected),
+        unexpected_sources=unexpected,
+    )
 
 
 def route_matches(expected_route: str, observed_route: QueryRoute | str | None) -> bool:

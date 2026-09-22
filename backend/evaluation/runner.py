@@ -61,6 +61,7 @@ from evaluation.metrics import (
     must_include_metrics,
     must_not_phrase_flags,
     phrase_matches,
+    prompt_source_metrics,
     route_matches,
 )
 
@@ -528,6 +529,9 @@ def project_case_result(
     prompt_ranking = file_ranking_metrics(
         [candidate.filename for candidate in trace.prompt_chunks], case.expected_files
     )
+    prompt_sources = prompt_source_metrics(
+        [candidate.filename for candidate in trace.prompt_chunks], case.expected_files
+    )
     prompt_anchor_matches = phrase_matches(
         "\n".join(candidate.text for candidate in trace.prompt_chunks),
         case.evidence_anchors,
@@ -578,6 +582,9 @@ def project_case_result(
             "file_target": file_target_metrics,
             "prompt": {
                 **_ranking_to_json(prompt_ranking),
+                "prompt_expected_source_precision": prompt_sources.precision,
+                "unexpected_prompt_source_count": prompt_sources.unexpected_count,
+                "unexpected_prompt_sources": list(prompt_sources.unexpected_sources),
                 "evidence_anchor_matches": _phrase_matches_to_json(prompt_anchor_matches),
                 "evidence_anchor_coverage": _match_coverage(prompt_anchor_matches),
             },
@@ -738,6 +745,12 @@ def aggregate_results(cases: Sequence[Mapping[str, Any]]) -> JsonObject:
     )
     citation_recalls = _numeric_values(completed, "metrics", "citations", "expected_file_recall")
     prompt_recalls = _numeric_values(completed, "metrics", "prompt", "expected_file_recall")
+    prompt_precisions = _numeric_values(
+        completed, "metrics", "prompt", "prompt_expected_source_precision"
+    )
+    unexpected_prompt_source_counts = _numeric_values(
+        completed, "metrics", "prompt", "unexpected_prompt_source_count"
+    )
     run_status = "completed" if not failed else ("partial_failure" if completed else "failed")
 
     return {
@@ -778,6 +791,8 @@ def aggregate_results(cases: Sequence[Mapping[str, Any]]) -> JsonObject:
             for stage, values in sorted(stage_values.items())
         },
         "prompt_expected_file_recall": _mean(prompt_recalls),
+        "macro_prompt_expected_source_precision": _mean(prompt_precisions),
+        "mean_unexpected_prompt_sources": _mean(unexpected_prompt_source_counts),
         "must_include_average_coverage": _mean(must_include_coverages),
         "all_must_include_pass_count": sum(
             _nested(case, "metrics", "answer", "all_must_include_present") is True

@@ -760,6 +760,26 @@ def test_multi_document_case_requires_all_expected_files() -> None:
     assert raw_vector["all_expected_files"] is False
 
 
+def test_case_projection_includes_prompt_source_precision_and_ordered_noise() -> None:
+    expected = _candidate("alpha.txt", rank=1)
+    unexpected = _candidate("noise.txt", rank=2)
+    duplicate = _candidate("alpha.txt", rank=3)
+    trace = EvalTrace(
+        route=QueryRoute.GROUNDED_RAG,
+        execution_path="linear",
+        prompt_chunks=(expected, unexpected, duplicate),
+        final_answer="Synthetic answer.",
+        outcome=TraceOutcome.ANSWERED,
+    )
+
+    result = project_case_result(_case(), trace, result=None, caught=None, settings=Settings())
+
+    prompt = result["metrics"]["prompt"]
+    assert prompt["prompt_expected_source_precision"] == 0.5
+    assert prompt["unexpected_prompt_source_count"] == 1
+    assert prompt["unexpected_prompt_sources"] == ["noise.txt"]
+
+
 def test_summary_excludes_not_applicable_values_and_calculates_latency() -> None:
     cases = [
         {
@@ -770,7 +790,11 @@ def test_summary_excludes_not_applicable_values_and_calculates_latency() -> None
                 "observed_route": "CHITCHAT",
                 "route_correct": True,
                 "retrieval": None,
-                "prompt": {"expected_file_recall": None},
+                "prompt": {
+                    "expected_file_recall": None,
+                    "prompt_expected_source_precision": None,
+                    "unexpected_prompt_source_count": None,
+                },
                 "answer": {
                     "must_include_coverage": None,
                     "all_must_include_present": None,
@@ -794,7 +818,11 @@ def test_summary_excludes_not_applicable_values_and_calculates_latency() -> None
                 "observed_route": "GROUNDED_RAG",
                 "route_correct": True,
                 "retrieval": None,
-                "prompt": {"expected_file_recall": 0.5},
+                "prompt": {
+                    "expected_file_recall": 0.5,
+                    "prompt_expected_source_precision": 0.5,
+                    "unexpected_prompt_source_count": 2,
+                },
                 "answer": {
                     "must_include_coverage": 1.0,
                     "all_must_include_present": True,
@@ -811,6 +839,34 @@ def test_summary_excludes_not_applicable_values_and_calculates_latency() -> None
             },
         },
         {
+            "status": "completed",
+            "expected": {"route": "GROUNDED_RAG"},
+            "trace": {"error": None},
+            "metrics": {
+                "observed_route": "GROUNDED_RAG",
+                "route_correct": True,
+                "retrieval": None,
+                "prompt": {
+                    "expected_file_recall": 0.5,
+                    "prompt_expected_source_precision": 1.0,
+                    "unexpected_prompt_source_count": 0,
+                },
+                "answer": {
+                    "must_include_coverage": 1.0,
+                    "all_must_include_present": True,
+                    "must_not_flags": [],
+                },
+                "citations": {"expected_file_recall": 0.5},
+                "abstention": {
+                    "outcome": "ANSWERED",
+                    "false_pipeline_abstention": False,
+                    "answered_when_should_answer_false": False,
+                },
+                "rewrites": {"count": 0},
+                "latency_ms": {"total": 2.0},
+            },
+        },
+        {
             "status": "failed",
             "expected": {"route": "GROUNDED_RAG"},
             "trace": {"error": {"stage": "generation", "component": "chat"}},
@@ -823,6 +879,8 @@ def test_summary_excludes_not_applicable_values_and_calculates_latency() -> None
     assert summary["status"] == "partial_failure"
     assert summary["route_accuracy"] == 1.0
     assert summary["prompt_expected_file_recall"] == 0.5
+    assert summary["macro_prompt_expected_source_precision"] == 0.75
+    assert summary["mean_unexpected_prompt_sources"] == 1.0
     assert summary["must_include_average_coverage"] == 1.0
     assert summary["citation_source_recall"] == 0.5
     assert summary["latency_ms"] == {"median": 2.0, "p95": 100.0}

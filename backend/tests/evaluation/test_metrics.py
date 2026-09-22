@@ -15,6 +15,7 @@ from evaluation.metrics import (
     must_include_metrics,
     must_not_phrase_flags,
     normalize_text,
+    prompt_source_metrics,
     route_matches,
 )
 
@@ -90,6 +91,67 @@ def test_empty_expected_files_are_not_applicable() -> None:
     assert file_hit_at_k(["alpha.txt"], [], 3) is None
     assert file_recall_at_k(["alpha.txt"], [], 3) is None
     assert all_expected_files_at_k(["alpha.txt"], [], 3) is None
+
+
+def test_prompt_source_metrics_for_one_expected_and_unrelated_source() -> None:
+    metrics = prompt_source_metrics(
+        ["alpha.txt", "noise.txt"],
+        ["alpha.txt"],
+    )
+
+    assert metrics.precision == 0.5
+    assert metrics.unexpected_count == 1
+    assert metrics.unexpected_sources == ("noise.txt",)
+
+
+def test_prompt_source_metrics_deduplicate_sources_and_preserve_unexpected_order() -> None:
+    metrics = prompt_source_metrics(
+        ["alpha.txt", "noise-b.txt", "alpha.txt", "noise-a.txt", "noise-b.txt"],
+        ["alpha.txt"],
+    )
+
+    assert metrics.precision == pytest.approx(1 / 3)
+    assert metrics.unexpected_count == 2
+    assert metrics.unexpected_sources == ("noise-b.txt", "noise-a.txt")
+
+
+def test_prompt_source_metrics_support_multiple_and_all_expected_sources() -> None:
+    metrics = prompt_source_metrics(
+        ["beta.txt", "alpha.txt", "beta.txt"],
+        ["alpha.txt", "beta.txt"],
+    )
+
+    assert metrics.precision == 1.0
+    assert metrics.unexpected_count == 0
+    assert metrics.unexpected_sources == ()
+
+
+def test_prompt_source_metrics_report_zero_when_no_expected_source_is_present() -> None:
+    metrics = prompt_source_metrics(
+        ["noise-a.txt", "noise-b.txt"],
+        ["alpha.txt"],
+    )
+
+    assert metrics.precision == 0.0
+    assert metrics.unexpected_count == 2
+    assert metrics.unexpected_sources == ("noise-a.txt", "noise-b.txt")
+
+
+@pytest.mark.parametrize(
+    ("prompt_files", "expected_files"),
+    [
+        (["alpha.txt"], []),
+        ([], ["alpha.txt"]),
+    ],
+)
+def test_prompt_source_metrics_are_not_applicable_without_both_sets(
+    prompt_files: list[str], expected_files: list[str]
+) -> None:
+    metrics = prompt_source_metrics(prompt_files, expected_files)
+
+    assert metrics.precision is None
+    assert metrics.unexpected_count is None
+    assert metrics.unexpected_sources == ()
 
 
 @pytest.mark.parametrize(
