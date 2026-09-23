@@ -1,0 +1,100 @@
+{
+  "review_id": "drivemind_gold_v1_exp02_human_review",
+  "schema_version": "1.0",
+  "review_type": "human_semantic_review",
+  "review_status": "completed",
+  "experiment_artifact": {
+    "path": "backend/evaluation/results/drivemind_gold_v1__20260922T200620Z__5350222a.json",
+    "sha256": "e7b9af8c98c2f8e1b36620a4076c2c0f131b4075f497fa5e3b16b9bf4b667c0d",
+    "git_sha": "5350222a1445673030fde5901d36fd5b768aa535",
+    "dataset_sha256": "9f223c2143e452cea5d85d20d25d0ea6e081bfb92b09d8d13855f0630526e8a0"
+  },
+  "review_method": {
+    "reviewed_case_count": 10,
+    "target_case_count": 10,
+    "review_scope": "Targeted materially changed cases only.",
+    "notes": "Human judgments were recorded case by case from the saved EXP-02 human-review packet. This is not a full 24-case human review, and no benchmark cases were rerun."
+  },
+  "cases": [
+    {
+      "case_id": "crossdoc_001",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "Correctly explains that CoreChain keeps healthcare data local and exchanges model updates, and correctly identifies PostgreSQL for indexed application/document data and Qdrant for embeddings. Both required sources are present and cited. Extra technical details are supported by the evidence."
+    },
+    {
+      "case_id": "crossdoc_002",
+      "answer_correctness": "PARTIAL",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "MISSING",
+      "primary_failure_cause": "GENERATION",
+      "notes": "CoreChain’s TLS, Paillier, gRPC/HTTP2, and SHA-256 mechanisms are covered correctly, but the DriveMind portion misses the key supported security-related point: read-only Google Drive access. It instead emphasizes FastAPI/JWT-style access-control details and therefore does not fully answer the DriveMind half of the question. Both expected files were already present in the prompt, so this is primarily a generation/content-selection failure rather than retrieval or prompt selection. No citations were provided."
+    },
+    {
+      "case_id": "ptcl_003",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "Correctly states that the available PTCL internship evidence does not specify any compensation or stipend amount. This matches the Gold expectation and avoids the unsupported PKR 20,000 claim from EXP-01. The PTCL source is present and cited, and the additional internship-report citation is consistent with the same absence-of-compensation conclusion."
+    },
+    {
+      "case_id": "corechain_003",
+      "answer_correctness": "CORRECT",
+      "grounding": "PARTIALLY_GROUNDED",
+      "citation_quality": "INCORRECT",
+      "primary_failure_cause": "DISTRACTOR_ATTRIBUTION",
+      "notes": "Correctly concludes that the available CoreChain documentation does not specify a project budget, fixing EXP-01's false attribution of PKR 1,200,000 to CoreChain. However, the unrelated Expense Report still enters the prompt and the answer unnecessarily discusses its budget and expense figures. The only citation is Expense_Report_2025.txt rather than the CoreChain source supporting the actual conclusion. EXP-02 fixes the answer-level hallucination but does not fully solve distractor attribution."
+    },
+    {
+      "case_id": "distractor_001",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "Correctly states that the DriveMind project documentation does not specify a monthly hosting cost. EXP-02 removes the Expense Report and Cloud Notes distractors that appeared in EXP-01 and cites DriveMind_Project.txt directly for the negative answer. The response is supported by the expected source without unrelated financial attribution."
+    },
+    {
+      "case_id": "corechain_002",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "Correctly identifies TLS-secured communication and explicitly states that CoreChain uses gRPC over HTTP/2, matching the Gold expectation. The additional Paillier and blockchain audit details are supported supplementary context. CoreChain_Project.txt is correctly cited, and EXP-02 removes the unrelated CCN assignment evidence that appeared in EXP-01."
+    },
+    {
+      "case_id": "corechain_004",
+      "answer_correctness": "INCORRECT",
+      "grounding": "UNSUPPORTED",
+      "citation_quality": "INCORRECT",
+      "primary_failure_cause": "GENERATION",
+      "notes": "The answer incorrectly claims that Ghulam Ishaq Khan Institute deployed CoreChain in production. The available CoreChain evidence supports a final-year project demonstration and an Industrial Open House award, not a production deployment by a hospital or by GIKI. The cited CoreChain source therefore does not support the deployment claim. This is primarily a generation/inference error rather than a retrieval failure."
+    },
+    {
+      "case_id": "routing_002",
+      "answer_correctness": "PARTIAL",
+      "grounding": "GROUNDED",
+      "citation_quality": "N/A",
+      "primary_failure_cause": "ROUTING",
+      "notes": "The response names two real retrieved knowledge-base files, so the content it gives is grounded, but it does not perform a true knowledge-base inventory and therefore does not comprehensively answer the question. The expected FILE_INVENTORY route was missed in both experiments, and EXP-02 explicitly acknowledges that other files may not be enumerated. The primary issue is routing, not retrieval quality."
+    },
+    {
+      "case_id": "resume_001",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "Correctly identifies Resume Version 2 as the version containing DriveMind and correctly states that Resume Version 1 does not include it as a project. Both expected resume sources are present and cited, raising expected-source citation recall from 50% in EXP-01 to 100% in EXP-02. The answer is fully supported by the provided evidence."
+    },
+    {
+      "case_id": "resume_002",
+      "answer_correctness": "CORRECT",
+      "grounding": "GROUNDED",
+      "citation_quality": "COMPLETE",
+      "primary_failure_cause": "NONE",
+      "notes": "Correctly states that the CGPA changed from 2.40 in Resume Version 1 to 2.70 in Resume Version 2. Both resume sources are present and each value is cited to the appropriate file. Although the answer does not explicitly state the numerical increase of 0.30, the change is clear and the response fully answers the question."
+    }
+  ]
+}
