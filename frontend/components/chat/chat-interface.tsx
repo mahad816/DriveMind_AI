@@ -14,6 +14,7 @@ import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { useConversations } from "@/lib/hooks/use-conversations";
 import { useChatShortcuts } from "@/lib/hooks/use-chat-shortcuts";
 import {
+  buildChatRequestForConversation,
   getConversationMessages,
   saveConversationMessages,
   type StoredChatMessage,
@@ -135,7 +136,10 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<ChatMessageState[]>([]);
-  const [messagesLoaded, setMessagesLoaded] = useState(!conversationId);
+  const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
+  const messagesLoaded = !conversationId || loadedConversationId === conversationId;
+  const activeConversationIdRef = useRef(conversationId);
+  activeConversationIdRef.current = conversationId;
   const [isSending, setIsSending] = useState(false);
   const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
   const [sourcePanelOpen, setSourcePanelOpen] = useState(false);
@@ -154,7 +158,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     const stored = getConversationMessages(conversationId);
     setMessages(stored.map(fromStoredMessage));
     titledRef.current = !isDefaultConversationTitle(record.title) || stored.length > 0;
-    setMessagesLoaded(true);
+    setLoadedConversationId(conversationId);
     askHandledRef.current = false;
   }, [conversationId, router]);
 
@@ -189,9 +193,17 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         router.replace(`/chat/${created.id}?ask=${encodeURIComponent(normalized)}`);
         return;
       }
+      if (!messagesLoaded) return;
 
       const id = options?.messageId ?? createMessageId();
       const replace = Boolean(options?.replace);
+      // Persist the current loaded view before reading this ID's bounded history.
+      saveConversationMessages(conversationId, toStoredMessages(messages));
+      const request = buildChatRequestForConversation(
+        conversationId,
+        normalized,
+        replace ? { beforeMessageId: id } : undefined,
+      );
 
       if (!titledRef.current && !replace) {
         renameConversation(conversationId, conversationTitleFromQuestion(normalized));
@@ -215,14 +227,16 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       });
 
       try {
-        const response = await askQuestion({ question: normalized });
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === id
-              ? { id, question: normalized, status: "done", error: null, response }
-              : message,
-          ),
-        );
+        const response = await askQuestion(request);
+        if (activeConversationIdRef.current === conversationId) {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === id
+                ? { id, question: normalized, status: "done", error: null, response }
+                : message,
+            ),
+          );
+        }
         bumpConversation(conversationId);
       } catch (err) {
         const message = isApiError(err)
@@ -230,13 +244,15 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
           : err instanceof Error
             ? err.message
             : "Request failed";
-        setMessages((prev) =>
-          prev.map((entry) =>
-            entry.id === id
-              ? { id, question: normalized, status: "error", error: message, response: null }
-              : entry,
-          ),
-        );
+        if (activeConversationIdRef.current === conversationId) {
+          setMessages((prev) =>
+            prev.map((entry) =>
+              entry.id === id
+                ? { id, question: normalized, status: "error", error: message, response: null }
+                : entry,
+            ),
+          );
+        }
       } finally {
         setIsSending(false);
       }
@@ -246,6 +262,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       conversationId,
       isConnected,
       isSending,
+      messages,
+      messagesLoaded,
       needsPrepare,
       renameConversation,
       router,

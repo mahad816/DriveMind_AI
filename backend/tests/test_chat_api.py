@@ -244,3 +244,45 @@ async def test_chat_strips_question_whitespace(async_client: AsyncClient) -> Non
 
     assert response.status_code == 200
     fake_service.ask.assert_awaited_once_with("What is tensile strength?")
+
+
+@pytest.mark.asyncio
+async def test_chat_forwards_bounded_history_for_conversation_recall(
+    async_client: AsyncClient,
+) -> None:
+    fake_service = MagicMock()
+    fake_service.ask = AsyncMock(
+        return_value=RagResult(
+            query_id=QUERY_ID,
+            user_id=USER_ID,
+            question="What did you just tell me?",
+            answer="My last answer was: The workshop starts at 10:00.",
+            citations=[],
+            retrieval_count=0,
+        )
+    )
+    app.dependency_overrides[get_rag_service] = lambda: fake_service
+    history = [
+        {"role": "user", "text": "When does the workshop start?"},
+        {"role": "assistant", "text": "The workshop starts at 10:00."},
+    ]
+
+    response = await async_client.post(
+        "/api/v1/chat",
+        json={
+            "question": "What did you just tell me?",
+            "conversation_id": "workshop-chat",
+            "history": history,
+            "history_window_complete": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["citations"] == []
+    assert response.json()["retrieval_count"] == 0
+    fake_service.ask.assert_awaited_once_with(
+        "What did you just tell me?",
+        conversation_id="workshop-chat",
+        history=history,
+        history_window_complete=True,
+    )

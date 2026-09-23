@@ -25,7 +25,15 @@ async def ask_grounded_question(
 ) -> ChatResponse:
     """Retrieve relevant chunks, generate a grounded answer, and return citations."""
     try:
-        result = await service.ask(payload.question)
+        if {"conversation_id", "history", "history_window_complete"} & payload.model_fields_set:
+            result = await service.ask(
+                payload.question,
+                conversation_id=payload.conversation_id,
+                history=[turn.model_dump() for turn in payload.history],
+                history_window_complete=payload.history_window_complete,
+            )
+        else:
+            result = await service.ask(payload.question)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

@@ -113,6 +113,115 @@ def service(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("agent_graph_enabled", [False, True])
+async def test_explicit_history_recall_bypasses_document_pipeline_and_providers(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+    agent_graph_enabled: bool,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+    history = [
+        {"role": "user", "text": "Where is the workshop held?"},
+        {"role": "assistant", "text": "The workshop is in Hall B."},
+    ]
+    service = RagService(
+        db=mock_db,
+        settings=Settings(
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=agent_graph_enabled,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+        persist_query_history=False,
+    )
+
+    result = await service.ask(
+        "What did you just reply?",
+        user_id=USER_ID,
+        conversation_id="workshop-chat",
+        history=history,
+        history_window_complete=True,
+    )
+
+    assert result.answer == "My last answer was:\nThe workshop is in Hall B."
+    assert result.citations == []
+    assert result.retrieval_count == 0
+    mock_retriever.retrieve.assert_not_awaited()
+    mock_chat.generate_grounded_answer.assert_not_awaited()
+    mock_chat.generate_direct_answer.assert_not_awaited()
+    mock_chat.generate_inventory_answer.assert_not_awaited()
+    mock_chat.generate_file_target_answer.assert_not_awaited()
+    mock_db.add.assert_not_called()
+    mock_db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_chat_ordinal_does_not_select_last_or_retrieve(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+        persist_query_history=False,
+    )
+
+    result = await service.ask(
+        "What did I ask before that?",
+        user_id=USER_ID,
+        conversation_id="workshop-chat",
+        history=[
+            {"role": "user", "text": "Ask about Hall A"},
+            {"role": "assistant", "text": "Hall A is closed"},
+            {"role": "user", "text": "Ask about Hall B"},
+        ],
+        history_window_complete=True,
+    )
+
+    assert "Ask about Hall B" not in result.answer
+    assert result.citations == []
+    assert result.retrieval_count == 0
+    mock_retriever.retrieve.assert_not_awaited()
+    mock_chat.generate_grounded_answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_chat_reference_asks_for_role_without_document_fallback(
+    mock_db: AsyncMock,
+    mock_retriever: AsyncMock,
+    mock_chat: AsyncMock,
+) -> None:
+    mock_db.get = AsyncMock(return_value=USER)
+    service = RagService(
+        db=mock_db,
+        settings=Settings(hybrid_retrieval_enabled=False, agent_graph_enabled=False),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+        persist_query_history=False,
+    )
+
+    result = await service.ask(
+        "What did you say about my last question?",
+        user_id=USER_ID,
+        conversation_id="workshop-chat",
+        history=[{"role": "user", "text": "Ask about the ferry"}],
+        history_window_complete=True,
+    )
+
+    assert "Please specify" in result.answer
+    assert result.citations == []
+    assert result.retrieval_count == 0
+    mock_retriever.retrieve.assert_not_awaited()
+    mock_chat.generate_grounded_answer.assert_not_awaited()
+    mock_chat.generate_direct_answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_ask_generates_answer_and_persists_history(
     service: RagService,
     mock_db: AsyncMock,

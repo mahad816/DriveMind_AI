@@ -33,7 +33,17 @@ export type CitationItem = {
 
 export type ChatRequest = {
   question: string;
+  conversation_id?: string;
+  history?: ChatHistoryTurn[];
+  history_window_complete?: boolean;
 };
+
+export type ChatHistoryTurn = {
+  role: "user" | "assistant";
+  text: string;
+};
+
+export type BoundedChatRequest = Required<ChatRequest>;
 
 export type ChatResponse = {
   query_id: string;

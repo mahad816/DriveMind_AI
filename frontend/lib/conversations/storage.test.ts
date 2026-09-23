@@ -41,6 +41,15 @@ describe("conversation storage", () => {
     expect(list[1]?.id).toBe(first.id);
   });
 
+  it("gives each new conversation its own opaque scope identifier", () => {
+    const first = createConversation("Travel");
+    const second = createConversation("Meetings");
+
+    expect(first.id).toBeTruthy();
+    expect(second.id).toBeTruthy();
+    expect(second.id).not.toBe(first.id);
+  });
+
   it("updates conversation title", () => {
     const created = createConversation("Draft");
     const updated = updateConversationTitle(created.id, "Resume questions");

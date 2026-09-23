@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -28,6 +29,7 @@ from app.llm.prompts import (
     normalize_answer_citations,
     select_prompt_chunks,
 )
+from app.retrieval.conversation_intent import classify_conversation_reference
 from app.retrieval.base import Retriever
 from app.retrieval.file_inventory import FileInventoryRetriever, build_inventory_context
 from app.retrieval.file_target import FileTargetRetriever
@@ -35,7 +37,9 @@ from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.query_router import QueryRoute, classify_query
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.vector import VectorRetriever
+from app.schemas.chat import ChatHistoryTurn
 from app.schemas.query import CitationItem
+from app.services.conversation_history import render_history_answer, select_history_turn
 
 
 @dataclass
@@ -55,10 +59,11 @@ class RagService:
 
     Query routing applies to ALL execution paths (linear and LangGraph agent):
 
-    1. CHITCHAT       → generate_direct_answer(), no retrieval, no citations.
-    2. FILE_INVENTORY → FileInventoryRetriever SQL path, no chunk retrieval, no citations.
-    3. FILE_TARGET    → direct lookup of a named file + all its chunks, no hybrid noise.
-    4. GROUNDED_RAG   → hybrid/vector retrieval then grounded answer.
+    1. CONVERSATION_HISTORY → deterministic prior-message recall, no document retrieval.
+    2. CHITCHAT       → generate_direct_answer(), no retrieval, no citations.
+    3. FILE_INVENTORY → FileInventoryRetriever SQL path, no chunk retrieval, no citations.
+    4. FILE_TARGET    → direct lookup of a named file + all its chunks, no hybrid noise.
+    5. GROUNDED_RAG   → hybrid/vector retrieval then grounded answer.
                         Uses LangGraph agent when agent_graph_enabled=True,
                         otherwise the linear path.
     """
@@ -104,10 +109,14 @@ class RagService:
         user_id: uuid.UUID | None = None,
         *,
         trace: EvalTraceCollector | None = None,
+        conversation_id: str | None = None,
+        history: Sequence[ChatHistoryTurn | Mapping[str, str]] = (),
+        history_window_complete: bool = False,
     ) -> RagResult:
         """Answer a question and persist query history.
 
         Routing runs first regardless of agent_graph_enabled:
+          CONVERSATION_HISTORY → deterministic prior-message recall, no sources.
           CHITCHAT       → direct reply, no retrieval, no sources shown.
           FILE_INVENTORY → SQL file search, no chunk retrieval, no sources shown.
           FILE_TARGET    → named file lookup, full file content, with citations.
@@ -120,7 +129,15 @@ class RagService:
         try:
             if not normalized_question:
                 raise ValueError("Question must not be empty")
-            return await self._ask_normalized(normalized_question, user_id, trace=trace)
+            if history and not conversation_id:
+                raise ValueError("Non-empty history requires a conversation ID")
+            return await self._ask_normalized(
+                normalized_question,
+                user_id,
+                trace=trace,
+                history=history,
+                history_window_complete=history_window_complete,
+            )
         except Exception as exc:
             if trace is not None:
                 trace.record_error(exc)
@@ -135,6 +152,8 @@ class RagService:
         user_id: uuid.UUID | None,
         *,
         trace: EvalTraceCollector | None,
+        history: Sequence[ChatHistoryTurn | Mapping[str, str]],
+        history_window_complete: bool,
     ) -> RagResult:
         """Execute the existing routed pipeline for an already-normalized question."""
         if trace is not None:
@@ -146,6 +165,36 @@ class RagService:
         if trace is not None:
             trace.set_stage("routing")
         route = classify_query(normalized_question)
+
+        if route is QueryRoute.CONVERSATION_HISTORY:
+            decision = classify_conversation_reference(normalized_question)
+            if decision is None:
+                raise RuntimeError("Conversation route requires a reference decision")
+            selection = select_history_turn(
+                history,
+                target_role=decision.target_role,
+                reference_kind=decision.reference_kind,
+                history_window_complete=history_window_complete,
+            )
+            answer = render_history_answer(selection, decision.target_role)
+            if trace is not None:
+                trace.record_route(route, "conversation_history")
+                trace.record_final(answer, [])
+                trace.set_stage("persistence")
+            query_id = await self._persist_query_history(
+                user_id=user.id,
+                question=normalized_question,
+                answer=answer,
+                citations=[],
+            )
+            return RagResult(
+                query_id=query_id,
+                user_id=user.id,
+                question=normalized_question,
+                answer=answer,
+                citations=[],
+                retrieval_count=0,
+            )
 
         # ── 1. Chitchat bypass ────────────────────────────────────────────────
         if route is QueryRoute.CHITCHAT:

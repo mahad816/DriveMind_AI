@@ -203,3 +203,60 @@ def test_find_latest_cv_is_file_inventory() -> None:
 def test_general_file_count_routes_to_file_inventory(question: str) -> None:
     """Global file count / listing should route to FILE_INVENTORY (no domain term needed)."""
     assert classify_query(question) is QueryRoute.FILE_INVENTORY
+
+
+# EXP-03: only explicit references to chat messages get the new route.
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What was the question I just asked?",
+        "Can you repeat my last question?",
+        "What did you just reply?",
+        "Say your last answer again",
+        "wht did i ask jus now?",
+    ],
+)
+def test_routes_explicit_message_recall_to_conversation_history(question: str) -> None:
+    assert classify_query(question) is QueryRoute.CONVERSATION_HISTORY
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What did I ask before that?",
+        "What was my second-last question?",
+        "Repeat the answer before your last one",
+    ],
+)
+def test_routes_unsupported_chat_ordinals_to_conversation_history(question: str) -> None:
+    assert classify_query(question) is QueryRoute.CONVERSATION_HISTORY
+
+
+def test_routes_ambiguous_explicit_message_reference_to_conversation_history() -> None:
+    assert (
+        classify_query("What did you say about my last question?")
+        is QueryRoute.CONVERSATION_HISTORY
+    )
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("show me the previous version of project-plan.pdf", QueryRoute.GROUNDED_RAG),
+        ("what was the last modified report?", QueryRoute.FILE_INVENTORY),
+        ("list the latest meeting files", QueryRoute.GROUNDED_RAG),
+        (
+            "compare the previous internship report with the current one",
+            QueryRoute.GROUNDED_RAG,
+        ),
+        ("find the last PDF I uploaded", QueryRoute.GROUNDED_RAG),
+        ("how are you?", QueryRoute.CHITCHAT),
+        ("how many files are named agenda?", QueryRoute.FILE_INVENTORY),
+        ('Tell me about "Field_Notes.docx"', QueryRoute.FILE_TARGET),
+        ("What causes condensation?", QueryRoute.GROUNDED_RAG),
+    ],
+)
+def test_document_and_existing_routes_do_not_become_chat_recall(
+    question: str, expected: QueryRoute
+) -> None:
+    assert classify_query(question) is expected

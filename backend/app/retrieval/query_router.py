@@ -1,6 +1,7 @@
 """Query routing — classify an incoming question into processing paths.
 
 Routes:
+  CONVERSATION_HISTORY — explicit recall of a prior chat message; no retrieval.
   CHITCHAT       — social messages; no retrieval.
   FILE_INVENTORY — file counts, lists, resume/CV inventory SQL path.
   FILE_TARGET    — user asks about a specific file by name (e.g. Tell me about "HI").
@@ -12,6 +13,7 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 
+from app.retrieval.conversation_intent import classify_conversation_reference
 from app.retrieval.filename_targets import extract_filename_targets, is_file_about_question
 
 # Quoted token in the query (e.g. "HI", "Far611") — presence means the user is
@@ -22,6 +24,7 @@ _QUOTED_TOKEN_RE = re.compile(r'"[^"]{1,}"|\'[^\']{1,}\'')
 class QueryRoute(StrEnum):
     """Top-level routing decision for an incoming user question."""
 
+    CONVERSATION_HISTORY = "conversation_history"
     CHITCHAT = "chitchat"
     FILE_INVENTORY = "file_inventory"
     FILE_TARGET = "file_target"
@@ -131,14 +134,18 @@ def classify_query(question: str) -> QueryRoute:
     """Classify a question into the appropriate processing route.
 
     Priority order:
-      1. Chitchat — high-confidence conversational phrases.
-      2. File inventory — counts, lists, resume/CV searches.
-      3. File target — asking about a specific named file.
-      4. Grounded RAG — default hybrid retrieval.
+      1. Explicit prior-message recall (including unsupported ordinals).
+      2. Chitchat — high-confidence conversational phrases.
+      3. File inventory — counts and listings.
+      4. File target — asking about a specific named file.
+      5. Grounded RAG — default hybrid retrieval.
     """
     normalized = question.strip()
     if not normalized:
         return QueryRoute.GROUNDED_RAG
+
+    if classify_conversation_reference(normalized) is not None:
+        return QueryRoute.CONVERSATION_HISTORY
 
     lower = normalized.lower()
 

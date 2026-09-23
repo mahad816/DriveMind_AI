@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from app.retrieval.types import RetrievedChunk
     from app.schemas.query import CitationItem
 
-ExecutionPath = Literal["chitchat", "file_inventory", "file_target", "linear", "langgraph"]
+ExecutionPath = Literal[
+    "conversation_history", "chitchat", "file_inventory", "file_target", "linear", "langgraph"
+]
 
 
 class TraceOutcome(StrEnum):
