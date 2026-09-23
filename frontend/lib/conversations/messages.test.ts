@@ -187,6 +187,29 @@ describe("EXP-03 bounded current-conversation request", () => {
     ]);
   });
 
+  it("retains a pending interaction without treating its placeholder as history", async () => {
+    const pending = {
+      id: "m2",
+      question: "Which gallery is open?",
+      status: "pending",
+      answer: null,
+      citations: [],
+      retrievalCount: 0,
+      error: null,
+    } satisfies StoredChatMessage;
+    saveConversationMessages("chat-gallery", [
+      storedMessage("m1", "What is in the exhibit?", "Paintings."),
+      pending,
+    ]);
+
+    expect(getConversationMessages("chat-gallery")).toHaveLength(2);
+    const request = await buildHistoryRequest("chat-gallery", "Repeat your last answer");
+    expect(request.history).toEqual([
+      { role: "user", text: "What is in the exhibit?" },
+      { role: "assistant", text: "Paintings." },
+    ]);
+  });
+
   it("excludes the regenerated turn and all later turns", async () => {
     saveConversationMessages("chat-meetings", [
       storedMessage("m1", "When is the meeting?", "Tuesday."),

@@ -14,10 +14,13 @@ import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { useConversations } from "@/lib/hooks/use-conversations";
 import { useChatShortcuts } from "@/lib/hooks/use-chat-shortcuts";
 import {
+  CONVERSATION_MESSAGES_CHANGED_EVENT,
+  appendConversationMessage,
   buildChatRequestForConversation,
   getConversationMessages,
-  saveConversationMessages,
+  recoverInterruptedConversationMessages,
   type StoredChatMessage,
+  updateConversationMessageById,
 } from "@/lib/conversations/messages";
 import { getConversation, isDefaultConversationTitle } from "@/lib/conversations/storage";
 import { conversationTitleFromQuestion } from "@/lib/conversations/title";
@@ -55,6 +58,9 @@ function createMessageId() {
 }
 
 function fromStoredMessage(stored: StoredChatMessage): ChatMessageState {
+  if (stored.status === "pending") {
+    return { id: stored.id, question: stored.question, status: "loading", error: null };
+  }
   if (stored.status === "error") {
     return {
       id: stored.id,
@@ -79,36 +85,6 @@ function fromStoredMessage(stored: StoredChatMessage): ChatMessageState {
       message: stored.answer ?? "",
     },
   };
-}
-
-function toStoredMessages(messages: ChatMessageState[]): StoredChatMessage[] {
-  return messages.flatMap<StoredChatMessage>((message) => {
-    if (message.status === "loading") return [];
-    if (message.status === "error") {
-      return [
-        {
-          id: message.id,
-          question: message.question,
-          status: "error",
-          answer: null,
-          citations: [],
-          retrievalCount: 0,
-          error: message.error,
-        },
-      ];
-    }
-    return [
-      {
-        id: message.id,
-        question: message.question,
-        status: "done",
-        answer: message.response.answer,
-        citations: message.response.citations,
-        retrievalCount: message.response.retrieval_count,
-        error: null,
-      },
-    ];
-  });
 }
 
 type ChatInterfaceProps = {
@@ -138,9 +114,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessageState[]>([]);
   const [loadedConversationId, setLoadedConversationId] = useState<string | null>(null);
   const messagesLoaded = !conversationId || loadedConversationId === conversationId;
-  const activeConversationIdRef = useRef(conversationId);
-  activeConversationIdRef.current = conversationId;
-  const [isSending, setIsSending] = useState(false);
+  const visibleMessages = messagesLoaded ? messages : [];
+  const isSending = messagesLoaded && messages.some((message) => message.status === "loading");
   const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
   const [sourcePanelOpen, setSourcePanelOpen] = useState(false);
 
@@ -155,7 +130,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       return;
     }
 
-    const stored = getConversationMessages(conversationId);
+    const stored = recoverInterruptedConversationMessages(conversationId);
     setMessages(stored.map(fromStoredMessage));
     titledRef.current = !isDefaultConversationTitle(record.title) || stored.length > 0;
     setLoadedConversationId(conversationId);
@@ -164,8 +139,14 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   useEffect(() => {
     if (!conversationId || !messagesLoaded) return;
-    saveConversationMessages(conversationId, toStoredMessages(messages));
-  }, [conversationId, messages, messagesLoaded]);
+    const onMessagesChanged = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== conversationId) return;
+      setMessages(getConversationMessages(conversationId).map(fromStoredMessage));
+    };
+    window.addEventListener(CONVERSATION_MESSAGES_CHANGED_EVENT, onMessagesChanged);
+    return () =>
+      window.removeEventListener(CONVERSATION_MESSAGES_CHANGED_EVENT, onMessagesChanged);
+  }, [conversationId, messagesLoaded]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -194,16 +175,31 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         return;
       }
       if (!messagesLoaded) return;
+      if (!getConversation(conversationId)) return;
+      if (getConversationMessages(conversationId).some((message) => message.status === "pending")) {
+        return;
+      }
 
       const id = options?.messageId ?? createMessageId();
       const replace = Boolean(options?.replace);
-      // Persist the current loaded view before reading this ID's bounded history.
-      saveConversationMessages(conversationId, toStoredMessages(messages));
       const request = buildChatRequestForConversation(
         conversationId,
         normalized,
         replace ? { beforeMessageId: id } : undefined,
       );
+      const pending: StoredChatMessage = {
+        id,
+        question: normalized,
+        status: "pending",
+        answer: null,
+        citations: [],
+        retrievalCount: 0,
+        error: null,
+      };
+      const stored = replace
+        ? updateConversationMessageById(conversationId, id, () => pending)
+        : appendConversationMessage(conversationId, pending);
+      if (!stored) return;
 
       if (!titledRef.current && !replace) {
         renameConversation(conversationId, conversationTitleFromQuestion(normalized));
@@ -213,48 +209,33 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       if (!replace) {
         setQuestion("");
       }
-      setIsSending(true);
-
-      setMessages((prev) => {
-        if (replace) {
-          return prev.map((message) =>
-            message.id === id
-              ? { id, question: normalized, status: "loading" as const, error: null }
-              : message,
-          );
-        }
-        return [...prev, { id, question: normalized, status: "loading" as const, error: null }];
-      });
-
       try {
         const response = await askQuestion(request);
-        if (activeConversationIdRef.current === conversationId) {
-          setMessages((prev) =>
-            prev.map((message) =>
-              message.id === id
-                ? { id, question: normalized, status: "done", error: null, response }
-                : message,
-            ),
-          );
+        const settled = updateConversationMessageById(conversationId, id, (current) => ({
+          ...current,
+          status: "done",
+          answer: response.answer,
+          citations: response.citations,
+          retrievalCount: response.retrieval_count,
+          error: null,
+        }));
+        if (settled) {
+          bumpConversation(conversationId);
         }
-        bumpConversation(conversationId);
       } catch (err) {
         const message = isApiError(err)
           ? err.detail
           : err instanceof Error
             ? err.message
             : "Request failed";
-        if (activeConversationIdRef.current === conversationId) {
-          setMessages((prev) =>
-            prev.map((entry) =>
-              entry.id === id
-                ? { id, question: normalized, status: "error", error: message, response: null }
-                : entry,
-            ),
-          );
-        }
-      } finally {
-        setIsSending(false);
+        updateConversationMessageById(conversationId, id, (current) => ({
+          ...current,
+          status: "error",
+          answer: null,
+          citations: [],
+          retrievalCount: 0,
+          error: message,
+        }));
       }
     },
     [
@@ -262,7 +243,6 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       conversationId,
       isConnected,
       isSending,
-      messages,
       messagesLoaded,
       needsPrepare,
       renameConversation,
@@ -365,7 +345,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         aria-label="Conversation"
       >
         <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-6 md:py-6">
-          {messages.length === 0 ? (
+          {visibleMessages.length === 0 ? (
             <EmptyStateHero
               needsConnect={needsConnect}
               needsPrepare={needsPrepare}
@@ -374,7 +354,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
             />
           ) : (
             <MessageThread
-              messages={messages}
+              messages={visibleMessages}
               onSourceSelect={handleSourceSelect}
               onRetry={retryMessage}
               onRegenerate={regenerateMessage}
