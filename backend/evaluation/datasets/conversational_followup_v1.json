@@ -1,0 +1,153 @@
+{
+  "dataset_id": "conversational_followup_v1",
+  "schema_version": "conversation-1.0",
+  "case_count": 20,
+  "description": "Frozen EXP-03 Level-1 explicit conversation-history recall cases. Prior turns are supplied fixtures, not instructions or document evidence. Document-route controls assert routing only.",
+  "evaluation_notes": {
+    "history": "Chronological prior messages for the active conversation; the current question is separate. Indices are zero-based in this supplied array.",
+    "other_conversations": "Isolation fixture only; these turns must never be supplied as active history.",
+    "route_only_controls": "Document negatives require the specified non-history route; their generated answers and citation contents are not scored here.",
+    "held_out": "Held-out wording and topics must not be copied into classifier-development fixtures or special-cased in implementation."
+  },
+  "cases": [
+    {
+      "id": "user_after_chitchat", "conversation_id": "chat-greeting", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Good morning"}, {"role": "assistant", "text": "Good morning!"}],
+      "question": "Would you restate the question I posed most recently?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 0, "selected_text": "Good morning", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["user_recall", "after_chitchat", "held_out"]
+    },
+    {
+      "id": "user_after_inventory", "conversation_id": "chat-inventory", "history_window_complete": true,
+      "history": [{"role": "user", "text": "How many PDFs are indexed?"}, {"role": "assistant", "text": "There are 12 indexed PDFs."}],
+      "question": "Remind me what I asked just now",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 0, "selected_text": "How many PDFs are indexed?", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["user_recall", "after_file_inventory"]
+    },
+    {
+      "id": "assistant_after_inventory", "conversation_id": "chat-inventory-answer", "history_window_complete": true,
+      "history": [{"role": "user", "text": "List the image files in my Drive"}, {"role": "assistant", "text": "I found three image files."}],
+      "question": "Could you quote your latest response to me?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 1, "selected_text": "I found three image files.", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["assistant_recall", "after_file_inventory", "held_out"]
+    },
+    {
+      "id": "user_after_grounded", "conversation_id": "chat-travel", "history_window_complete": true,
+      "history": [{"role": "user", "text": "When does the ferry leave in the travel itinerary?"}, {"role": "assistant", "text": "The ferry leaves at 08:30."}],
+      "other_conversations": [{"conversation_id": "chat-other", "history": [{"role": "user", "text": "Which train reaches the mountain town?"}, {"role": "assistant", "text": "The morning train reaches it."}]}],
+      "question": "In this chat, which question did I most recently send?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 0, "selected_text": "When does the ferry leave in the travel itinerary?", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["user_recall", "after_grounded_rag", "conversation_isolation", "held_out"]
+    },
+    {
+      "id": "assistant_after_grounded", "conversation_id": "chat-cloud", "history_window_complete": true,
+      "history": [{"role": "user", "text": "What do the cloud notes say about object storage?"}, {"role": "assistant", "text": "The notes describe object storage as bucket-based [1]."}],
+      "question": "Say your last answer again",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 1, "selected_text": "The notes describe object storage as bucket-based [1].", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["assistant_recall", "after_grounded_rag", "historical_citation_marker"]
+    },
+    {
+      "id": "assistant_after_file_target", "conversation_id": "chat-target", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Tell me about the file Garden_Map.pdf"}, {"role": "assistant", "text": "Garden_Map.pdf describes the north entrance."}],
+      "question": "What did you reply?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 1, "selected_text": "Garden_Map.pdf describes the north entrance.", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["assistant_recall", "after_file_target"]
+    },
+    {
+      "id": "latest_user_in_long_history", "conversation_id": "chat-long-user", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Hello"}, {"role": "assistant", "text": "Hi!"}, {"role": "user", "text": "How many meeting notes are indexed?"}, {"role": "assistant", "text": "Four meeting notes are indexed."}, {"role": "user", "text": "What is the workshop budget?"}, {"role": "assistant", "text": "The workshop note lists 500 units."}],
+      "question": "What was my last question?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 4, "selected_text": "What is the workshop budget?", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["user_recall", "long_history", "mixed_prior_routes"]
+    },
+    {
+      "id": "latest_assistant_in_long_history", "conversation_id": "chat-long-assistant", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Where is the station?"}, {"role": "assistant", "text": "Near the market."}, {"role": "user", "text": "Which gallery is open?"}, {"role": "assistant", "text": "The east gallery is open."}, {"role": "user", "text": "When is the concert?"}, {"role": "assistant", "text": "It starts on Friday."}],
+      "question": "Repeat what you told me",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 5, "selected_text": "It starts on Friday.", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["assistant_recall", "long_history"]
+    },
+    {
+      "id": "casual_user_typo", "conversation_id": "chat-typo-user", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Is the museum open on Sunday?"}, {"role": "assistant", "text": "The schedule says yes."}],
+      "question": "wht did i ask jus now?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 0, "selected_text": "Is the museum open on Sunday?", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["user_recall", "casual_typo"]
+    },
+    {
+      "id": "casual_assistant_typo", "conversation_id": "chat-typo-assistant", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Where was the photo taken?"}, {"role": "assistant", "text": "At the riverbank."}],
+      "question": "wat was ur last reply?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 1, "selected_text": "At the riverbank.", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["assistant_recall", "casual_typo"]
+    },
+    {
+      "id": "fresh_conversation", "conversation_id": "chat-fresh", "history_window_complete": true,
+      "history": [], "question": "What did I just ask?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "NO_HISTORY", "selected_history_index": null, "selected_text": null, "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["no_history"]
+    },
+    {
+      "id": "assistant_role_absent", "conversation_id": "chat-no-answer", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Is the lab open?"}], "question": "What did you last answer?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "ROLE_NOT_PRESENT", "selected_history_index": null, "selected_text": null, "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["role_not_present"]
+    },
+    {
+      "id": "bounded_role_absent", "conversation_id": "chat-bounded", "history_window_complete": false,
+      "history": [{"role": "assistant", "text": "The event begins at noon."}], "question": "What did I ask last?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "UNAVAILABLE_IN_BOUNDED_HISTORY", "selected_history_index": null, "selected_text": null, "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["bounded_history", "role_unavailable"]
+    },
+    {
+      "id": "ordinal_last", "conversation_id": "chat-ordinal-last", "history_window_complete": true,
+      "history": [{"role": "user", "text": "First question"}, {"role": "assistant", "text": "First answer"}, {"role": "user", "text": "Second question"}, {"role": "assistant", "text": "Second answer"}],
+      "question": "What was my third-last question?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "UNSUPPORTED_ORDINAL_REFERENCE", "selector_outcome": "UNSUPPORTED_ORDINAL_REFERENCE", "selected_history_index": null, "selected_text": null, "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["unsupported_ordinal", "ordinal_last"]
+    },
+    {
+      "id": "ordinal_count_back", "conversation_id": "chat-count-back", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Where is the library?"}, {"role": "assistant", "text": "On the west side."}, {"role": "user", "text": "When is it open?"}, {"role": "assistant", "text": "Until six."}],
+      "question": "What did you answer two replies ago?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "assistant", "reference_kind": "UNSUPPORTED_ORDINAL_REFERENCE", "selector_outcome": "UNSUPPORTED_ORDINAL_REFERENCE", "selected_history_index": null, "selected_text": null, "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["unsupported_ordinal", "count_back"]
+    },
+    {
+      "id": "ordinal_penultimate", "conversation_id": "chat-before", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Find the map"}, {"role": "assistant", "text": "Map found."}, {"role": "user", "text": "Find the schedule"}, {"role": "assistant", "text": "Schedule found."}],
+      "question": "Can you give me my penultimate question?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "UNSUPPORTED_ORDINAL_REFERENCE", "selector_outcome": "UNSUPPORTED_ORDINAL_REFERENCE", "selected_history_index": null, "selected_text": null, "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["unsupported_ordinal", "penultimate", "held_out"]
+    },
+    {
+      "id": "conversation_isolation", "conversation_id": "chat-b", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Which recipe uses mint?"}, {"role": "assistant", "text": "The salad recipe uses mint."}],
+      "other_conversations": [{"conversation_id": "chat-a", "history": [{"role": "user", "text": "When is the tax deadline?"}, {"role": "assistant", "text": "The tax deadline is in April."}]}],
+      "question": "What was my last question?",
+      "expected": {"route": "CONVERSATION_HISTORY", "target_role": "user", "reference_kind": "LATEST_SUPPORTED", "selector_outcome": "SELECTED", "selected_history_index": 0, "selected_text": "Which recipe uses mint?", "retrieval_should_run": false, "retrieval_count": 0, "citations": []},
+      "tags": ["user_recall", "conversation_isolation"]
+    },
+    {
+      "id": "document_previous_version", "conversation_id": "chat-doc-version", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Open the field report"}, {"role": "assistant", "text": "The field report is available."}],
+      "question": "Before its final revision, did the field report list a larger budget?",
+      "expected": {"route": "GROUNDED_RAG", "target_role": null, "reference_kind": null, "selector_outcome": null, "selected_history_index": null, "selected_text": null, "retrieval_should_run": null, "retrieval_count": null, "citations": null},
+      "tags": ["negative_document_control", "prior_revision", "route_only", "held_out"]
+    },
+    {
+      "id": "document_last_modified", "conversation_id": "chat-modified", "history_window_complete": true,
+      "history": [{"role": "user", "text": "List my reports"}, {"role": "assistant", "text": "Several reports are indexed."}],
+      "question": "Show the last modified report in my Drive",
+      "expected": {"route": "FILE_INVENTORY", "target_role": null, "reference_kind": null, "selector_outcome": null, "selected_history_index": null, "selected_text": null, "retrieval_should_run": null, "retrieval_count": null, "citations": null},
+      "tags": ["negative_document_control", "last_modified", "route_only"]
+    },
+    {
+      "id": "document_latest_pdf", "conversation_id": "chat-latest-pdf", "history_window_complete": true,
+      "history": [{"role": "user", "text": "Are there image files?"}, {"role": "assistant", "text": "Yes, image files are indexed."}],
+      "question": "What is in the latest PDF I uploaded?",
+      "expected": {"route": "GROUNDED_RAG", "target_role": null, "reference_kind": null, "selector_outcome": null, "selected_history_index": null, "selected_text": null, "retrieval_should_run": null, "retrieval_count": null, "citations": null},
+      "tags": ["negative_document_control", "latest_pdf", "route_only"]
+    }
+  ]
+}
