@@ -240,6 +240,31 @@ def test_routes_ambiguous_explicit_message_reference_to_conversation_history() -
 
 
 @pytest.mark.parametrize(
+    "question",
+    [
+        "Would you restate the question I posed most recently?",
+        "Can you give me my penultimate question?",
+    ],
+)
+def test_observed_v1_history_misses_reach_the_history_route(question: str) -> None:
+    assert classify_query(question) is QueryRoute.CONVERSATION_HISTORY
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Quote the latest PDF.",
+        "Which report did I send most recently?",
+        "What was in the penultimate revision?",
+    ],
+)
+def test_document_targets_with_history_vocabulary_do_not_reach_history_route(
+    question: str,
+) -> None:
+    assert classify_query(question) is not QueryRoute.CONVERSATION_HISTORY
+
+
+@pytest.mark.parametrize(
     ("question", "expected"),
     [
         ("show me the previous version of project-plan.pdf", QueryRoute.GROUNDED_RAG),
