@@ -33,8 +33,20 @@ class OtherConversation(StrictModel):
     history: list[ChatHistoryTurn] = Field(max_length=8)
 
 
+class RouteExpectation(StrictModel):
+    mode: Literal["exact", "exclude"]
+    route: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_route(self) -> RouteExpectation:
+        if self.route not in QueryRoute.__members__:
+            raise ValueError("route expectation must name a known production route")
+        return self
+
+
 class ConversationExpected(StrictModel):
-    route: str
+    route: str | None = None  # Frozen v1 legacy exact-route field.
+    route_expectation: RouteExpectation | None = None
     target_role: Literal["user", "assistant"] | None
     reference_kind: str | None
     selector_outcome: str | None
@@ -43,6 +55,21 @@ class ConversationExpected(StrictModel):
     retrieval_should_run: StrictBool | None
     retrieval_count: StrictInt | None
     citations: list[str] | None
+
+    @model_validator(mode="after")
+    def validate_route_choice(self) -> ConversationExpected:
+        if (self.route is None) == (self.route_expectation is None):
+            raise ValueError("expected route requires exactly one legacy or explicit expectation")
+        if self.route is not None and self.route not in QueryRoute.__members__:
+            raise ValueError("expected route is not a known production route")
+        return self
+
+    @property
+    def route_rule(self) -> RouteExpectation:
+        if self.route_expectation is not None:
+            return self.route_expectation
+        assert self.route is not None  # Validated above.
+        return RouteExpectation(mode="exact", route=self.route)
 
 
 class ConversationEvalCase(StrictModel):
@@ -71,9 +98,13 @@ class ConversationEvalCase(StrictModel):
                 raise ValueError("other conversation history exceeds 24,000 characters")
 
         expected = self.expected
-        if expected.route not in QueryRoute.__members__:
-            raise ValueError("expected route is not a known production route")
-        if expected.route != QueryRoute.CONVERSATION_HISTORY.name:
+        route_rule = expected.route_rule
+        if route_rule.mode == "exclude" and (
+            route_rule.route != QueryRoute.CONVERSATION_HISTORY.name
+            or "negative_document_control" not in self.tags
+        ):
+            raise ValueError("document exclusion must target CONVERSATION_HISTORY")
+        if route_rule.mode != "exact" or route_rule.route != QueryRoute.CONVERSATION_HISTORY.name:
             if any(
                 value is not None
                 for value in (
@@ -162,10 +193,18 @@ class ConversationEvalDataset(StrictModel):
     @model_validator(mode="after")
     def validate_dataset(self) -> ConversationEvalDataset:
         if (
-            self.dataset_id != "conversational_followup_v1"
+            self.dataset_id
+            not in {
+                "conversational_followup_v1",
+                "conversational_followup_v2",
+            }
             or self.schema_version != "conversation-1.0"
         ):
             raise ValueError("unsupported conversation dataset identity/schema")
+        if self.dataset_id == "conversational_followup_v1" and any(
+            case.expected.route_expectation is not None for case in self.cases
+        ):
+            raise ValueError("v1 must retain legacy exact-route expectations")
         if self.case_count != len(self.cases):
             raise ValueError("case_count does not match cases")
         ids = [case.id for case in self.cases]

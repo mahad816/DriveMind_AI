@@ -103,8 +103,10 @@ async def evaluate_conversation_case(
     """Exercise real service for history; stop document controls at the real router."""
     started = perf_counter()
     expected = case.expected
+    route_rule = expected.route_rule
     failed: list[str] = []
     actual_route: str | None = None
+    route_passed: bool | None = None
     actual_role: str | None = None
     actual_kind: str | None = None
     actual_outcome: str | None = None
@@ -118,10 +120,15 @@ async def evaluate_conversation_case(
     try:
         route = classify_query(case.question)
         actual_route = route.name
-        if route.name != expected.route:
+        route_passed = (
+            route.name == route_rule.route
+            if route_rule.mode == "exact"
+            else route.name != route_rule.route
+        )
+        if not route_passed:
             failed.append("route")
 
-        if expected.route == QueryRoute.CONVERSATION_HISTORY.name:
+        if route_rule.mode == "exact" and route_rule.route == QueryRoute.CONVERSATION_HISTORY.name:
             if route is not QueryRoute.CONVERSATION_HISTORY:
                 raise ValueError(
                     "conversation case routed outside history; document path not executed"
@@ -196,6 +203,9 @@ async def evaluate_conversation_case(
         "case_id": case.id,
         "passed": not failed,
         "actual_route": actual_route,
+        "route_expectation_mode": route_rule.mode,
+        "route_expectation_route": route_rule.route,
+        "route_passed": route_passed,
         "actual_target_role": actual_role,
         "actual_reference_kind": actual_kind,
         "actual_selector_outcome": actual_outcome,
@@ -300,7 +310,8 @@ async def run_conversation_evaluation(
     started = datetime.now(UTC)
     results: list[JsonObject] = []
     for case in dataset.cases:
-        if case.expected.route != QueryRoute.CONVERSATION_HISTORY.name:
+        route_rule = case.expected.route_rule
+        if route_rule.mode != "exact" or route_rule.route != QueryRoute.CONVERSATION_HISTORY.name:
             results.append(await evaluate_conversation_case(case, service=None, user_id=user_id))
             continue
         async with SessionLocal() as db:

@@ -52,6 +52,182 @@ def test_loader_accepts_typed_conversational_dataset() -> None:
     assert dataset.cases[16].other_conversations[0].conversation_id == "chat-a"
 
 
+def _v2_document_control() -> dict[str, Any]:
+    value = deepcopy(_raw_dataset())
+    value["dataset_id"] = "conversational_followup_v2"
+    control = next(case for case in value["cases"] if case["id"] == "document_latest_pdf")
+    control["expected"].pop("route")
+    control["expected"]["route_expectation"] = {
+        "mode": "exclude",
+        "route": "CONVERSATION_HISTORY",
+    }
+    return value
+
+
+def test_loader_accepts_distinct_v2_identity(tmp_path: Path) -> None:
+    value = deepcopy(_raw_dataset())
+    value["dataset_id"] = "conversational_followup_v2"
+
+    assert load_conversation_dataset(_write(tmp_path, value)).dataset_id == value["dataset_id"]
+
+
+def test_loader_rejects_unsupported_conversation_identity(tmp_path: Path) -> None:
+    value = deepcopy(_raw_dataset())
+    value["dataset_id"] = "conversational_followup_v3"
+
+    with pytest.raises(ConversationDatasetError, match="identity|dataset_id"):
+        load_conversation_dataset(_write(tmp_path, value))
+
+
+def test_legacy_v1_route_remains_an_exact_expectation() -> None:
+    expected = _case("document_latest_pdf").expected
+
+    assert expected.route == "GROUNDED_RAG"
+    assert expected.route_expectation is None
+
+
+def test_loader_accepts_explicit_exact_route_expectation(tmp_path: Path) -> None:
+    value = deepcopy(_raw_dataset())
+    value["dataset_id"] = "conversational_followup_v2"
+    control = next(case for case in value["cases"] if case["id"] == "document_latest_pdf")
+    control["expected"].pop("route")
+    control["expected"]["route_expectation"] = {"mode": "exact", "route": "GROUNDED_RAG"}
+
+    expected = next(
+        case.expected
+        for case in load_conversation_dataset(_write(tmp_path, value)).cases
+        if case.id == "document_latest_pdf"
+    )
+    assert expected.route_expectation is not None
+    assert expected.route_expectation.mode == "exact"
+    assert expected.route_expectation.route == "GROUNDED_RAG"
+
+
+def test_v2_history_case_accepts_explicit_exact_history_route(tmp_path: Path) -> None:
+    value = deepcopy(_raw_dataset())
+    value["dataset_id"] = "conversational_followup_v2"
+    expected = value["cases"][0]["expected"]
+    expected.pop("route")
+    expected["route_expectation"] = {"mode": "exact", "route": "CONVERSATION_HISTORY"}
+
+    case = load_conversation_dataset(_write(tmp_path, value)).cases[0]
+    assert case.expected.route_rule.mode == "exact"
+    assert case.expected.route_rule.route == "CONVERSATION_HISTORY"
+    assert case.expected.target_role == "user"
+
+
+def test_v1_identity_cannot_change_to_new_route_expectation_semantics(tmp_path: Path) -> None:
+    value = _v2_document_control()
+    value["dataset_id"] = "conversational_followup_v1"
+
+    with pytest.raises(ConversationDatasetError, match="v1|legacy"):
+        load_conversation_dataset(_write(tmp_path, value))
+
+
+def test_loader_accepts_history_route_exclusion_for_v2(tmp_path: Path) -> None:
+    dataset = load_conversation_dataset(_write(tmp_path, _v2_document_control()))
+    control = next(case for case in dataset.cases if case.id == "document_latest_pdf")
+
+    assert control.expected.route_expectation is not None
+    assert control.expected.route_expectation.mode == "exclude"
+    assert control.expected.route_expectation.route == "CONVERSATION_HISTORY"
+
+
+@pytest.mark.parametrize(
+    ("change", "error"),
+    [
+        (lambda e: e.update(route="GROUNDED_RAG"), "both|exactly one"),
+        (lambda e: e["route_expectation"].update(mode="unknown"), "mode"),
+        (lambda e: e["route_expectation"].update(route="UNKNOWN"), "route"),
+        (lambda e: e["route_expectation"].update(route="FILE_INVENTORY"), "CONVERSATION_HISTORY"),
+    ],
+)
+def test_loader_rejects_invalid_or_contradictory_route_expectations(
+    tmp_path: Path, change: Any, error: str
+) -> None:
+    value = _v2_document_control()
+    expected = next(
+        case["expected"] for case in value["cases"] if case["id"] == "document_latest_pdf"
+    )
+    change(expected)
+
+    with pytest.raises(ConversationDatasetError, match=error):
+        load_conversation_dataset(_write(tmp_path, value))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("actual_route", [QueryRoute.FILE_INVENTORY, QueryRoute.GROUNDED_RAG])
+async def test_exclusion_control_accepts_nonhistory_routes_without_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, actual_route: QueryRoute
+) -> None:
+    from evaluation import conversation_runner
+
+    case = next(
+        case
+        for case in load_conversation_dataset(_write(tmp_path, _v2_document_control())).cases
+        if case.id == "document_latest_pdf"
+    )
+    monkeypatch.setattr(conversation_runner, "classify_query", lambda question: actual_route)
+    service = MagicMock()
+    service.ask = AsyncMock(side_effect=AssertionError("service/provider called"))
+
+    result = await evaluate_conversation_case(case, service=service, user_id=uuid.uuid4())
+
+    assert result["passed"] is True
+    assert result["actual_route"] == actual_route.name
+    assert result["route_expectation_mode"] == "exclude"
+    assert result["route_expectation_route"] == "CONVERSATION_HISTORY"
+    assert result["route_passed"] is True
+    service.ask.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_exclusion_control_rejects_history_route_without_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from evaluation import conversation_runner
+
+    case = next(
+        case
+        for case in load_conversation_dataset(_write(tmp_path, _v2_document_control())).cases
+        if case.id == "document_latest_pdf"
+    )
+    monkeypatch.setattr(
+        conversation_runner, "classify_query", lambda question: QueryRoute.CONVERSATION_HISTORY
+    )
+    service = MagicMock()
+    service.ask = AsyncMock(side_effect=AssertionError("service/provider called"))
+
+    result = await evaluate_conversation_case(case, service=service, user_id=uuid.uuid4())
+
+    assert result["passed"] is False
+    assert result["actual_route"] == "CONVERSATION_HISTORY"
+    assert result["route_passed"] is False
+    assert result["failed_checks"] == ["route"]
+    service.ask.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_exact_route_mismatch_is_still_recorded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from evaluation import conversation_runner
+
+    monkeypatch.setattr(
+        conversation_runner, "classify_query", lambda question: QueryRoute.FILE_INVENTORY
+    )
+    result = await evaluate_conversation_case(
+        _case("document_latest_pdf"), service=None, user_id=uuid.uuid4()
+    )
+
+    assert result["passed"] is False
+    assert result["actual_route"] == "FILE_INVENTORY"
+    assert result["route_expectation_mode"] == "exact"
+    assert result["route_expectation_route"] == "GROUNDED_RAG"
+    assert result["route_passed"] is False
+    assert result["failed_checks"] == ["route"]
+
+
 @pytest.mark.parametrize(
     ("mutate", "error"),
     [
@@ -225,6 +401,9 @@ def test_aggregate_metrics_and_artifact_identity() -> None:
         {
             "passed": True,
             "actual_route": "GROUNDED_RAG",
+            "route_expectation_mode": "exclude",
+            "route_expectation_route": "CONVERSATION_HISTORY",
+            "route_passed": True,
             "actual_selector_outcome": None,
             "actual_retrieval_count": None,
             "actual_citation_count": None,
@@ -246,6 +425,9 @@ def test_aggregate_metrics_and_artifact_identity() -> None:
     assert artifact["run"]["dataset"]["sha256"] == "fixed-digest"
     assert artifact["run"]["git"]["sha"] == "fixed-sha"
     assert artifact["summary"]["cases_total"] == 3
+    assert artifact["cases"][2]["actual_route"] == "GROUNDED_RAG"
+    assert artifact["cases"][2]["route_expectation_mode"] == "exclude"
+    assert artifact["cases"][2]["route_expectation_route"] == "CONVERSATION_HISTORY"
 
 
 def test_formal_runner_rejects_dirty_git() -> None:
