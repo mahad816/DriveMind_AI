@@ -1,0 +1,191 @@
+{
+  "dataset_id": "conversational_followup_v2",
+  "schema_version": "conversation-1.0",
+  "case_count": 8,
+  "description": "Fresh EXP-03 Level-1 conversation-history generalization set, frozen after the final classifier candidate was locked.",
+  "evaluation_notes": {
+    "freshness": "All questions are held-out constructions. Do not use their results to tune the locked classifier.",
+    "history": "Prior turns are chronological and belong only to the named active conversation; the current question is separate.",
+    "document_controls": "Exclude CONVERSATION_HISTORY only. The actual non-history document route is descriptive, not an exact-route target.",
+    "thresholds": "All history expectations and zero-retrieval/citation checks must pass; document controls must never route to CONVERSATION_HISTORY; zero runtime errors. Latency is descriptive."
+  },
+  "cases": [
+    {
+      "id": "user_typed_contribution",
+      "conversation_id": "v2-restaurant",
+      "history_window_complete": true,
+      "history": [
+        {"role": "user", "text": "Can we reserve a table for six?"},
+        {"role": "assistant", "text": "The reservation note lists six guests."}
+      ],
+      "question": "What was the most recent thing I typed in this conversation?",
+      "expected": {
+        "route_expectation": {"mode": "exact", "route": "CONVERSATION_HISTORY"},
+        "target_role": "user",
+        "reference_kind": "LATEST_SUPPORTED",
+        "selector_outcome": "SELECTED",
+        "selected_history_index": 0,
+        "selected_text": "Can we reserve a table for six?",
+        "retrieval_should_run": false,
+        "retrieval_count": 0,
+        "citations": []
+      },
+      "tags": ["held_out", "user_recall", "typed_contribution", "short_history"]
+    },
+    {
+      "id": "user_read_back_contribution",
+      "conversation_id": "v2-class-and-meeting",
+      "history_window_complete": true,
+      "history": [
+        {"role": "user", "text": "When is the chemistry class?"},
+        {"role": "assistant", "text": "The class schedule lists Monday morning."},
+        {"role": "user", "text": "How much did the supplies cost?"},
+        {"role": "assistant", "text": "The expense sheet lists 40 units."},
+        {"role": "user", "text": "Who attended the planning meeting?"},
+        {"role": "assistant", "text": "The meeting notes name three attendees."}
+      ],
+      "question": "Can you read back my latest contribution to this chat?",
+      "expected": {
+        "route_expectation": {"mode": "exact", "route": "CONVERSATION_HISTORY"},
+        "target_role": "user",
+        "reference_kind": "LATEST_SUPPORTED",
+        "selector_outcome": "SELECTED",
+        "selected_history_index": 4,
+        "selected_text": "Who attended the planning meeting?",
+        "retrieval_should_run": false,
+        "retrieval_count": 0,
+        "citations": []
+      },
+      "tags": ["held_out", "user_recall", "read_back_contribution", "long_history"]
+    },
+    {
+      "id": "assistant_exact_words",
+      "conversation_id": "v2-travel",
+      "history_window_complete": true,
+      "history": [
+        {"role": "user", "text": "When does the evening train depart?"},
+        {"role": "assistant", "text": "The itinerary lists a 19:20 departure."}
+      ],
+      "question": "What were your exact words in the previous exchange?",
+      "expected": {
+        "route_expectation": {"mode": "exact", "route": "CONVERSATION_HISTORY"},
+        "target_role": "assistant",
+        "reference_kind": "LATEST_SUPPORTED",
+        "selector_outcome": "SELECTED",
+        "selected_history_index": 1,
+        "selected_text": "The itinerary lists a 19:20 departure.",
+        "retrieval_should_run": false,
+        "retrieval_count": 0,
+        "citations": []
+      },
+      "tags": ["held_out", "assistant_recall", "exact_words", "short_history"]
+    },
+    {
+      "id": "assistant_wrote_back",
+      "conversation_id": "v2-project-notes",
+      "history_window_complete": true,
+      "history": [
+        {"role": "user", "text": "What camera was used for the image?"},
+        {"role": "assistant", "text": "The image metadata names a compact camera."},
+        {"role": "user", "text": "What are the next steps in the project notes?"},
+        {"role": "assistant", "text": "The notes call for a design review and a budget check."}
+      ],
+      "question": "Could you display the text you wrote back to me a moment ago?",
+      "expected": {
+        "route_expectation": {"mode": "exact", "route": "CONVERSATION_HISTORY"},
+        "target_role": "assistant",
+        "reference_kind": "LATEST_SUPPORTED",
+        "selector_outcome": "SELECTED",
+        "selected_history_index": 3,
+        "selected_text": "The notes call for a design review and a budget check.",
+        "retrieval_should_run": false,
+        "retrieval_count": 0,
+        "citations": []
+      },
+      "tags": ["held_out", "assistant_recall", "wrote_back", "long_history"]
+    },
+    {
+      "id": "ordinal_middle_question",
+      "conversation_id": "v2-workshop",
+      "history_window_complete": true,
+      "history": [
+        {"role": "user", "text": "Where is the workshop?"},
+        {"role": "assistant", "text": "It is in Room A."},
+        {"role": "user", "text": "What time does it start?"},
+        {"role": "assistant", "text": "It starts at nine."},
+        {"role": "user", "text": "Is parking available?"},
+        {"role": "assistant", "text": "The workshop note says parking is available."}
+      ],
+      "question": "What was my middle question in this conversation?",
+      "expected": {
+        "route_expectation": {"mode": "exact", "route": "CONVERSATION_HISTORY"},
+        "target_role": "user",
+        "reference_kind": "UNSUPPORTED_ORDINAL_REFERENCE",
+        "selector_outcome": "UNSUPPORTED_ORDINAL_REFERENCE",
+        "selected_history_index": null,
+        "selected_text": null,
+        "retrieval_should_run": false,
+        "retrieval_count": 0,
+        "citations": []
+      },
+      "tags": ["held_out", "unsupported_ordinal", "middle_question"]
+    },
+    {
+      "id": "document_image_caption",
+      "conversation_id": "v2-image-control",
+      "history_window_complete": true,
+      "history": [],
+      "question": "Could you quote the caption from the newest image I uploaded?",
+      "expected": {
+        "route_expectation": {"mode": "exclude", "route": "CONVERSATION_HISTORY"},
+        "target_role": null,
+        "reference_kind": null,
+        "selector_outcome": null,
+        "selected_history_index": null,
+        "selected_text": null,
+        "retrieval_should_run": null,
+        "retrieval_count": null,
+        "citations": null
+      },
+      "tags": ["held_out", "negative_document_control", "route_only", "image_caption"]
+    },
+    {
+      "id": "document_earlier_meeting_note",
+      "conversation_id": "v2-meeting-control",
+      "history_window_complete": true,
+      "history": [],
+      "question": "Which earlier meeting note contains the parking instructions?",
+      "expected": {
+        "route_expectation": {"mode": "exclude", "route": "CONVERSATION_HISTORY"},
+        "target_role": null,
+        "reference_kind": null,
+        "selector_outcome": null,
+        "selected_history_index": null,
+        "selected_text": null,
+        "retrieval_should_run": null,
+        "retrieval_count": null,
+        "citations": null
+      },
+      "tags": ["held_out", "negative_document_control", "route_only", "meeting_note"]
+    },
+    {
+      "id": "document_text_file_title",
+      "conversation_id": "v2-text-file-control",
+      "history_window_complete": true,
+      "history": [],
+      "question": "Read back the title of the last text file I saved.",
+      "expected": {
+        "route_expectation": {"mode": "exclude", "route": "CONVERSATION_HISTORY"},
+        "target_role": null,
+        "reference_kind": null,
+        "selector_outcome": null,
+        "selected_history_index": null,
+        "selected_text": null,
+        "retrieval_should_run": null,
+        "retrieval_count": null,
+        "citations": null
+      },
+      "tags": ["held_out", "negative_document_control", "route_only", "text_file_title"]
+    }
+  ]
+}
