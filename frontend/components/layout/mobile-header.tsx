@@ -22,7 +22,7 @@ export function MobileHeader() {
             }
           />
           <SheetContent side="left" className="w-[280px] p-0">
-            <ConversationSidebar onNavigate={() => setOpen(false)} className="w-full border-0" />
+            <ConversationSidebar onNavigate={() => setOpen(false)} collapsible={false} className="w-full border-0" />
           </SheetContent>
         </Sheet>
         <p className="text-sm font-semibold">DriveMind AI</p>

@@ -12,6 +12,7 @@ import { SourcePanel } from "@/components/chat/source-panel";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { useConversations } from "@/lib/hooks/use-conversations";
+import { ChatHeader } from "@/components/layout/chat-header";
 import { useChatShortcuts } from "@/lib/hooks/use-chat-shortcuts";
 import {
   CONVERSATION_MESSAGES_CHANGED_EVENT,
@@ -98,7 +99,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     pollIntervalMs: 30_000,
   });
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
-  const { startNewConversation, renameConversation, bumpConversation } = useConversations();
+  const { conversations, startNewConversation, renameConversation, bumpConversation } = useConversations();
 
   useEffect(() => {
     void refetch();
@@ -330,6 +331,13 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <ChatHeader
+        title={
+          conversationId
+            ? conversations?.find((item) => item.id === conversationId)?.title ?? null
+            : null
+        }
+      />
       {connectionError ? (
         <div className="mx-auto w-full max-w-3xl shrink-0 px-4 md:px-6">
           <Alert variant="destructive" className="mb-4">

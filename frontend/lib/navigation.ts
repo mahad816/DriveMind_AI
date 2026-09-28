@@ -6,10 +6,10 @@ export type UtilityNavItem = {
   icon: LucideIcon;
 };
 
-/** Secondary navigation — knowledge library, build knowledge, and settings. */
+/** Secondary navigation — files, knowledge, and settings. */
 export const utilityNavItems: UtilityNavItem[] = [
   { href: "/files", label: "Files", icon: Files },
-  { href: "/index", label: "Build knowledge", icon: Wand2 },
+  { href: "/index", label: "Knowledge", icon: Wand2 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

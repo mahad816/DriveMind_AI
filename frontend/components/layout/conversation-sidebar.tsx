@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Files, MessageSquare, MessageSquarePlus, Search, X } from "lucide-react";
+import { Files, MessageSquare, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 
 import { ConversationItem } from "@/components/layout/conversation-item";
 import { UtilityNavLink } from "@/components/layout/utility-nav-link";
@@ -20,14 +20,17 @@ import { cn } from "@/lib/utils";
 type ConversationSidebarProps = {
   className?: string;
   onNavigate?: () => void;
+  collapsible?: boolean;
 };
 
-export function ConversationSidebar({ className, onNavigate }: ConversationSidebarProps) {
+export function ConversationSidebar({ className, onNavigate, collapsible = true }: ConversationSidebarProps) {
   const router = useRouter();
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
   const { groups, isLoading, startNewConversation, renameConversation, removeConversation } =
     useConversations();
   const [chatQuery, setChatQuery] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
+  const compact = collapsible && collapsed;
 
   const handleNewChat = () => {
     const created = startNewConversation();
@@ -57,37 +60,60 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
   return (
     <aside
       className={cn(
-        "flex h-full w-[260px] shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground",
+        "flex h-full shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground",
+        compact ? "w-16" : "w-[260px]",
         className,
       )}
       aria-label="App navigation"
     >
-      {/* Logo */}
-      <div className="flex h-14 shrink-0 items-center gap-2.5 px-4">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-          <MessageSquare className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">DriveMind AI</p>
-          <p className="truncate text-xs text-muted-foreground">Your knowledge OS</p>
-        </div>
+      <div
+        className={cn(
+          "flex h-14 shrink-0 items-center gap-2.5",
+          compact ? "justify-center px-2" : "px-4",
+        )}
+      >
+        {!compact ? (
+          <>
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <MessageSquare className="size-4" />
+            </div>
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">DriveMind AI</p>
+          </>
+        ) : null}
+        {collapsible ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={compact ? "Expand sidebar" : "Collapse sidebar"}
+            title={compact ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {compact ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </Button>
+        ) : null}
       </div>
 
-      <div className="flex shrink-0 flex-col gap-2 px-3 pb-3">
+      <div className={cn("flex shrink-0 flex-col gap-2 pb-3", compact ? "px-2" : "px-3")}>
         <button
           type="button"
           onClick={handleNewChat}
-          className="flex w-full items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20"
+          aria-label="New Chat"
+          title={compact ? "New Chat" : undefined}
+          className={cn(
+            "flex w-full items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary/20",
+            compact ? "justify-center px-2" : "px-3",
+          )}
         >
           <MessageSquarePlus className="size-4 shrink-0" />
-          New Chat
+          {!compact ? "New Chat" : null}
         </button>
       </div>
 
-      <Separator />
+      {!compact ? <Separator /> : null}
 
       {/* Chat history */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {!compact ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="space-y-2 px-3 pt-3 pb-1">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {chatCopy.recentChats}
@@ -154,30 +180,41 @@ export function ConversationSidebar({ className, onNavigate }: ConversationSideb
             <p className="px-3 py-2 text-xs text-muted-foreground">{chatCopy.noChatsYet}</p>
           )}
         </nav>
-      </div>
+      </div> : <div className="min-h-0 flex-1" />}
 
       <Separator />
 
       {/* Primary + utility nav */}
-      <nav className="flex shrink-0 flex-col gap-0.5 p-3" aria-label="Primary navigation">
+      <nav
+        className={cn("flex shrink-0 flex-col gap-0.5", compact ? "px-2 pt-2" : "p-3")}
+        aria-label="Primary navigation"
+      >
         <PrimaryNavLink
           href="/files"
           icon={Files}
           label="Files"
-          description="Your knowledge library"
+          compact={compact}
           onNavigate={onNavigate}
         />
       </nav>
 
-      <nav className="flex shrink-0 flex-col gap-1 px-3 pb-3" aria-label="Utility navigation">
+      <nav
+        className={cn("flex shrink-0 flex-col gap-1 pb-3", compact ? "px-2" : "px-3")}
+        aria-label="Utility navigation"
+      >
         {utilityNavItems
           .filter((item) => item.href !== "/files")
           .map((item) => (
-            <UtilityNavLink key={item.href} item={item} onNavigate={onNavigate} />
+            <UtilityNavLink
+              key={item.href}
+              item={item}
+              onNavigate={onNavigate}
+              compact={compact}
+            />
           ))}
       </nav>
 
-      {showSetupChip ? (
+      {showSetupChip && !compact ? (
         <div className="shrink-0 border-t border-sidebar-border p-3">
           <div className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs">
             <p className="font-medium text-foreground">
@@ -201,26 +238,31 @@ type PrimaryNavLinkProps = {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  description?: string;
+  compact?: boolean;
   onNavigate?: () => void;
 };
 
-function PrimaryNavLink({ href, icon: Icon, label, description, onNavigate }: PrimaryNavLinkProps) {
+function PrimaryNavLink({ href, icon: Icon, label, compact = false, onNavigate }: PrimaryNavLinkProps) {
   return (
     <Link
       href={href}
       onClick={onNavigate}
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+      aria-label={label}
+      title={compact ? label : undefined}
+      className={cn(
+        "flex items-center rounded-xl py-2.5 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        compact ? "justify-center px-2" : "gap-3 px-3",
+      )}
     >
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+      <div
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground",
+          !compact && "bg-muted",
+        )}
+      >
         <Icon className="size-4" />
       </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-foreground">{label}</p>
-        {description ? (
-          <p className="truncate text-xs text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
+      {!compact ? <span className="truncate text-sm font-medium text-foreground">{label}</span> : null}
     </Link>
   );
 }

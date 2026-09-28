@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,6 @@ export function ConversationItem({
   const href = `/chat/${conversation.id}`;
   const relativeTime = formatRelativeTime(conversation.updatedAt);
 
-  const [menuOpen, setMenuOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(conversation.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,11 +56,9 @@ export function ConversationItem({
       setDraftTitle(conversation.title);
     }
     setIsEditing(false);
-    setMenuOpen(false);
   };
 
   const handleDelete = () => {
-    setMenuOpen(false);
     const confirmed = window.confirm(`Delete "${conversation.title}"? This cannot be undone.`);
     if (!confirmed) return;
 
@@ -118,54 +116,41 @@ export function ConversationItem({
       </Link>
 
       <div className="relative pr-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-          aria-label="Conversation options"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <MoreHorizontal className="size-4" />
-        </Button>
-
-        {menuOpen ? (
-          <>
-            <button
-              type="button"
-              className="fixed inset-0 z-40 cursor-default"
-              aria-label="Close menu"
-              onClick={() => setMenuOpen(false)}
-            />
-            <div
-              role="menu"
-              className="absolute right-0 top-full z-50 mt-1 w-36 rounded-lg border border-border bg-popover py-1 shadow-md"
-            >
-              <button
+        <Menu.Root>
+          <Menu.Trigger
+            render={
+              <Button
                 type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setIsEditing(true);
-                }}
+                variant="ghost"
+                size="icon"
+                className="size-10 opacity-100 md:size-7 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                aria-label="Conversation options"
               >
-                <Pencil className="size-3.5" />
-                Rename
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-destructive hover:bg-muted"
-                onClick={handleDelete}
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </button>
-            </div>
-          </>
-        ) : null}
+                <MoreHorizontal className="size-4" />
+              </Button>
+            }
+          />
+          <Menu.Portal>
+            <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50">
+              <Menu.Popup className="w-36 rounded-lg border border-border bg-popover py-1 shadow-md outline-none">
+                <Menu.Item
+                  className="flex cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-highlighted:bg-muted"
+                  onClick={() => setIsEditing(true)}
+                >
+                  <Pencil className="size-3.5" />
+                  Rename
+                </Menu.Item>
+                <Menu.Item
+                  className="flex cursor-default items-center gap-2 px-3 py-1.5 text-sm text-destructive outline-none data-highlighted:bg-muted"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="size-3.5" />
+                  Delete
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
       </div>
     </div>
   );

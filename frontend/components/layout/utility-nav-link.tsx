@@ -10,9 +10,10 @@ type UtilityNavLinkProps = {
   item: UtilityNavItem;
   onNavigate?: () => void;
   className?: string;
+  compact?: boolean;
 };
 
-export function UtilityNavLink({ item, onNavigate, className }: UtilityNavLinkProps) {
+export function UtilityNavLink({ item, onNavigate, className, compact = false }: UtilityNavLinkProps) {
   const pathname = usePathname();
   const active = isUtilityNavActive(pathname, item.href);
   const Icon = item.icon;
@@ -21,17 +22,20 @@ export function UtilityNavLink({ item, onNavigate, className }: UtilityNavLinkPr
     <Link
       href={item.href}
       onClick={onNavigate}
+      aria-label={item.label}
+      title={compact ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+        "flex items-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors",
+        compact ? "justify-center px-2" : "px-3",
         active
-          ? "border-l-2 border-primary bg-sidebar-accent pl-[10px] text-sidebar-accent-foreground"
+          ? cn("border-l-2 border-primary bg-sidebar-accent text-sidebar-accent-foreground", !compact && "pl-[10px]")
           : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         className,
       )}
     >
       <Icon className="size-4 shrink-0" />
-      {item.label}
+      {!compact ? item.label : null}
     </Link>
   );
 }
