@@ -45,6 +45,7 @@ export function PrepareKnowledgeView({
     lastPreparedLabel,
     refresh,
     isLoading: statusLoading,
+    error: statusError,
   } = useKnowledgeStatus({ pollIntervalMs: 0 });
 
   const [progress, setProgress] = useState<PrepareProgressState>(INITIAL_PROGRESS);
@@ -82,12 +83,12 @@ export function PrepareKnowledgeView({
   }, [isConnected, isPreparing, onComplete, refresh]);
 
   useEffect(() => {
-    if (!autoStart || autoStarted || needsConnect || statusLoading) {
+    if (!autoStart || autoStarted || needsConnect || statusLoading || statusError) {
       return;
     }
     setAutoStarted(true);
     void runPrepare();
-  }, [autoStart, autoStarted, needsConnect, runPrepare, statusLoading]);
+  }, [autoStart, autoStarted, needsConnect, runPrepare, statusError, statusLoading]);
 
   const showComplete =
     variant === "page" &&
@@ -108,6 +109,13 @@ export function PrepareKnowledgeView({
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{prepareCopy.title}</h1>
         <p className="text-sm text-muted-foreground">{prepareCopy.description}</p>
       </div>
+
+      {statusError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Could not check knowledge status</AlertTitle>
+          <AlertDescription>{statusError}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {needsConnect ? (
         <Alert className="border-warning/30 bg-warning/10 text-foreground">

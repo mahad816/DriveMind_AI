@@ -63,4 +63,24 @@ describe("PrepareKnowledgeView", () => {
     expect(await screen.findByText("Your assistant is ready")).toBeInTheDocument();
     expect(screen.queryByText("Setup completed with some file failures")).not.toBeInTheDocument();
   });
+
+  it("shows a connection-check error instead of claiming Drive is disconnected", () => {
+    vi.mocked(useKnowledgeStatus).mockReturnValue({
+      isConnected: false,
+      needsConnect: false,
+      isReady: false,
+      needsPrepare: false,
+      fileStats: { total: 0, indexed: 0, failed: 0, skipped: 0 },
+      lastPreparedAt: null,
+      lastPreparedLabel: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+      isLoading: false,
+      error: "Could not check Google Drive connection",
+    });
+
+    render(<PrepareKnowledgeView />);
+
+    expect(screen.getByText("Could not check Google Drive connection")).toBeInTheDocument();
+    expect(screen.queryByText("Connect Google Drive first")).not.toBeInTheDocument();
+  });
 });

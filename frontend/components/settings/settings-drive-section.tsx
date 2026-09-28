@@ -64,7 +64,7 @@ export function SettingsDriveSection() {
                 onClick={handleDisconnectDrive}
                 title={settingsCopy.disconnectHelp}
               >
-                {settingsCopy.disconnect}
+                {settingsCopy.manageGoogleAccess}
               </button>
               <a href={connectUrl} className={buttonVariants({ variant: "secondary" })}>
                 {settingsCopy.reconnect}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listDriveFiles } from "@/lib/api/files";
 import { isApiError } from "@/lib/api/errors";
@@ -63,60 +63,58 @@ export function useKnowledgeStatus(
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [lastPreparedAt, setLastPreparedAtState] = useState<string | null>(null);
+  const fileRequestId = useRef(0);
 
-  const isConnected = connection?.connected ?? false;
+  const isConnected = !connectionError && (connection?.connected ?? false);
+
+  const loadFiles = useCallback(async () => {
+    const requestId = ++fileRequestId.current;
+    setFilesLoading(true);
+    try {
+      const response = await listDriveFiles();
+      if (requestId === fileRequestId.current) {
+        setFileStats(countFiles(response.files));
+        setFilesError(null);
+      }
+    } catch (err) {
+      if (requestId === fileRequestId.current) {
+        const message = isApiError(err)
+          ? err.detail
+          : err instanceof Error
+            ? err.message
+            : "Failed to load knowledge status";
+        setFilesError(message);
+      }
+    } finally {
+      if (requestId === fileRequestId.current) setFilesLoading(false);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setLastPreparedAtState(getLastPreparedAt());
-    await refetchConnection();
-  }, [refetchConnection]);
+    await Promise.all([refetchConnection(), isConnected ? loadFiles() : Promise.resolve()]);
+  }, [isConnected, loadFiles, refetchConnection]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    setLastPreparedAtState(getLastPreparedAt());
+  }, []);
 
   useEffect(() => {
-    if (!isConnected) {
+    if (isConnected) {
+      void loadFiles();
+    } else {
+      fileRequestId.current += 1;
       setFileStats(EMPTY_STATS);
       setFilesError(null);
-      return;
+      setFilesLoading(false);
     }
-
-    let cancelled = false;
-
-    async function loadFiles() {
-      setFilesLoading(true);
-      try {
-        const response = await listDriveFiles();
-        if (!cancelled) {
-          setFileStats(countFiles(response.files));
-          setFilesError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          const message = isApiError(err)
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : "Failed to load knowledge status";
-          setFilesError(message);
-        }
-      } finally {
-        if (!cancelled) {
-          setFilesLoading(false);
-        }
-      }
-    }
-
-    void loadFiles();
-
     return () => {
-      cancelled = true;
+      fileRequestId.current += 1;
     };
-  }, [isConnected]);
+  }, [isConnected, loadFiles]);
 
   const isReady = isConnected && fileStats.indexed > 0;
-  const needsConnect = !isConnected;
+  const needsConnect = !connectionError && connection?.connected === false;
   const needsPrepare = isConnected && fileStats.indexed === 0;
 
   return {

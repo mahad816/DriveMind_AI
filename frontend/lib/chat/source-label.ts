@@ -1,11 +1,7 @@
 import type { CitationItem } from "@/lib/api/types";
 
-/** Human-readable source count for answer metadata. */
-export function formatSourceCount(retrievalCount: number, citations: CitationItem[]): string {
-  const uniqueFiles = new Set(citations.map((c) => c.filename.trim().toLowerCase())).size;
-  const count = Math.max(retrievalCount, uniqueFiles, citations.length);
-
-  if (count === 0) return "No sources found";
-  if (count === 1) return "Based on 1 source";
-  return `Based on ${count} sources`;
+/** Count files cited in the answer, never retrieved but uncited chunks. */
+export function formatSourceCount(_retrievalCount: number, citations: CitationItem[]): string {
+  const count = new Set(citations.map((citation) => citation.drive_file_id)).size;
+  return count === 0 ? "" : `Sources · ${count}`;
 }

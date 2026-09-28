@@ -123,7 +123,7 @@ export const settingsCopy = {
   advanced: "Advanced",
   connect: "Connect Google Drive",
   reconnect: "Reconnect",
-  disconnect: "Disconnect",
+  manageGoogleAccess: "Manage Google access",
   disconnectHelp: "Opens Google Account permissions to revoke DriveMind access.",
   connectedAs: "Connected as",
   notConnected: "Connect Drive to search your documents and get answers with sources.",

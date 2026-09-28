@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Check, Copy, FileText, RefreshCw } from "lucide-react";
 
-import { uniqueCitationsByFilename } from "@/components/chat/source-pills";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast-provider";
 import type { CitationItem } from "@/lib/api/types";
@@ -34,9 +33,8 @@ export function MessageActionBar({
   const { pushToast } = useToast();
   const [copied, setCopied] = useState(false);
 
-  const uniqueSources = uniqueCitationsByFilename(citations);
   const sourceLabel = formatSourceCount(retrievalCount, citations);
-  const canOpenSources = uniqueSources.length > 0 && Boolean(onSourceSelect);
+  const canOpenSources = citations.length > 0 && Boolean(onSourceSelect);
 
   const handleCopy = async () => {
     if (!answer) return;
@@ -62,7 +60,7 @@ export function MessageActionBar({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <button
               type="button"
-              onClick={() => onSourceSelect?.(uniqueSources[0])}
+              onClick={() => onSourceSelect?.(citations[0])}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-2"
               title="View source documents"
             >
@@ -70,7 +68,7 @@ export function MessageActionBar({
               {sourceLabel}
             </button>
 
-            {uniqueSources.map((citation) => (
+            {citations.map((citation) => (
               <button
                 key={citation.chunk_id}
                 type="button"
