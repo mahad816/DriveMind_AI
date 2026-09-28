@@ -146,7 +146,7 @@ export const appCopy = {
 export const chatCopy = {
   brandName: "DriveMind AI",
   brandTagline: "Your personal knowledge OS",
-  emptyHeading: "What would you like to know?",
+  emptyHeading: "What can I help you find?",
   emptySubheading:
     "Ask anything from your Google Drive. I'll find the answer and show you exactly where it came from.",
   notReadyHeading: "Set up your assistant first",

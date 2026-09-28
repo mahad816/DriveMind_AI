@@ -38,6 +38,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
     ref,
   ) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const isComposingRef = useRef(false);
     const canSubmit = !disabled && !isLoading && value.trim().length > 0;
 
     useImperativeHandle(ref, () => ({
@@ -81,9 +82,16 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
           className="min-h-[52px] max-h-[200px] flex-1 resize-none border-0 bg-transparent px-3 py-3 text-base shadow-none focus-visible:ring-0"
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
+              if (isComposingRef.current || event.nativeEvent.isComposing) return;
               event.preventDefault();
               submit();
             }
+          }}
+          onCompositionStart={() => {
+            isComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            isComposingRef.current = false;
           }}
           aria-label="Message"
         />

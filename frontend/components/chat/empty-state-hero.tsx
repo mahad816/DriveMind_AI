@@ -7,14 +7,10 @@ import { buttonVariants, Button } from "@/components/ui/button";
 import { chatCopy } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
 
-/** Suggested questions that demonstrate the product's power to a recruiter or new user. */
 const suggestedQuestions = [
-  "Summarize my most recent resume.",
-  "What projects have I worked on?",
-  "Find everything related to machine learning.",
-  "Which files mention LangGraph or RAG?",
-  "What did I build at my last internship?",
-  "Show me my certificates and credentials.",
+  "Find the latest meeting notes.",
+  "Summarize a document in my Drive.",
+  "Compare information across two files.",
 ] as const;
 
 type EmptyStateHeroProps = {

@@ -12,9 +12,9 @@ export function ThinkingIndicator({ className }: ThinkingIndicatorProps) {
       aria-label="Thinking"
     >
       <span className="flex gap-1" aria-hidden="true">
-        <span className="size-1.5 animate-pulse rounded-full bg-primary/70 [animation-delay:0ms]" />
-        <span className="size-1.5 animate-pulse rounded-full bg-primary/70 [animation-delay:150ms]" />
-        <span className="size-1.5 animate-pulse rounded-full bg-primary/70 [animation-delay:300ms]" />
+        <span className="size-1.5 animate-pulse rounded-full bg-primary/70 motion-reduce:animate-none [animation-delay:0ms]" />
+        <span className="size-1.5 animate-pulse rounded-full bg-primary/70 motion-reduce:animate-none [animation-delay:150ms]" />
+        <span className="size-1.5 animate-pulse rounded-full bg-primary/70 motion-reduce:animate-none [animation-delay:300ms]" />
       </span>
       <span>Thinking…</span>
     </div>

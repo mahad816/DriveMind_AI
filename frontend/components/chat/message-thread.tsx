@@ -87,7 +87,7 @@ export function MessageThread({
             ) : null}
 
             {message.status === "done" ? (
-              <div aria-live="polite" aria-atomic="true">
+              <>
                 <AssistantMessage
                   response={message.response}
                   onSourceSelect={onSourceSelect}
@@ -107,7 +107,12 @@ export function MessageThread({
                   isLatest={isLatest}
                   isLoading={isSending}
                 />
-              </div>
+                {isLatest ? (
+                  <span role="status" className="sr-only">
+                    Answer ready
+                  </span>
+                ) : null}
+              </>
             ) : null}
           </section>
         );
