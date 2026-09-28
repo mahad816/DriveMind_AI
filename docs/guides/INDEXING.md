@@ -1,207 +1,64 @@
-# Indexing Lifecycle
+# Indexing lifecycle
 
-How DriveMind moves files from Google Drive into a searchable knowledge index.
+DriveMind separates **metadata sync**, **content ingestion**, **chunking**, and **vector build**. Each stage is a FastAPI in-process background job; the frontend starts it and polls status before advancing.
 
----
+## Drive sync and indexing
 
-## Pipeline overview
+![DriveMind full and incremental Drive sync converging on ingestion, chunking, and vector build](../assets/drivemind-indexing.svg)
 
-```mermaid
-flowchart LR
-    GD[Google Drive] --> Sync[SYNC]
-    Sync --> Ingest[INGEST]
-    Ingest --> Chunk[CHUNK]
-    Chunk --> Build[BUILD]
-    Sync --> DF[(drive_files)]
-    Ingest --> Doc[(documents)]
-    Chunk --> Ch[(chunks)]
-    Build --> QD[(Qdrant)]
-    Build --> IDX[indexed]
-```
+[View interactive sync and indexing flow →](https://mahad816.github.io/DriveMind_AI/interactive/indexing/)
 
-> Ingest writes to PostgreSQL only. **Build** (`IndexingService`) embeds chunks and upserts Qdrant.
+PostgreSQL holds Drive metadata, statuses, extracted text, and searchable chunks. Qdrant holds vector-search representations keyed to PostgreSQL chunk UUIDs. Sync does not extract file contents; ingest does not create vectors. Normal chat later uses this local index.
 
-```mermaid
-stateDiagram-v2
-    [*] --> discovered: New or edited file
-    discovered --> indexing: Ingest starts
-    indexing --> indexed: Build complete
-    indexed --> discovered: Drive file modified
-    discovered --> failed: Extraction error
-    failed --> indexing: Retry on next ingest
-    indexed --> skipped: Removed from Drive
-```
+## Stage 1: Sync Drive metadata
 
-Each stage is triggered by a `POST` endpoint and runs as a **background job**. Poll `GET /index/status` or `GET /index/pending` for progress.
+`POST /api/v1/index/sync` calls `DriveSyncService.sync_metadata`. The first sync, or `?full=true`, performs a full scan. Later default syncs use the saved Google Drive Changes API page token.
 
----
+| Mode | Steps |
+|------|-------|
+| Full | Obtain a Changes API start page token **before** listing supported files; upsert their metadata and folder paths; mark previously known files missing from the scan as skipped; persist the token only when the sync succeeds. |
+| Incremental | Read the saved page token; consume paginated changes; upsert new or changed supported files; mark removed, trashed, or newly unsupported files as skipped; persist the returned new token after successful processing. |
 
-## API endpoints
+The cursor is staged after metadata processing and committed with successful sync completion. Sync stores metadata such as Drive ID, name, MIME type, folder path, and modified time. New or changed supported files become eligible for preparation; unchanged metadata avoids unnecessary reprocessing. `GET /api/v1/files` lists synced file metadata across statuses.
 
-| Stage | Endpoint | Optional params |
-|-------|----------|-----------------|
-| Sync | `POST /api/v1/index/sync` | `full=true` for full rescan |
-| Ingest | `POST /api/v1/index/ingest` | `file_id=<uuid>` for single file |
-| Chunk | `POST /api/v1/index/chunk` | `file_id=<uuid>` |
-| Build | `POST /api/v1/index/build` | `file_id=<uuid>` |
-| Status | `GET /api/v1/index/status` | Latest job + connection flag |
-| Pending | `GET /api/v1/index/pending` | Counts per stage |
+## Stage 2: Ingest content
 
-All `POST` routes return **202 Accepted** immediately:
+`POST /api/v1/index/ingest` downloads or exports eligible Drive files, extracts and normalizes text, computes a content hash, and persists `Document` text in PostgreSQL. Supported types are Google Docs, TXT, DOCX paragraphs, text-based PDF extraction, and images with Tesseract OCR. Scanned PDFs have no OCR fallback.
 
-```json
-{ "status": "started", "message": "Job started — poll /index/status for progress" }
-```
+The service can skip unchanged content. Successful extraction with no searchable text sets the file to `SKIPPED`; a caught content or extraction failure sets that file to `FAILED`. Healthy files in the same batch can continue through later stages even if the ingestion job reports a partial failure.
 
----
+## Stage 3: Chunk text
 
-## Stage 1: Sync (metadata)
+`POST /api/v1/index/chunk` splits extracted text into deterministic overlapping chunks and stores chunk text plus PostgreSQL full-text vectors. It operates on eligible `INDEXING` files with documents. If replacement produces zero chunks, the file becomes `SKIPPED` and stale PostgreSQL chunk rows are removed. An explicit request for a previously skipped file does not revive preserved stale content.
 
-**Service:** `DriveSyncService.sync_metadata`
+## Stage 4: Build vector index
 
-Discovers files in Google Drive and upserts metadata into `drive_files`:
+`POST /api/v1/index/build` embeds pending PostgreSQL chunks through OpenAI, reconciles each file's Qdrant points, and marks successfully built files `INDEXED`. Qdrant points correspond to PostgreSQL chunk UUIDs. A file with zero chunks becomes `SKIPPED`; caught embedding or vector-store errors mark the affected file `FAILED`. Other files in the batch keep their successful state.
 
-- `drive_file_id`, `name`, `mime_type`, `folder_path`, `modified_at`
-- Initial file status: `DISCOVERED`
+## Jobs and file states
 
-### Full vs incremental
+| File state | Meaning |
+|------------|---------|
+| `DISCOVERED` | Synced metadata; needs preparation |
+| `INDEXING` | Content has entered the preparation pipeline |
+| `INDEXED` | Build completed for its chunks; eligible for retrieval |
+| `SKIPPED` | Removed/trashed/unsupported or no searchable chunks |
+| `FAILED` | A preparation stage failed for this file |
 
-| Mode | When | Behavior |
-|------|------|----------|
-| **Incremental** (default) | `full=false`, sync state exists | Drive Changes API from stored page token |
-| **Full** | `full=true` or first sync | Lists all supported files + folder paths |
+`GET /api/v1/index/status` reports the latest job for the connected user. `GET /api/v1/index/pending` reports `to_ingest`, `to_chunk`, and `to_build`. A job is `COMPLETED` when its stage finishes without file-processing failures, even if no file becomes indexed. A stage with caught per-file failures is `FAILED` and carries a short error; successfully processed files retain their progress.
 
-### Change handling
+The frontend's `prepareKnowledge()` always starts sync, then checks pending counts. It starts ingest only when needed, refreshes pending counts, and runs chunk/build only when eligible work remains. A partial ingest failure may surface as a warning while healthy files continue. The optional `file_id` parameter on ingest, chunk, and build supports preparation of one file.
 
-| Drive event | DriveMind action |
-|-------------|------------------|
-| New file | Insert as `DISCOVERED` |
-| Modified file (was `INDEXED`) | Reset to `DISCOVERED` for re-pipeline |
-| Removed file | Mark `SKIPPED` |
-| Unchanged metadata | No DB update |
+## API summary
 
----
+| Endpoint | Role |
+|----------|------|
+| `POST /api/v1/index/sync?full=true` | Force full metadata scan |
+| `POST /api/v1/index/sync` | Full first sync or incremental Changes API sync |
+| `POST /api/v1/index/ingest` | Extract eligible content |
+| `POST /api/v1/index/chunk` | Persist searchable chunks |
+| `POST /api/v1/index/build` | Embed and reconcile Qdrant vectors |
+| `GET /api/v1/index/status` | Poll latest job |
+| `GET /api/v1/index/pending` | Check pending stage counts |
 
-## Stage 2: Ingest (text extraction)
-
-**Service:** `IngestionService.ingest_files`
-
-Downloads file content from Drive and extracts plain text into `documents.extracted_text`.
-
-### Supported file types
-
-| Type | Method |
-|------|--------|
-| Google Docs | Drive export as `text/plain` |
-| PDF | `pypdf` text extraction (born-digital only) |
-| TXT | UTF-8 decode |
-| DOCX | `python-docx` |
-| Images | Tesseract OCR via `pytesseract` |
-
-### Which files are processed
-
-Only files with status `DISCOVERED`, `INDEXING`, or `FAILED` (plus optional `file_id` filter).
-
-### Incremental skip
-
-Ingest skips work when:
-
-1. Latest `Document.updated_at >= drive_file.modified_at` — no download needed
-2. `extracted_text_hash` unchanged after download — content unchanged
-
-Outcomes per file: `ingested`, `unchanged`, `failed`, `skipped`.
-
----
-
-## Stage 3: Chunk
-
-**Service:** `ChunkingService.chunk_documents`
-
-Splits `documents.extracted_text` into `chunks` rows with:
-
-- `chunk_index`, `text`, `drive_file_id`, `filename`, `mime_type`, `modified_at`
-
-Only processes files in `INDEXING` status that have extracted text.
-
----
-
-## Stage 4: Build (embeddings)
-
-**Service:** `IndexingService.build_index`
-
-1. Embeds chunk text via OpenAI (`text-embedding-3-small`)
-2. Upserts vectors to Qdrant (`drivemind_chunks` collection)
-3. Sets file status to `INDEXED` when complete
-
-Unchanged chunks (same content hash) can be skipped for efficiency.
-
----
-
-## File statuses
-
-| Status | Meaning |
-|--------|---------|
-| `discovered` | Known to DriveMind; needs ingest |
-| `indexing` | In pipeline (ingest/chunk/build in progress) |
-| `indexed` | Fully searchable until Drive file changes |
-| `failed` | Extraction/download failed; retried on next ingest |
-| `skipped` | Removed from Drive or unsupported |
-
----
-
-## Pending counts
-
-`GET /index/pending` returns:
-
-| Field | Counts files that… |
-|-------|-------------------|
-| `to_ingest` | Are `DISCOVERED` or `FAILED` |
-| `to_chunk` | Are `INDEXING` with a document but zero chunks |
-| `to_build` | Are `INDEXING` with chunks but need embedding |
-
-The frontend **prepare** flow skips stages when pending count is zero — making repeat setup fast.
-
----
-
-## Frontend prepare flow
-
-`prepareKnowledge()` in `frontend/lib/knowledge/prepare.ts`:
-
-```text
-scan  → POST /index/sync
-read  → POST /index/ingest   (if to_ingest > 0)
-search → POST /index/chunk   (if to_chunk > 0)
-       → POST /index/build   (always attempted)
-ready → complete
-```
-
-`fullScan: true` passes `?full=true` to sync — use when new files aren't appearing after incremental sync.
-
----
-
-## Indexing job statuses
-
-Jobs are tracked in `indexing_jobs`:
-
-`queued` → `running` → `completed` | `failed` | `canceled`
-
-On backend startup, stuck `RUNNING` jobs are cleaned up.
-
----
-
-## Idempotency design
-
-| Principle | Implementation |
-|-----------|----------------|
-| Don't re-download unchanged files | Compare `modified_at` and content hash |
-| Don't re-embed unchanged chunks | Content hash on chunks |
-| Don't re-sync unchanged metadata | Drive Changes API + upsert logic |
-| Re-queue edited files | Sync resets `INDEXED` → `DISCOVERED` |
-
----
-
-## Related docs
-
-- [Local Setup](SETUP.md)
-- [Retrieval Strategy](RETRIEVAL.md) — how indexed chunks are searched
-- [Architecture](../ARCHITECTURE.md)
+See [Architecture](../ARCHITECTURE.md) and [Retrieval](RETRIEVAL.md).

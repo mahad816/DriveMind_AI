@@ -1,66 +1,28 @@
-# DriveMind AI — Documentation
+# DriveMind documentation
 
-Professional documentation for setup, architecture, and portfolio presentation.
+Start with the [repository README](../README.md) for the project, local run instructions, and the runtime diagram. The [interactive architecture site](https://mahad816.github.io/DriveMind_AI/) lets you play or step through the three approved system flows.
 
-## Start here
+## Architecture and flows
 
-| Audience | Start with |
-|----------|------------|
-| **New visitor / recruiter** | [Portfolio Overview](PORTFOLIO_OVERVIEW.md) → [README](../README.md) |
-| **Developer setting up locally** | [Local Setup](guides/SETUP.md) |
-| **Contributor resuming work** | [Current Status](CURRENT_STATUS.md) |
+| Guide | What it covers |
+|-------|----------------|
+| [Architecture](ARCHITECTURE.md) | Runtime components, PostgreSQL/Qdrant ownership, API, and boundaries |
+| [Indexing](guides/INDEXING.md) | Full and incremental Drive sync, ingestion, chunking, build, and file states |
+| [Retrieval](guides/RETRIEVAL.md) | Question routing, conditional retrieval, bounded context, and citations |
+| [LangGraph](guides/LANGGRAPH.md) | Optional graph nodes and rewrite loop for general grounded questions |
+| [Evaluation](guides/EVALUATION.md) | Implemented runners, datasets, metrics, and future work |
 
-## Guides
+The first three guides contain the corresponding static diagrams and links to their interactive versions. The focused LangGraph guide retains its node-level graph.
 
-| Guide | Description |
-|-------|-------------|
-| [Local Setup](guides/SETUP.md) | Prerequisites, env vars, infra, first run |
-| [Google Drive OAuth](guides/GOOGLE_OAUTH.md) | Google Cloud console, scopes, redirect URIs |
-| [Indexing Lifecycle](guides/INDEXING.md) | Sync → ingest → chunk → build, statuses, incremental behavior |
-| [Retrieval Strategy](guides/RETRIEVAL.md) | Query routing, hybrid search, reranking, evidence grading |
-| [LangGraph Workflow](guides/LANGGRAPH.md) | Agent graph, nodes, rewrite loop, when to enable |
-| [Evaluation](guides/EVALUATION.md) | Quality methodology and planned metrics (Phase 10) |
-| [Deployment](guides/DEPLOYMENT.md) | Production topology, Vercel + backend hosting, secrets |
+## Setup and reference
 
-## Diagrams (Mermaid)
+| Guide | What it covers |
+|-------|----------------|
+| [Local setup](guides/SETUP.md) | Prerequisites, environment, and first run |
+| [Google Drive OAuth](guides/GOOGLE_OAUTH.md) | Drive scope and callback configuration |
+| [Deployment](guides/DEPLOYMENT.md) | Deployment considerations |
+| [Current status](CURRENT_STATUS.md) | Progress and resume notes |
+| [Limitations and roadmap](LIMITATIONS_AND_ROADMAP.md) | MVP constraints and future work |
+| [Project context](PROJECT_CONTEXT.md) | Product intent and scope |
 
-Rendered automatically on GitHub. Each diagram is verified against the codebase.
-
-| Flow | File | Source modules |
-|------|------|----------------|
-| System overview | [README](../README.md#system-overview) | `api/`, `services/rag_service.py` |
-| Indexing + file statuses | [INDEXING](guides/INDEXING.md) | `drive_sync_service.py`, `ingestion_service.py` |
-| Query routing + hybrid | [RETRIEVAL](guides/RETRIEVAL.md) | `query_router.py`, `hybrid.py` |
-| LangGraph agent loop | [LANGGRAPH](guides/LANGGRAPH.md) | `agents/drive_graph/graph.py` |
-| OAuth sequence | [GOOGLE_OAUTH](guides/GOOGLE_OAUTH.md) | `api/auth.py` |
-| Deployment topology | [DEPLOYMENT](guides/DEPLOYMENT.md) | — |
-| Full architecture set | [ARCHITECTURE](ARCHITECTURE.md) | — |
-
-## Diagrams (Mermaid)
-
-GitHub renders these automatically in markdown files.
-
-| Flow | Where to view |
-|------|----------------|
-| **System overview** | [README](../README.md#system-overview) |
-| **Indexing pipeline + file statuses** | [INDEXING](guides/INDEXING.md) |
-| **Query routing + hybrid retrieval** | [RETRIEVAL](guides/RETRIEVAL.md) |
-| **LangGraph agent loop** | [LANGGRAPH](guides/LANGGRAPH.md) |
-| **OAuth sequence** | [GOOGLE_OAUTH](guides/GOOGLE_OAUTH.md) |
-| **Deployment topology** | [DEPLOYMENT](guides/DEPLOYMENT.md) |
-| **Full architecture set** | [ARCHITECTURE](ARCHITECTURE.md) |
-
-## Reference
-
-| Doc | Description |
-|-----|-------------|
-| [Project Context](PROJECT_CONTEXT.md) | Product vision, MVP scope, design principles |
-| [Architecture](ARCHITECTURE.md) | System design, layers, data flow |
-| [Roadmap](ROADMAP.md) | Phased execution plan (Phases 0–11) |
-| [Current Status](CURRENT_STATUS.md) | Latest progress and quick commands |
-| [Git Workflow](GIT_WORKFLOW.md) | Commit and branch discipline |
-| [Limitations & Future](LIMITATIONS_AND_ROADMAP.md) | MVP constraints and what comes next |
-
-## Phase trackers (historical)
-
-Completed phase logs: [Phase 2](PHASE_2_TRACKER.md) · [Phase 3](PHASE_3_TRACKER.md) · [Phase 4](PHASE_4_TRACKER.md) · [Phase 5](PHASE_5_TRACKER.md) · [Phase 6](PHASE_6_TRACKER.md) · [Phase 7](PHASE_7_TRACKER.md) · [Phase 8](PHASE_8_TRACKER.md) · [Phase 9](PHASE_9_TRACKER.md) · [Phase 11](PHASE_11_TRACKER.md)
+Historical phase logs and experiment decisions remain in `docs/` and `backend/evaluation/`; current implementation and the focused guides above take precedence when they differ.

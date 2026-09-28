@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Drive sync and indexing · DriveMind</title>
+  <link rel="stylesheet" href="../site.css">
+</head>
+<body>
+  <header class="masthead"><div class="shell"><a class="brand" href="../../">DriveMind architecture</a><nav aria-label="Diagrams"><a href="../runtime/">System architecture</a><a href="../answer-flow/">RAG answer flow</a></nav></div></header>
+  <main class="shell">
+    <span class="eyebrow">Knowledge preparation</span>
+    <h1>Drive sync and indexing</h1>
+    <p class="lead">Full and incremental Drive scans converge on committed metadata and a change cursor. Ingest, chunk, and build are separate jobs that prepare the local PostgreSQL and Qdrant index.</p>
+    <section class="trace-panel" aria-labelledby="traces-title">
+      <h2 id="traces-title">Select a trace</h2>
+      <div class="trace-list">
+        <a href="../indexing.html#route=full~indexed" target="diagram">First / full sync</a>
+        <a href="../indexing.html#route=incremental~indexed" target="diagram">Incremental Changes API sync</a>
+        <a href="../indexing.html#route=ingest~indexed" target="diagram">Content preparation / indexing</a>
+      </div>
+      <p>Play or step through a route in the diagram. The full and incremental paths meet at PostgreSQL sync state; the content stages follow as separate jobs.</p>
+    </section>
+    <iframe class="viewer" name="diagram" title="Interactive Drive sync and indexing flow" src="../indexing.html" loading="eager"></iframe>
+    <p class="viewer-link"><a href="../indexing.html" target="_blank" rel="noopener">Open full diagram in a new tab</a></p>
+  </main>
+</body>
+</html>

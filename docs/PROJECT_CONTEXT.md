@@ -4,7 +4,7 @@
 
 **DriveMind AI** is a production-style AI application that acts as a **personal knowledge assistant for Google Drive**.
 
-The goal is **not** to build a simple "chat with PDFs" application. The goal is to build a **LangGraph-powered agentic RAG system** that indexes personal Google Drive content, understands documents and other supported file types, retrieves relevant information using hybrid search, and generates grounded answers with citations.
+The goal is **not** to build a simple "chat with PDFs" application. The goal is to build a grounded RAG system that indexes personal Google Drive content, understands documents and other supported file types, retrieves relevant information using hybrid search, and generates answers with citations. LangGraph provides an optional orchestration path for grounded questions; the normal default path does not require it.
 
 This project is intended to demonstrate strong understanding of:
 

@@ -1,471 +1,124 @@
 # DriveMind AI
 
-**A LangGraph-powered personal knowledge assistant for Google Drive.**
+DriveMind is a single-user Google Drive knowledge assistant. It prepares a searchable copy of supported Drive content, then answers questions from that local index with source citations. The project combines a Next.js interface, a FastAPI backend, PostgreSQL full-text data, Qdrant vectors, OpenAI embeddings and chat generation, and optional LangGraph orchestration.
 
-DriveMind indexes your Google Drive, retrieves evidence with hybrid search (metadata + keyword + vector), and answers questions with citations. It is built as a production-style agentic RAG system — not a simple “chat with PDFs” demo.
+Drive access is read-only. Google OAuth authorizes that access; it is not an application login system.
 
-Single-user MVP · read-only Drive access · grounded answers with sources
+## What it does
 
----
+- **Prepare knowledge:** Sync Drive metadata, download or export supported files, extract text, chunk it, and build vector representations. Full scans and incremental Changes API sync are supported.
+- **Answer questions:** Route conversation recall, chitchat, file inventory, named-file, and general grounded questions. Grounded answers use bounded evidence and return citations that open the indexed source text.
+- **Inspect the index:** Browse synced files and their processing status, run or retry preparation, and view cited chunks. Chat history is kept in browser localStorage.
+- **Evaluate behavior:** A controlled gold dataset, deterministic evaluation metrics, execution traces, and CLI runners support retrieval and answer review.
 
-## What visitors should know
+Supported content: Google Docs, TXT, DOCX paragraphs, text-based PDFs, and images through Tesseract OCR. Scanned PDFs do not have an OCR fallback.
 
-| Topic | Detail |
-|-------|--------|
-| **Purpose** | Portfolio-grade full-stack AI app demonstrating RAG, hybrid retrieval, and LangGraph orchestration |
-| **Data source** | Your personal Google Drive (read-only) |
-| **Answers** | Grounded from retrieved chunks when applicable; chitchat/inventory paths use direct LLM without source citations |
-| **Agent** | LangGraph workflow: intent routing → retrieval planning → rerank → evidence grading → rewrite loop → citation verify |
-| **UI** | Next.js app: chat, file browser, indexing pipeline, settings, source viewer |
-| **Status** | Phases 0–8 complete · Phase 9 complete · Phase 11 docs complete · Phase 10 planned |
+## Architecture
 
----
+![DriveMind system architecture showing separate knowledge preparation and question-answering paths](docs/assets/drivemind-runtime.svg)
 
-## Features
+[View interactive architecture →](https://mahad816.github.io/DriveMind_AI/interactive/runtime/) · [Architecture guide](docs/ARCHITECTURE.md)
 
-### Retrieval & RAG
-- Hybrid retrieval: metadata + PostgreSQL full-text keyword + Qdrant vector search
-- Weighted fusion reranking with filename-aware boosting for named-file questions
-- `FILE_TARGET` route for direct “tell me about *filename*” queries
-- LangGraph agent behind `AGENT_GRAPH_ENABLED` (intent, rewrite, citation verify)
-- Grounded chat API with citation snippets and source drill-down
+The browser calls the Next.js `/api/v1` rewrite, which forwards requests to FastAPI. Preparation jobs synchronize Drive metadata and later ingest, chunk, and index content. PostgreSQL owns OAuth records, file metadata and status, extracted text, searchable chunks, jobs, and query history. Qdrant stores embeddings associated with PostgreSQL chunk IDs. Normal chat retrieves from this local index; it does not fetch Drive content for each answer.
 
-### Indexing pipeline
-- Incremental sync — only new or modified files are re-processed
-- Supported types: Google Docs, PDF (text-only), TXT, DOCX, images (Tesseract OCR)
-- Pipeline: **Sync → Ingest → Chunk → Build** (background jobs, pending-only optimization)
-- Per-file prepare from the Files browser
+### Drive sync and indexing
 
-### Frontend
-- Chat with markdown answers, source pills, and citation side panel
-- Chat history in sidebar (localStorage): new chat, rename, delete, search
-- Message actions: copy, retry, regenerate, follow-up suggestions
-- Keyboard shortcuts: `⌘K` / `Ctrl+K` focus composer · `⌘N` / `Ctrl+N` new chat
-- Files library with search, status filters, and “Ask about this file”
-- Setup wizard with full-scan retry for stale indexes
-- Dark/light theme · responsive layout
+The frontend starts and polls four separate in-process backend jobs: **sync → ingest → chunk → build**. First or forced full sync lists supported files and reconciles missing ones; later syncs can use a stored Google Drive Changes API token. Sync updates metadata, while ingest fetches content. Build sends chunk text to OpenAI for embeddings, writes vectors to Qdrant, and marks successfully built files indexed. Unsupported, empty, removed, or failed files have distinct outcomes.
 
----
+[Indexing guide and diagram](docs/guides/INDEXING.md) · [View interactive indexing flow →](https://mahad816.github.io/DriveMind_AI/interactive/indexing/)
 
-## How it works
+### Question answering
 
-DriveMind has three main flows: **indexing**, **query routing**, and **grounded answers**. Diagrams match `rag_service.py`, `query_router.py`, `hybrid.py`, and `drive_graph/graph.py`.
+`RagService` routes each question before retrieval. Conversation-history recall, chitchat, and file inventory have dedicated paths. Named-file questions load matching PostgreSQL chunks; general grounded questions use the linear retrieval path by default. Hybrid retrieval combines vector, PostgreSQL keyword, and metadata candidates when enabled; disabling it selects vector-only retrieval. `AGENT_GRAPH_ENABLED=true` selects the optional LangGraph path for general grounded questions. Selected evidence is bounded before OpenAI generation, citations are normalized against that evidence, and answers are recorded in PostgreSQL. The source viewer resolves cited chunk IDs to PostgreSQL text.
 
-### End-to-end system flow
+[Retrieval guide and diagram](docs/guides/RETRIEVAL.md) · [View interactive answer flow →](https://mahad816.github.io/DriveMind_AI/interactive/answer-flow/) · [LangGraph guide](docs/guides/LANGGRAPH.md)
 
-High-level path from Drive ingestion to cited answers. Indexing runs offline; each chat reads from PostgreSQL and Qdrant — not Google Drive directly.
-
-<p align="center">
-  <img
-    src="docs/assets/drivemind-system-flow.png"
-    alt="DriveMind AI system flow: offline ingestion from Google Drive through extract, chunk, and embed to PostgreSQL and Qdrant; online query path through LangGraph hybrid retrieval to source-backed answers"
-    width="900"
-  />
-</p>
-
-> **Accurate:** Indexing writes to storage once. Each chat request reads from PostgreSQL and Qdrant through the agent graph — Google Drive is not queried directly at answer time.
-
-### System overview (components)
-
-Layer view of the frontend, backend services, storage, and external APIs.
-
-```mermaid
-flowchart TB
-    subgraph UserLayer [User]
-        U[Browser]
-    end
-
-    subgraph Frontend [Next.js - proxies /api/v1]
-        Chat[Chat]
-        Files[Files]
-        IndexUI[Build Knowledge]
-        Settings[Settings]
-    end
-
-    subgraph Backend [FastAPI]
-        API[REST API]
-        RAG[RagService.ask]
-        Agent[LangGraph - GROUNDED_RAG only]
-        Hybrid[HybridRetriever]
-        Sync[DriveSyncService]
-        Ingest[IngestionService]
-    end
-
-    subgraph Storage [Storage]
-        PG[(PostgreSQL)]
-        QD[(Qdrant)]
-    end
-
-    subgraph External [External APIs]
-        GD[Google Drive]
-        OAI[OpenAI]
-    end
-
-    U --> Chat & Files & IndexUI & Settings
-    Chat & Files & IndexUI & Settings --> API
-    API --> RAG
-    API --> Sync & Ingest & Build[IndexingService build]
-    Sync --> GD
-    Ingest --> GD
-    Sync --> PG
-    Ingest --> PG
-    Build --> PG
-    Build --> QD
-    Build --> OAI
-    RAG -->|GROUNDED_RAG + agent flag| Agent
-    RAG -->|GROUNDED_RAG linear| Hybrid
-    RAG -->|inventory / file-target| PG
-    Agent --> Hybrid
-    Hybrid --> PG & QD
-    Agent --> OAI
-    RAG --> OAI
-```
-
-> **Accurate:** Sync/ingest/chunk write to PostgreSQL. **Build** embeds chunks and upserts Qdrant. LangGraph only runs for `GROUNDED_RAG` when `AGENT_GRAPH_ENABLED=true`. CHITCHAT and FILE_INVENTORY return **no citations**.
-
-[Full architecture →](docs/ARCHITECTURE.md)
-
----
-
-### 1. Indexing pipeline
-
-Turns Google Drive files into searchable chunks and vectors. Runs as background jobs; only **pending** files are processed on repeat runs.
-
-```mermaid
-flowchart LR
-    GD[Google Drive] --> Sync[SYNC<br/>metadata]
-    Sync --> Ingest[INGEST<br/>extract text]
-    Ingest --> Chunk[CHUNK<br/>split text]
-    Chunk --> Build[BUILD<br/>embed vectors]
-    Sync --> DF[(drive_files)]
-    Ingest --> Doc[(documents)]
-    Chunk --> Ch[(chunks)]
-    Build --> QD[(Qdrant)]
-    Build --> IDX[status: indexed]
-```
-
-| Stage | API | Output |
-|-------|-----|--------|
-| Sync | `POST /index/sync` | File metadata in PostgreSQL |
-| Ingest | `POST /index/ingest` | Extracted plain text (Docs, PDF, DOCX, TXT, OCR) |
-| Chunk | `POST /index/chunk` | Text segments with file metadata |
-| Build | `POST /index/build` | Embeddings in Qdrant; file marked **indexed** |
-
-```mermaid
-stateDiagram-v2
-    [*] --> discovered: New file from sync
-    discovered --> indexing: Ingest starts
-    indexing --> indexed: Build complete
-    indexed --> discovered: File edited in Drive
-    discovered --> failed: Extract error
-    failed --> indexing: Retry ingest
-    indexed --> skipped: Removed from Drive
-```
-
-[Indexing guide →](docs/guides/INDEXING.md)
-
----
-
-### 2. Query routing
-
-`classify_query()` runs on **every** `POST /chat` request before retrieval. Priority: CHITCHAT → FILE_INVENTORY → FILE_TARGET → GROUNDED_RAG.
-
-```mermaid
-flowchart TD
-    Q[User question] --> Router{classify_query}
-
-    Router -->|pure social| Chitchat[CHITCHAT]
-    Router -->|how many / list| Inventory[FILE_INVENTORY]
-    Router -->|named file| Target[FILE_TARGET]
-    Router -->|default| GR[GROUNDED_RAG]
-
-    Chitchat --> A1[Direct LLM<br/>no citations]
-    Inventory --> A2[SQL inventory + LLM<br/>no citations]
-    Target --> A3[FileTargetRetriever<br/>with citations]
-    GR --> A4[Hybrid or LangGraph<br/>with citations]
-```
-
-[Retrieval guide →](docs/guides/RETRIEVAL.md)
-
----
-
-### 3. Hybrid retrieval
-
-For `GROUNDED_RAG` questions, three retrievers run in parallel. Results are merged, reranked, and graded before the LLM sees them.
-
-```mermaid
-flowchart TD
-    Q[Question] --> V[Vector Retriever<br/>Qdrant similarity]
-    Q --> K[Keyword Retriever<br/>PostgreSQL FTS]
-    Q --> M[Metadata Retriever<br/>dates, folders, MIME]
-
-    V --> Merge[RRF merge + dedupe]
-    K --> Merge
-    M --> Merge
-
-    Merge --> Rerank[Weighted fusion rerank<br/>filename-aware]
-    Rerank --> Grade[Evidence grading]
-    Grade --> Ctx[Top-K chunks to LLM]
-    Ctx --> LLM[Grounded answer + citations]
-```
-
----
-
-### 4. LangGraph agent
-
-Runs only when route is **GROUNDED_RAG** and `AGENT_GRAPH_ENABLED=true`. Otherwise the linear `HybridRetriever` path is used.
-
-```mermaid
-flowchart TD
-    Start[receive_question] --> Intent[classify_intent]
-    Intent --> Plan[plan_retrieval]
-    Plan --> Route[route_retriever]
-    Route --> Ret[retrieve]
-    Ret --> Rerank[rerank]
-    Rerank --> Grade[grade_evidence]
-    Grade --> Enough{Enough evidence?}
-    Enough -->|No, retries left| Rewrite[rewrite_query]
-    Rewrite --> Ret
-    Enough -->|Yes or max retries| Gen[generate_answer]
-    Gen --> Verify[verify_citations]
-    Verify --> Done[return_response]
-```
-
-[LangGraph guide →](docs/guides/LANGGRAPH.md)
-
----
-
-### 5. End-to-end chat flow
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant UI as Next.js
-    participant API as POST /chat
-    participant RAG as RagService
-    participant DB as Postgres / Qdrant
-    participant LLM as OpenAI
-
-    U->>UI: Ask question
-    UI->>API: question JSON
-    API->>RAG: ask()
-    RAG->>RAG: classify_query()
-    alt CHITCHAT or FILE_INVENTORY
-        RAG->>LLM: direct or inventory prompt
-        LLM-->>RAG: answer, no citations
-    else FILE_TARGET or GROUNDED_RAG
-        RAG->>DB: retrieve chunks
-        DB-->>RAG: evidence
-        RAG->>LLM: grounded prompt
-        LLM-->>RAG: answer with refs
-    end
-    RAG-->>API: RagResult
-    API-->>UI: ChatResponse
-    UI-->>U: answer + source pills when cited
-```
-
----
-
-## Architecture (summary)
-
-**Rule:** The frontend talks only to the FastAPI backend. It never calls Google Drive, Qdrant, or the LLM directly.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for layer responsibilities, data model, and deployment topology.
-
----
-
-## Tech stack
+## Stack
 
 | Layer | Technology |
 |-------|------------|
-| Backend API | FastAPI, Python 3.11+ |
-| Agent | LangGraph + LangChain |
-| Frontend | Next.js (App Router), TypeScript, Tailwind, shadcn/ui |
-| Structured data | PostgreSQL + Alembic |
-| Vector search | Qdrant |
-| Embeddings / chat | OpenAI API |
-| File source | Google Drive API (read-only OAuth) |
-| OCR | Tesseract (`pytesseract`) |
+| UI | Next.js 15, React 19, TypeScript, Tailwind |
+| API and jobs | FastAPI, SQLAlchemy/asyncpg |
+| Search and storage | PostgreSQL full-text search, Qdrant |
+| Drive integration | Google Drive API and read-only OAuth |
+| AI and extraction | OpenAI embeddings/chat, optional LangGraph, Tesseract OCR |
 
----
+## Run locally
 
-## Prerequisites
-
-- **Docker** — PostgreSQL and Qdrant via Compose
-- **Python 3.11+** with [uv](https://github.com/astral-sh/uv)
-- **Node.js 20+** and npm
-- **Tesseract** — for image OCR (`brew install tesseract` on macOS)
-- **Google Cloud OAuth** credentials (Drive read-only scope)
-- **OpenAI API key**
-
----
-
-## Quick start
-
-### 1. Clone and configure
+Prerequisites: Docker, Python 3.11+ with [uv](https://github.com/astral-sh/uv), Node.js 20+ with npm, Tesseract for image OCR, Google Cloud OAuth credentials, and an OpenAI API key.
 
 ```bash
-git clone <your-repo-url>
-cd INFO_VAULT
+git clone https://github.com/mahad816/DriveMind_AI.git
+cd DriveMind_AI
 cp .env.example .env
 ```
 
-Edit `.env` and set at minimum:
-
-| Variable | Purpose |
-|----------|---------|
-| `GOOGLE_CLIENT_ID` | OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | OAuth client secret |
-| `OPENAI_API_KEY` | Embeddings + chat |
-| `FRONTEND_URL` | `http://localhost:3000` (OAuth redirect) |
-| `AGENT_GRAPH_ENABLED` | `true` recommended for LangGraph path |
-
-### 2. Start infrastructure
+Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `OPENAI_API_KEY` in `.env`. The default `FRONTEND_URL` is `http://localhost:3000`. The Google OAuth callback defaults to `http://localhost:8000/api/v1/auth/google/callback`; configure that URI in Google Cloud. See [Local Setup](docs/guides/SETUP.md) for the full environment and OAuth steps.
 
 ```bash
+# Terminal 1: PostgreSQL and Qdrant
 docker compose -f infra/docker-compose.yml up -d postgres qdrant
-```
 
-### 3. Backend
-
-```bash
+# Terminal 2: backend
 cd backend
 uv sync --dev
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8000
-```
 
-### 4. Frontend (second terminal)
-
-```bash
+# Terminal 3: frontend (from repository root)
 cd frontend
 npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**
+Open `http://localhost:3000`, connect Google Drive in Settings, run **Build knowledge**, then ask a question in Chat. Indexing requires supported files in the connected Drive account.
 
-### 5. First-time setup in the UI
+## API at a glance
 
-1. **Settings** → Connect Google Drive
-2. **Build knowledge** (or onboarding flow) → run setup (sync → ingest → chunk → embed)
-3. **Chat** → ask a question; click sources to verify citations
+The browser uses these endpoints through `/api/v1`:
 
----
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /auth/google` | Start Drive authorization |
+| `POST /index/sync`, `/index/ingest`, `/index/chunk`, `/index/build` | Start preparation stages |
+| `GET /index/status`, `/index/pending` | Poll jobs and pending work |
+| `GET /files` | List synced file metadata across processing statuses |
+| `POST /chat` | Route a question and return an answer and any citations |
+| `GET /sources/{chunk_id}` | Read an indexed PostgreSQL chunk for a citation |
 
-## API overview
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/v1/health` | Liveness |
-| `GET /api/v1/health/ready` | DB readiness |
-| `GET /api/v1/auth/google` | Start OAuth |
-| `POST /api/v1/index/sync` | Sync Drive metadata |
-| `POST /api/v1/index/ingest` | Extract text from pending files |
-| `POST /api/v1/index/chunk` | Chunk pending documents |
-| `POST /api/v1/index/build` | Embed + upsert to Qdrant |
-| `GET /api/v1/index/pending` | Pending file counts per step |
-| `GET /api/v1/files` | List indexed files |
-| `POST /api/v1/chat` | Grounded Q&A with citations |
-| `GET /api/v1/sources/{chunk_id}` | Full chunk for citation viewer |
-
----
-
-## Development
+## Development and evaluation
 
 ```bash
-# Backend tests (480+)
-cd backend && uv run pytest -q
-
-# Backend lint / types
+cd backend
+uv run pytest -q
 uv run ruff check app tests
+uv run ruff format --check app tests
 uv run mypy app
+uv run basedpyright app tests
 
-# Frontend tests
-cd frontend && npm test
-
-# Frontend build
+cd ../frontend
+npm test
+npm run lint
 npm run build
 ```
 
-### Daily dev (two terminals)
-
-```bash
-# Terminal 1
-cd backend && uv run uvicorn app.main:app --reload --port 8000
-
-# Terminal 2
-cd frontend && npm run dev
-```
-
----
-
-## Repository structure
-
-```text
-backend/app/
-  api/           REST routes only
-  agents/        LangGraph state, nodes, graph
-  connectors/    Google Drive client and sync
-  retrieval/     metadata, keyword, vector, hybrid, rerank
-  services/      RAG, ingestion, indexing, chunking
-  ingestion/     extractors and text pipeline
-  embeddings/    embedding service + Qdrant
-frontend/
-  app/           Next.js pages (chat, files, index, settings)
-  components/    UI by domain (chat, files, layout, knowledge)
-  lib/           API client, hooks, conversations, knowledge
-docs/            Context, roadmap, architecture, phase trackers
-infra/           Docker Compose (Postgres + Qdrant)
-```
-
----
-
-## Project status
-
-| Phase | Name | Status |
-|-------|------|--------|
-| 0–5 | Foundation → Embeddings | Complete |
-| 6 | Basic RAG API | Complete |
-| 7 | Hybrid Retrieval | Complete |
-| 8 | LangGraph Agent | Complete |
-| 9 | Frontend Foundation | Complete |
-| 10 | Evaluation & Quality | Planned |
-| 11 | Documentation & Deployment | Complete (docs) — see [PHASE_11_TRACKER.md](docs/PHASE_11_TRACKER.md) |
-
-Resume point for contributors: [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md)
-
----
+The repository includes `backend/evaluation/datasets/gold_v1.json`, a CLI runner (`python -m evaluation.runner`), deterministic metrics, and conversation evaluation tooling. Running a gold evaluation requires an explicit `--execute-gold` flag, a prepared index, and live dependencies; this README does not claim a new baseline result. See the [Evaluation guide](docs/guides/EVALUATION.md) for the supported workflow and recorded experiments.
 
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
-| [Documentation Hub](docs/README.md) | Index of all guides and reference docs |
-| [Portfolio Overview](docs/PORTFOLIO_OVERVIEW.md) | One-page summary for reviewers |
-| [Local Setup](docs/guides/SETUP.md) | Prerequisites and first run |
-| [Google OAuth](docs/guides/GOOGLE_OAUTH.md) | Drive connection setup |
-| [Indexing Lifecycle](docs/guides/INDEXING.md) | Sync → ingest → chunk → build |
-| [Retrieval Strategy](docs/guides/RETRIEVAL.md) | Hybrid search and query routing |
-| [LangGraph Workflow](docs/guides/LANGGRAPH.md) | Agent orchestration |
-| [Deployment](docs/guides/DEPLOYMENT.md) | Vercel + backend hosting |
-| [PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) | Product vision, scope, principles |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design and data flow |
-| [CURRENT_STATUS.md](docs/CURRENT_STATUS.md) | Latest progress and commands |
-| [Limitations & Future](docs/LIMITATIONS_AND_ROADMAP.md) | MVP scope and roadmap |
+| Guide | Start here for |
+|-------|----------------|
+| [Documentation index](docs/README.md) | All guides and reference documents |
+| [Architecture](docs/ARCHITECTURE.md) | Components, storage ownership, and boundaries |
+| [Indexing](docs/guides/INDEXING.md) | Full/incremental sync and preparation stages |
+| [Retrieval](docs/guides/RETRIEVAL.md) | Routing, evidence, and citations |
+| [LangGraph](docs/guides/LANGGRAPH.md) | Optional graph-specific flow |
+| [Evaluation](docs/guides/EVALUATION.md) | Implemented tooling and evaluation methodology |
+| [Interactive diagrams](https://mahad816.github.io/DriveMind_AI/) | Play or step through the three architecture flows |
 
----
+## Current scope
 
-## Limitations (MVP)
-
-- Single user, no multi-tenant auth UI
-- Read-only Drive — no write/delete
-- PDF text extraction only (no OCR for scanned PDFs yet)
-- Chat history stored in browser `localStorage` (not server-backed)
-- No SSE streaming for answers yet
-- Audio / Whisper deferred
-
----
+This is a single-user MVP. Google OAuth grants Drive access, but the application does not provide a separate user authentication or multi-tenant isolation boundary. Indexing jobs run inside the FastAPI process. Chat history lives in the browser. Drive access is read-only, and image-only PDFs are not OCRed. See [Limitations and roadmap](docs/LIMITATIONS_AND_ROADMAP.md) and [Current status](docs/CURRENT_STATUS.md) for more detail.
 
 ## License
 

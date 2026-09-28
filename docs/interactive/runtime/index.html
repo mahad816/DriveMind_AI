@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>System architecture · DriveMind</title>
+  <link rel="stylesheet" href="../site.css">
+</head>
+<body>
+  <header class="masthead"><div class="shell"><a class="brand" href="../../">DriveMind architecture</a><nav aria-label="Diagrams"><a href="../indexing/">Drive sync &amp; indexing</a><a href="../answer-flow/">RAG answer flow</a></nav></div></header>
+  <main class="shell">
+    <span class="eyebrow">System architecture</span>
+    <h1>Runtime components and responsibilities</h1>
+    <p class="lead">Drive content enters through preparation jobs. Questions use the local PostgreSQL and Qdrant index, then OpenAI generation. Google OAuth authorizes Drive access; it is not an application login boundary.</p>
+    <section class="trace-panel" aria-labelledby="traces-title">
+      <h2 id="traces-title">Select a trace</h2>
+      <div class="trace-list">
+        <a href="../runtime.html#route=drive~qdrant" target="diagram">Knowledge preparation / indexing</a>
+        <a href="../runtime.html#route=browser~openai_chat" target="diagram">Question → answer</a>
+      </div>
+      <p>Use the diagram's Route Probe controls to play, pause, or step through the selected directed path. Other components remain visible for context.</p>
+    </section>
+    <iframe class="viewer" name="diagram" title="Interactive DriveMind system architecture" src="../runtime.html" loading="eager"></iframe>
+    <p class="viewer-link"><a href="../runtime.html" target="_blank" rel="noopener">Open full diagram in a new tab</a></p>
+  </main>
+</body>
+</html>

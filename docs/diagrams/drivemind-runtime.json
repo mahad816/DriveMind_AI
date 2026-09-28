@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DriveMind Runtime Architecture",
+    "locale": "en",
+    "animation": "trace",
+    "output": ".archify/architecture-drivemind-runtime-20260929-000433/drivemind-runtime.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/mahad816/DriveMind_AI.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "b78ea7382239676ef9fa2a59e7d6adcbadfb17a8"
+    }
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Browser",
+      "sublabel": "questions and setup",
+      "pos": [40, 300],
+      "size": [136, 64],
+      "sources": [{ "path": "frontend/lib/api/client.ts", "line": 45, "end_line": 61 }]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "Next.js UI",
+      "sublabel": "chat and index controls",
+      "pos": [250, 300],
+      "size": [158, 64],
+      "sources": [
+        { "path": "frontend/lib/knowledge/prepare.ts", "line": 80, "end_line": 101 },
+        { "path": "frontend/lib/api/chat.ts", "line": 1, "end_line": 9 }
+      ]
+    },
+    {
+      "id": "rewrite",
+      "type": "frontend",
+      "label": "Next.js rewrite",
+      "sublabel": "same-origin /api/v1",
+      "pos": [482, 300],
+      "size": [125, 64],
+      "sources": [{ "path": "frontend/next.config.ts", "line": 3, "end_line": 15 }]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "FastAPI",
+      "sublabel": "REST routes",
+      "pos": [715, 300],
+      "size": [136, 64],
+      "sources": [
+        { "path": "backend/app/api/router.py", "line": 5, "end_line": 18 },
+        { "path": "backend/app/main.py", "line": 45, "end_line": 56 }
+      ]
+    },
+    {
+      "id": "prepare",
+      "type": "backend",
+      "label": "Knowledge preparation",
+      "sublabel": "sync, ingest, chunk, build",
+      "pos": [945, 105],
+      "size": [190, 72],
+      "sources": [
+        { "path": "backend/app/api/index.py", "line": 37, "end_line": 67 },
+        { "path": "backend/app/services/indexing_service.py", "line": 128, "end_line": 178 }
+      ]
+    },
+    {
+      "id": "answer",
+      "type": "backend",
+      "label": "Question answering",
+      "sublabel": "route, retrieve, cite",
+      "pos": [945, 495],
+      "size": [190, 72],
+      "sources": [
+        { "path": "backend/app/services/rag_service.py", "line": 60, "end_line": 89 },
+        { "path": "backend/app/services/rag_service.py", "line": 410, "end_line": 448 }
+      ]
+    },
+    {
+      "id": "drive",
+      "type": "external",
+      "label": "Google Drive",
+      "sublabel": "read-only OAuth source",
+      "pos": [1225, 45],
+      "size": [160, 64],
+      "sources": [
+        { "path": "backend/app/services/drive_sync_service.py", "line": 295, "end_line": 317 },
+        { "path": "backend/app/services/ingestion_service.py", "line": 154, "end_line": 167 },
+        { "path": "backend/app/core/config.py", "line": 28, "end_line": 31 }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "metadata, text, chunks",
+      "tag": "source of truth",
+      "pos": [1225, 270],
+      "size": [160, 72],
+      "sources": [
+        { "path": "backend/app/db/models/drive_file.py", "line": 17, "end_line": 49 },
+        { "path": "backend/app/db/models/document.py", "line": 15, "end_line": 34 },
+        { "path": "backend/app/db/models/chunk.py", "line": 18, "end_line": 40 }
+      ]
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant",
+      "sublabel": "vectors by chunk UUID",
+      "pos": [1490, 270],
+      "size": [166, 72],
+      "sources": [
+        { "path": "backend/app/embeddings/vector_store.py", "line": 96, "end_line": 123 },
+        { "path": "backend/app/retrieval/vector.py", "line": 38, "end_line": 55 }
+      ]
+    },
+    {
+      "id": "openai_embeddings",
+      "type": "external",
+      "label": "OpenAI",
+      "sublabel": "embeddings API",
+      "pos": [1490, 80],
+      "size": [166, 72],
+      "sources": [{ "path": "backend/app/embeddings/openai_service.py", "line": 75, "end_line": 86 }]
+    },
+    {
+      "id": "openai_chat",
+      "type": "external",
+      "label": "OpenAI",
+      "sublabel": "chat completions API",
+      "pos": [1490, 525],
+      "size": [166, 72],
+      "sources": [{ "path": "backend/app/llm/openai_service.py", "line": 45, "end_line": 80 }]
+    }
+  ],
+  "connections": [
+    { "id": "use-ui", "from": "browser", "to": "frontend", "label": "use UI" },
+    { "id": "api-request", "from": "frontend", "to": "rewrite", "label": "API request" },
+    { "id": "proxy-request", "from": "rewrite", "to": "api", "label": "proxy to backend" },
+    { "id": "start-preparation", "from": "api", "to": "prepare", "label": "start jobs" },
+    { "id": "ask-question", "from": "api", "to": "answer", "label": "ask" },
+    { "id": "answer-response", "from": "answer", "to": "api", "label": "answer + citations", "fromSide": "bottom", "toSide": "bottom", "via": [[1040, 620], [783, 620]] },
+    { "id": "drive-content", "from": "drive", "to": "prepare", "label": "metadata and content" },
+    { "id": "store-text", "from": "prepare", "to": "postgres", "label": "store local index" },
+    { "id": "embed-chunks", "from": "prepare", "to": "openai_embeddings", "label": "embed stored chunks", "variant": "dashed" },
+    { "id": "store-vectors", "from": "prepare", "to": "qdrant", "label": "upsert vectors" },
+    { "id": "read-text", "from": "postgres", "to": "answer", "label": "chunks and metadata" },
+    { "id": "vector-search", "from": "qdrant", "to": "answer", "label": "when vector path", "variant": "dashed" },
+    { "id": "generate-answer", "from": "answer", "to": "openai_chat", "label": "generate answer" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Knowledge preparation",
+      "items": [
+        "FastAPI runs in-process sync, ingest, chunk and build jobs after the UI starts them.",
+        "Google OAuth authorizes read-only Drive access; it is not an application session gate."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Question answering",
+      "items": [
+        "Answers use the local PostgreSQL/Qdrant index, not a live Drive content fetch.",
+        "LangGraph is optional for grounded questions; the default path is linear."
+      ]
+    },
+    {
+      "dot": "orange",
+      "title": "Storage ownership",
+      "items": [
+        "PostgreSQL also stores file status, OAuth records and query history.",
+        "Qdrant stores embeddings keyed by PostgreSQL chunk UUID, not document text."
+      ]
+    }
+  ]
+}

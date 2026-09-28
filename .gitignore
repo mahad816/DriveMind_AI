@@ -33,6 +33,7 @@ out/
 *.tsbuildinfo
 
 # IDE
+.archify/
 .idea/
 .vscode/*
 !.vscode/settings.json

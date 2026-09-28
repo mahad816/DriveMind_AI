@@ -1,181 +1,54 @@
-# Retrieval Strategy
+# Retrieval and answer flow
 
-How DriveMind finds relevant evidence before generating an answer.
+DriveMind routes every question before deciding whether to retrieve document evidence. Normal answers use PostgreSQL and Qdrant, not a fresh Google Drive fetch.
 
----
+## Question to answer
 
-## Design goal
+![DriveMind question routing, conditional retrieval, bounded context, generation, and citations](../assets/drivemind-answer-flow.svg)
 
-Vector search alone fails on real Drive questions:
+[View interactive answer flow →](https://mahad816.github.io/DriveMind_AI/interactive/answer-flow/)
 
-| Query type | Why vectors struggle | DriveMind approach |
-|------------|---------------------|-------------------|
-| *Find my latest resume* | "Latest" is temporal metadata | Metadata retriever + sort by date |
-| *How many PDF files?* | Needs counting, not similarity | FILE_INVENTORY SQL path |
-| *Tell me about "Far611"* | Short name drowned by vector noise | FILE_TARGET direct lookup |
-| *What is federated learning?* | Semantic concept search | Vector + keyword hybrid |
+## Top-level routes
 
----
+`POST /api/v1/chat` delegates to `RagService.ask()` and `classify_query()`. The router checks these routes in order:
 
-## Query routing
+| Route | Behavior |
+|-------|----------|
+| Conversation-history recall | Uses a supplied conversation window to answer an explicit prior-message reference; no document retrieval or citations. |
+| Chitchat | Narrow set of social/capability phrases; direct chat generation without document citations. Short substantive questions still reach knowledge routing. |
+| File inventory | SQL-backed file counts/listings, followed by an inventory answer; no chunk citations. |
+| Named-file question (`FILE_TARGET`) | Match the requested file, load its indexed PostgreSQL chunks, select bounded prompt context, and answer with citations. |
+| General grounded question (`GROUNDED_RAG`) | Retrieve evidence from the local index, select bounded context, and generate a cited answer or abstain when evidence is insufficient. |
 
-`classify_query()` in `app/retrieval/query_router.py` — priority order from source:
+Quoted file names take precedence over pure chitchat detection. A named-file lookup can load all chunks of the matched file, but the context budget determines which chunks and how much text reach the model; the entire file is not guaranteed to fit.
 
-1. CHITCHAT → 2. FILE_INVENTORY → 3. FILE_TARGET → 4. GROUNDED_RAG
+## General grounded retrieval
 
-```mermaid
-flowchart TD
-    Q[User question] --> R{classify_query}
+Two independent settings shape this route:
 
-    R -->|pure social| C[CHITCHAT<br/>no citations]
-    R -->|how many / list| I[FILE_INVENTORY<br/>no citations]
-    R -->|named file| T[FILE_TARGET<br/>with citations]
-    R -->|default| G[GROUNDED_RAG]
+| Setting | Default | Effect |
+|---------|---------|--------|
+| `AGENT_GRAPH_ENABLED` | `false` | `false`: linear `RagService` path; `true`: LangGraph retrieval, evidence grading, and bounded rewrite loop for general grounded queries only. |
+| `HYBRID_RETRIEVAL_ENABLED` | `true` | On the linear path, combine Qdrant vector, PostgreSQL full-text keyword, and metadata candidates; `false` uses vector-only retrieval. |
 
-    G --> Flag{AGENT_GRAPH_ENABLED?}
-    Flag -->|true| Agent[LangGraph agent]
-    Flag -->|false| Linear[HybridRetriever]
-```
+The linear hybrid path uses reciprocal-rank fusion, weighted reranking, and evidence grading. Vector results are hydrated from indexed PostgreSQL chunks. The graph path plans which retrievers to use for its intent, can rewrite a query when evidence is weak, and has its own citation verification node. Neither setting changes the top-level conversation, chitchat, inventory, or named-file routes. See [LangGraph Workflow](LANGGRAPH.md) for its focused graph.
 
-### Route details
+## Context, generation, and citations
 
-| Route | Triggers | Retrieval |
-|-------|----------|-----------|
-| **CHITCHAT** | `hi`, `thanks`, etc. — no knowledge signals | None |
-| **FILE_INVENTORY** | `how many`, `list`, resume/CV/certificate keywords | `FileInventoryRetriever` |
-| **FILE_TARGET** | Quoted filename or `tell me about X` patterns | `FileTargetRetriever` — all chunks for matched file |
-| **GROUNDED_RAG** | Everything else | Hybrid or vector path |
+Grounded and named-file paths call `select_prompt_chunks()` before constructing prompts. The `RAG_MAX_CONTEXT_CHARS` budget and chunk selection limit model context even when retrieval loads more candidates. OpenAI chat generation uses those selected chunks.
 
-Quoted strings (`"Far611"`) bypass chitchat classification and prioritize file-target matching.
+Citation payloads are built from selected prompt chunks, then answer references are normalized against that set. The graph path also verifies citations in its graph. Chitchat, inventory, and conversation-history recall intentionally have no document citations. The answer and citations are persisted in PostgreSQL query history. A source link calls `GET /api/v1/sources/{chunk_id}`, which returns the indexed chunk text from PostgreSQL.
 
----
+This separation matters: Google Drive is accessed during sync/ingestion, while normal question answering uses the prepared local index.
 
-## Hybrid retrieval (GROUNDED_RAG)
+## Key configuration
 
-**Module:** `app/retrieval/hybrid.py`
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RETRIEVAL_CANDIDATE_K` | `24` | Candidate pool per retriever |
+| `RETRIEVAL_TOP_K` | `8` | Retrieval result cap before prompt selection |
+| `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Vector score floor |
+| `EVIDENCE_MIN_FUSION_SCORE` | `0.15` | Hybrid evidence grading threshold |
+| `RAG_MAX_CONTEXT_CHARS` | `12000` | Prompt context budget |
 
-When `HYBRID_RETRIEVAL_ENABLED=true` (default):
-
-```mermaid
-flowchart TD
-    Q[Question] --> V[Vector - Qdrant]
-    Q --> K[Keyword - PostgreSQL FTS]
-    Q --> M[Metadata - SQL filters]
-
-    V --> Merge[RRF merge]
-    K --> Merge
-    M --> Merge
-    Merge --> Rerank[Weighted rerank]
-    Rerank --> Grade[Evidence grade]
-    Grade --> Out[Top-K chunks]
-```
-
-### Three retrievers
-
-| Retriever | Source | Best for |
-|-----------|--------|----------|
-| **Vector** | Qdrant cosine similarity | Semantic / conceptual questions |
-| **Keyword** | PostgreSQL full-text search | Exact terms, quoted names, rare tokens |
-| **Metadata** | SQL on `drive_files` | Latest file, folder, MIME type, date filters |
-
-### Merge: Reciprocal Rank Fusion (RRF)
-
-Candidates from each retriever are merged by `chunk_id`. Score contribution per source:
-
-```text
-score += weight / (rrf_k + rank)
-```
-
-Default weights: vector **0.5**, keyword **0.3**, metadata **0.2**.
-
-### Rerank: weighted fusion
-
-`weighted_fusion_rerank()` combines per-source normalized scores with config weights, then sorts by:
-
-1. **Filename target priority** — quoted names in query boost exact filename matches
-2. **Fusion score** descending
-3. **`modified_at`** descending (recency tie-break)
-
-Output truncated to `RETRIEVAL_TOP_K` (default **8**).
-
-### Evidence grading
-
-`grade_evidence()` filters chunks below `EVIDENCE_MIN_FUSION_SCORE`. Returns:
-
-- `sufficient` — enough evidence to answer
-- `reason` — why evidence was weak (used by rewrite loop)
-- `chunks` — filtered candidate list
-
----
-
-## FILE_TARGET path
-
-**Modules:** `app/retrieval/file_target.py`, `filename_targets.py`
-
-For questions like *Tell me about "Far611"*:
-
-1. Extract quoted or heuristic filename targets
-2. SQL `ILIKE` / exact match on `drive_files.name`
-3. Return **all chunks** for the matched file (not top-K slice)
-4. Dedicated prompt (`FILE_TARGET_SYSTEM_PROMPT`) for file-summary answers
-
-Short quoted names (≤4 chars) use **exact** filename match to avoid substring false positives.
-
----
-
-## Linear vs LangGraph path
-
-For `GROUNDED_RAG` only:
-
-| `AGENT_GRAPH_ENABLED` | Path |
-|-----------------------|------|
-| `false` (default) | Linear: `HybridRetriever.retrieve_with_grade()` → grounded answer |
-| `true` | LangGraph agent with intent planning, selective retrievers, rewrite loop |
-
-Chitchat, inventory, and file-target routes are **unchanged** regardless of the flag.
-
-See [LangGraph Workflow](LANGGRAPH.md).
-
----
-
-## Configuration
-
-| Env var | Default | Purpose |
-|---------|---------|---------|
-| `HYBRID_RETRIEVAL_ENABLED` | `true` | Enable hybrid vs vector-only |
-| `RETRIEVAL_CANDIDATE_K` | `24` | Candidates per retriever |
-| `RETRIEVAL_TOP_K` | `8` | Chunks sent to LLM |
-| `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Vector similarity floor |
-| `HYBRID_RRF_K` | `60` | RRF constant |
-| `HYBRID_WEIGHT_VECTOR` | `0.5` | Vector weight in fusion |
-| `HYBRID_WEIGHT_KEYWORD` | `0.3` | Keyword weight |
-| `HYBRID_WEIGHT_METADATA` | `0.2` | Metadata weight |
-| `EVIDENCE_MIN_FUSION_SCORE` | `0.15` | Grading threshold |
-| `RAG_MAX_CONTEXT_CHARS` | `12000` | Max context for LLM |
-| `FTS_LANGUAGE` | `english` | PostgreSQL FTS language |
-
----
-
-## Citation format
-
-Answers include `[N]` references mapped to `CitationItem`:
-
-```json
-{
-  "chunk_id": "...",
-  "drive_file_id": "...",
-  "filename": "resume.pdf",
-  "snippet": "...",
-  "score": 0.87
-}
-```
-
-The LangGraph path additionally **verifies** citations — stripping references to chunks not present in the answer.
-
----
-
-## Related docs
-
-- [LangGraph Workflow](LANGGRAPH.md)
-- [Indexing Lifecycle](INDEXING.md)
-- [Architecture](../ARCHITECTURE.md)
+See [Indexing](INDEXING.md) for how the local index is built, [Architecture](../ARCHITECTURE.md) for storage ownership, and [Evaluation](EVALUATION.md) for measured retrieval diagnostics.

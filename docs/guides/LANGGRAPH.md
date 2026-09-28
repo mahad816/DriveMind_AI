@@ -1,15 +1,17 @@
 # LangGraph Workflow
 
-How DriveMind's agent orchestrates question answering when `AGENT_GRAPH_ENABLED=true`.
+How DriveMind's optional graph orchestrates general grounded questions when `AGENT_GRAPH_ENABLED=true` (the default is `false`).
 
 ---
 
 ## When LangGraph runs
 
 LangGraph is used **only** for the `GROUNDED_RAG` route in `RagService.ask()`.
+The top-level router first handles conversation recall, chitchat, inventory, and named-file questions; these do not enter the graph. The [answer-flow diagram](RETRIEVAL.md#question-to-answer) shows where the optional graph enters the larger request path.
 
 | Route | LangGraph? |
 |-------|------------|
+| CONVERSATION_HISTORY | No — deterministic recall from supplied chat history |
 | CHITCHAT | No — direct LLM |
 | FILE_INVENTORY | No — SQL inventory |
 | FILE_TARGET | No — named-file lookup |
@@ -128,7 +130,7 @@ HybridRetriever.retrieve_with_grade()  [or VectorRetriever]
     → filter citations
 ```
 
-No intent classification, no rewrite loop, no citation verification node. Useful for debugging retrieval quality in isolation.
+No graph intent classification, rewrite loop, or graph citation-verification node. Both grounded paths still normalize citations against selected prompt chunks.
 
 ---
 
@@ -148,7 +150,7 @@ Agent graph tests use stub retrieve nodes when retrievers are not injected.
 
 | Decision | Why |
 |----------|-----|
-| LangGraph over linear chain | Conditional rewrite loop, selective retriever routing |
+| Optional LangGraph path | Conditional rewrite loop and selective retriever routing for grounded queries |
 | LangChain for components | Retrievers, prompts, LLM abstraction — not flow control |
 | Flag-gated agent | Compare linear vs agentic paths; simplify debugging |
 | Citation verify node | Prevent hallucinated `[N]` references in answers |

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>DriveMind architecture diagrams</title>
+  <link rel="stylesheet" href="interactive/site.css">
+</head>
+<body>
+  <header class="masthead"><div class="shell"><a class="brand" href="./">DriveMind architecture</a><nav aria-label="Documentation"><a href="https://github.com/mahad816/DriveMind_AI#readme">Repository README</a><a href="https://github.com/mahad816/DriveMind_AI/blob/main/docs/ARCHITECTURE.md">Architecture guide</a></nav></div></header>
+  <main class="shell">
+    <span class="eyebrow">Interactive engineering documentation</span>
+    <h1>Follow the paths through DriveMind</h1>
+    <p class="lead">Three source-backed diagrams cover the running system, Drive preparation, and question answering. Each opens with named routes you can play or step through using Archify's built-in controls.</p>
+    <div class="cards">
+      <article class="card"><img src="assets/drivemind-runtime.svg" alt="Overview of DriveMind runtime components" loading="lazy"><div class="card-body"><h2>System architecture</h2><p>See the browser, Next.js, FastAPI, Google Drive, PostgreSQL, Qdrant, and OpenAI, with preparation and answering kept distinct.</p><a class="button" href="interactive/runtime/">View interactive diagram</a></div></article>
+      <article class="card"><img src="assets/drivemind-indexing.svg" alt="Full and incremental Drive sync converging on indexing" loading="lazy"><div class="card-body"><h2>Drive sync &amp; indexing</h2><p>Compare first and incremental sync, then follow ingestion, chunking, embedding, and index build.</p><a class="button" href="interactive/indexing/">View interactive diagram</a></div></article>
+      <article class="card"><img src="assets/drivemind-answer-flow.svg" alt="Question routing and grounded answer paths" loading="lazy"><div class="card-body"><h2>RAG answer flow</h2><p>Explore top-level routing, linear and optional graph retrieval, bounded context, generation, and citations.</p><a class="button" href="interactive/answer-flow/">View interactive diagram</a></div></article>
+    </div>
+  </main>
+</body>
+</html>

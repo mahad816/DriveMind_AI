@@ -20,8 +20,8 @@ Step-by-step instructions to run DriveMind AI on your machine.
 ## 1. Clone and configure environment
 
 ```bash
-git clone <your-repo-url>
-cd INFO_VAULT
+git clone https://github.com/mahad816/DriveMind_AI.git
+cd DriveMind_AI
 cp .env.example .env
 ```
 
@@ -114,16 +114,24 @@ curl -I http://localhost:8000/api/v1/auth/google
 
 ### Via API
 
+Each endpoint returns `202 Accepted` and starts a background job. Wait for the
+current job to finish before starting the next stage:
+
 ```bash
+# Sync, then poll /index/status until the sync job is completed.
 curl -X POST http://localhost:8000/api/v1/index/sync
+curl http://localhost:8000/api/v1/index/status
+
+# Ingest, then poll /index/status until ingestion is completed.
 curl -X POST http://localhost:8000/api/v1/index/ingest
+curl http://localhost:8000/api/v1/index/status
+
+# Chunk, then poll /index/status until chunking is completed.
 curl -X POST http://localhost:8000/api/v1/index/chunk
+curl http://localhost:8000/api/v1/index/status
+
+# Build, then poll /index/status until the build is completed.
 curl -X POST http://localhost:8000/api/v1/index/build
-```
-
-Poll job status:
-
-```bash
 curl http://localhost:8000/api/v1/index/status
 curl http://localhost:8000/api/v1/index/pending
 ```
@@ -163,7 +171,7 @@ Or use the Chat UI at **http://localhost:3000/chat**.
 | `RETRIEVAL_TOP_K` | `8` | Chunks passed to LLM |
 | `RAG_MAX_CONTEXT_CHARS` | `12000` | Max context window for RAG |
 
-Full list: [`.env.example`](../.env.example)
+Full list: [`.env.example`](../../.env.example)
 
 ---
 
@@ -171,14 +179,12 @@ Full list: [`.env.example`](../.env.example)
 
 ```bash
 # Backend
-cd backend
-uv run pytest -q
-uv run ruff check app tests
+(cd backend && uv run pytest -q)
+(cd backend && uv run ruff check app tests)
 
 # Frontend
-cd frontend
-npm test
-npm run build
+(cd frontend && npm test)
+(cd frontend && npm run build)
 ```
 
 ---

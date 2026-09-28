@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Drive Sync and Indexing",
+    "locale": "en",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-drivemind-indexing-20260929/indexing.html",
+    "repository": {
+      "url": "https://github.com/mahad816/DriveMind_AI.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "b78ea7382239676ef9fa2a59e7d6adcbadfb17a8"
+    }
+  },
+  "components": [
+    { "id": "full", "type": "frontend", "label": "First / full sync", "sublabel": "UI starts and polls job", "pos": [40, 50], "size": [166, 66], "sources": [{ "path": "frontend/lib/knowledge/prepare.ts", "line": 87, "end_line": 101 }] },
+    { "id": "start_token", "type": "backend", "label": "Capture start token", "sublabel": "before full listing", "pos": [40, 175], "size": [166, 66], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 295, "end_line": 303 }] },
+    { "id": "list", "type": "external", "label": "Google Drive list", "sublabel": "supported files", "pos": [40, 300], "size": [166, 66], "sources": [{ "path": "backend/app/connectors/google_drive/client.py", "line": 205, "end_line": 248 }] },
+    { "id": "upsert", "type": "backend", "label": "Upsert metadata", "sublabel": "new and changed files", "pos": [40, 425], "size": [166, 66], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 188, "end_line": 240 }] },
+    { "id": "reconcile", "type": "backend", "label": "Reconcile missing", "sublabel": "absent files → skipped", "pos": [40, 550], "size": [166, 66], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 271, "end_line": 318 }] },
+    { "id": "incremental", "type": "frontend", "label": "Incremental sync", "sublabel": "default after first scan", "pos": [280, 50], "size": [166, 66], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 357, "end_line": 365 }] },
+    { "id": "stored_token", "type": "database", "label": "Stored page token", "sublabel": "PostgreSQL sync state", "pos": [280, 175], "size": [166, 66], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 78, "end_line": 94 }] },
+    { "id": "changes", "type": "external", "label": "Drive Changes API", "sublabel": "all change pages", "pos": [280, 300], "size": [166, 66], "sources": [{ "path": "backend/app/connectors/google_drive/client.py", "line": 274, "end_line": 305 }] },
+    { "id": "apply", "type": "backend", "label": "Apply changes", "sublabel": "upsert or mark skipped", "pos": [280, 425], "size": [166, 66], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 320, "end_line": 350 }] },
+    { "id": "skipped", "type": "database", "label": "Skipped files", "sublabel": "removed, trashed, unsupported", "pos": [520, 405], "size": [190, 70], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 242, "end_line": 253 }, { "path": "backend/app/services/drive_sync_service.py", "line": 334, "end_line": 340 }] },
+    { "id": "commit", "type": "database", "label": "PostgreSQL sync state", "sublabel": "metadata + next cursor", "pos": [520, 550], "size": [190, 70], "sources": [{ "path": "backend/app/services/drive_sync_service.py", "line": 311, "end_line": 318 }, { "path": "backend/app/services/drive_sync_service.py", "line": 344, "end_line": 350 }, { "path": "backend/app/services/drive_sync_service.py", "line": 390, "end_line": 406 }] },
+    { "id": "ingest", "type": "backend", "label": "INGEST", "sublabel": "download, export, extract", "tag": "errors → failed", "pos": [520, 710], "size": [190, 70], "sources": [{ "path": "backend/app/services/ingestion_service.py", "line": 133, "end_line": 202 }] },
+    { "id": "document", "type": "database", "label": "PostgreSQL text", "sublabel": "extracted Document", "pos": [790, 710], "size": [190, 70], "sources": [{ "path": "backend/app/db/models/document.py", "line": 15, "end_line": 34 }, { "path": "backend/app/services/ingestion_service.py", "line": 186, "end_line": 202 }] },
+    { "id": "chunk", "type": "backend", "label": "CHUNK", "sublabel": "overlapping text spans", "tag": "zero → skipped", "pos": [790, 855], "size": [190, 70], "sources": [{ "path": "backend/app/services/chunking_service.py", "line": 109, "end_line": 155 }] },
+    { "id": "chunks", "type": "database", "label": "PostgreSQL chunks", "sublabel": "text + full-text vector", "pos": [520, 855], "size": [190, 70], "sources": [{ "path": "backend/app/db/models/chunk.py", "line": 18, "end_line": 40 }, { "path": "backend/app/services/chunking_service.py", "line": 132, "end_line": 154 }] },
+    { "id": "build", "type": "backend", "label": "BUILD / INDEX", "sublabel": "embed and reconcile", "pos": [520, 1000], "size": [190, 70], "sources": [{ "path": "backend/app/services/indexing_service.py", "line": 128, "end_line": 178 }] },
+    { "id": "embeddings", "type": "external", "label": "OpenAI embeddings", "sublabel": "vectors returned to build", "pos": [790, 1000], "size": [190, 70], "sources": [{ "path": "backend/app/embeddings/openai_service.py", "line": 75, "end_line": 86 }, { "path": "backend/app/services/indexing_service.py", "line": 159, "end_line": 173 }] },
+    { "id": "vector_upsert", "type": "backend", "label": "FastAPI vector upsert", "sublabel": "part of build job", "tag": "errors → failed", "pos": [790, 1145], "size": [190, 70], "sources": [{ "path": "backend/app/services/indexing_service.py", "line": 159, "end_line": 174 }] },
+    { "id": "qdrant", "type": "database", "label": "Qdrant vectors", "sublabel": "by PostgreSQL chunk UUID", "pos": [790, 1290], "size": [190, 70], "sources": [{ "path": "backend/app/embeddings/vector_store.py", "line": 96, "end_line": 123 }] },
+    { "id": "indexed", "type": "database", "label": "Indexed", "sublabel": "file status in PostgreSQL", "pos": [350, 1290], "size": [190, 70], "sources": [{ "path": "backend/app/services/indexing_service.py", "line": 170, "end_line": 178 }] }
+  ],
+  "connections": [
+    { "id": "full-token", "from": "full", "to": "start_token", "label": "start" },
+    { "id": "token-list", "from": "start_token", "to": "list", "label": "then list" },
+    { "id": "list-upsert", "from": "list", "to": "upsert", "label": "metadata" },
+    { "id": "upsert-reconcile", "from": "upsert", "to": "reconcile", "label": "scan complete" },
+    { "id": "reconcile-commit", "from": "reconcile", "to": "commit", "label": "save baseline" },
+    { "id": "incremental-token", "from": "incremental", "to": "stored_token", "label": "read" },
+    { "id": "token-changes", "from": "stored_token", "to": "changes", "label": "page token" },
+    { "id": "changes-apply", "from": "changes", "to": "apply", "label": "changes" },
+    { "id": "apply-skipped", "from": "apply", "to": "skipped", "label": "removed / unsupported" },
+    { "id": "apply-commit", "from": "apply", "to": "commit", "label": "new cursor" },
+    { "id": "commit-ingest", "from": "commit", "to": "ingest", "label": "separate job" },
+    { "id": "ingest-document", "from": "ingest", "to": "document", "label": "persist text" },
+    { "id": "document-chunk", "from": "document", "to": "chunk", "label": "read text" },
+    { "id": "chunk-chunks", "from": "chunk", "to": "chunks", "label": "persist chunks" },
+    { "id": "chunks-build", "from": "chunks", "to": "build", "label": "separate job" },
+    { "id": "build-embed", "from": "build", "to": "embeddings", "label": "pending chunks" },
+    { "id": "embed-upsert", "from": "embeddings", "to": "vector_upsert", "label": "return vectors" },
+    { "id": "upsert-qdrant", "from": "vector_upsert", "to": "qdrant", "label": "upsert points" },
+    { "id": "qdrant-indexed", "from": "qdrant", "to": "indexed", "label": "build marks indexed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Separate jobs", "items": ["The UI starts and polls sync, ingest, chunk and build in order, skipping stages with no pending work.", "Jobs run in the FastAPI process; no external queue is involved."] },
+    { "dot": "emerald", "title": "Cursor lifecycle", "items": ["Full sync captures a start token before listing and saves it only after listing and reconciliation succeed.", "Incremental sync consumes every Changes API page and saves the new token with successful metadata changes."] },
+    { "dot": "orange", "title": "File outcomes", "items": ["Removed, trashed or newly unsupported files are marked skipped; extraction and vector failures mark files failed.", "Build marks a file indexed after vectors are reconciled; empty text or zero chunks remain skipped."] }
+  ]
+}

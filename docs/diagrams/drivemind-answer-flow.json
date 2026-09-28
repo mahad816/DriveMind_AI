@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Question to RAG Answer",
+    "locale": "en",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-drivemind-answer-flow-20260929/answer-flow.html",
+    "repository": {
+      "url": "https://github.com/mahad816/DriveMind_AI.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "b78ea7382239676ef9fa2a59e7d6adcbadfb17a8"
+    }
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "Browser", "sublabel": "question + local history", "pos": [40, 50], "size": [150, 66], "sources": [{ "path": "frontend/lib/api/chat.ts", "line": 1, "end_line": 9 }, { "path": "frontend/lib/conversations/storage.ts", "line": 1 }] },
+    { "id": "chat_api", "type": "frontend", "label": "POST /chat", "sublabel": "Next.js rewrite → FastAPI", "pos": [265, 50], "size": [175, 66], "sources": [{ "path": "frontend/next.config.ts", "line": 3, "end_line": 15 }, { "path": "backend/app/api/chat.py", "line": 22, "end_line": 37 }] },
+    { "id": "router", "type": "backend", "label": "RagService route", "sublabel": "classify every question", "pos": [515, 50], "size": [178, 66], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 149, "end_line": 170 }, { "path": "backend/app/retrieval/query_router.py", "line": 133, "end_line": 171 }] },
+    { "id": "history", "type": "backend", "label": "History recall", "sublabel": "deterministic; no sources", "pos": [40, 235], "size": [168, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 171, "end_line": 206 }] },
+    { "id": "chitchat", "type": "backend", "label": "Chitchat", "sublabel": "direct OpenAI reply", "pos": [270, 235], "size": [168, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 208, "end_line": 244 }] },
+    { "id": "inventory", "type": "backend", "label": "File inventory", "sublabel": "PostgreSQL + OpenAI", "pos": [500, 235], "size": [168, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 246, "end_line": 295 }, { "path": "backend/app/retrieval/file_inventory.py", "line": 272, "end_line": 310 }] },
+    { "id": "named", "type": "backend", "label": "Named file", "sublabel": "direct file lookup", "pos": [730, 235], "size": [168, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 297, "end_line": 315 }, { "path": "backend/app/retrieval/file_target.py", "line": 48, "end_line": 64 }] },
+    { "id": "grounded", "type": "backend", "label": "Grounded question", "sublabel": "default knowledge route", "pos": [960, 235], "size": [178, 70], "sources": [{ "path": "backend/app/retrieval/query_router.py", "line": 133, "end_line": 171 }] },
+    { "id": "direct_reply", "type": "backend", "label": "Direct reply", "sublabel": "persisted; no citations", "pos": [270, 430], "size": [178, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 171, "end_line": 295 }] },
+    { "id": "file_chunks", "type": "database", "label": "PostgreSQL file chunks", "sublabel": "indexed named file", "pos": [480, 430], "size": [182, 70], "sources": [{ "path": "backend/app/retrieval/file_target.py", "line": 163, "end_line": 200 }] },
+    { "id": "linear", "type": "backend", "label": "Linear RAG", "sublabel": "default grounded path", "pos": [700, 430], "size": [178, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 441, "end_line": 452 }, { "path": "backend/app/core/config.py", "line": 49, "end_line": 51 }] },
+    { "id": "graph_flag", "type": "backend", "label": "Graph enabled?", "sublabel": "AGENT_GRAPH_ENABLED", "pos": [920, 430], "size": [188, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 406, "end_line": 439 }, { "path": "backend/app/core/config.py", "line": 51 }] },
+    { "id": "langgraph", "type": "backend", "label": "LangGraph", "sublabel": "plan, grade, maybe rewrite", "pos": [920, 615], "size": [188, 70], "sources": [{ "path": "backend/app/agents/drive_graph/runner.py", "line": 22, "end_line": 58 }, { "path": "backend/app/agents/drive_graph/graph.py", "line": 33, "end_line": 84 }] },
+    { "id": "vector_only", "type": "backend", "label": "Vector only", "sublabel": "hybrid disabled", "pos": [480, 615], "size": [182, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 460, "end_line": 486 }, { "path": "backend/app/core/config.py", "line": 39 }] },
+    { "id": "hybrid", "type": "backend", "label": "Hybrid retrieval", "sublabel": "vector + keyword + metadata", "pos": [700, 615], "size": [178, 70], "sources": [{ "path": "backend/app/retrieval/hybrid.py", "line": 38, "end_line": 73 }, { "path": "backend/app/services/rag_service.py", "line": 452, "end_line": 460 }] },
+    { "id": "local_index", "type": "database", "label": "Local index", "sublabel": "Qdrant + PostgreSQL text", "pos": [700, 800], "size": [178, 70], "sources": [{ "path": "backend/app/retrieval/vector.py", "line": 38, "end_line": 88 }, { "path": "backend/app/retrieval/keyword.py", "line": 79, "end_line": 100 }] },
+    { "id": "context", "type": "backend", "label": "Bounded context", "sublabel": "select prompt chunks", "pos": [480, 985], "size": [182, 70], "sources": [{ "path": "backend/app/llm/prompts.py", "line": 112, "end_line": 145 }] },
+    { "id": "generation", "type": "external", "label": "OpenAI completion", "sublabel": "grounded answer", "pos": [700, 985], "size": [178, 70], "sources": [{ "path": "backend/app/llm/openai_service.py", "line": 45, "end_line": 80 }] },
+    { "id": "citations", "type": "backend", "label": "Citations", "sublabel": "normalize prompt sources", "pos": [960, 985], "size": [188, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 516, "end_line": 538 }, { "path": "backend/app/llm/prompts.py", "line": 202, "end_line": 236 }] },
+    { "id": "persist", "type": "database", "label": "PostgreSQL history", "sublabel": "question, answer, citations", "pos": [960, 1155], "size": [188, 70], "sources": [{ "path": "backend/app/services/rag_service.py", "line": 556, "end_line": 577 }, { "path": "backend/app/db/models/query_history.py", "line": 14, "end_line": 35 }] },
+    { "id": "frontend", "type": "frontend", "label": "Frontend answer", "sublabel": "text + citation links", "pos": [670, 1155], "size": [178, 70], "sources": [{ "path": "backend/app/api/chat.py", "line": 53, "end_line": 61 }, { "path": "frontend/lib/api/chat.ts", "line": 1, "end_line": 9 }] }
+  ],
+  "connections": [
+    { "id": "browser-chat", "from": "browser", "to": "chat_api", "label": "ask" },
+    { "id": "chat-router", "from": "chat_api", "to": "router", "label": "route" },
+    { "id": "route-history", "from": "router", "to": "history", "label": "prior message", "fromSide": "bottom", "toSide": "top", "via": [[604, 160], [124, 160]] },
+    { "id": "route-chitchat", "from": "router", "to": "chitchat", "label": "social" },
+    { "id": "route-inventory", "from": "router", "to": "inventory", "label": "file list / count" },
+    { "id": "route-named", "from": "router", "to": "named", "label": "named file" },
+    { "id": "route-grounded", "from": "router", "to": "grounded", "label": "substantive" },
+    { "id": "history-direct", "from": "history", "to": "direct_reply" },
+    { "id": "chitchat-direct", "from": "chitchat", "to": "direct_reply" },
+    { "id": "inventory-direct", "from": "inventory", "to": "direct_reply" },
+    { "id": "named-chunks", "from": "named", "to": "file_chunks", "label": "indexed file" },
+    { "id": "chunks-context", "from": "file_chunks", "to": "context", "label": "file evidence" },
+    { "id": "grounded-linear", "from": "grounded", "to": "linear", "label": "default" },
+    { "id": "grounded-flag", "from": "grounded", "to": "graph_flag", "label": "optional", "variant": "dashed" },
+    { "id": "flag-graph", "from": "graph_flag", "to": "langgraph", "label": "enabled", "variant": "dashed" },
+    { "id": "linear-hybrid", "from": "linear", "to": "hybrid", "label": "hybrid on" },
+    { "id": "linear-vector", "from": "linear", "to": "vector_only", "label": "hybrid off", "variant": "dashed" },
+    { "id": "hybrid-index", "from": "hybrid", "to": "local_index", "label": "retrieve + grade" },
+    { "id": "vector-index", "from": "vector_only", "to": "local_index", "label": "vector search" },
+    { "id": "graph-index", "from": "langgraph", "to": "local_index", "label": "planned retrieval", "variant": "dashed" },
+    { "id": "index-context", "from": "local_index", "to": "context", "label": "evidence" },
+    { "id": "context-generation", "from": "context", "to": "generation", "label": "prompt" },
+    { "id": "generation-citations", "from": "generation", "to": "citations", "label": "answer" },
+    { "id": "citations-persist", "from": "citations", "to": "persist", "label": "save" },
+    { "id": "persist-frontend", "from": "persist", "to": "frontend", "label": "answer + sources" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Routing comes first", "items": ["Conversation recall, chitchat and file inventory bypass chunk retrieval and return without citations.", "Named files use direct PostgreSQL chunk lookup; general questions use the configured grounded path."] },
+    { "dot": "emerald", "title": "Grounded retrieval", "items": ["Linear RAG is the default; hybrid is enabled by default and vector-only is available when disabled.", "LangGraph is optional for grounded questions and may rewrite after weak evidence."] },
+    { "dot": "orange", "title": "Evidence and sources", "items": ["Vector hits are hydrated from indexed PostgreSQL chunks; chat does not fetch Google Drive content.", "Citations refer to prompt chunks. /sources/{chunk_id} loads current indexed chunk text from PostgreSQL."] }
+  ]
+}
