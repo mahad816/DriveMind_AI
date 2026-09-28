@@ -36,7 +36,7 @@ export type ChatTurn =
 
 type MessageThreadProps = {
   messages: ChatTurn[];
-  onSourceSelect: (citation: CitationItem) => void;
+  onSourceSelect: (citation: CitationItem, citations: CitationItem[]) => void;
   onRetry: (messageId: string, question: string) => void;
   onRegenerate: (messageId: string, question: string) => void;
   onFollowUp: (question: string) => void;

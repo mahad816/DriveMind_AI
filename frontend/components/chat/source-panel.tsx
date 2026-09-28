@@ -16,16 +16,29 @@ import type { CitationItem } from "@/lib/api/types";
 
 type SourcePanelProps = {
   citation: CitationItem | null;
+  citations?: CitationItem[];
+  onCitationSelect?: (citation: CitationItem) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function SourcePanel({ citation, open, onOpenChange }: SourcePanelProps) {
-  const [excerpt, setExcerpt] = useState("");
-  const [modifiedAt, setModifiedAt] = useState<string | null>(null);
-  const [mimeType, setMimeType] = useState<string | undefined>();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+type SourceDetailState = {
+  chunkId: string;
+  excerpt: string;
+  modifiedAt: string | null;
+  mimeType?: string;
+  isLoading: boolean;
+  error: string | null;
+};
+
+export function SourcePanel({
+  citation,
+  citations,
+  onCitationSelect,
+  open,
+  onOpenChange,
+}: SourcePanelProps) {
+  const [detail, setDetail] = useState<SourceDetailState | null>(null);
 
   useEffect(() => {
     if (!open || !citation) {
@@ -37,18 +50,25 @@ export function SourcePanel({ citation, open, onOpenChange }: SourcePanelProps) 
     let cancelled = false;
 
     async function load() {
-      setIsLoading(true);
-      setError(null);
-      setExcerpt(activeCitation.snippet);
-      setModifiedAt(null);
-      setMimeType(undefined);
+      setDetail({
+        chunkId,
+        excerpt: activeCitation.snippet,
+        modifiedAt: null,
+        isLoading: true,
+        error: null,
+      });
 
       try {
         const result = await getSourceChunk(chunkId);
         if (!cancelled) {
-          setExcerpt(result.text?.trim() || activeCitation.snippet);
-          setModifiedAt(result.modified_at);
-          setMimeType(result.mime_type);
+          setDetail({
+            chunkId,
+            excerpt: result.text?.trim() || activeCitation.snippet,
+            modifiedAt: result.modified_at,
+            mimeType: result.mime_type,
+            isLoading: false,
+            error: null,
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -57,12 +77,13 @@ export function SourcePanel({ citation, open, onOpenChange }: SourcePanelProps) 
             : err instanceof Error
               ? err.message
               : "Unable to load source";
-          setError(message);
-          setExcerpt(activeCitation.snippet);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
+          setDetail({
+            chunkId,
+            excerpt: activeCitation.snippet,
+            modifiedAt: null,
+            isLoading: false,
+            error: message,
+          });
         }
       }
     }
@@ -77,6 +98,8 @@ export function SourcePanel({ citation, open, onOpenChange }: SourcePanelProps) 
   const filename = citation?.filename ?? "Document";
   const driveFileId = citation?.drive_file_id;
   const askHref = `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}`;
+  const currentDetail = citation && detail?.chunkId === citation.chunk_id ? detail : null;
+  const answerCitations = citations ?? (citation ? [citation] : []);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -86,15 +109,31 @@ export function SourcePanel({ citation, open, onOpenChange }: SourcePanelProps) 
           <SheetDescription>Source excerpt and actions.</SheetDescription>
         </SheetHeader>
         <div className="h-full overflow-y-auto px-6 py-5">
+          {answerCitations.length > 1 ? (
+            <nav aria-label="Cited passages" className="mb-5 space-y-1">
+              {answerCitations.map((item, index) => (
+                <button
+                  key={item.chunk_id}
+                  type="button"
+                  aria-pressed={item.chunk_id === citation?.chunk_id}
+                  onClick={() => onCitationSelect?.(item)}
+                  className="block w-full rounded-md px-2 py-2 text-left text-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-muted"
+                >
+                  <span className="block font-medium">Citation {index + 1}: {item.filename}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{item.snippet}</span>
+                </button>
+              ))}
+            </nav>
+          ) : null}
           <SourceTrustPanel
             filename={filename}
-            excerpt={excerpt}
+            excerpt={currentDetail?.excerpt ?? citation?.snippet ?? ""}
             driveFileId={driveFileId}
-            modifiedAt={modifiedAt}
+            modifiedAt={currentDetail?.modifiedAt ?? null}
             askHref={askHref}
-            isLoading={isLoading}
-            error={error}
-            details={mimeType ? { mimeType, modifiedAt } : undefined}
+            isLoading={Boolean(open && citation && (!currentDetail || currentDetail.isLoading))}
+            error={currentDetail?.error ?? null}
+            details={currentDetail?.mimeType ? { mimeType: currentDetail.mimeType, modifiedAt: currentDetail.modifiedAt } : undefined}
             onAskClick={() => onOpenChange(false)}
           />
         </div>

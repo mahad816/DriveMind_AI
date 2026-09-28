@@ -117,8 +117,13 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const messagesLoaded = !conversationId || loadedConversationId === conversationId;
   const visibleMessages = messagesLoaded ? messages : [];
   const isSending = messagesLoaded && messages.some((message) => message.status === "loading");
-  const [selectedCitation, setSelectedCitation] = useState<CitationItem | null>(null);
+  const [evidence, setEvidence] = useState<{
+    citations: CitationItem[];
+    activeChunkId: string;
+  } | null>(null);
   const [sourcePanelOpen, setSourcePanelOpen] = useState(false);
+  const selectedCitation =
+    evidence?.citations.find((citation) => citation.chunk_id === evidence.activeChunkId) ?? null;
 
   const endRef = useRef<HTMLDivElement | null>(null);
 
@@ -324,9 +329,19 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     enabled: true,
   });
 
-  const handleSourceSelect = useCallback((citation: CitationItem) => {
-    setSelectedCitation(citation);
+  const handleSourceSelect = useCallback((citation: CitationItem, citations: CitationItem[]) => {
+    setEvidence({ citations, activeChunkId: citation.chunk_id });
     setSourcePanelOpen(true);
+  }, []);
+
+  useEffect(() => {
+    setEvidence(null);
+    setSourcePanelOpen(false);
+  }, [conversationId]);
+
+  const handleSourcePanelOpenChange = useCallback((open: boolean) => {
+    setSourcePanelOpen(open);
+    if (!open) setEvidence(null);
   }, []);
 
   return (
@@ -389,8 +404,14 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
       <SourcePanel
         citation={selectedCitation}
+        citations={evidence?.citations}
+        onCitationSelect={(citation) =>
+          setEvidence((current) =>
+            current ? { ...current, activeChunkId: citation.chunk_id } : null,
+          )
+        }
         open={sourcePanelOpen}
-        onOpenChange={setSourcePanelOpen}
+        onOpenChange={handleSourcePanelOpenChange}
       />
     </div>
   );

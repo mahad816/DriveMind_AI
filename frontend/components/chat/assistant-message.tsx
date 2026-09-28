@@ -7,7 +7,7 @@ import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
 type AssistantMessageProps = {
   response: ChatResponse;
-  onSourceSelect: (citation: CitationItem) => void;
+  onSourceSelect: (citation: CitationItem, citations: CitationItem[]) => void;
   onRegenerate?: () => void;
   onFollowUp?: (question: string) => void;
   followUpSuggestions?: string[];
@@ -26,7 +26,11 @@ export function AssistantMessage({
 }: AssistantMessageProps) {
   return (
     <article className="group/answer space-y-4" aria-label="Assistant answer">
-      <AnswerMarkdown content={response.answer} />
+      <AnswerMarkdown
+        content={response.answer}
+        citations={response.citations}
+        onSourceSelect={onSourceSelect}
+      />
 
       <MessageActionBar
         answer={response.answer}

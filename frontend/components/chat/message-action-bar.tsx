@@ -15,7 +15,7 @@ type MessageActionBarProps = {
   answer?: string;
   citations?: CitationItem[];
   retrievalCount?: number;
-  onSourceSelect?: (citation: CitationItem) => void;
+  onSourceSelect?: (citation: CitationItem, citations: CitationItem[]) => void;
   onRegenerate?: () => void;
   isLoading?: boolean;
   className?: string;
@@ -60,7 +60,7 @@ export function MessageActionBar({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <button
               type="button"
-              onClick={() => onSourceSelect?.(citations[0])}
+              onClick={() => onSourceSelect?.(citations[0], citations)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-2"
               title="View source documents"
             >
@@ -72,7 +72,7 @@ export function MessageActionBar({
               <button
                 key={citation.chunk_id}
                 type="button"
-                onClick={() => onSourceSelect?.(citation)}
+                onClick={() => onSourceSelect?.(citation, citations)}
                 className="max-w-[14rem] truncate rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 title={`Open ${citation.filename}`}
               >

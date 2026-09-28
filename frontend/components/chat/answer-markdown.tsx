@@ -1,17 +1,76 @@
+import type { Root } from "mdast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { CitationPreview } from "@/components/chat/citation-preview";
+import type { CitationItem } from "@/lib/api/types";
+import { splitCitationText } from "@/lib/chat/citations";
+
 type AnswerMarkdownProps = {
   content: string;
+  citations?: CitationItem[];
+  onSourceSelect?: (citation: CitationItem, citations: CitationItem[]) => void;
 };
 
-export function AnswerMarkdown({ content }: AnswerMarkdownProps) {
+type MarkdownNode = {
+  type: string;
+  value?: string;
+  children?: MarkdownNode[];
+  url?: string;
+  data?: { hProperties: Record<string, string> };
+};
+
+function addCitationLinks(node: MarkdownNode, citationCount: number): void {
+  if (
+    !node.children ||
+    node.type === "link" ||
+    node.type === "linkReference" ||
+    node.type === "image" ||
+    node.type === "imageReference"
+  ) {
+    return;
+  }
+
+  node.children = node.children.flatMap((child) => {
+    if (child.type !== "text" || typeof child.value !== "string") return [child];
+    return splitCitationText(child.value, citationCount).map((part): MarkdownNode =>
+      part.kind === "text"
+        ? { type: "text", value: part.value }
+        : {
+            type: "link",
+            url: `#drivemind-citation-${part.number}`,
+            children: [{ type: "text", value: `[${part.number}]` }],
+            data: { hProperties: { "data-citation-number": String(part.number) } },
+          },
+    );
+  });
+  for (const child of node.children) addCitationLinks(child, citationCount);
+}
+
+export function AnswerMarkdown({ content, citations = [], onSourceSelect }: AnswerMarkdownProps) {
   return (
     <div className="text-body-lg leading-relaxed text-foreground">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[
+          remarkGfm,
+          () => (tree: Root) => addCitationLinks(tree as unknown as MarkdownNode, citations.length),
+        ]}
         components={{
           a({ node, href, children, ...anchorProps }) {
+            const marker = node?.properties?.["data-citation-number"];
+            const number = typeof marker === "string" ? Number(marker) : NaN;
+            const citation = citations[number - 1];
+            if (citation && href === `#drivemind-citation-${number}`) {
+              return (
+                <CitationPreview
+                  citation={citation}
+                  number={number}
+                  onOpenEvidence={
+                    onSourceSelect ? (selected) => onSourceSelect(selected, citations) : undefined
+                  }
+                />
+              );
+            }
             void node;
             const isExternal = href?.startsWith("http") ?? false;
             return (
