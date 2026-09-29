@@ -17,7 +17,9 @@ Supported content: Google Docs, TXT, DOCX paragraphs, text-based PDFs, and image
 
 ![DriveMind system architecture showing separate knowledge preparation and question-answering paths](docs/assets/drivemind-runtime.svg)
 
-[View interactive architecture →](https://mahad816.github.io/DriveMind_AI/interactive/runtime/) · [Architecture guide](docs/ARCHITECTURE.md)
+> ▶ **[Explore the interactive system architecture →](https://mahad816.github.io/DriveMind_AI/interactive/runtime/)**
+>
+> [Architecture guide](docs/ARCHITECTURE.md)
 
 The browser calls the Next.js `/api/v1` rewrite, which forwards requests to FastAPI. Preparation jobs synchronize Drive metadata and later ingest, chunk, and index content. PostgreSQL owns OAuth records, file metadata and status, extracted text, searchable chunks, jobs, and query history. Qdrant stores embeddings associated with PostgreSQL chunk IDs. Normal chat retrieves from this local index; it does not fetch Drive content for each answer.
 
@@ -25,13 +27,15 @@ The browser calls the Next.js `/api/v1` rewrite, which forwards requests to Fast
 
 The frontend starts and polls four separate in-process backend jobs: **sync → ingest → chunk → build**. First or forced full sync lists supported files and reconciles missing ones; later syncs can use a stored Google Drive Changes API token. Sync updates metadata, while ingest fetches content. Build sends chunk text to OpenAI for embeddings, writes vectors to Qdrant, and marks successfully built files indexed. Unsupported, empty, removed, or failed files have distinct outcomes.
 
-[Indexing guide and diagram](docs/guides/INDEXING.md) · [View interactive indexing flow →](https://mahad816.github.io/DriveMind_AI/interactive/indexing/)
+**Explore:** [Interactive Drive sync & indexing flow →](https://mahad816.github.io/DriveMind_AI/interactive/indexing/)\
+**Read:** [Indexing guide](docs/guides/INDEXING.md)
 
 ### Question answering
 
 `RagService` routes each question before retrieval. Conversation-history recall, chitchat, and file inventory have dedicated paths. Named-file questions load matching PostgreSQL chunks; general grounded questions use the linear retrieval path by default. Hybrid retrieval combines vector, PostgreSQL keyword, and metadata candidates when enabled; disabling it selects vector-only retrieval. `AGENT_GRAPH_ENABLED=true` selects the optional LangGraph path for general grounded questions. Selected evidence is bounded before OpenAI generation, citations are normalized against that evidence, and answers are recorded in PostgreSQL. The source viewer resolves cited chunk IDs to PostgreSQL text.
 
-[Retrieval guide and diagram](docs/guides/RETRIEVAL.md) · [View interactive answer flow →](https://mahad816.github.io/DriveMind_AI/interactive/answer-flow/) · [LangGraph guide](docs/guides/LANGGRAPH.md)
+**Explore:** [Interactive RAG answer flow →](https://mahad816.github.io/DriveMind_AI/interactive/answer-flow/)\
+**Read:** [Retrieval guide](docs/guides/RETRIEVAL.md) · [LangGraph guide](docs/guides/LANGGRAPH.md)
 
 ## Stack
 
@@ -114,7 +118,7 @@ The repository includes `backend/evaluation/datasets/gold_v1.json`, a CLI runner
 | [Retrieval](docs/guides/RETRIEVAL.md) | Routing, evidence, and citations |
 | [LangGraph](docs/guides/LANGGRAPH.md) | Optional graph-specific flow |
 | [Evaluation](docs/guides/EVALUATION.md) | Implemented tooling and evaluation methodology |
-| [Interactive diagrams](https://mahad816.github.io/DriveMind_AI/) | Play or step through the three architecture flows |
+| [Interactive architecture](https://mahad816.github.io/DriveMind_AI/) | Animated system, indexing, and RAG flows |
 
 ## Current scope
 
