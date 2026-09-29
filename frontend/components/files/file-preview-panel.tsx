@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, FileText, Loader2, MessageSquareQuote, RefreshCw, Sparkles } from "lucide-react";
+import { ExternalLink, FileText, Loader2, MessageSquareQuote, RefreshCw } from "lucide-react";
 
 import { FileStatusBadge } from "@/components/files/file-status-badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -99,11 +99,10 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
         className,
       )}
     >
-      {/* Header */}
-      <div className="border-b border-border px-5 py-4">
+      <div className="shrink-0 px-5 pt-5 pb-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-foreground">{file.name}</h2>
+            <h2 className="break-words text-base font-semibold text-foreground">{file.name}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
               {fileTypeLabel(file.mime_type)} · {filesCopy.modified} {formatFileDate(file.modified_at)}
             </p>
@@ -112,94 +111,60 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-5">
-        {/* Excerpt */}
-        <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <FileText className="size-3.5" />
-            {filesCopy.preview}
-          </p>
-          {isLoadingPreview ? (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-4/6" />
-            </div>
-          ) : (
-            <blockquote className="border-l-2 border-primary/30 bg-muted/40 px-3 py-2.5 text-sm leading-relaxed text-foreground">
-              {preview ? `"${preview}"` : (
-                <span className="text-muted-foreground">{filesCopy.previewUnavailable}</span>
-              )}
-            </blockquote>
-          )}
-        </div>
-
-        {/* AI actions */}
-        <div className="space-y-2">
-          <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <Sparkles className="size-3.5" />
-            Ask AI
-          </p>
-          <div className="flex flex-col gap-2">
-            {needsPrepare ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="justify-start"
-                disabled={isPreparing}
-                onClick={() => void handlePrepareFile()}
-              >
-                {isPreparing ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                {isPreparing ? "Preparing this file…" : "Prepare this file for chat"}
-              </Button>
-            ) : null}
-            {prepareError ? (
-              <p className="text-xs text-destructive">{prepareError}</p>
-            ) : null}
-            <Link href={askHref} className={buttonVariants({ className: "justify-start" })}>
-              <MessageSquareQuote className="size-4" />
-              {filesCopy.askAboutFile}
-            </Link>
-            <a
-              href={driveFileUrl(file.drive_file_id)}
-              target="_blank"
-              rel="noreferrer"
-              className={buttonVariants({
-                variant: "outline",
-                className: "justify-start",
-              })}
+      <div className="shrink-0 space-y-3 px-5 pb-5">
+        {needsPrepare ? (
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPreparing}
+              onClick={() => void handlePrepareFile()}
             >
-              <ExternalLink className="size-4" />
-              {filesCopy.openInDrive}
-            </a>
+              {isPreparing ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+              {isPreparing ? "Preparing this file…" : "Prepare this file for chat"}
+            </Button>
+            {prepareError ? <p className="text-xs text-destructive">{prepareError}</p> : null}
           </div>
+        ) : null}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Link href={askHref} className={buttonVariants({ className: "w-full justify-start sm:w-auto" })}>
+            <MessageSquareQuote className="size-4" />
+            {filesCopy.askAboutFile}
+          </Link>
+          <a
+            href={driveFileUrl(file.drive_file_id)}
+            target="_blank"
+            rel="noreferrer"
+            className={buttonVariants({ variant: "outline", className: "w-full justify-start sm:w-auto" })}
+          >
+            <ExternalLink className="size-4" />
+            {filesCopy.openInDrive}
+          </a>
         </div>
-
-        {/* Metadata */}
-        <details className="border-t border-border">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">
-            {filesCopy.details}
-          </summary>
-          <dl className="border-t border-border px-4 py-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">{filesCopy.type}</dt>
-              <dd className="text-right text-foreground">{fileTypeLabel(file.mime_type)}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">{filesCopy.folder}</dt>
-              <dd className="truncate text-right text-foreground">{file.folder_path ?? "—"}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-muted-foreground">{filesCopy.modified}</dt>
-              <dd className="text-right text-foreground">{formatFileDate(file.modified_at)}</dd>
-            </div>
-          </dl>
-        </details>
       </div>
+
+      <section className="min-h-0 flex-1 overflow-y-auto border-t border-border px-5 py-5" aria-label="File preview">
+        <h3 className="mb-3 text-sm font-medium text-foreground">Preview</h3>
+        {isLoadingPreview ? (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-4/6" />
+          </div>
+        ) : preview ? (
+          <div className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{preview}</div>
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">{filesCopy.previewUnavailable}</p>
+        )}
+      </section>
+
+      <section className="shrink-0 border-t border-border px-5 py-4" aria-label="File details">
+        <h3 className="mb-2 text-sm font-medium text-foreground">File details</h3>
+        <dl className="flex gap-4 text-sm">
+          <dt className="shrink-0 text-muted-foreground">{filesCopy.folder}</dt>
+          <dd className="min-w-0 break-words text-foreground">{file.folder_path ?? "—"}</dd>
+        </dl>
+      </section>
     </div>
   );
 }

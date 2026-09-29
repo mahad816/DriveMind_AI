@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Files, MessageSquare, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
+import { Files, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 
 import { ConversationItem } from "@/components/layout/conversation-item";
 import { UtilityNavLink } from "@/components/layout/utility-nav-link";
@@ -23,7 +23,7 @@ type ConversationSidebarProps = {
   collapsible?: boolean;
 };
 
-export function ConversationSidebar({ className, onNavigate, collapsible = true }: ConversationSidebarProps) {
+export function ConversationSidebar({ className, onNavigate, collapsible = false }: ConversationSidebarProps) {
   const router = useRouter();
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
   const { groups, isLoading, startNewConversation, renameConversation, removeConversation } =
@@ -73,12 +73,7 @@ export function ConversationSidebar({ className, onNavigate, collapsible = true 
         )}
       >
         {!compact ? (
-          <>
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-accent text-primary">
-              <MessageSquare className="size-4" />
-            </div>
-            <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-sidebar-foreground">DriveMind AI</p>
-          </>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-sidebar-foreground">DriveMind AI</p>
         ) : null}
         {collapsible ? (
           <Button
@@ -147,7 +142,7 @@ export function ConversationSidebar({ className, onNavigate, collapsible = true 
         </div>
 
         <nav
-          className="min-h-0 flex-1 overflow-y-auto px-2 pb-3"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3"
           aria-label="Recent conversations"
         >
           {isLoading ? (

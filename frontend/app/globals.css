@@ -152,6 +152,6 @@
     line-height: 1.5;
   }
   html {
-    @apply font-sans;
+    @apply h-full overflow-hidden font-sans;
   }
 }

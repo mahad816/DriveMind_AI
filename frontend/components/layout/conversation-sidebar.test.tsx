@@ -60,7 +60,7 @@ describe("conversation sidebar", () => {
 
   it("collapses and expands the desktop navigation without changing conversations", () => {
     const originalGroups = state.groups;
-    render(<ConversationSidebar />);
+    render(<ConversationSidebar collapsible />);
 
     expect(screen.getByRole("link", { name: /Budget notes/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /collapse sidebar/i }));
@@ -102,6 +102,14 @@ describe("conversation sidebar", () => {
 
   it("does not expose desktop collapse inside the mobile drawer variant", () => {
     render(<ConversationSidebar collapsible={false} />);
+    expect(screen.queryByRole("button", { name: /collapse sidebar|expand sidebar/i }))
+      .not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Budget notes/i })).toBeInTheDocument();
+  });
+
+  it("keeps the application sidebar expanded without a collapse control by default", () => {
+    render(<ConversationSidebar />);
+    expect(screen.getByText("DriveMind AI")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /collapse sidebar|expand sidebar/i }))
       .not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Budget notes/i })).toBeInTheDocument();

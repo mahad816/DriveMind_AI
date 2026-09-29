@@ -10,7 +10,7 @@ export default function FilesPage() {
   return (
     <PageShell
       size="xl"
-      className="px-5 py-10 sm:px-8 md:py-14"
+      className="px-5 py-10 sm:px-8 md:h-full md:min-h-0 md:overflow-hidden md:py-14"
       title={filesCopy.pageTitle}
       description={filesCopy.pageDescription}
     >

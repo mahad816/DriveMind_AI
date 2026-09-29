@@ -152,7 +152,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   ];
 
   return (
-    <div className={cn("space-y-6", className)}>
+    <div className={cn("flex flex-col gap-6 md:min-h-0 md:flex-1", className)}>
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
@@ -272,16 +272,16 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
       ) : null}
 
       {isConnected && !filesState.isLoading && filteredFiles.length > 0 ? (
-        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-5 md:gap-6">
-          <div className="min-w-0 md:col-span-2">
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-5 md:gap-6">
+          <div className="min-w-0 md:col-span-2 md:min-h-0 md:overflow-y-auto md:overscroll-contain">
             <FileList
               files={filteredFiles}
               selectedId={selectedId}
               onSelect={handleSelect}
             />
           </div>
-          <div className="hidden md:col-span-3 md:block">
-            <FilePreviewPanel file={selectedFile} className="sticky top-4 min-h-[520px]" />
+          <div className="hidden md:col-span-3 md:block md:min-h-0">
+            <FilePreviewPanel file={selectedFile} className="md:min-h-0" />
           </div>
         </div>
       ) : null}

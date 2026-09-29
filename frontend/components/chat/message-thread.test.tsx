@@ -1,4 +1,3 @@
-import { createRef } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -20,7 +19,6 @@ function thread(message: ChatTurn) {
       onRegenerate={vi.fn()}
       onFollowUp={vi.fn()}
       isSending={message.status === "loading"}
-      endRef={createRef<HTMLDivElement>()}
     />,
   );
 }

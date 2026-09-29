@@ -38,7 +38,7 @@ export function AppShell({ children }: AppShellProps) {
   const onboardingRoute = isOnboardingRoute(pathname);
 
   return (
-    <div className="flex h-dvh bg-background">
+    <div className="flex h-dvh overflow-hidden bg-background">
       {!onboardingRoute ? <ConversationSidebar className="hidden md:flex" /> : null}
       <MainChrome>{children}</MainChrome>
     </div>

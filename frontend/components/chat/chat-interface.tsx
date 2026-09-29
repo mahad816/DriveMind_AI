@@ -125,7 +125,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const selectedCitation =
     evidence?.citations.find((citation) => citation.chunk_id === evidence.activeChunkId) ?? null;
 
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const conversationScrollRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!conversationId) return;
@@ -155,7 +155,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   }, [conversationId, messagesLoaded]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const scrollRegion = conversationScrollRef.current;
+    scrollRegion?.scrollTo?.({ top: scrollRegion.scrollHeight, behavior: "smooth" });
   }, [messages.length, isSending]);
 
   useEffect(() => {
@@ -363,7 +364,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       ) : null}
 
       <div
-        className="min-h-0 flex-1 overflow-y-auto"
+        ref={conversationScrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         aria-busy={isSending}
         aria-label="Conversation"
       >
@@ -383,7 +385,6 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
               onRegenerate={regenerateMessage}
               onFollowUp={send}
               isSending={isSending}
-              endRef={endRef}
             />
           )}
         </div>

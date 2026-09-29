@@ -1,7 +1,5 @@
 "use client";
 
-import type { RefObject } from "react";
-
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 
@@ -41,7 +39,6 @@ type MessageThreadProps = {
   onRegenerate: (messageId: string, question: string) => void;
   onFollowUp: (question: string) => void;
   isSending: boolean;
-  endRef: RefObject<HTMLDivElement | null>;
 };
 
 export function MessageThread({
@@ -51,7 +48,6 @@ export function MessageThread({
   onRegenerate,
   onFollowUp,
   isSending,
-  endRef,
 }: MessageThreadProps) {
   const lastMessageId = messages.at(-1)?.id;
 
@@ -117,7 +113,6 @@ export function MessageThread({
           </section>
         );
       })}
-      <div ref={endRef} />
     </div>
   );
 }
