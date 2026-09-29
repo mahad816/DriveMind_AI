@@ -75,7 +75,7 @@ export function ConversationItem({
 
   if (isEditing) {
     return (
-      <div className="rounded-lg px-2 py-1.5">
+      <div className="rounded-md px-2 py-1.5">
         <Input
           ref={inputRef}
           value={draftTitle}
@@ -98,10 +98,10 @@ export function ConversationItem({
   return (
     <div
       className={cn(
-        "group relative flex items-center rounded-lg transition-colors",
+        "group relative flex items-center rounded-md transition-colors",
         active
-          ? "border-l-2 border-primary bg-sidebar-accent text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          ? "border-l-2 border-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground"
+          : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
       )}
     >
       <Link
@@ -109,10 +109,10 @@ export function ConversationItem({
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         title={conversation.title}
-        className={cn("min-w-0 flex-1 px-3 py-2", active && "pl-[10px]")}
+        className={cn("min-w-0 flex-1 rounded-md px-3 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring", active && "pl-[10px]")}
       >
         <span className="block truncate text-sm font-medium">{conversation.title}</span>
-        <span className="mt-0.5 block text-xs text-muted-foreground">{relativeTime}</span>
+        <span className="mt-0.5 block text-[11px] text-muted-foreground">{relativeTime}</span>
       </Link>
 
       <div className="relative pr-1">
@@ -123,7 +123,7 @@ export function ConversationItem({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-10 opacity-100 md:size-7 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+                className="size-10 text-muted-foreground opacity-100 hover:text-sidebar-foreground md:size-7 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                 aria-label="Conversation options"
               >
                 <MoreHorizontal className="size-4" />
@@ -132,7 +132,7 @@ export function ConversationItem({
           />
           <Menu.Portal>
             <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50">
-              <Menu.Popup className="w-36 rounded-lg border border-border bg-popover py-1 shadow-md outline-none">
+              <Menu.Popup className="w-36 rounded-md border border-border bg-popover py-1 shadow-sm outline-none">
                 <Menu.Item
                   className="flex cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-highlighted:bg-muted"
                   onClick={() => setIsEditing(true)}

@@ -26,11 +26,11 @@ export function UtilityNavLink({ item, onNavigate, className, compact = false }:
       title={compact ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors",
+        "flex items-center gap-2 rounded-md py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring",
         compact ? "justify-center px-2" : "px-3",
         active
-          ? cn("border-l-2 border-primary bg-sidebar-accent text-sidebar-accent-foreground", !compact && "pl-[10px]")
-          : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+          : "text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
         className,
       )}
     >

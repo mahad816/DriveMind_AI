@@ -11,21 +11,21 @@ export function MobileHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4 md:hidden">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:hidden">
       <div className="flex items-center gap-2">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger
             render={
-              <Button variant="ghost" size="icon-sm" aria-label="Open navigation menu">
+              <Button variant="ghost" size="icon-sm" aria-label="Open navigation menu" className="text-muted-foreground hover:text-foreground">
                 <Menu className="size-4" />
               </Button>
             }
           />
-          <SheetContent side="left" className="w-[280px] p-0">
+          <SheetContent side="left" className="w-[280px] border-sidebar-border bg-sidebar p-0">
             <ConversationSidebar onNavigate={() => setOpen(false)} collapsible={false} className="w-full border-0" />
           </SheetContent>
         </Sheet>
-        <p className="text-sm font-semibold">DriveMind AI</p>
+        <p className="text-sm font-semibold tracking-tight text-foreground">DriveMind AI</p>
       </div>
     </header>
   );
