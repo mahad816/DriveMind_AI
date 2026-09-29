@@ -1,242 +1,171 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 import { AdvancedDiagnostics } from "@/components/knowledge/advanced-diagnostics";
-import { PrepareProgress } from "@/components/knowledge/prepare-progress";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { getGoogleAuthUrl } from "@/lib/api/auth";
+import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { prepareKnowledge } from "@/lib/knowledge/prepare";
 import { setLastPreparedAt } from "@/lib/knowledge/storage";
-import type { PrepareProgress as PrepareProgressState } from "@/lib/knowledge/types";
-import { PREPARE_STEP_ORDER } from "@/lib/knowledge/types";
-import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
-import { markOnboardingComplete } from "@/lib/onboarding/storage";
-import { prepareCopy } from "@/lib/user-language";
+import type { PrepareProgress } from "@/lib/knowledge/types";
 import { cn } from "@/lib/utils";
-
-const INITIAL_PROGRESS: PrepareProgressState = {
-  steps: PREPARE_STEP_ORDER.map((id) => ({ id, phase: "pending" })),
-  progressPercent: 0,
-  currentStepId: null,
-  error: null,
-};
 
 type PrepareKnowledgeViewProps = {
   variant?: "page" | "embedded";
-  autoStart?: boolean;
   onComplete?: () => void;
+  onPreparingChange?: (preparing: boolean) => void;
   className?: string;
 };
 
 export function PrepareKnowledgeView({
   variant = "page",
-  autoStart = false,
   onComplete,
+  onPreparingChange,
   className,
 }: PrepareKnowledgeViewProps) {
-  const {
-    isConnected,
-    needsConnect,
-    isReady,
-    fileStats,
-    lastPreparedLabel,
-    refresh,
-    isLoading: statusLoading,
-    error: statusError,
-  } = useKnowledgeStatus({ pollIntervalMs: 0 });
-
-  const [progress, setProgress] = useState<PrepareProgressState>(INITIAL_PROGRESS);
+  const { setupState, isConnected, jobError, fileStats, refresh, error } = useKnowledgeStatus({ pollIntervalMs: 0 });
+  const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
   const [hasPrepared, setHasPrepared] = useState(false);
   const [completionWarning, setCompletionWarning] = useState<string | null>(null);
-  const [autoStarted, setAutoStarted] = useState(false);
 
   const runPrepare = useCallback(async (fullScan = false) => {
-    if (!isConnected || isPreparing) {
-      return;
-    }
+    if ((setupState !== "connected_not_ready" && setupState !== "ready") || isPreparing) return;
 
     setIsPreparing(true);
+    onPreparingChange?.(true);
     setHasPrepared(false);
     setCompletionWarning(null);
-    setProgress(INITIAL_PROGRESS);
-
+    setProgress(null);
     try {
-      const result = await prepareKnowledge({
-        onProgress: setProgress,
-        fullScan,
-      });
+      const result = await prepareKnowledge({ onProgress: setProgress, fullScan });
       setCompletionWarning(result.warning);
       setLastPreparedAt();
       setHasPrepared(true);
-      markOnboardingComplete();
       await refresh();
       onComplete?.();
     } catch {
-      // Error state is stored in progress.
+      // prepareKnowledge reports the failed operation through onProgress.
     } finally {
       setIsPreparing(false);
+      onPreparingChange?.(false);
     }
-  }, [isConnected, isPreparing, onComplete, refresh]);
+  }, [isPreparing, onComplete, onPreparingChange, refresh, setupState]);
 
-  useEffect(() => {
-    if (!autoStart || autoStarted || needsConnect || statusLoading || statusError) {
-      return;
-    }
-    setAutoStarted(true);
-    void runPrepare();
-  }, [autoStart, autoStarted, needsConnect, runPrepare, statusError, statusLoading]);
+  const preparing = isPreparing || setupState === "preparing";
+  const ready = setupState === "ready" && !preparing;
+  const notConnected = setupState === "not_connected";
+  const unavailable = setupState === "error";
 
-  const showComplete =
-    variant === "page" &&
-    (hasPrepared || (isReady && !isPreparing && progress.progressPercent >= 100));
+  const statusText = setupState === "checking"
+    ? "Checking your Drive connection and knowledge…"
+    : unavailable
+      ? "Knowledge status unavailable"
+      : notConnected
+        ? "Google Drive is not connected"
+        : preparing
+          ? "Preparing your knowledge…"
+          : ready
+            ? "Knowledge ready"
+            : "Knowledge needs preparation";
 
-  return (
-    <div
-      className={cn(
-        "mx-auto flex w-full max-w-lg flex-col gap-6",
-        variant === "page" ? "px-2 py-4 md:py-8" : "px-0 py-2",
-        className,
-      )}
-    >
-      <div className="space-y-2 text-center">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-          <Sparkles className="size-5" />
-        </div>
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{prepareCopy.title}</h1>
-        <p className="text-sm text-muted-foreground">{prepareCopy.description}</p>
+  const content = (
+    <div className="space-y-5">
+      {variant === "page" ? (
+        <section className="space-y-2 border-b border-border pb-5" aria-labelledby="drive-connection-heading">
+          <h2 id="drive-connection-heading" className="text-sm font-semibold text-foreground">Google Drive</h2>
+          <p className="text-sm text-muted-foreground">
+            {isConnected ? "Connected" : setupState === "checking" ? "Checking your Drive connection…" : unavailable
+              ? "Couldn’t check your Drive connection or files."
+              : "Not connected"}
+          </p>
+        </section>
+      ) : null}
+
+      <section className="space-y-3" aria-labelledby={variant === "page" ? "knowledge-status-heading" : undefined}>
+        {variant === "page" ? (
+          <h2 id="knowledge-status-heading" className="text-sm font-semibold text-foreground">Knowledge status</h2>
+        ) : null}
+        <p className="text-base font-medium text-foreground" role="status">{statusText}</p>
+        {ready || (fileStats.indexed > 0 && !unavailable && !notConnected) ? (
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {fileStats.indexed} {fileStats.indexed === 1 ? "file" : "files"} ready
+          </p>
+        ) : null}
+        {fileStats.failed > 0 && !unavailable && !notConnected ? (
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {fileStats.failed} {fileStats.failed === 1 ? "file needs" : "files need"} attention
+          </p>
+        ) : null}
+        {preparing ? <p className="text-sm text-muted-foreground">This can take a few minutes. You can return to check the status.</p> : null}
+        {hasPrepared && !ready && !preparing && !progress?.error && !unavailable ? (
+          <p className="text-sm text-muted-foreground">Preparation finished, but no files are ready yet.</p>
+        ) : null}
+        {jobError && !preparing ? <p className="text-sm text-destructive">Last preparation failed: {jobError}</p> : null}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {progress?.error ? <p className="text-sm text-destructive">Preparation failed: {progress.error}</p> : null}
+        {completionWarning ? <p className="text-sm text-muted-foreground">{completionWarning}</p> : null}
+      </section>
+
+      <div className="flex flex-wrap gap-2">
+        {notConnected ? (
+          <a href={getGoogleAuthUrl()} className={buttonVariants()}>Connect Google Drive</a>
+        ) : unavailable ? (
+          <Button type="button" onClick={() => void refresh()}>Retry status check</Button>
+        ) : setupState === "checking" ? (
+          <Button type="button" disabled>Checking…</Button>
+        ) : preparing ? (
+          <Button type="button" disabled>
+            <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            Preparing knowledge…
+          </Button>
+        ) : ready ? (
+          <>
+            {variant === "page" ? <Link href="/chat" className={buttonVariants()}>Start chatting</Link> : null}
+            {variant === "page" ? (
+              <Button type="button" variant="outline" onClick={() => void runPrepare()}>
+                Refresh knowledge
+              </Button>
+            ) : null}
+          </>
+        ) : (
+          <Button type="button" onClick={() => void runPrepare()}>Prepare knowledge</Button>
+        )}
+        {variant === "page" && !preparing && !unavailable && !notConnected ? (
+          <Button type="button" variant="ghost" onClick={() => void refresh()}>
+            <RefreshCw className="mr-2 size-4" aria-hidden="true" />Refresh status
+          </Button>
+        ) : null}
       </div>
 
-      {statusError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Could not check knowledge status</AlertTitle>
-          <AlertDescription>{statusError}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      {needsConnect ? (
-        <Alert className="border-warning/30 bg-warning/10 text-foreground">
-          <AlertTitle>Connect Google Drive first</AlertTitle>
-          <AlertDescription>
-            Connect in <Link className="underline underline-offset-2" href="/settings">Settings</Link>{" "}
-            or continue from{" "}
-            <Link className="underline underline-offset-2" href="/onboarding">onboarding</Link>.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {progress.error ? (
-        <Alert variant="destructive">
-          <AlertTitle>Setup failed</AlertTitle>
-          <AlertDescription className="space-y-3">
-            <p>{progress.error}</p>
-            <p className="text-xs opacity-80">
-              If a new file isn&apos;t showing up, try a <strong>full scan</strong> to re-check all your Drive files.
-            </p>
-            <div className="flex gap-2 pt-1">
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                disabled={!isConnected || isPreparing}
-                onClick={() => void runPrepare(false)}
-              >
-                <RefreshCw className="mr-1.5 size-3" />
-                Retry
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={!isConnected || isPreparing}
-                onClick={() => void runPrepare(true)}
-                className="border-destructive/40 text-destructive hover:bg-destructive/10"
-              >
-                Full scan
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {completionWarning ? (
-        <Alert className="border-warning/30 bg-warning/10 text-foreground">
-          <AlertTitle>{prepareCopy.partialTitle}</AlertTitle>
-          <AlertDescription className="space-y-2">
-            <p>{completionWarning}</p>
-            <p>{prepareCopy.partialHint}</p>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {showComplete ? (
-        <div className="rounded-2xl border border-success/30 bg-success/10 p-5 text-center">
-          <p className="font-medium text-foreground">{prepareCopy.complete}</p>
-          <p className="mt-1 text-sm text-muted-foreground">{prepareCopy.completeHint}</p>
-          <Link href="/chat" className={buttonVariants({ size: "lg", className: "mt-4" })}>
-            Ask your first question
-          </Link>
-        </div>
-      ) : (
-        <>
-          <PrepareProgress
-            steps={progress.steps}
-            progressPercent={isPreparing ? progress.progressPercent : isReady ? 100 : 0}
-            connectComplete={isConnected}
-          />
-          <p className="text-center text-sm text-muted-foreground">{prepareCopy.durationHint}</p>
-        </>
-      )}
-
-      {!showComplete ? (
-        <div className="flex flex-col gap-2">
-          <Button
-            type="button"
-            size="lg"
-            className="w-full"
-            disabled={!isConnected || isPreparing}
-            onClick={() => void runPrepare(false)}
-          >
-            {isPreparing ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-            {isPreparing ? prepareCopy.running : prepareCopy.cta}
-          </Button>
-          {isReady && !isPreparing ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="w-full text-muted-foreground"
-              disabled={!isConnected || isPreparing}
-              onClick={() => void runPrepare(true)}
-            >
-              <RefreshCw className="mr-1.5 size-3.5" />
-              Full scan (picks up newly added files)
+      {variant === "page" && (ready || setupState === "connected_not_ready") ? (
+        <details className="border-t border-border pt-4">
+          <summary className="cursor-pointer text-sm text-muted-foreground">Advanced</summary>
+          <div className="mt-4 space-y-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => void runPrepare(true)}>
+              Full scan
             </Button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {variant === "page" ? (
-        <details className="rounded-2xl border border-border bg-surface-elevated p-4">
-          <summary className="cursor-pointer text-sm font-medium text-foreground">
-            {prepareCopy.advanced}
-          </summary>
-          <div className="mt-4 space-y-3 border-t border-border pt-4">
-            {lastPreparedLabel ? (
-              <p className="text-sm text-muted-foreground">
-                {prepareCopy.lastPrepared}: {lastPreparedLabel}
-                {fileStats.indexed > 0 ? ` · ${fileStats.indexed} ${prepareCopy.filesReady}` : null}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Your assistant has not been set up yet.</p>
-            )}
             <AdvancedDiagnostics />
           </div>
         </details>
       ) : null}
+    </div>
+  );
+
+  if (variant === "embedded") return <div className={cn("w-full", className)}>{content}</div>;
+
+  return (
+    <div className={cn("mx-auto w-full max-w-3xl px-5 py-10 sm:px-8 md:py-14", className)}>
+      <header className="mb-10 max-w-xl space-y-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Knowledge</h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Manage the Google Drive knowledge DriveMind uses for grounded answers.
+        </p>
+      </header>
+      {content}
     </div>
   );
 }

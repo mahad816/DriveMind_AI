@@ -7,6 +7,14 @@ import { isApiError } from "@/lib/api/errors";
 import { formatLastPreparedAt, getLastPreparedAt } from "@/lib/knowledge/storage";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 
+export type SetupState =
+  | "checking"
+  | "not_connected"
+  | "connected_not_ready"
+  | "preparing"
+  | "ready"
+  | "error";
+
 type KnowledgeFileStats = {
   total: number;
   indexed: number;
@@ -15,6 +23,8 @@ type KnowledgeFileStats = {
 };
 
 type UseKnowledgeStatusResult = {
+  setupState: SetupState;
+  jobError: string | null;
   isLoading: boolean;
   error: string | null;
   isConnected: boolean;
@@ -61,6 +71,7 @@ export function useKnowledgeStatus(
 
   const [fileStats, setFileStats] = useState<KnowledgeFileStats>(EMPTY_STATS);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [filesLoaded, setFilesLoaded] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
   const [lastPreparedAt, setLastPreparedAtState] = useState<string | null>(null);
   const fileRequestId = useRef(0);
@@ -86,7 +97,10 @@ export function useKnowledgeStatus(
         setFilesError(message);
       }
     } finally {
-      if (requestId === fileRequestId.current) setFilesLoading(false);
+      if (requestId === fileRequestId.current) {
+        setFilesLoaded(true);
+        setFilesLoading(false);
+      }
     }
   }, []);
 
@@ -104,6 +118,7 @@ export function useKnowledgeStatus(
       void loadFiles();
     } else {
       fileRequestId.current += 1;
+      setFilesLoaded(false);
       setFileStats(EMPTY_STATS);
       setFilesError(null);
       setFilesLoading(false);
@@ -113,12 +128,30 @@ export function useKnowledgeStatus(
     };
   }, [isConnected, loadFiles]);
 
-  const isReady = isConnected && fileStats.indexed > 0;
+  const isReady = isConnected && !filesError && filesLoaded && fileStats.indexed > 0;
   const needsConnect = !connectionError && connection?.connected === false;
-  const needsPrepare = isConnected && fileStats.indexed === 0;
+  const needsPrepare = isConnected && filesLoaded && !filesError && fileStats.indexed === 0;
+  const job = connection?.job;
+  const setupState: SetupState = connectionError || filesError
+    ? "error"
+    : connectionLoading && !connection
+      ? "checking"
+      : !connection
+        ? "checking"
+        : !connection.connected
+          ? "not_connected"
+          : job?.status === "queued" || job?.status === "running"
+            ? "preparing"
+            : !filesLoaded
+              ? "checking"
+              : isReady
+                ? "ready"
+                : "connected_not_ready";
 
   return {
-    isLoading: connectionLoading || filesLoading,
+    setupState,
+    jobError: job?.status === "failed" ? job.error : null,
+    isLoading: connectionLoading || (isConnected && !filesLoaded) || filesLoading,
     error: connectionError ?? filesError,
     isConnected,
     isReady,

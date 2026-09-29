@@ -1,205 +1,140 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, MessageSquare } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Check, MessageSquare } from "lucide-react";
 
 import { PrepareKnowledgeView } from "@/components/knowledge/prepare-knowledge-view";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { getGoogleAuthUrl } from "@/lib/api/auth";
-import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
-import {
-  markOnboardingComplete,
-  setOnboardingOAuthPending,
-} from "@/lib/onboarding/storage";
-import { onboardingCopy } from "@/lib/user-language";
-import { cn } from "@/lib/utils";
-
-type OnboardingStep = "welcome" | "connect" | "prepare" | "ready";
-
-const FIRST_QUESTIONS = [
-  "Summarize my most recent resume.",
-  "What projects have I worked on?",
-  "Find everything related to machine learning.",
-] as const;
-
-function stepFromParam(value: string | null): OnboardingStep | null {
-  if (value === "welcome" || value === "connect" || value === "prepare" || value === "ready") {
-    return value;
-  }
-  return null;
-}
+import { markOnboardingComplete, setOnboardingOAuthPending } from "@/lib/onboarding/storage";
 
 export function OnboardingFlow() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialStep = stepFromParam(searchParams.get("step")) ?? "welcome";
-
-  const [step, setStep] = useState<OnboardingStep>(initialStep);
-  const { data: connection, refetch: refetchConnection } = useConnectionStatus({
+  const { setupState, isConnected, fileStats, error, refresh } = useKnowledgeStatus({
     pollIntervalMs: 2_000,
   });
-  const { isReady, refresh: refreshKnowledge } = useKnowledgeStatus({ pollIntervalMs: 0 });
+  const [preparingHere, setPreparingHere] = useState(false);
 
-  const isConnected = connection?.connected ?? false;
-
-  useEffect(() => {
-    const paramStep = stepFromParam(searchParams.get("step"));
-    if (paramStep) {
-      setStep(paramStep);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (step === "connect" && isConnected) {
-      setStep("prepare");
-    }
-  }, [isConnected, step]);
-
-  useEffect(() => {
-    if (step === "prepare" && isReady) {
-      setStep("ready");
-    }
-  }, [isReady, step]);
-
-  const stepIndex = useMemo(() => {
-    const order: OnboardingStep[] = ["welcome", "connect", "prepare", "ready"];
-    return order.indexOf(step);
-  }, [step]);
+  const connected = isConnected;
+  const ready = setupState === "ready";
 
   const handleConnect = () => {
     setOnboardingOAuthPending();
     window.location.href = getGoogleAuthUrl();
   };
 
-  const finishOnboarding = (question?: string) => {
+  const startChatting = () => {
     markOnboardingComplete();
-    if (question) {
-      router.push(`/chat?ask=${encodeURIComponent(question)}`);
-      return;
-    }
     router.push("/chat");
   };
 
   return (
-    <div className="mx-auto flex min-h-full w-full max-w-lg flex-col justify-center gap-8 px-4 py-10 md:py-16">
-      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-        {["Welcome", "Connect", "Set up", "Ready"].map((label, index) => (
-          <span
-            key={label}
-            className={cn(
-              "rounded-full px-2 py-1",
-              index <= stepIndex ? "bg-primary/10 text-primary" : "text-muted-foreground",
-            )}
-          >
-            {label}
-          </span>
-        ))}
+    <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-5 py-10 sm:px-8 md:py-16">
+      <div className="mb-10 flex items-center gap-2 text-sm font-semibold text-foreground">
+        <span className="flex size-8 items-center justify-center rounded-md bg-sidebar-accent text-primary" aria-hidden="true">
+          <MessageSquare className="size-4" />
+        </span>
+        DriveMind AI
       </div>
 
-      {step === "welcome" ? (
-        <div className="space-y-6 text-center">
-          <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <MessageSquare className="size-6" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-hero font-semibold tracking-tight">{onboardingCopy.welcomeTitle}</h1>
-            <p className="text-base font-medium text-foreground">{onboardingCopy.welcomeSubtitle}</p>
-            <p className="text-sm text-muted-foreground">{onboardingCopy.welcomeBody}</p>
-          </div>
-          <Button type="button" size="lg" className="w-full" onClick={() => setStep("connect")}>
-            {onboardingCopy.getStarted}
-          </Button>
-          <p className="text-xs text-muted-foreground">{onboardingCopy.welcomeTrust}</p>
-        </div>
-      ) : null}
-
-      {step === "connect" ? (
-        <div className="space-y-6 text-center">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight">{onboardingCopy.connectTitle}</h2>
-            <p className="text-sm text-muted-foreground">{onboardingCopy.connectBody}</p>
-            <p className="text-sm text-muted-foreground">{onboardingCopy.includeAll}</p>
-          </div>
-
-          {isConnected ? (
-            <div className="flex items-center justify-center gap-2 text-sm text-success">
-              <Loader2 className="size-4 animate-spin" />
-              Drive connected — continuing…
-            </div>
-          ) : (
-            <Button type="button" size="lg" className="w-full" onClick={handleConnect}>
-              {onboardingCopy.connectCta}
-            </Button>
-          )}
-
-          <p className="text-xs text-muted-foreground">
-            Already connected?{" "}
-            <button
-              type="button"
-              className="underline underline-offset-2"
-              onClick={() => void refetchConnection()}
-            >
-              Check again
-            </button>
-          </p>
-        </div>
-      ) : null}
-
-      {step === "prepare" ? (
-        <div className="space-y-4">
-          <PrepareKnowledgeView
-            variant="embedded"
-            autoStart
-            onComplete={() => {
-              void refreshKnowledge();
-              setStep("ready");
-            }}
-          />
-        </div>
-      ) : null}
-
-      {step === "ready" ? (
-        <div className="space-y-6 text-center">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight">{onboardingCopy.readyTitle}</h2>
-            <p className="text-sm text-muted-foreground">{onboardingCopy.readyBody}</p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {FIRST_QUESTIONS.map((question) => (
-              <button
-                key={question}
-                type="button"
-                className={buttonVariants({
-                  variant: "outline",
-                  className: "h-auto justify-start whitespace-normal px-4 py-3 text-left text-sm font-normal",
-                })}
-                onClick={() => finishOnboarding(question)}
-              >
-                {question}
-              </button>
-            ))}
-          </div>
-
-          <Button type="button" size="lg" className="w-full" onClick={() => finishOnboarding()}>
-            {onboardingCopy.startChatting}
-          </Button>
-        </div>
-      ) : null}
-
-      {step !== "welcome" ? (
-        <p className="text-center text-xs text-muted-foreground">
-          <button
-            type="button"
-            className="underline underline-offset-2"
-            onClick={() => finishOnboarding()}
-          >
-            Skip for now
-          </button>
+      <header className="mb-10 max-w-xl space-y-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Set up your Drive knowledge</h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Connect Google Drive and prepare the files DriveMind can use when answering your questions.
         </p>
-      ) : null}
+      </header>
+
+      <ol className="mb-9 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-border pb-5 text-sm" aria-label="Setup steps">
+        <li className={connected ? "text-foreground" : "font-medium text-primary"}>
+          <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full border border-current text-xs" aria-hidden="true">
+            {connected ? <Check className="size-3" /> : "1"}
+          </span>
+          Connect Drive
+        </li>
+        <li className={ready ? "text-foreground" : connected ? "font-medium text-primary" : "text-muted-foreground"}>
+          <span className="mr-2 inline-flex size-5 items-center justify-center rounded-full border border-current text-xs" aria-hidden="true">
+            {ready ? <Check className="size-3" /> : "2"}
+          </span>
+          Prepare knowledge
+        </li>
+      </ol>
+
+      <div className="max-w-xl space-y-5">
+        {setupState === "checking" ? (
+          <p className="text-sm text-muted-foreground" role="status">Checking your Drive connection…</p>
+        ) : null}
+
+        {setupState === "error" ? (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-foreground">Knowledge status unavailable</h2>
+            <p className="text-sm text-muted-foreground">{error ?? "Couldn’t check your Drive connection or files."}</p>
+            <Button type="button" onClick={() => void refresh()}>Retry status check</Button>
+          </div>
+        ) : null}
+
+        {setupState === "not_connected" ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Step 1</p>
+              <h2 className="text-lg font-semibold text-foreground">Connect Google Drive</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                DriveMind uses supported files from your Drive to build searchable knowledge. Your Drive access is read-only.
+              </p>
+            </div>
+            <Button type="button" onClick={handleConnect}>Connect Google Drive</Button>
+            <button type="button" className="block text-sm text-muted-foreground underline underline-offset-2" onClick={() => void refresh()}>
+              Check connection again
+            </button>
+          </div>
+        ) : null}
+
+        {(setupState === "connected_not_ready" || preparingHere) && setupState !== "error" ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Step 2 · Drive connected</p>
+              <h2 className="text-lg font-semibold text-foreground">Prepare your knowledge</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Process supported Drive content so DriveMind can find and cite it in chat.
+              </p>
+            </div>
+            <PrepareKnowledgeView
+              variant="embedded"
+              onPreparingChange={setPreparingHere}
+              onComplete={() => void refresh()}
+            />
+          </div>
+        ) : null}
+
+        {setupState === "preparing" && !preparingHere ? (
+          <div className="space-y-3" role="status">
+            <p className="text-xs font-medium text-muted-foreground">Step 2 · Drive connected</p>
+            <h2 className="text-lg font-semibold text-foreground">Preparing your knowledge…</h2>
+            <p className="text-sm text-muted-foreground">
+              {fileStats.indexed > 0
+                ? `${fileStats.indexed} ${fileStats.indexed === 1 ? "file is" : "files are"} ready so far.`
+                : "This can take a few minutes. You can return to check the status."}
+            </p>
+            {fileStats.indexed > 0 ? <Button type="button" onClick={startChatting}>Start chatting</Button> : null}
+          </div>
+        ) : null}
+
+        {ready && !preparingHere ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <h2 className="text-lg font-semibold text-foreground">Knowledge ready</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                DriveMind can now answer using your prepared Drive knowledge.
+              </p>
+              <p className="text-sm tabular-nums text-muted-foreground">
+                {fileStats.indexed} {fileStats.indexed === 1 ? "file" : "files"} ready
+              </p>
+            </div>
+            <Button type="button" onClick={startChatting}>Start chatting</Button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

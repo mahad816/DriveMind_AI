@@ -54,6 +54,7 @@ describe("knowledge setup state", () => {
     const { result } = renderHook(() => useKnowledgeStatus({ pollIntervalMs: 0 }));
 
     expect(result.current.error).toBe("Could not check Google Drive connection");
+    expect(result.current.setupState).toBe("error");
     expect(result.current.needsConnect).toBe(false);
     expect(result.current.isReady).toBe(false);
     expect(result.current.needsPrepare).toBe(false);
@@ -65,6 +66,7 @@ describe("knowledge setup state", () => {
     const { result } = renderHook(() => useKnowledgeStatus({ pollIntervalMs: 0 }));
 
     expect(result.current.needsConnect).toBe(true);
+    expect(result.current.setupState).toBe("not_connected");
     expect(result.current.isReady).toBe(false);
     expect(result.current.needsPrepare).toBe(false);
     expect(listDriveFiles).not.toHaveBeenCalled();
@@ -79,6 +81,25 @@ describe("knowledge setup state", () => {
     expect(result.current.needsConnect).toBe(false);
     expect(result.current.needsPrepare).toBe(true);
     expect(result.current.isReady).toBe(false);
+    expect(result.current.setupState).toBe("connected_not_ready");
+  });
+
+  it("stays checking until the first connected file-status response arrives", async () => {
+    connection(true);
+    let resolveFiles!: (value: Awaited<ReturnType<typeof listDriveFiles>>) => void;
+    vi.mocked(listDriveFiles).mockImplementation(() => new Promise((resolve) => {
+      resolveFiles = resolve;
+    }));
+
+    const { result } = renderHook(() => useKnowledgeStatus({ pollIntervalMs: 0 }));
+    expect(result.current.setupState).toBe("checking");
+    expect(result.current.needsPrepare).toBe(false);
+    expect(result.current.isReady).toBe(false);
+
+    await act(async () => {
+      resolveFiles({ files: [file("indexed")], total: 1 });
+    });
+    expect(result.current.setupState).toBe("ready");
   });
 
   it("keeps the existing at-least-one-indexed-file readiness rule", async () => {
@@ -90,6 +111,33 @@ describe("knowledge setup state", () => {
 
     expect(result.current.fileStats.indexed).toBe(1);
     expect(result.current.needsPrepare).toBe(false);
+    expect(result.current.setupState).toBe("ready");
+  });
+
+  it("uses the latest running backend job as preparation status without inventing progress", async () => {
+    vi.mocked(useConnectionStatus).mockReturnValue({
+      data: {
+        connected: true,
+        job: {
+          id: "job-1",
+          user_id: "user-id",
+          status: "running",
+          started_at: null,
+          completed_at: null,
+          error: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      },
+      isLoading: false,
+      error: null,
+      refetch: refetchConnection,
+    });
+
+    const { result } = renderHook(() => useKnowledgeStatus({ pollIntervalMs: 0 }));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.setupState).toBe("preparing");
+    expect(result.current.isReady).toBe(false);
   });
 
   it("refreshes indexed-file readiness after preparation without a connection-state change", async () => {
