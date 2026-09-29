@@ -59,11 +59,11 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
     return (
       <div
         className={cn(
-          "flex h-full min-h-[320px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-surface-elevated p-8 text-center",
+          "flex h-full min-h-[320px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center",
           className,
         )}
       >
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-muted">
+        <div className="flex size-12 items-center justify-center rounded-md bg-muted">
           <FileText className="size-6 text-muted-foreground" />
         </div>
         <div className="space-y-1">
@@ -95,7 +95,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
   return (
     <div
       className={cn(
-        "flex h-full min-h-[320px] flex-col rounded-2xl border border-border bg-surface-elevated overflow-hidden",
+        "flex h-full min-h-[320px] flex-col overflow-hidden rounded-lg border border-border bg-surface-elevated",
         className,
       )}
     >
@@ -126,7 +126,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
               <Skeleton className="h-4 w-4/6" />
             </div>
           ) : (
-            <blockquote className="rounded-lg border-l-2 border-primary/30 bg-muted/50 p-3 text-sm leading-relaxed text-foreground">
+            <blockquote className="border-l-2 border-primary/30 bg-muted/40 px-3 py-2.5 text-sm leading-relaxed text-foreground">
               {preview ? `"${preview}"` : (
                 <span className="text-muted-foreground">{filesCopy.previewUnavailable}</span>
               )}
@@ -145,7 +145,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
               <Button
                 type="button"
                 variant="outline"
-                className="justify-start rounded-xl"
+                className="justify-start"
                 disabled={isPreparing}
                 onClick={() => void handlePrepareFile()}
               >
@@ -160,7 +160,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
             {prepareError ? (
               <p className="text-xs text-destructive">{prepareError}</p>
             ) : null}
-            <Link href={askHref} className={buttonVariants({ className: "justify-start rounded-xl" })}>
+            <Link href={askHref} className={buttonVariants({ className: "justify-start" })}>
               <MessageSquareQuote className="size-4" />
               {filesCopy.askAboutFile}
             </Link>
@@ -170,7 +170,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
               rel="noreferrer"
               className={buttonVariants({
                 variant: "outline",
-                className: "justify-start rounded-xl",
+                className: "justify-start",
               })}
             >
               <ExternalLink className="size-4" />
@@ -180,7 +180,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
         </div>
 
         {/* Metadata */}
-        <details className="rounded-xl border border-border">
+        <details className="border-t border-border">
           <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground">
             {filesCopy.details}
           </summary>

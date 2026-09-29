@@ -4,21 +4,20 @@ import { fileStatusLabel } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
 
 const statusTextClass: Record<DriveFileStatus, string> = {
-  discovered: "border-info/40 text-info",
-  indexing: "border-warning/40 text-warning",
-  indexed: "border-success/40 text-success",
-  failed: "border-destructive/40 text-destructive",
-  skipped: "border-muted-foreground/40 text-muted-foreground",
+  discovered: "text-muted-foreground",
+  indexing: "text-muted-foreground",
+  indexed: "text-success",
+  failed: "text-destructive",
+  skipped: "text-muted-foreground",
 };
 
 export function FileStatusBadge({ status }: { status: DriveFileStatus }) {
   return (
     <Badge
       variant="outline"
-      className={cn("text-xs font-normal", statusTextClass[status])}
+      className={cn("shrink-0 border-transparent bg-transparent px-1 text-xs font-normal", statusTextClass[status])}
     >
       {fileStatusLabel[status]}
     </Badge>
   );
 }
-

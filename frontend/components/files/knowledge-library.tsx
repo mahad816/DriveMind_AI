@@ -46,11 +46,13 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 }
 
 export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
-  const { data: connection, error: connectionError } = useConnectionStatus({
+  const { data: connection, isLoading: connectionLoading, error: connectionError, refetch: refreshConnection } = useConnectionStatus({
     pollIntervalMs: 30_000,
   });
 
   const isConnected = connection?.connected ?? false;
+  const isDisconnected = connection?.connected === false && !connectionError;
+  const connectionUnavailable = Boolean(connectionError) && !isConnected;
 
   const [filesState, setFilesState] = useState<FilesLoadState>({
     data: null,
@@ -150,33 +152,25 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   ];
 
   return (
-    <div className={cn("space-y-4", className)}>
-      {connectionError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Connection status error</AlertTitle>
-          <AlertDescription>{connectionError}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {filesState.data?.total ?? 0} {filesCopy.fileCount}
-          </p>
-        </div>
+    <div className={cn("space-y-6", className)}>
+      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <p className="text-sm tabular-nums text-muted-foreground" role="status">
+          {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
+            connectionLoading || (isConnected && filesState.isLoading) ? "Loading files…" : "Browse Drive files"}
+        </p>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={filesCopy.searchPlaceholder}
             disabled={!isConnected || filesState.isLoading}
-            className="sm:w-72"
+            className="h-9 sm:w-72"
             aria-label="Search files"
           />
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="default"
             disabled={!isConnected || filesState.isLoading}
             onClick={() => void refreshFiles()}
           >
@@ -186,7 +180,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1 border-b border-border pb-4" role="group" aria-label="Filter files by status">
         {filterPills.map((pill) => {
           const active = status === pill.value;
           return (
@@ -197,10 +191,10 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
               onClick={() => setStatus(pill.value)}
               disabled={!isConnected || filesState.isLoading}
               className={cn(
-                "rounded-full border px-3 py-1 text-xs transition-colors",
+                "rounded-md border px-2.5 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 active
-                  ? "border-transparent bg-primary text-primary-foreground"
-                  : "border-border bg-background text-muted-foreground hover:bg-muted",
+                  ? "border-primary/30 bg-accent font-medium text-accent-foreground"
+                  : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               {fileFilterLabel[pill.value]}
@@ -210,7 +204,26 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         })}
       </div>
 
-      {!isConnected ? (
+      {connectionUnavailable ? (
+        <Alert variant="destructive">
+          <AlertTitle>Couldn’t check your Drive connection</AlertTitle>
+          <AlertDescription>
+            {connectionError}
+            <Button type="button" variant="outline" size="sm" className="mt-3 flex" onClick={() => void refreshConnection()}>
+              Retry connection check
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {isConnected && connectionError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Connection status unavailable</AlertTitle>
+          <AlertDescription>{connectionError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {isDisconnected ? (
         <EmptyState
           title={filesCopy.notConnectedTitle}
           description={filesCopy.notConnectedBody}
@@ -220,17 +233,26 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         />
       ) : null}
 
+      {!connection && connectionLoading && !connectionError ? (
+        <p className="py-8 text-sm text-muted-foreground" role="status">Checking your Drive connection…</p>
+      ) : null}
+
       {filesState.error ? (
         <Alert variant="destructive">
           <AlertTitle>Could not load files</AlertTitle>
-          <AlertDescription>{filesState.error}</AlertDescription>
+          <AlertDescription>
+            {filesState.error}
+            <Button type="button" variant="outline" size="sm" className="mt-3 flex" onClick={() => void refreshFiles()}>
+              Retry loading files
+            </Button>
+          </AlertDescription>
         </Alert>
       ) : null}
 
       {isConnected && filesState.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
-            <Skeleton key={index} className="h-14 w-full rounded-xl" />
+            <Skeleton key={index} className="h-14 w-full rounded-md" />
           ))}
         </div>
       ) : null}
@@ -250,8 +272,8 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
       ) : null}
 
       {isConnected && !filesState.isLoading && filteredFiles.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-5 md:gap-6">
-          <div className="md:col-span-2">
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-5 md:gap-6">
+          <div className="min-w-0 md:col-span-2">
             <FileList
               files={filteredFiles}
               selectedId={selectedId}

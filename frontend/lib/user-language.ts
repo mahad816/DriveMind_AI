@@ -7,7 +7,7 @@ export const fileStatusLabel: Record<DriveFileStatus, string> = {
   indexing: "Preparing…",
   indexed: "Ready",
   failed: "Unavailable",
-  skipped: "Not supported",
+  skipped: "Skipped",
 };
 
 export const connectionStatusLabel = {
@@ -71,26 +71,26 @@ export const onboardingCopy = {
 } as const;
 
 export const filesCopy = {
-  emptyTitle: "No files in your knowledge yet",
+  emptyTitle: "No Drive files found",
   emptyBody:
-    "Set up your assistant to scan your Google Drive and make your documents searchable.",
-  emptyCta: "Set up your assistant",
+    "Open Knowledge to check your Drive connection and discover files.",
+  emptyCta: "Open Knowledge",
   notConnectedTitle: "Connect Google Drive",
-  notConnectedBody: "Connect Drive to browse your knowledge library.",
-  noResults: "No files match your search.",
-  fileCount: "files in your knowledge",
+  notConnectedBody: "Connect Drive to browse the files DriveMind knows about.",
+  noResults: "No files match your search or filter.",
+  fileCount: "Drive files found",
   preview: "From this document",
   previewUnavailable:
-    "Preview isn't available for this file type — you can still ask questions about it.",
+    "Preview isn't available for this file. You can still ask questions about it.",
   askAboutFile: "Ask about this file",
   openInDrive: "Open in Google Drive",
   details: "Details",
   modified: "Modified",
   folder: "Folder",
   type: "Type",
-  searchPlaceholder: "Search your files…",
-  pageTitle: "Your files",
-  pageDescription: "Browse and explore your knowledge library.",
+  searchPlaceholder: "Search files or folders…",
+  pageTitle: "Files",
+  pageDescription: "Browse the Google Drive files DriveMind knows about.",
 } as const;
 
 export const fileFilterLabel: Record<DriveFileStatus | "all", string> = {
@@ -116,9 +116,10 @@ export const sourceCopy = {
 } as const;
 
 export const settingsCopy = {
-  pageDescription: "Manage your account connection and appearance.",
+  pageDescription: "Manage how DriveMind works for you.",
   googleDrive: "Google Drive",
   appearance: "Appearance",
+  knowledge: "Knowledge",
   about: "About",
   advanced: "Advanced",
   connect: "Connect Google Drive",

@@ -4,8 +4,8 @@ import { settingsCopy } from "@/lib/user-language";
 
 export function SettingsAdvancedSection() {
   return (
-    <details className="rounded-2xl border border-border bg-surface-elevated p-4">
-      <summary className="cursor-pointer text-sm font-medium text-foreground">
+    <details className="border-b border-border pb-8">
+      <summary className="cursor-pointer text-sm font-semibold text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {settingsCopy.advanced}
       </summary>
       <div className="mt-4 space-y-4 border-t border-border pt-4">

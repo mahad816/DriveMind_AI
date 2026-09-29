@@ -13,7 +13,7 @@ type FileListProps = {
 
 export function FileList({ files, selectedId, onSelect, className }: FileListProps) {
   return (
-    <ul className={cn("space-y-1", className)} aria-label="Knowledge library files">
+    <ul className={cn("min-w-0 divide-y divide-border border-y border-border", className)} aria-label="Drive files">
       {files.map((file) => (
         <li key={file.id}>
           <FileListItem
