@@ -78,7 +78,7 @@ async def test_generate_grounded_answer_sends_system_and_user_messages(
     )
 
     assert answer == "Tensile strength is discussed in [1]."
-    mock_client.chat.completions.create.assert_awaited_once()
+    assert mock_client.chat.completions.create.await_count == 1
     call_kwargs = mock_client.chat.completions.create.await_args.kwargs
     assert call_kwargs["model"] == "gpt-4o-mini"
     messages = call_kwargs["messages"]

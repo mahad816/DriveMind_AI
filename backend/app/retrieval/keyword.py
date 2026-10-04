@@ -16,6 +16,7 @@ from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
+from app.retrieval.dates import date_patterns
 from app.retrieval.filename_targets import extract_filename_targets
 from app.retrieval.types import RetrievedChunk
 
@@ -152,6 +153,9 @@ class KeywordRetriever:
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
 
+        for hit in await self._date_hits(question):
+            hits_by_id[hit.chunk_id] = hit
+
         # FTS path
         if ts_query is not None:
             for hit in await self._fts_hits(question, ts_query):
@@ -182,6 +186,25 @@ class KeywordRetriever:
                     hits_by_id[hit.chunk_id] = hit
 
         return list(hits_by_id.values())
+
+    async def _date_hits(self, question: str) -> list[KeywordHit]:
+        patterns = date_patterns(question)
+        if not patterns:
+            return []
+        result = await self.db.scalars(
+            select(Chunk.id)
+            .join(Document, Chunk.document_id == Document.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                DriveFile.status == DriveFileStatus.INDEXED,
+                or_(*[Chunk.text.op("~*")(pattern) for pattern in patterns]),
+            )
+            .order_by(DriveFile.name, Chunk.chunk_index)
+            .limit(self.settings.retrieval_candidate_k)
+        )
+        return [
+            KeywordHit(chunk_id=chunk_id, score=_FILENAME_ONLY_SCORE) for chunk_id in result.all()
+        ]
 
     async def _fts_hits(
         self,

@@ -20,7 +20,13 @@ if TYPE_CHECKING:
     from app.schemas.query import CitationItem
 
 ExecutionPath = Literal[
-    "conversation_history", "chitchat", "file_inventory", "file_target", "linear", "langgraph"
+    "conversation_history",
+    "chitchat",
+    "file_inventory",
+    "file_target",
+    "collection_summary",
+    "linear",
+    "langgraph",
 ]
 
 

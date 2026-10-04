@@ -19,14 +19,15 @@ from app.evaluation.trace import (
     TraceOutcome,
     elapsed_ms,
 )
-from app.llm.base import ChatService
+from app.llm.base import ChatError, ChatService
 from app.llm.factory import get_chat_service
 from app.llm.prompts import (
-    NO_EVIDENCE_ANSWER,
+    no_evidence_answer,
     format_citation_snippet,
     normalize_answer_citations,
     select_prompt_chunks,
 )
+from app.retrieval.collection_summary import CollectionSummaryRetriever, MAX_SUMMARY_FILES
 from app.retrieval.conversation_intent import classify_conversation_reference
 from app.retrieval.base import Retriever
 from app.retrieval.file_inventory import FileInventoryRetriever, build_inventory_context
@@ -37,7 +38,12 @@ from app.retrieval.types import RetrievedChunk
 from app.retrieval.vector import VectorRetriever
 from app.schemas.chat import ChatHistoryTurn
 from app.schemas.query import CitationItem
-from app.services.conversation_history import render_history_answer, select_history_turn
+from app.services.conversation_history import (
+    render_history_answer,
+    select_history_turn,
+    needs_followup_context,
+    bounded_rewrite_history,
+)
 from app.services.user_resolution import resolve_active_user
 
 
@@ -118,10 +124,33 @@ class RagService:
                 raise ValueError("Question must not be empty")
             if history and not conversation_id:
                 raise ValueError("Non-empty history requires a conversation ID")
+            original_question = normalized_question
+            initial_route = classify_query(normalized_question)
+            if (
+                history
+                and initial_route not in (QueryRoute.CONVERSATION_HISTORY, QueryRoute.CHITCHAT)
+                and needs_followup_context(normalized_question)
+            ):
+                started = perf_counter()
+                rewritten = await self.chat_service.rewrite_followup(
+                    normalized_question, bounded_rewrite_history(history)
+                )
+                if isinstance(rewritten, str) and rewritten.strip():
+                    normalized_question = rewritten.strip()
+                    if trace is not None and normalized_question != original_question:
+                        trace.record_rewrite(
+                            after_attempt=0,
+                            input_query=original_question,
+                            output_query=normalized_question,
+                            evidence_reason="Conversational reference resolution",
+                            source="conversation",
+                            duration_ms=elapsed_ms(started),
+                        )
             return await self._ask_normalized(
                 normalized_question,
                 user_id,
                 trace=trace,
+                original_question=original_question,
                 history=history,
                 history_window_complete=history_window_complete,
             )
@@ -139,6 +168,7 @@ class RagService:
         user_id: uuid.UUID | None,
         *,
         trace: EvalTraceCollector | None,
+        original_question: str,
         history: Sequence[ChatHistoryTurn | Mapping[str, str]],
         history_window_complete: bool,
     ) -> RagResult:
@@ -170,14 +200,14 @@ class RagService:
                 trace.set_stage("persistence")
             query_id = await self._persist_query_history(
                 user_id=user.id,
-                question=normalized_question,
+                question=original_question,
                 answer=answer,
                 citations=[],
             )
             return RagResult(
                 query_id=query_id,
                 user_id=user.id,
-                question=normalized_question,
+                question=original_question,
                 answer=answer,
                 citations=[],
                 retrieval_count=0,
@@ -201,17 +231,22 @@ class RagService:
                 trace.set_stage("persistence")
             query_id = await self._persist_query_history(
                 user_id=user.id,
-                question=normalized_question,
+                question=original_question,
                 answer=answer,
                 citations=[],
             )
             return RagResult(
                 query_id=query_id,
                 user_id=user.id,
-                question=normalized_question,
+                question=original_question,
                 answer=answer,
                 citations=[],
                 retrieval_count=0,
+            )
+
+        if route is QueryRoute.COLLECTION_SUMMARY:
+            return await self._summarize_collection(
+                normalized_question, user, trace, original_question=original_question
             )
 
         # ── 2. File inventory path ────────────────────────────────────────────
@@ -249,14 +284,14 @@ class RagService:
                 trace.set_stage("persistence")
             query_id = await self._persist_query_history(
                 user_id=user.id,
-                question=normalized_question,
+                question=original_question,
                 answer=answer,
                 citations=[],
             )
             return RagResult(
                 query_id=query_id,
                 user_id=user.id,
-                question=normalized_question,
+                question=original_question,
                 answer=answer,
                 citations=[],
                 retrieval_count=inv_result.total_count,
@@ -331,14 +366,14 @@ class RagService:
                     trace.set_stage("persistence")
                 query_id = await self._persist_query_history(
                     user_id=user.id,
-                    question=normalized_question,
+                    question=original_question,
                     answer=answer,
                     citations=file_citations,
                 )
                 return RagResult(
                     query_id=query_id,
                     user_id=user.id,
-                    question=normalized_question,
+                    question=original_question,
                     answer=answer,
                     citations=file_citations,
                     retrieval_count=len(target_result.chunks),
@@ -356,14 +391,14 @@ class RagService:
                     trace.set_stage("persistence")
                 query_id = await self._persist_query_history(
                     user_id=user.id,
-                    question=normalized_question,
+                    question=original_question,
                     answer=answer,
                     citations=[],
                 )
                 return RagResult(
                     query_id=query_id,
                     user_id=user.id,
-                    question=normalized_question,
+                    question=original_question,
                     answer=answer,
                     citations=[],
                     retrieval_count=0,
@@ -380,14 +415,14 @@ class RagService:
                     trace.set_stage("persistence")
                 query_id = await self._persist_query_history(
                     user_id=user.id,
-                    question=normalized_question,
+                    question=original_question,
                     answer=answer,
                     citations=[],
                 )
                 return RagResult(
                     query_id=query_id,
                     user_id=user.id,
-                    question=normalized_question,
+                    question=original_question,
                     answer=answer,
                     citations=[],
                     retrieval_count=0,
@@ -465,7 +500,7 @@ class RagService:
                 trace.finish_attempt(1)
 
         if not retrieved:
-            answer = NO_EVIDENCE_ANSWER
+            answer = no_evidence_answer(demo_mode=self.settings.demo_mode)
             citations: list[CitationItem] = []
             if trace is not None:
                 rejected = bool(
@@ -526,7 +561,7 @@ class RagService:
             trace.set_stage("persistence")
         query_id = await self._persist_query_history(
             user_id=user.id,
-            question=normalized_question,
+            question=original_question,
             answer=answer,
             citations=citations,
         )
@@ -534,10 +569,74 @@ class RagService:
         return RagResult(
             query_id=query_id,
             user_id=user.id,
-            question=normalized_question,
+            question=original_question,
             answer=answer,
             citations=citations,
             retrieval_count=len(retrieved),
+        )
+
+    async def _summarize_collection(
+        self, question: str, user: User, trace: EvalTraceCollector | None, *, original_question: str
+    ) -> RagResult:
+        if trace is not None:
+            trace.record_route(QueryRoute.COLLECTION_SUMMARY, "collection_summary")
+            trace.set_stage("collection_lookup")
+        budget = (self.settings.rag_max_context_chars - len(question) - 512) // MAX_SUMMARY_FILES
+        if budget < 500:
+            raise ChatError("Context budget is too small for per-document summaries")
+        retrieval_started = perf_counter()
+        result = await CollectionSummaryRetriever(self.db).search(user.id, max_chars=budget)
+        if trace is not None:
+            trace.add_retrieval_duration(elapsed_ms(retrieval_started))
+            trace.set_stage("generation")
+        generation_started = perf_counter()
+        citations: list[CitationItem] = []
+        prompt_chunks: list[RetrievedChunk] = []
+        lines = [
+            f"Covering {len(result.files)} of {result.total} indexed files, in filename order. "
+            "Summaries use bounded indexed excerpts; large files may not be covered in full."
+        ]
+        for filename, chunks in result.files:
+            if not chunks:
+                lines.append(f"- **{filename}**: No indexed text is available for a summary.")
+                continue
+            # Keep the existing per-file budget before assembling one bounded corpus prompt.
+            prompt_chunks.extend(
+                select_prompt_chunks("Summarize this document", chunks, max_context_chars=budget)
+            )
+        if prompt_chunks:
+            prompt_chunks = select_prompt_chunks(
+                question, prompt_chunks, max_context_chars=self.settings.rag_max_context_chars
+            )
+            generated = await self.chat_service.generate_collection_answer(
+                question, prompt_chunks, max_context_chars=self.settings.rag_max_context_chars
+            )
+            generated, citations = normalize_answer_citations(
+                generated, [_build_citation(chunk) for chunk in prompt_chunks]
+            )
+            lines.append(generated)
+        answer = (
+            "\n\n".join(lines)
+            if result.files
+            else no_evidence_answer(demo_mode=self.settings.demo_mode)
+        )
+        if trace is not None:
+            trace.record_prompt_chunks(prompt_chunks, original_chunks=prompt_chunks)
+            trace.record_raw_generation(
+                answer, citations, duration_ms=elapsed_ms(generation_started)
+            )
+            trace.record_final(answer, citations)
+            trace.set_stage("persistence")
+        query_id = await self._persist_query_history(
+            user_id=user.id, question=original_question, answer=answer, citations=citations
+        )
+        return RagResult(
+            query_id=query_id,
+            user_id=user.id,
+            question=original_question,
+            answer=answer,
+            citations=citations,
+            retrieval_count=len(prompt_chunks),
         )
 
     async def _persist_query_history(

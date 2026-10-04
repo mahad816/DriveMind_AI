@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -73,3 +75,33 @@ def render_history_answer(selection: HistorySelection, role: HistoryRole | None)
     if selection.outcome is HistoryOutcome.UNSUPPORTED_ORDINAL_REFERENCE:
         return "I can recall only the latest prior question or answer, not an earlier ordinal turn."
     return "Please specify whether you mean your prior question or my prior answer."
+
+
+def needs_followup_context(question: str) -> bool:
+    """Gate reference resolution; a rewriter determines whether context is actually useful."""
+    return bool(
+        re.search(
+            r"\b(?:that|this|it|those|these|them|their|they)\b"
+            r"|\b(?:first|next|afterwards|previously|previous|earlier|above|former|latter|ones|discussed|mentioned)\b",
+            question,
+            re.IGNORECASE,
+        )
+    )
+
+
+def bounded_rewrite_history(
+    history: Sequence[ChatHistoryTurn | Mapping[str, str]],
+) -> list[dict[str, str]]:
+    """At most three recent exchanges and 6000 characters of untrusted context."""
+    selected: list[dict[str, str]] = []
+    remaining = 6000
+    for turn in reversed(history[-6:]):
+        role = turn["role"] if isinstance(turn, Mapping) else turn.role
+        text = turn["text"] if isinstance(turn, Mapping) else turn.text
+        excerpt = text[: min(2000, remaining)]
+        if excerpt:
+            selected.insert(0, {"role": role, "text": excerpt})
+            remaining -= len(excerpt)
+        if not remaining:
+            break
+    return selected

@@ -61,3 +61,13 @@ class ChatService(Protocol):
     ) -> str:
         """Answer a question about a specific named file using its full content."""
         ...
+
+    async def rewrite_followup(self, question: str, history: list[dict[str, str]]) -> str:
+        """Resolve a dependent question using bounded, untrusted conversation context."""
+        ...
+
+    async def generate_collection_answer(
+        self, question: str, chunks: list[RetrievedChunk], *, max_context_chars: int
+    ) -> str:
+        """Summarize the bounded file set and preserve additional user instructions."""
+        ...

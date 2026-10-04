@@ -14,7 +14,7 @@ from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
 from app.evaluation.trace import AbstentionReason, EvalTraceCollector, TraceOutcome
-from app.llm.prompts import NO_EVIDENCE_ANSWER, select_prompt_chunks
+from app.llm.prompts import DEMO_NO_EVIDENCE_ANSWER, NO_EVIDENCE_ANSWER, select_prompt_chunks
 from app.retrieval.file_target import FileTargetResult
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
@@ -427,7 +427,7 @@ async def test_demo_ask_resolves_configured_user_without_oauth(
     result = await demo_service.ask("What is tensile strength?")
 
     assert result.user_id == demo_id
-    assert result.answer == NO_EVIDENCE_ANSWER
+    assert result.answer == DEMO_NO_EVIDENCE_ANSWER
     mock_db.get.assert_awaited_once_with(User, demo_id)
     mock_db.scalar.assert_not_awaited()
     mock_db.add.assert_not_called()

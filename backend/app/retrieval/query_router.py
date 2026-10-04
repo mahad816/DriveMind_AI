@@ -4,6 +4,7 @@ Routes:
   CONVERSATION_HISTORY — explicit recall of a prior chat message; no retrieval.
   CHITCHAT       — social messages; no retrieval.
   FILE_INVENTORY — file counts, lists, resume/CV inventory SQL path.
+  COLLECTION_SUMMARY — one content summary per available indexed file.
   FILE_TARGET    — user asks about a specific file by name (e.g. Tell me about "HI").
   GROUNDED_RAG   — general knowledge questions via hybrid retrieval.
 """
@@ -28,6 +29,7 @@ class QueryRoute(StrEnum):
     CHITCHAT = "chitchat"
     FILE_INVENTORY = "file_inventory"
     FILE_TARGET = "file_target"
+    COLLECTION_SUMMARY = "collection_summary"
     GROUNDED_RAG = "grounded_rag"
 
 
@@ -136,9 +138,11 @@ def classify_query(question: str) -> QueryRoute:
     Priority order:
       1. Explicit prior-message recall (including unsupported ordinals).
       2. Chitchat — high-confidence conversational phrases.
-      3. File inventory — counts and listings.
-      4. File target — asking about a specific named file.
-      5. Grounded RAG — default hybrid retrieval.
+      3. Collection summary — bounded per-file content summaries.
+      4. File inventory — counts and listings.
+      5. File target — asking about a specific named file.
+      6. Grounded RAG — default hybrid retrieval.
+      Explicit quoted-file handling keeps its existing precedence.
     """
     normalized = question.strip()
     if not normalized:
@@ -156,6 +160,9 @@ def classify_query(question: str) -> QueryRoute:
         if is_file_about_question(normalized):
             return QueryRoute.FILE_TARGET
         return QueryRoute.GROUNDED_RAG
+
+    if is_collection_summary(lower):
+        return QueryRoute.COLLECTION_SUMMARY
 
     if _is_chitchat(lower):
         return QueryRoute.CHITCHAT
@@ -198,3 +205,22 @@ def _is_file_inventory(lower: str) -> bool:
         return True
 
     return False
+
+
+def is_collection_summary(question: str) -> bool:
+    """Recognize per-document operations, rather than a topic or simple file list."""
+    # Filtered/topic requests retain ordinary retrieval rather than implying a global list.
+    if re.search(
+        r"\b(?:files?|docs?|documents?)\s+(?:about|related|mentioning|containing|named|called|from|in)\b",
+        question,
+    ):
+        return False
+    documents = re.search(r"\b(files?|docs?|documents?)\b", question)
+    universal = re.search(r"\b(each|every|all|per)\b", question)
+    # An inventory plus a request for purpose/content is a per-document operation.
+    content = re.search(
+        r"\b(summar\w*|overview|rundown|sentence|contents?|about|cover\w*|contain\w*|purpose\w*)\b"
+        r"|\bwhat\b.*\b(?:for|do|does)\s*[?!.]*$",
+        question,
+    )
+    return bool(documents and universal and content)

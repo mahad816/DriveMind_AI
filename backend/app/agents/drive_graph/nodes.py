@@ -18,7 +18,7 @@ from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
 from app.evaluation.trace import AbstentionReason, EvalTraceCollector, elapsed_ms
 from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
-from app.llm.prompts import NO_EVIDENCE_ANSWER, normalize_answer_citations
+from app.llm.prompts import no_evidence_answer, normalize_answer_citations
 from app.llm.prompts import format_citation_snippet, select_prompt_chunks
 from app.retrieval.base import Retriever
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
@@ -319,7 +319,7 @@ def make_generate_answer_node(
         ranked = state["ranked_chunks"]
         question = state["question"]
         if not ranked:
-            return {"answer": NO_EVIDENCE_ANSWER, "citations": []}
+            return {"answer": no_evidence_answer(demo_mode=settings.demo_mode), "citations": []}
 
         generation_started = 0.0
         if trace is not None:
