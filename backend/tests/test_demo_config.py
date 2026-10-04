@@ -11,6 +11,7 @@ def ignore_local_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep configuration tests independent of local credentials and demo flags."""
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     monkeypatch.delenv("DEMO_MODE", raising=False)
+    monkeypatch.delenv("DEMO_USER_ID", raising=False)
 
 
 def test_demo_mode_defaults_to_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,3 +54,17 @@ def test_demo_flag_does_not_replace_normal_configuration() -> None:
     assert normal_values.pop("demo_mode") is False
     assert demo_values.pop("demo_mode") is True
     assert demo_values == normal_values
+
+
+def test_demo_identity_configuration_is_optional_and_loads_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings().demo_user_id == ""
+    monkeypatch.setenv("DEMO_USER_ID", "00000000-0000-4000-8000-000000000001")
+
+    assert Settings().demo_user_id == "00000000-0000-4000-8000-000000000001"
+
+
+def test_demo_identity_validation_is_deferred_until_resolution() -> None:
+    assert Settings(demo_mode=False, demo_user_id="invalid-id").demo_user_id == "invalid-id"
+    assert Settings(demo_mode=True).demo_user_id == ""

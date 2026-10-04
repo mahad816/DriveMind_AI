@@ -21,6 +21,7 @@ from app.retrieval.types import RetrievedChunk
 from app.retrieval.vector import VectorRetriever
 from app.schemas.query import CitationItem
 from app.services.rag_service import RagResult, RagService
+from app.services.user_resolution import DemoIdentityError
 
 USER_ID = uuid.uuid4()
 CHUNK_ID = uuid.uuid4()
@@ -399,6 +400,62 @@ async def test_ask_raises_when_no_oauth_connection(
 
     with pytest.raises(ValueError, match="No Google Drive connection"):
         await service.ask("What files do I have?")
+
+
+@pytest.mark.asyncio
+async def test_demo_ask_resolves_configured_user_without_oauth(
+    mock_db: AsyncMock, mock_retriever: AsyncMock, mock_chat: AsyncMock
+) -> None:
+    demo_id = uuid.uuid4()
+    demo_user = User(id=demo_id, email="demo@example.test", google_id="demo-identity")
+    mock_db.get.return_value = demo_user
+    mock_db.scalar.side_effect = AssertionError("Demo must not use OAuth fallback")
+    mock_retriever.retrieve.return_value = []
+    demo_service = RagService(
+        db=mock_db,
+        settings=Settings(
+            demo_mode=True,
+            demo_user_id=str(demo_id),
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+        persist_query_history=False,
+    )
+
+    result = await demo_service.ask("What is tensile strength?")
+
+    assert result.user_id == demo_id
+    assert result.answer == NO_EVIDENCE_ANSWER
+    mock_db.get.assert_awaited_once_with(User, demo_id)
+    mock_db.scalar.assert_not_awaited()
+    mock_db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_demo_ask_stops_before_retrieval_when_identity_is_missing(
+    mock_db: AsyncMock, mock_retriever: AsyncMock, mock_chat: AsyncMock
+) -> None:
+    demo_service = RagService(
+        db=mock_db,
+        settings=Settings(
+            demo_mode=True,
+            demo_user_id="",
+            hybrid_retrieval_enabled=False,
+            agent_graph_enabled=False,
+        ),
+        retriever=mock_retriever,
+        chat_service=mock_chat,
+    )
+
+    with pytest.raises(DemoIdentityError, match="DEMO_USER_ID is required"):
+        await demo_service.ask("What is tensile strength?", user_id=USER_ID)
+
+    mock_db.get.assert_not_awaited()
+    mock_db.scalar.assert_not_awaited()
+    mock_retriever.retrieve.assert_not_awaited()
+    mock_chat.generate_grounded_answer.assert_not_awaited()
 
 
 @pytest.mark.asyncio
