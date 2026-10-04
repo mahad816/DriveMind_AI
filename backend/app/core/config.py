@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     log_level: str = "INFO"
+    # Configuration foundation only; this flag does not yet isolate data or block routes.
+    demo_mode: bool = False
 
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
