@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { Popover } from "@base-ui/react/popover";
 
 import type { CitationItem } from "@/lib/api/types";
@@ -30,7 +32,7 @@ export function CitationPreview({ citation, number, onOpenEvidence }: CitationPr
               {citation.snippet}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-              {citation.drive_file_id ? (
+              {!DEMO_MODE && citation.drive_file_id ? (
                 <a
                   href={driveFileUrl(citation.drive_file_id)}
                   target="_blank"

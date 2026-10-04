@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient
 
+from app.api.dependencies import require_demo_index
 from app.api.auth import get_oauth_service
 from app.api.chat import get_rag_service
 from app.api.files import get_drive_sync_service as get_file_service
@@ -114,6 +115,7 @@ async def test_demo_chat_still_reaches_rag_service(
             retrieval_count=0,
         )
     )
+    monkeypatch.setitem(app.dependency_overrides, require_demo_index, lambda: None)
     monkeypatch.setitem(app.dependency_overrides, get_rag_service, lambda: service)
 
     response = await async_client.post(
@@ -131,6 +133,7 @@ async def test_demo_source_lookup_remains_available(
     chunk_id = uuid.uuid4()
     service = MagicMock()
     service.get_source_chunk = AsyncMock(return_value=None)
+    monkeypatch.setitem(app.dependency_overrides, require_demo_index, lambda: None)
     monkeypatch.setitem(app.dependency_overrides, get_source_service, lambda: service)
 
     response = await async_client.get(f"/api/v1/sources/{chunk_id}")

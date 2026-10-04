@@ -1,0 +1,108 @@
+{
+  "version": "harbordesk-v1",
+  "title": "HarborDesk \u2014 fictional product team",
+  "modified_at": "2030-03-12T00:00:00+00:00",
+  "files": [
+    {
+      "filename": "project_overview.txt",
+      "id": "c6694f36-037b-5207-9a29-33ecfb3ffd93",
+      "sha256": "75ecab6442ad85cc908c3cd848951af98fe97f1b489071cd44751730d965dc73"
+    },
+    {
+      "filename": "architecture_notes.txt",
+      "id": "0e5cfae0-3f6a-55c9-b2cc-aff72de37c2c",
+      "sha256": "8e891fd8690f5bb84049ece45ff72610c8778541dcb65a1429f0254142f17a82"
+    },
+    {
+      "filename": "product_requirements.txt",
+      "id": "9d0236e3-6476-54cd-acbc-c4b76b74e0fd",
+      "sha256": "2f8918875c5a3178dff5d3abf3e885962034ac4b4fbe70d701f478b0313acfc5"
+    },
+    {
+      "filename": "meeting_notes.txt",
+      "id": "2ac50ef4-b142-5b57-b764-e1b135f9a8d7",
+      "sha256": "922f65561dc28da5771c91e8b716e2dc52500819c2801d658a17599799e65aa3"
+    },
+    {
+      "filename": "customer_feedback.txt",
+      "id": "1fb8936f-4847-5161-bd72-5616a1a0a58f",
+      "sha256": "b298030d7f858f0f98a319f51a8322ca1ccc1a954f5b985654ef12338bff4325"
+    },
+    {
+      "filename": "launch_plan.txt",
+      "id": "36c4e806-6b77-53d3-9709-e643128e5fa9",
+      "sha256": "3a20ade76c9422d7d38d554a1b80b5654b170c582e5b3765630334decb1ef1cb"
+    },
+    {
+      "filename": "engineering_decisions.txt",
+      "id": "24c66874-5723-58da-8e68-bb5c58e925c3",
+      "sha256": "a1a1a8790e3a57683213e01a49a5c8088cf77c65e18aa9d11f96368b1d4f011d"
+    }
+  ],
+  "questions": [
+    {
+      "kind": "single_file",
+      "question": "What is HarborDesk and who is the pilot for?",
+      "expected_files": [
+        "project_overview.txt"
+      ],
+      "expect_evidence": true
+    },
+    {
+      "kind": "named_file",
+      "question": "Summarize \"architecture_notes.txt\".",
+      "expected_files": [
+        "architecture_notes.txt"
+      ],
+      "expect_evidence": true
+    },
+    {
+      "kind": "cross_file",
+      "question": "How did pilot feedback influence the launch scope and engineering decisions?",
+      "expected_files": [
+        "customer_feedback.txt",
+        "meeting_notes.txt",
+        "engineering_decisions.txt",
+        "launch_plan.txt"
+      ],
+      "expect_evidence": true
+    },
+    {
+      "kind": "inventory",
+      "question": "List all files in this knowledge base.",
+      "expected_files": [],
+      "expect_evidence": false
+    },
+    {
+      "kind": "decision",
+      "question": "What was decided at the March 8 scope review and who owns the follow-up actions?",
+      "expected_files": [
+        "meeting_notes.txt"
+      ],
+      "expect_evidence": true
+    },
+    {
+      "kind": "timeline",
+      "question": "When is the HarborDesk pilot launch and what must happen beforehand?",
+      "expected_files": [
+        "launch_plan.txt"
+      ],
+      "expect_evidence": true
+    },
+    {
+      "kind": "technical",
+      "question": "How does HarborDesk prevent lost or duplicate assignment notifications?",
+      "expected_files": [
+        "architecture_notes.txt",
+        "engineering_decisions.txt"
+      ],
+      "expect_evidence": true
+    },
+    {
+      "kind": "no_evidence",
+      "question": "What is the approved HarborDesk monthly subscription price?",
+      "expected_files": [],
+      "expect_evidence": false
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -15,7 +17,7 @@ const BYPASS_PREFIXES = ["/onboarding", "/settings", "/index", "/prepare", "/sou
 export function OnboardingGate({ children }: OnboardingGateProps) {
   const pathname = usePathname();
 
-  if (pathname === "/" || BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  if (DEMO_MODE || pathname === "/" || BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return children;
   }
 
@@ -47,7 +49,7 @@ export function OnboardingAwareHomeRedirect() {
   const { setupState, error, refresh } = useKnowledgeStatus({ pollIntervalMs: 0 });
 
   useEffect(() => {
-    if (setupState === "ready") {
+    if (DEMO_MODE || setupState === "ready") {
       router.replace("/chat");
     } else if (setupState === "not_connected" || setupState === "connected_not_ready" || setupState === "preparing") {
       router.replace("/onboarding");

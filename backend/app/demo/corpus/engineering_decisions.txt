@@ -1,0 +1,12 @@
+HarborDesk Engineering Decisions
+Updated: 2030-03-12.
+
+ADR-001, March 6: use PostgreSQL full-text search for the initial request search. The small pilot corpus and need for exact request-number lookup do not justify a separate search cluster. Revisit if measured latency or search quality becomes inadequate; no migration date is set.
+
+ADR-002, March 8: use a transactional outbox for assignment notifications. Request changes and pending notifications commit together, so a temporary email outage cannot lose the request event. Idempotency keys prevent duplicate delivery. Rowan Vale owns retry tests due March 18.
+
+ADR-003, March 8: defer external inbox ingestion and attachment storage. Keeping manual entry reduces integration risk before the March 25 pilot. Mira Chen approved the scope boundary; customer_feedback.txt records the deferred photo-attachment request.
+
+ADR-004, March 12: test database restoration before launch, rather than relying only on successful backup jobs. The readiness checklist requires an actual restored copy and verified request events. Rowan is responsible, with evidence reviewed at the March 20 go/no-go meeting.
+
+No decision has been made about subscription pricing, a native mobile app, or an external inbox provider.

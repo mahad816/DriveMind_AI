@@ -1,0 +1,13 @@
+HarborDesk Pilot Launch Plan
+Updated: 2030-03-11.
+
+March 15, 2030: Ellis Park validates the unassigned-first inbox with the three fictional pilot shops.
+March 18, 2030: Rowan Vale finishes notification retry testing and a backup restoration exercise.
+March 20, 2030: Mira Chen reviews the acceptance checklist and makes the go/no-go decision.
+March 22, 2030: Ellis runs staff training using synthetic requests.
+March 25, 2030: planned pilot launch for Cedar Cycle, Pebble Repairs, and North Wheel.
+April 8, 2030: review the first two weeks of pilot reporting against the response and assignment targets.
+
+Launch gates are complete audit events, request-number search, reliable assignment notifications, successful backup restoration, and completed training. If a gate fails, the launch moves; no replacement date is currently approved.
+
+The rollback plan is to stop new pilot request entry and return shops to their prior manual workflow while preserving database records. Attachments, payments, and external inbox integration are not launch dependencies.

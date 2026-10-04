@@ -35,3 +35,8 @@ class DriveSyncStatusResponse(SchemaBase):
 
     job: IndexingJobRead | None = None
     connected: bool = False
+    # Only populated in demo responses; connected always describes actual OAuth state.
+    demo_mode: bool = False
+    demo_ready: bool = False
+    corpus_version: str | None = None
+    demo_questions: list[str] = Field(default_factory=list)

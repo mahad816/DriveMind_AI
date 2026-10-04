@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.source import SourceChunkRead
 from app.services.source_service import SourceService
+from app.api.dependencies import require_demo_index
 
-router = APIRouter(prefix="/sources")
+router = APIRouter(prefix="/sources", dependencies=[Depends(require_demo_index)])
 
 
 def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:

@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -33,6 +35,7 @@ export function PrepareKnowledgeView({
   const [completionWarning, setCompletionWarning] = useState<string | null>(null);
 
   const runPrepare = useCallback(async (fullScan = false) => {
+    if (DEMO_MODE) return;
     if ((setupState !== "connected_not_ready" && setupState !== "ready") || isPreparing) return;
 
     setIsPreparing(true);
@@ -54,6 +57,19 @@ export function PrepareKnowledgeView({
       onPreparingChange?.(false);
     }
   }, [isPreparing, onComplete, onPreparingChange, refresh, setupState]);
+
+  if (DEMO_MODE) {
+    return (
+      <section className="space-y-4 p-6">
+        <h1 className="text-xl font-semibold">Sample knowledge base</h1>
+        <p className="text-sm text-muted-foreground">Seven fictional HarborDesk documents. No Google Drive connection is needed. Visitors cannot sync or rebuild this index.</p>
+        <p role="status">{setupState === "ready" ? `${fileStats.indexed} sample files ready` : error ?? "Checking sample index…"}</p>
+        <Button onClick={() => void refresh()} variant="outline">Refresh status</Button>
+        <Link href="/chat" className={buttonVariants()}>Open chat</Link>
+        <Link href="/files" className={buttonVariants({ variant: "outline" })}>Browse samples</Link>
+      </section>
+    );
+  }
 
   const preparing = isPreparing || setupState === "preparing";
   const ready = setupState === "ready" && !preparing;

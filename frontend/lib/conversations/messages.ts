@@ -1,6 +1,9 @@
 import type { BoundedChatRequest, ChatHistoryTurn, CitationItem } from "@/lib/api/types";
+import { DEMO_MODE } from "@/lib/demo";
 
-const STORAGE_PREFIX = "drivemind:conversation-messages:";
+const STORAGE_PREFIX = DEMO_MODE
+  ? "drivemind:demo:conversation-messages:"
+  : "drivemind:conversation-messages:";
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_MESSAGE_CHARS = 8_000;
 const MAX_HISTORY_TOTAL_CHARS = 24_000;

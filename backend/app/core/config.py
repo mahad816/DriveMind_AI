@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     log_level: str = "INFO"
-    # Demo mode does not yet isolate storage or block public routes.
+    # Storage isolation is provided by a dedicated demo environment, never by user ID alone.
     demo_mode: bool = False
     # Validate only when resolving demo identity; normal mode does not require this value.
     demo_user_id: str = ""

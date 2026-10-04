@@ -47,7 +47,7 @@ def mock_db() -> AsyncMock:
 
 @pytest.fixture
 def service(mock_db: AsyncMock) -> DriveContentService:
-    return DriveContentService(db=mock_db, settings=MagicMock())
+    return DriveContentService(db=mock_db, settings=MagicMock(demo_mode=False))
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_normal_mode
+from app.core.config import Settings, get_settings
 from app.db.session import SessionLocal, get_db
 from app.schemas.drive_sync import DriveSyncStatusResponse
 from app.schemas.indexing import IndexingJobRead
@@ -15,6 +16,8 @@ from app.services.chunking_service import ChunkingService
 from app.services.drive_sync_service import DriveSyncService
 from app.services.indexing_service import IndexingService
 from app.services.ingestion_service import IngestionService
+from app.demo.service import DemoCorpusService
+from app.demo.manifest import load_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +133,29 @@ async def sync_drive_metadata(
     return _STARTED_RESPONSE
 
 
-@router.get("/status", summary="Latest Drive sync status")
+@router.get("/status", summary="Latest Drive sync status", response_model_exclude_unset=True)
 async def get_sync_status(
     service: DriveSyncService = Depends(get_drive_sync_service),
+    settings: Settings = Depends(get_settings),
 ) -> DriveSyncStatusResponse:
     """Return the latest indexing job status for the connected user."""
+    if settings.demo_mode:
+        try:
+            manifest = load_manifest()
+            ready = await DemoCorpusService(service.db, settings).is_ready()
+        except Exception:
+            logger.warning("Controlled demo index unavailable")
+            return DriveSyncStatusResponse(
+                connected=False, job=None, demo_mode=True, demo_ready=False
+            )
+        return DriveSyncStatusResponse(
+            connected=False,
+            job=None,
+            demo_mode=True,
+            demo_ready=ready,
+            corpus_version=manifest.version,
+            demo_questions=[q.question for q in manifest.questions],
+        )
     connected = await service.is_connected()
     if not connected:
         return DriveSyncStatusResponse(connected=False, job=None)

@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, ExternalLink, MessageSquareQuote } from "lucide-react";
@@ -66,7 +68,7 @@ export function SourceTrustPanel({
         <p className="text-sm text-muted-foreground">
           {modifiedAt
             ? `${sourceCopy.modified} ${formatFileDate(modifiedAt)}`
-            : sourceCopy.fromDrive}
+            : DEMO_MODE ? "From the sample corpus" : sourceCopy.fromDrive}
         </p>
       </div>
 
@@ -101,7 +103,7 @@ export function SourceTrustPanel({
       ) : null}
 
       <div className="flex flex-col gap-2">
-        {driveFileId ? (
+        {!DEMO_MODE && driveFileId ? (
           <a
             href={driveFileUrl(driveFileId)}
             target="_blank"

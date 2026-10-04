@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE, knowledgeAvailable } from "@/lib/demo";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -105,7 +107,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     void refetch();
   }, [refetch]);
 
-  const isConnected = connection?.connected ?? false;
+  const canAsk = DEMO_MODE ? !connectionError && knowledgeAvailable(connection) : connection?.connected ?? false;
   const titledRef = useRef(false);
   const askHandledRef = useRef(false);
   const pendingAskTitleRef = useRef<string | null>(null);
@@ -172,7 +174,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const submitQuestion = useCallback(
     async (normalized: string, options?: { messageId?: string; replace?: boolean }) => {
-      if (!isConnected || needsPrepare || isSending || normalized.length === 0) return;
+      if (!canAsk || needsPrepare || isSending || normalized.length === 0) return;
 
       // Empty /chat canvas: create one history entry, then continue on that route.
       if (!conversationId) {
@@ -248,7 +250,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     [
       bumpConversation,
       conversationId,
-      isConnected,
+      canAsk,
       isSending,
       messagesLoaded,
       needsPrepare,
@@ -295,7 +297,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
     const canAutoSend =
       messages.length === 0 &&
-      isConnected &&
+      canAsk &&
       !needsPrepare &&
       !isSending;
 
@@ -308,7 +310,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     setQuestion(ask);
   }, [
     conversationId,
-    isConnected,
+    canAsk,
     isSending,
     messages.length,
     messagesLoaded,
@@ -372,6 +374,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-6 md:py-6">
           {visibleMessages.length === 0 ? (
             <EmptyStateHero
+              demoReady={canAsk}
+              suggestions={connection?.demo_questions}
               needsConnect={needsConnect}
               needsPrepare={needsPrepare}
               isSending={isSending}
@@ -397,7 +401,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
             value={question}
             onChange={setQuestion}
             onSubmit={() => send()}
-            disabled={!isConnected || needsPrepare}
+            disabled={!canAsk || needsPrepare}
             isLoading={isSending}
           />
         </div>

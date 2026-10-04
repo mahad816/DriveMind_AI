@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, FileText, Loader2, MessageSquareQuote, RefreshCw } from "lucide-react";
@@ -77,10 +79,11 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
   }
 
   const askHref = buildAskAboutFileHref(file);
-  const needsPrepare = file.status !== "indexed";
+  const needsPrepare = !DEMO_MODE && file.status !== "indexed";
   const selectedFile = file;
 
   async function handlePrepareFile() {
+    if (DEMO_MODE) return;
     setPrepareError(null);
     setIsPreparing(true);
     try {
@@ -131,7 +134,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
             <MessageSquareQuote className="size-4" />
             {filesCopy.askAboutFile}
           </Link>
-          <a
+          {!DEMO_MODE ? <a
             href={driveFileUrl(file.drive_file_id)}
             target="_blank"
             rel="noreferrer"
@@ -139,7 +142,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
           >
             <ExternalLink className="size-4" />
             {filesCopy.openInDrive}
-          </a>
+          </a> : null}
         </div>
       </div>
 

@@ -1,0 +1,10 @@
+HarborDesk Architecture Notes
+Updated: 2030-03-06.
+
+The web client is a React application. A FastAPI service handles request workflows and search. PostgreSQL is the system of record for shops, staff, requests, request events, and internal notes. PostgreSQL full-text search serves the initial request search; there is no vector database in HarborDesk.
+
+Every request event is recorded in an append-only audit table. A transaction updates the request and writes its event together. Shop identifiers are checked in backend queries. The pilot runs as one API process, with a managed PostgreSQL instance and daily database backups.
+
+Notifications use an outbox table in the same transaction as the request event. A scheduled task sends pending email and retries temporary failures with exponential backoff. Each notification has an idempotency key to avoid duplicate messages. A distributed queue is deferred until volume justifies it.
+
+The browser never contains database credentials. Secrets are supplied to the backend environment. A health probe checks API availability; a separate readiness probe checks database access. Technical delivery depends on testing outbox retries and the backup restoration procedure before pilot launch.

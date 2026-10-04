@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import Link from "next/link";
 import { AlertCircle } from "lucide-react";
 
@@ -24,6 +26,10 @@ export function ConnectionBanner() {
         <AlertDescription>{appCopy.connectionErrorBody}</AlertDescription>
       </Alert>
     );
+  }
+
+  if (DEMO_MODE) {
+    return <p className="border-b border-border px-5 py-2 text-sm text-muted-foreground" role="status">Public demo · fictional HarborDesk sample corpus · {data?.demo_ready ? "ready" : "unavailable"}</p>;
   }
 
   if (data?.connected) {

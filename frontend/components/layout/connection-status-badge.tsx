@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 import { connectionStatusLabel } from "@/lib/user-language";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +28,10 @@ export function ConnectionStatusBadge({ className }: ConnectionStatusBadgeProps)
         {connectionStatusLabel.error}
       </Badge>
     );
+  }
+
+  if (DEMO_MODE) {
+    return <Badge variant="outline" className={className}>Sample corpus {data?.demo_ready ? "ready" : "unavailable"}</Badge>;
   }
 
   if (data?.connected) {

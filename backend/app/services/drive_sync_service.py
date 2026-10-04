@@ -27,6 +27,8 @@ from app.db.models.drive_sync_state import DriveSyncState
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
+from app.demo.service import DemoCorpusService
+from app.services.user_resolution import resolve_active_user
 
 SyncMode = Literal["full", "incremental"]
 
@@ -53,6 +55,8 @@ class DriveSyncService:
         self.settings = settings or get_settings()
 
     async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
+        if self.settings.demo_mode:
+            return await resolve_active_user(self.db, self.settings, user_id)
         if user_id is not None:
             user = await self.db.get(User, user_id)
             if user is None:
@@ -437,6 +441,9 @@ class DriveSyncService:
     async def list_synced_files(self, user_id: uuid.UUID | None = None) -> list[DriveFile]:
         """Return all drive_files rows for the resolved user."""
         user = await self._resolve_user(user_id)
+        if self.settings.demo_mode:
+            files, _, _ = await DemoCorpusService(self.db, self.settings).inspect_database(user.id)
+            return sorted(files, key=lambda file: file.modified_at, reverse=True)
         result = await self.db.scalars(
             select(DriveFile)
             .where(DriveFile.user_id == user.id)
@@ -446,6 +453,8 @@ class DriveSyncService:
 
     async def is_connected(self, user_id: uuid.UUID | None = None) -> bool:
         """Return True when the user has a stored Google OAuth token."""
+        if self.settings.demo_mode:
+            return False
         try:
             user = await self._resolve_user(user_id)
         except ValueError:
@@ -470,6 +479,8 @@ class DriveSyncService:
 
         user = await self._resolve_user(user_id)
         uid = user.id
+        if self.settings.demo_mode:
+            await DemoCorpusService(self.db, self.settings).inspect_database(uid)
 
         # Files that still need text extraction from Google Drive
         to_ingest_count: int = (

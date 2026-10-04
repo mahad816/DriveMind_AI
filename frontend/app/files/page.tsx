@@ -1,3 +1,4 @@
+import { DEMO_MODE } from "@/lib/demo";
 import { KnowledgeLibrary } from "@/components/files/knowledge-library";
 import { PageShell } from "@/components/layout/page-shell";
 import { filesCopy } from "@/lib/user-language";
@@ -12,7 +13,7 @@ export default function FilesPage() {
       size="xl"
       className="px-5 py-10 sm:px-8 md:h-full md:min-h-0 md:overflow-hidden md:py-14"
       title={filesCopy.pageTitle}
-      description={filesCopy.pageDescription}
+      description={DEMO_MODE ? "Browse seven fictional HarborDesk sample documents and inspect their text." : filesCopy.pageDescription}
     >
       <KnowledgeLibrary />
     </PageShell>

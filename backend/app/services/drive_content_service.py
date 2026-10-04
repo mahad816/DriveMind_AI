@@ -21,6 +21,8 @@ from app.core.config import Settings, get_settings
 from app.db.models.drive_file import DriveFile
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
+from app.demo.service import DemoCorpusService
+from app.services.user_resolution import resolve_active_user
 
 
 @dataclass
@@ -114,6 +116,21 @@ class DriveContentService:
         user_id: uuid.UUID | None = None,
     ) -> DriveFileContent:
         """Export or download content for a synced Drive file."""
+        if self.settings.demo_mode:
+            user = await resolve_active_user(self.db, self.settings, user_id)
+            files, documents, _ = await DemoCorpusService(self.db, self.settings).inspect_database(
+                user.id
+            )
+            file = next((file for file in files if file.id == file_id), None)
+            document = next((doc for doc in documents if doc.drive_file_id == file_id), None)
+            if file is None or document is None:
+                raise ValueError("Synced file not found")
+            return DriveFileContent(
+                data=document.extracted_text.encode("utf-8"),
+                mime_type="text/plain",
+                filename=file.name,
+                drive_file_id=file.drive_file_id,
+            )
         user = await self._resolve_user(user_id)
         drive_file = await self._get_synced_file(user.id, file_id)
         token_row = await self._load_oauth_token(user.id)

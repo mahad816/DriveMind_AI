@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCcw, FolderOpen } from "lucide-react";
 
@@ -50,9 +52,9 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     pollIntervalMs: 30_000,
   });
 
-  const isConnected = connection?.connected ?? false;
-  const isDisconnected = connection?.connected === false && !connectionError;
-  const connectionUnavailable = Boolean(connectionError) && !isConnected;
+  const canBrowse = DEMO_MODE ? !connectionError && connection?.demo_mode === true : connection?.connected ?? false;
+  const isDisconnected = !DEMO_MODE && connection?.connected === false && !connectionError;
+  const connectionUnavailable = Boolean(connectionError) && !canBrowse;
 
   const [filesState, setFilesState] = useState<FilesLoadState>({
     data: null,
@@ -67,7 +69,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
 
   const refreshFiles = useCallback(async () => {
-    if (!isConnected) return;
+    if (!canBrowse) return;
     setFilesState({ data: null, isLoading: true, error: null });
 
     try {
@@ -76,7 +78,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     } catch (err) {
       setFilesState({ data: null, isLoading: false, error: apiErrorToMessage(err) });
     }
-  }, [isConnected]);
+  }, [canBrowse]);
 
   useEffect(() => {
     void refreshFiles();
@@ -156,14 +158,14 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
-            connectionLoading || (isConnected && filesState.isLoading) ? "Loading files…" : "Browse Drive files"}
+            connectionLoading || (canBrowse && filesState.isLoading) ? "Loading files…" : DEMO_MODE ? "Browse sample files" : "Browse Drive files"}
         </p>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={filesCopy.searchPlaceholder}
-            disabled={!isConnected || filesState.isLoading}
+            disabled={!canBrowse || filesState.isLoading}
             className="h-9 sm:w-72"
             aria-label="Search files"
           />
@@ -171,7 +173,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
             type="button"
             variant="outline"
             size="default"
-            disabled={!isConnected || filesState.isLoading}
+            disabled={!canBrowse || filesState.isLoading}
             onClick={() => void refreshFiles()}
           >
             <RefreshCcw className="size-4" />
@@ -189,7 +191,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
               type="button"
               aria-pressed={active}
               onClick={() => setStatus(pill.value)}
-              disabled={!isConnected || filesState.isLoading}
+              disabled={!canBrowse || filesState.isLoading}
               className={cn(
                 "rounded-md border px-2.5 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 active
@@ -206,7 +208,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
 
       {connectionUnavailable ? (
         <Alert variant="destructive">
-          <AlertTitle>Couldn’t check your Drive connection</AlertTitle>
+          <AlertTitle>{DEMO_MODE ? "Sample status unavailable" : "Couldn’t check your Drive connection"}</AlertTitle>
           <AlertDescription>
             {connectionError}
             <Button type="button" variant="outline" size="sm" className="mt-3 flex" onClick={() => void refreshConnection()}>
@@ -216,7 +218,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </Alert>
       ) : null}
 
-      {isConnected && connectionError ? (
+      {canBrowse && connectionError ? (
         <Alert variant="destructive">
           <AlertTitle>Connection status unavailable</AlertTitle>
           <AlertDescription>{connectionError}</AlertDescription>
@@ -234,7 +236,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
       ) : null}
 
       {!connection && connectionLoading && !connectionError ? (
-        <p className="py-8 text-sm text-muted-foreground" role="status">Checking your Drive connection…</p>
+        <p className="py-8 text-sm text-muted-foreground" role="status">{DEMO_MODE ? "Checking sample index…" : "Checking your Drive connection…"}</p>
       ) : null}
 
       {filesState.error ? (
@@ -249,7 +251,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </Alert>
       ) : null}
 
-      {isConnected && filesState.isLoading ? (
+      {canBrowse && filesState.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
             <Skeleton key={index} className="h-14 w-full rounded-md" />
@@ -257,21 +259,21 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </div>
       ) : null}
 
-      {isConnected && !filesState.isLoading && !filesState.error && files.length === 0 ? (
+      {canBrowse && !filesState.isLoading && !filesState.error && files.length === 0 ? (
         <EmptyState
-          title={filesCopy.emptyTitle}
-          description={filesCopy.emptyBody}
-          actionLabel={filesCopy.emptyCta}
+          title={DEMO_MODE ? "Sample corpus unavailable" : filesCopy.emptyTitle}
+          description={DEMO_MODE ? "The demo operator must prepare the controlled corpus offline." : filesCopy.emptyBody}
+          actionLabel={DEMO_MODE ? undefined : filesCopy.emptyCta}
           actionHref="/index"
           icon={FolderOpen}
         />
       ) : null}
 
-      {isConnected && !filesState.isLoading && files.length > 0 && filteredFiles.length === 0 ? (
+      {canBrowse && !filesState.isLoading && files.length > 0 && filteredFiles.length === 0 ? (
         <EmptyState title={filesCopy.noResults} />
       ) : null}
 
-      {isConnected && !filesState.isLoading && filteredFiles.length > 0 ? (
+      {canBrowse && !filesState.isLoading && filteredFiles.length > 0 ? (
         <div className="grid min-w-0 grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-5 md:gap-6">
           <div className="min-w-0 md:col-span-2 md:min-h-0 md:overflow-y-auto md:overscroll-contain">
             <FileList

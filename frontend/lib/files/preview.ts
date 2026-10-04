@@ -1,4 +1,5 @@
 import { getDriveFileContentUrl } from "@/lib/api/files";
+import { DEMO_MODE } from "@/lib/demo";
 import { truncatePreview } from "@/lib/files/utils";
 
 const TEXT_LIKE_PREFIXES = ["text/", "application/json", "application/xml"];
@@ -21,6 +22,7 @@ export async function fetchFileTextPreview(
       return null;
     }
     const text = await response.text();
+    if (DEMO_MODE) return text.trim() || null;
     const normalized = text.replace(/\s+/g, " ").trim();
     if (!normalized) {
       return null;

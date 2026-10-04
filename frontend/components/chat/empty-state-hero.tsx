@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 
@@ -14,6 +16,8 @@ const suggestedQuestions = [
 ] as const;
 
 type EmptyStateHeroProps = {
+  demoReady?: boolean;
+  suggestions?: string[];
   needsConnect: boolean;
   needsPrepare: boolean;
   isSending: boolean;
@@ -22,6 +26,8 @@ type EmptyStateHeroProps = {
 };
 
 export function EmptyStateHero({
+  demoReady = true,
+  suggestions,
   needsConnect,
   needsPrepare,
   isSending,
@@ -29,6 +35,10 @@ export function EmptyStateHero({
   className,
 }: EmptyStateHeroProps) {
   const canAsk = !needsConnect && !needsPrepare;
+
+  if (DEMO_MODE && !demoReady) {
+    return <p className="p-6 text-sm text-muted-foreground" role="status">The sample knowledge base is unavailable. Try refreshing status; no Google Drive setup is needed.</p>;
+  }
 
   if (needsConnect) {
     return (
@@ -70,10 +80,10 @@ export function EmptyStateHero({
           </span>
         </div>
         <h1 className="text-hero font-semibold tracking-tight text-foreground">
-          {chatCopy.emptyHeading}
+          {DEMO_MODE ? "Explore the HarborDesk sample knowledge" : chatCopy.emptyHeading}
         </h1>
         <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-          {chatCopy.emptySubheading}
+          {DEMO_MODE ? "Ask real grounded questions across seven fictional product-team documents. Inspect citations or browse the samples. No Google Drive connection required." : chatCopy.emptySubheading}
         </p>
       </div>
 
@@ -83,7 +93,7 @@ export function EmptyStateHero({
           Try asking
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {suggestedQuestions.map((question) => (
+          {(DEMO_MODE ? suggestions ?? [] : suggestedQuestions).map((question) => (
             <Button
               key={question}
               type="button"

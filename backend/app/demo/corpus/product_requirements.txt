@@ -1,0 +1,10 @@
+HarborDesk Product Requirements
+Updated: 2030-03-07.
+
+The pilot must support manual request entry, owner assignment, the four request states, internal notes, and search by customer name or request text. Staff must be able to filter by status and see unassigned requests first.
+
+Acceptance criteria: a new request appears in the shared inbox within two seconds; every state change has an audit event; only shop staff can see that shop's requests. An email notification must be sent when a request is assigned, and temporary delivery failure must not lose the request.
+
+Search must return exact request numbers and keyword matches. Attachments and external email ingestion are deferred. Pilot staff asked for a mobile-friendly web layout, but a native mobile app is outside the initial release.
+
+The response target is four business hours, as defined in project_overview.txt. Pilot reporting should show median first response time and the percentage of requests unassigned overnight. No payment details or card information may be entered in requests.

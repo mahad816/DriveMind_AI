@@ -6,6 +6,7 @@ import { listDriveFiles } from "@/lib/api/files";
 import { isApiError } from "@/lib/api/errors";
 import { formatLastPreparedAt, getLastPreparedAt } from "@/lib/knowledge/storage";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
+import { DEMO_MODE, knowledgeAvailable } from "@/lib/demo";
 
 export type SetupState =
   | "checking"
@@ -77,6 +78,9 @@ export function useKnowledgeStatus(
   const fileRequestId = useRef(0);
 
   const isConnected = !connectionError && (connection?.connected ?? false);
+  const canBrowse = !connectionError && (DEMO_MODE
+    ? connection?.demo_mode === true
+    : isConnected);
 
   const loadFiles = useCallback(async () => {
     const requestId = ++fileRequestId.current;
@@ -106,15 +110,15 @@ export function useKnowledgeStatus(
 
   const refresh = useCallback(async () => {
     setLastPreparedAtState(getLastPreparedAt());
-    await Promise.all([refetchConnection(), isConnected ? loadFiles() : Promise.resolve()]);
-  }, [isConnected, loadFiles, refetchConnection]);
+    await Promise.all([refetchConnection(), canBrowse ? loadFiles() : Promise.resolve()]);
+  }, [canBrowse, loadFiles, refetchConnection]);
 
   useEffect(() => {
     setLastPreparedAtState(getLastPreparedAt());
   }, []);
 
   useEffect(() => {
-    if (isConnected) {
+    if (canBrowse) {
       void loadFiles();
     } else {
       fileRequestId.current += 1;
@@ -126,11 +130,11 @@ export function useKnowledgeStatus(
     return () => {
       fileRequestId.current += 1;
     };
-  }, [isConnected, loadFiles]);
+  }, [canBrowse, loadFiles]);
 
-  const isReady = isConnected && !filesError && filesLoaded && fileStats.indexed > 0;
-  const needsConnect = !connectionError && connection?.connected === false;
-  const needsPrepare = isConnected && filesLoaded && !filesError && fileStats.indexed === 0;
+  const isReady = !connectionError && knowledgeAvailable(connection) && !filesError && filesLoaded && fileStats.indexed > 0;
+  const needsConnect = !DEMO_MODE && !connectionError && connection?.connected === false;
+  const needsPrepare = !DEMO_MODE && isConnected && filesLoaded && !filesError && fileStats.indexed === 0;
   const job = connection?.job;
   const setupState: SetupState = connectionError || filesError
     ? "error"
@@ -138,6 +142,8 @@ export function useKnowledgeStatus(
       ? "checking"
       : !connection
         ? "checking"
+        : DEMO_MODE
+          ? !filesLoaded ? "checking" : isReady ? "ready" : "error"
         : !connection.connected
           ? "not_connected"
           : job?.status === "queued" || job?.status === "running"
@@ -152,7 +158,7 @@ export function useKnowledgeStatus(
     setupState,
     jobError: job?.status === "failed" ? job.error : null,
     isLoading: connectionLoading || (isConnected && !filesLoaded) || filesLoading,
-    error: connectionError ?? filesError,
+    error: connectionError ?? filesError ?? (DEMO_MODE && connection && !connection.demo_ready ? "The sample knowledge base is unavailable." : null),
     isConnected,
     isReady,
     needsConnect,

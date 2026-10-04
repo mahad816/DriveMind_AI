@@ -43,7 +43,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Initialize application-level resources during startup."""
     settings = get_settings()
     configure_logging(settings.log_level)
-    await _cleanup_stuck_jobs()
+    # Demo indexing is offline; public runtime startup must not mutate index jobs.
+    if not settings.demo_mode:
+        await _cleanup_stuck_jobs()
     yield
     await engine.dispose()
 

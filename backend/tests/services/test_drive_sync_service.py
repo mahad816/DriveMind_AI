@@ -73,7 +73,7 @@ def mock_db() -> AsyncMock:
 
 @pytest.fixture
 def service(mock_db: AsyncMock) -> DriveSyncService:
-    return DriveSyncService(db=mock_db, settings=MagicMock())
+    return DriveSyncService(db=mock_db, settings=MagicMock(demo_mode=False))
 
 
 def test_parse_drive_timestamp_handles_z_suffix(service: DriveSyncService) -> None:

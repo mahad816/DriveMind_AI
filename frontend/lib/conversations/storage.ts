@@ -1,11 +1,12 @@
 import type { ConversationGroup, ConversationRecord } from "@/lib/conversations/types";
+import { DEMO_MODE } from "@/lib/demo";
 import {
   deleteConversationMessages,
   getConversationMessages,
 } from "@/lib/conversations/messages";
 import { notifyConversationsChanged } from "@/lib/conversations/events";
 
-const STORAGE_KEY = "drivemind:conversations";
+const STORAGE_KEY = DEMO_MODE ? "drivemind:demo:conversations" : "drivemind:conversations";
 export const DEFAULT_CONVERSATION_TITLE = "New chat";
 
 export function isDefaultConversationTitle(title: string): boolean {

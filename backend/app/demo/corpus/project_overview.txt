@@ -1,0 +1,10 @@
+HarborDesk Project Overview
+Updated: 2030-03-05. All organizations and people in these documents are fictional.
+
+HarborDesk is a shared support inbox for small bicycle repair shops. The fictional company Lantern Works is building it so shop staff can track repair requests without losing messages in individual inboxes.
+
+The initial release serves three pilot shops and up to twelve staff members. A request moves through New, Assigned, Waiting for Customer, and Resolved. Staff can add internal notes, assign an owner, and search past requests.
+
+Success means a median first response below four business hours and fewer than five percent of requests left unassigned overnight. The pilot baseline is seven hours and eighteen percent unassigned overnight. These are synthetic planning targets, not measured production results.
+
+The release deliberately excludes payment processing, AI replies, mobile apps, and integrations with external inboxes. Pilot requests are entered manually. Project lead Mira Chen owns scope; engineering lead Rowan Vale owns technical delivery; support lead Ellis Park runs pilot training.

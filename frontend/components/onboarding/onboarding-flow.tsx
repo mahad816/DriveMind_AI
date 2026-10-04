@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, MessageSquare } from "lucide-react";
@@ -11,6 +13,10 @@ import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { markOnboardingComplete, setOnboardingOAuthPending } from "@/lib/onboarding/storage";
 
 export function OnboardingFlow() {
+  return DEMO_MODE ? <PrepareKnowledgeView /> : <NormalOnboardingFlow />;
+}
+
+function NormalOnboardingFlow() {
   const router = useRouter();
   const { setupState, isConnected, fileStats, error, refresh } = useKnowledgeStatus({
     pollIntervalMs: 2_000,

@@ -1,0 +1,10 @@
+HarborDesk Synthetic Pilot Feedback
+Collected: 2030-03-10. These are invented observations from fictional pilot shops.
+
+Cedar Cycle: staff want unassigned requests at the top because an ownerless repair question can be missed during busy periods. The March 8 scope review accepted this change; Ellis will validate it on March 15.
+
+Pebble Repairs: staff need search by request number when a customer calls. The product requirements already include exact request-number search. Staff also requested attachments for damage photos; attachments remain deferred with no promised date.
+
+North Wheel: staff prefer a mobile-friendly inbox for use at the workbench. The pilot will support a responsive web layout, not a native app. Staff want clear assignment notifications so two mechanics do not reply to the same request.
+
+Across the three shops, the priority is reliable ownership and notification delivery before additional integrations. Feedback does not include measured response times, revenue, prices, or real customer personal information.

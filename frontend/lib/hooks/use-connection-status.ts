@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getDriveSyncStatus } from "@/lib/api/indexing";
 import { isApiError } from "@/lib/api/errors";
 import type { DriveSyncStatusResponse } from "@/lib/api/types";
+import { DEMO_MODE } from "@/lib/demo";
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 
@@ -32,9 +33,14 @@ export function useConnectionStatus(
     setIsLoading(true);
     try {
       const status = await getDriveSyncStatus();
+      if ((status.demo_mode === true) !== DEMO_MODE) {
+        setData(null);
+        throw new Error("Frontend and backend runtime modes do not match.");
+      }
       setData(status);
       setError(null);
     } catch (err) {
+      if (DEMO_MODE) setData(null);
       const message = isApiError(err)
         ? err.detail
         : err instanceof Error

@@ -9,8 +9,9 @@ from app.embeddings.vector_store import VectorStoreError
 from app.llm.base import ChatConfigurationError, ChatError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.rag_service import RagService
+from app.api.dependencies import require_demo_index
 
-router = APIRouter(prefix="/chat")
+router = APIRouter(prefix="/chat", dependencies=[Depends(require_demo_index)])
 
 
 def get_rag_service(db: AsyncSession = Depends(get_db)) -> RagService:

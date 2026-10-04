@@ -1,0 +1,11 @@
+HarborDesk Scope Review Meeting
+Meeting date: 2030-03-08.
+Attendees: Mira Chen (project lead), Rowan Vale (engineering lead), Ellis Park (support lead).
+
+Decision: keep manual request entry for the pilot. External inbox integration would delay launch and is deferred. Mira approved this scope decision. Decision: use the outbox notification approach described in architecture_notes.txt; Rowan owns retry testing.
+
+Ellis reported that pilot staff miss unassigned requests when they are sorted by newest message. The group agreed to put unassigned requests first and add a clearly visible owner label. Ellis will validate the revised inbox with the three pilot shops on March 15.
+
+Rowan must complete a backup restoration exercise by March 18. Mira will review the acceptance checklist on March 20. The pilot launch remains March 25, provided retry tests, restoration, and training are complete.
+
+Unresolved: attachment support has no committed delivery date. The team did not decide on a native mobile app or an external inbox vendor.

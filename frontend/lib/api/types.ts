@@ -95,6 +95,10 @@ export type IndexingJobRead = {
 };
 
 export type DriveSyncStatusResponse = {
+  demo_mode?: boolean;
+  demo_ready?: boolean;
+  corpus_version?: string;
+  demo_questions?: string[];
   connected: boolean;
   job: IndexingJobRead | null;
 };
