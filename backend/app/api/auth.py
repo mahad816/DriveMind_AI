@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import require_normal_mode
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.services.google_oauth_service import GoogleOAuthService
 
-router = APIRouter(prefix="/auth")
+router = APIRouter(prefix="/auth", dependencies=[Depends(require_normal_mode)])
 
 
 def get_oauth_service(db: AsyncSession = Depends(get_db)) -> GoogleOAuthService:

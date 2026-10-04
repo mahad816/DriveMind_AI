@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import require_normal_mode
 from app.db.session import SessionLocal, get_db
 from app.schemas.drive_sync import DriveSyncStatusResponse
 from app.schemas.indexing import IndexingJobRead
@@ -95,6 +96,7 @@ class PendingCountsResponse(BaseModel):
     "/sync",
     summary="Start Drive metadata sync (background)",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_normal_mode)],
 )
 async def sync_drive_metadata(
     background_tasks: BackgroundTasks,
@@ -168,6 +170,7 @@ async def get_pending_counts(
     "/ingest",
     summary="Start Drive file ingestion (background)",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_normal_mode)],
 )
 async def ingest_drive_files(
     background_tasks: BackgroundTasks,
@@ -182,6 +185,7 @@ async def ingest_drive_files(
     "/chunk",
     summary="Start document chunking (background)",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_normal_mode)],
 )
 async def chunk_extracted_documents(
     background_tasks: BackgroundTasks,
@@ -196,6 +200,7 @@ async def chunk_extracted_documents(
     "/build",
     summary="Start vector index build (background)",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_normal_mode)],
 )
 async def build_vector_index(
     background_tasks: BackgroundTasks,
