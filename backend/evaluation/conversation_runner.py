@@ -87,6 +87,14 @@ class _ForbiddenChat(ChatService):
     ) -> str:
         raise AssertionError("EXP-03 attempted file-target provider generation")
 
+    async def rewrite_followup(self, question: str, history: list[dict[str, str]]) -> str:
+        raise AssertionError("EXP-03 attempted follow-up provider rewriting")
+
+    async def generate_collection_answer(
+        self, question: str, chunks: list[RetrievedChunk], *, max_context_chars: int
+    ) -> str:
+        raise AssertionError("EXP-03 attempted collection provider generation")
+
 
 def require_conversation_clean_git(git: GitState) -> None:
     """Formal results must identify one committed, clean source tree."""
