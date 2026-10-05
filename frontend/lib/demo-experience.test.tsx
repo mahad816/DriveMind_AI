@@ -10,6 +10,8 @@ const originalMode = vi.hoisted(() => {
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { EmptyStateHero } from "@/components/chat/empty-state-hero";
+import { ChatComposer } from "@/components/chat/chat-composer";
+import { ConversationSidebar } from "@/components/layout/conversation-sidebar";
 import { CitationPreview } from "@/components/chat/citation-preview";
 import { FilePreviewPanel } from "@/components/files/file-preview-panel";
 import { KnowledgeLibrary } from "@/components/files/knowledge-library";
@@ -29,7 +31,7 @@ import { prepareKnowledge } from "@/lib/knowledge/prepare";
 import { fetchFileTextPreview } from "@/lib/files/preview";
 import { createConversation, listConversations } from "@/lib/conversations/storage";
 import { getConversationMessages, saveConversationMessages } from "@/lib/conversations/messages";
-import { knowledgeAvailable } from "@/lib/demo";
+import { DEMO_SUGGESTIONS, knowledgeAvailable } from "@/lib/demo";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 const params = new URLSearchParams();
@@ -43,7 +45,7 @@ vi.mock("@/lib/knowledge/prepare-file", () => ({ prepareSingleFile: vi.fn() }));
 vi.mock("@/lib/knowledge/prepare", () => ({ prepareKnowledge: vi.fn() }));
 vi.mock("@/components/settings/settings-appearance-section", () => ({ SettingsAppearanceSection: () => <section>Appearance</section> }));
 
-const question = "When is the HarborDesk pilot launch?";
+const question = DEMO_SUGGESTIONS[3];
 const ready: DriveSyncStatusResponse = { connected: false, job: null, demo_mode: true, demo_ready: true, demo_questions: [question] };
 const file: DriveFileRead = {
   id: "demo-file", user_id: "demo-user", drive_file_id: "demo:sample", name: "launch_plan.txt",
@@ -128,7 +130,10 @@ describe("public demo experience", () => {
     vi.mocked(askQuestion).mockResolvedValue({ query_id: "query", user_id: "demo-user", answer: "The planned pilot is March 25, 2030.", citations: [], retrieval_count: 1, message: "Answer generated" });
     const conversation = createConversation("HarborDesk demo");
     render(<ToastProvider><ChatInterface conversationId={conversation.id} /></ToastProvider>);
-    expect(screen.getByText(/seven fictional product-team documents/)).toBeInTheDocument();
+    expect(screen.getByText("PUBLIC DEMO")).toBeInTheDocument();
+    expect(screen.getByText(/Ask grounded questions across a sample project knowledge base/)).toBeInTheDocument();
+    for (const prompt of DEMO_SUGGESTIONS) expect(screen.getByRole("button", { name: prompt })).toBeInTheDocument();
+    expect(screen.getAllByRole("button").filter((button) => DEMO_SUGGESTIONS.some((prompt) => button.textContent === prompt))).toHaveLength(4);
     fireEvent.click(screen.getByRole("button", { name: question }));
     await waitFor(() => expect(askQuestion).toHaveBeenCalled());
     expect(vi.mocked(askQuestion).mock.calls[0][0].question).toBe(question);
@@ -137,9 +142,38 @@ describe("public demo experience", () => {
 
   it("offers no suggestions when the sample index is unavailable", () => {
     const send = vi.fn();
-    render(<EmptyStateHero demoReady={false} suggestions={[question]} needsConnect={false} needsPrepare={false} isSending={false} onSuggestionClick={send} />);
+    render(<EmptyStateHero demoReady={false} needsConnect={false} needsPrepare={false} isSending={false} onSuggestionClick={send} />);
     expect(screen.getByRole("status")).toHaveTextContent("sample knowledge base is unavailable");
     expect(screen.queryByRole("button", { name: question })).not.toBeInTheDocument();
+  });
+
+  it("keeps demo composer feedback quiet until near the limit and prevents oversized sends", () => {
+    const send = vi.fn();
+    const props = { onChange: vi.fn(), onSubmit: send, disabled: false, isLoading: false };
+    const { rerender } = render(<ChatComposer {...props} value="Short question" />);
+    expect(screen.getByText("Public demo · Questions up to 4,000 characters")).toBeInTheDocument();
+    expect(screen.queryByText(/\/ 4,000/)).not.toBeInTheDocument();
+    rerender(<ChatComposer {...props} value={"x".repeat(3420)} />);
+    expect(screen.getByText("3,420 / 4,000")).toBeInTheDocument();
+    rerender(<ChatComposer {...props} value={"x".repeat(4000)} />);
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+    expect(screen.getByText(/Limit reached/)).toBeInTheDocument();
+    rerender(<ChatComposer {...props} value={"x".repeat(4001)} />);
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
+    rerender(<ChatComposer {...props} value={"😀".repeat(4000)} />);
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  });
+
+  it("keeps sidebar branding primary and labels the demo without setup actions", () => {
+    render(<ToastProvider><ConversationSidebar /></ToastProvider>);
+    expect(screen.getByText("DriveMind AI")).toBeInTheDocument();
+    expect(screen.getByText("Demo")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Files" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.queryByText("Connect Google Drive")).not.toBeInTheDocument();
   });
 
   it("lists and previews samples without offering Drive links or index mutations", async () => {

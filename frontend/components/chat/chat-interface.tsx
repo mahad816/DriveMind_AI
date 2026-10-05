@@ -1,6 +1,6 @@
 "use client";
 
-import { DEMO_MODE, knowledgeAvailable } from "@/lib/demo";
+import { DEMO_MODE, DEMO_QUESTION_LIMIT, questionCharacters, knowledgeAvailable } from "@/lib/demo";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -27,7 +27,7 @@ import {
 } from "@/lib/conversations/messages";
 import { getConversation, isDefaultConversationTitle } from "@/lib/conversations/storage";
 import { conversationTitleFromQuestion } from "@/lib/conversations/title";
-import { isApiError } from "@/lib/api/errors";
+import { chatErrorMessage } from "@/lib/api/errors";
 import { askQuestion } from "@/lib/api/chat";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
@@ -175,6 +175,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const submitQuestion = useCallback(
     async (normalized: string, options?: { messageId?: string; replace?: boolean }) => {
       if (!canAsk || needsPrepare || isSending || normalized.length === 0) return;
+      if (DEMO_MODE && questionCharacters(normalized) > DEMO_QUESTION_LIMIT) return;
 
       // Empty /chat canvas: create one history entry, then continue on that route.
       if (!conversationId) {
@@ -232,11 +233,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
           bumpConversation(conversationId);
         }
       } catch (err) {
-        const message = isApiError(err)
-          ? err.detail
-          : err instanceof Error
-            ? err.message
-            : "Request failed";
+        const message = chatErrorMessage(err);
         updateConversationMessageById(conversationId, id, (current) => ({
           ...current,
           status: "error",
@@ -360,7 +357,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         <div className="mx-auto w-full max-w-3xl shrink-0 px-4 md:px-6">
           <Alert variant="destructive" className="mb-4">
             <AlertTitle>Connection status error</AlertTitle>
-            <AlertDescription>{connectionError}</AlertDescription>
+            <AlertDescription>{DEMO_MODE ? "The sample knowledge base is temporarily unavailable. Please try again shortly." : connectionError}</AlertDescription>
           </Alert>
         </div>
       ) : null}
@@ -375,7 +372,6 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
           {visibleMessages.length === 0 ? (
             <EmptyStateHero
               demoReady={canAsk}
-              suggestions={connection?.demo_questions}
               needsConnect={needsConnect}
               needsPrepare={needsPrepare}
               isSending={isSending}

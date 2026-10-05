@@ -1,6 +1,6 @@
 "use client";
 
-import { DEMO_MODE } from "@/lib/demo";
+import { DEMO_MODE, DEMO_SUGGESTIONS } from "@/lib/demo";
 
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
@@ -17,7 +17,6 @@ const suggestedQuestions = [
 
 type EmptyStateHeroProps = {
   demoReady?: boolean;
-  suggestions?: string[];
   needsConnect: boolean;
   needsPrepare: boolean;
   isSending: boolean;
@@ -27,7 +26,6 @@ type EmptyStateHeroProps = {
 
 export function EmptyStateHero({
   demoReady = true,
-  suggestions,
   needsConnect,
   needsPrepare,
   isSending,
@@ -72,19 +70,30 @@ export function EmptyStateHero({
       )}
     >
       {/* Brand */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-center gap-2 text-primary">
-          <Sparkles className="size-5" />
-          <span className="text-sm font-medium tracking-wide uppercase">
-            {chatCopy.brandName}
+      <div className="max-w-xl space-y-4">
+        {DEMO_MODE ? (
+          <span className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-medium tracking-widest text-primary shadow-[0_0_18px_color-mix(in_oklch,var(--primary)_18%,transparent)]">
+            PUBLIC DEMO
           </span>
-        </div>
-        <h1 className="text-hero font-semibold tracking-tight text-foreground">
+        ) : (
+          <div className="flex items-center justify-center gap-2 text-primary">
+            <Sparkles className="size-5" />
+            <span className="text-sm font-medium tracking-wide uppercase">{chatCopy.brandName}</span>
+          </div>
+        )}
+        <h1 className="text-balance text-2xl font-semibold tracking-tight text-foreground sm:text-hero">
           {DEMO_MODE ? "Explore the HarborDesk sample knowledge" : chatCopy.emptyHeading}
         </h1>
-        <p className="mx-auto max-w-sm text-sm text-muted-foreground">
-          {DEMO_MODE ? "Ask real grounded questions across seven fictional product-team documents. Inspect citations or browse the samples. No Google Drive connection required." : chatCopy.emptySubheading}
+        <p className="mx-auto max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
+          {DEMO_MODE ? "Ask grounded questions across a sample project knowledge base. Inspect citations or browse the included files." : chatCopy.emptySubheading}
         </p>
+        {DEMO_MODE ? (
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>Sample data</span><span aria-hidden="true">·</span><span>Limited public usage</span>
+            <span aria-hidden="true" className="hidden sm:inline">·</span>
+            <span className="basis-full sm:basis-auto">No Google Drive connection required</span>
+          </p>
+        ) : null}
       </div>
 
       {/* Suggested questions */}
@@ -93,7 +102,7 @@ export function EmptyStateHero({
           Try asking
         </p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {(DEMO_MODE ? suggestions ?? [] : suggestedQuestions).map((question) => (
+          {(DEMO_MODE ? DEMO_SUGGESTIONS : suggestedQuestions).map((question) => (
             <Button
               key={question}
               type="button"

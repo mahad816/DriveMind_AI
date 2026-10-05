@@ -16,6 +16,7 @@ import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { isUtilityNavActive, utilityNavItems } from "@/lib/navigation";
 import { chatCopy, knowledgeStatusLabel } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
+import { DEMO_MODE } from "@/lib/demo";
 
 type ConversationSidebarProps = {
   className?: string;
@@ -52,7 +53,7 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
       .filter((group) => group.conversations.length > 0);
   }, [chatQuery, groups]);
 
-  const showSetupChip = needsConnect || needsPrepare;
+  const showSetupChip = !DEMO_MODE && (needsConnect || needsPrepare);
   const hasChats = groups.some((g) => g.conversations.length > 0);
   const hasFilteredChats = filteredGroups.some((g) => g.conversations.length > 0);
   const isSearching = chatQuery.trim().length > 0;
@@ -73,7 +74,10 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
         )}
       >
         {!compact ? (
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-sidebar-foreground">DriveMind AI</p>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <p className="truncate text-sm font-semibold tracking-tight text-sidebar-foreground">DriveMind AI</p>
+            {DEMO_MODE ? <span className="shrink-0 rounded-md bg-sidebar-accent px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Demo</span> : null}
+          </div>
         ) : null}
         {collapsible ? (
           <Button
