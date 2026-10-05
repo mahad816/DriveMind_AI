@@ -14,6 +14,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    PayloadSchemaType,
     PointIdsList,
     PointStruct,
     VectorParams,
@@ -77,18 +78,42 @@ class QdrantVectorStore:
         return create_qdrant_client(self.settings)
 
     async def ensure_collection(self, *, vector_size: int) -> None:
-        """Create the collection when missing."""
+        """Create missing vector storage and reconcile indexes used by payload filters."""
         client = self._get_client()
         try:
-            if await client.collection_exists(self.collection_name):
-                return
-            await client.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-            )
+            if not await client.collection_exists(self.collection_name):
+                await client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+                )
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(
                 f"Failed to ensure Qdrant collection '{self.collection_name}': {exc}"
+            ) from exc
+        await self._ensure_required_payload_indexes(client)
+
+    async def _ensure_required_payload_indexes(self, client: AsyncQdrantClient) -> None:
+        """Ensure exact UUID-string matching without replacing compatible existing indexes."""
+        try:
+            info = await client.get_collection(self.collection_name)
+            existing = info.payload_schema.get("drive_file_id")
+            if existing is not None:
+                if existing.data_type in (PayloadSchemaType.KEYWORD, PayloadSchemaType.UUID):
+                    return
+                raise VectorStoreError(
+                    "Qdrant payload index 'drive_file_id' must have keyword or UUID schema "
+                    f"in collection '{self.collection_name}'"
+                )
+            await client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="drive_file_id",
+                field_schema=PayloadSchemaType.KEYWORD,
+                wait=True,
+            )
+        except (UnexpectedResponse, ResponseHandlingException) as exc:
+            raise VectorStoreError(
+                f"Failed to ensure Qdrant payload index 'drive_file_id' "
+                f"in collection '{self.collection_name}': {exc}"
             ) from exc
 
     async def upsert_points(

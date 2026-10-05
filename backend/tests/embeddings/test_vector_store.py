@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
+from qdrant_client.models import PayloadSchemaType
 
 from app.core.config import Settings
 from app.embeddings.vector_store import (
@@ -35,6 +36,8 @@ def mock_client() -> AsyncMock:
     client = AsyncMock()
     client.collection_exists = AsyncMock(return_value=False)
     client.create_collection = AsyncMock()
+    client.get_collection = AsyncMock(return_value=MagicMock(payload_schema={}))
+    client.create_payload_index = AsyncMock()
     client.upsert = AsyncMock()
     client.delete = AsyncMock()
     client.retrieve = AsyncMock(return_value=[])
@@ -56,6 +59,18 @@ async def test_ensure_collection_creates_missing_collection(
 
     mock_client.collection_exists.assert_awaited_once_with("drivemind_chunks")
     mock_client.create_collection.assert_awaited_once()
+    mock_client.create_payload_index.assert_awaited_once_with(
+        collection_name="drivemind_chunks",
+        field_name="drive_file_id",
+        field_schema=PayloadSchemaType.KEYWORD,
+        wait=True,
+    )
+    assert [call[0] for call in mock_client.mock_calls[:4]] == [
+        "collection_exists",
+        "create_collection",
+        "get_collection",
+        "create_payload_index",
+    ]
 
 
 @pytest.mark.asyncio
@@ -68,6 +83,78 @@ async def test_ensure_collection_skips_existing_collection(
     await store.ensure_collection(vector_size=1536)
 
     mock_client.create_collection.assert_not_awaited()
+    mock_client.create_payload_index.assert_awaited_once_with(
+        collection_name="drivemind_chunks",
+        field_name="drive_file_id",
+        field_schema=PayloadSchemaType.KEYWORD,
+        wait=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_ensure_preserves_compatible_payload_index(
+    store: QdrantVectorStore, mock_client: AsyncMock
+) -> None:
+    mock_client.collection_exists.return_value = True
+    info = MagicMock(payload_schema={})
+    mock_client.get_collection.return_value = info
+
+    async def create_index(**kwargs: object) -> None:
+        info.payload_schema["drive_file_id"] = MagicMock(data_type=PayloadSchemaType.KEYWORD)
+
+    mock_client.create_payload_index.side_effect = create_index
+    await store.ensure_collection(vector_size=1536)
+    await store.ensure_collection(vector_size=1536)
+    assert mock_client.create_payload_index.await_count == 1
+    mock_client.create_collection.assert_not_awaited()
+    mock_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema", [PayloadSchemaType.KEYWORD, PayloadSchemaType.UUID])
+async def test_existing_compatible_payload_index_is_not_replaced(
+    store: QdrantVectorStore, mock_client: AsyncMock, schema: PayloadSchemaType
+) -> None:
+    mock_client.collection_exists.return_value = True
+    mock_client.get_collection.return_value = MagicMock(
+        payload_schema={"drive_file_id": MagicMock(data_type=schema)}
+    )
+    await store.ensure_collection(vector_size=1536)
+    mock_client.create_payload_index.assert_not_awaited()
+    mock_client.create_collection.assert_not_awaited()
+    mock_client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_rejects_incompatible_existing_payload_index(
+    store: QdrantVectorStore, mock_client: AsyncMock
+) -> None:
+    mock_client.collection_exists.return_value = True
+    mock_client.get_collection.return_value = MagicMock(
+        payload_schema={"drive_file_id": MagicMock(data_type=PayloadSchemaType.INTEGER)}
+    )
+    with pytest.raises(VectorStoreError, match="keyword or UUID"):
+        await store.ensure_collection(vector_size=1536)
+    mock_client.create_payload_index.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["get_collection", "create_payload_index"])
+async def test_ensure_payload_index_wraps_http_errors(
+    store: QdrantVectorStore, mock_client: AsyncMock, operation: str
+) -> None:
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    getattr(mock_client, operation).side_effect = UnexpectedResponse(
+        status_code=403,
+        reason_phrase="Forbidden",
+        content=b"index permission denied",
+        headers=httpx.Headers({}),
+    )
+    with pytest.raises(VectorStoreError, match="payload index 'drive_file_id'") as error:
+        await store.ensure_collection(vector_size=1536)
+    assert "drivemind_chunks" in str(error.value)
+    assert isinstance(error.value.__cause__, UnexpectedResponse)
 
 
 @pytest.mark.asyncio

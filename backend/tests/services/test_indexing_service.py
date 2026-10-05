@@ -178,6 +178,8 @@ async def test_build_index_embeds_new_chunks(
     mock_embedding.embed_texts.assert_awaited_once_with(["hello world"])
     mock_vector_store.upsert_points.assert_awaited_once()
     mock_vector_store.ensure_collection.assert_awaited_once_with(vector_size=1536)
+    calls = [call[0] for call in mock_vector_store.mock_calls]
+    assert calls.index("ensure_collection") < calls.index("delete_points_for_drive_file_except")
     added = [call.args[0] for call in mock_db.add.call_args_list]
     assert any(isinstance(item, IndexingJob) for item in added)
     assert _added_jobs(mock_db)[0].status == IndexingJobStatus.COMPLETED
