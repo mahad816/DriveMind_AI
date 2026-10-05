@@ -2,7 +2,6 @@
 
 from uuid import UUID
 
-from qdrant_client import AsyncQdrantClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +13,7 @@ from app.db.models.drive_file import DriveFile
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.demo.manifest import load_manifest
+from app.embeddings.qdrant_connection import create_qdrant_client
 from app.ingestion.chunking import chunk_text
 from app.ingestion.hash_util import compute_extracted_text_hash
 from app.services.user_resolution import resolve_active_user
@@ -87,7 +87,7 @@ class DemoCorpusService:
 
     async def inspect_vectors(self, *, chunks: list[Chunk]) -> bool:
         """Reject foreign points; return whether every PostgreSQL chunk has a vector."""
-        client = AsyncQdrantClient(host=self.settings.qdrant_host, port=self.settings.qdrant_port)
+        client = create_qdrant_client(self.settings)
         expected = {str(chunk.id): chunk for chunk in chunks}
         documents = {str(entry.document_id): entry for entry in self.manifest.files}
         seen: set[str] = set()

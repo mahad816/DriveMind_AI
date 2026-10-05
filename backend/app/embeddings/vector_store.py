@@ -20,6 +20,7 @@ from qdrant_client.models import (
 )
 
 from app.core.config import Settings, get_settings
+from app.embeddings.qdrant_connection import create_qdrant_client
 
 DEFAULT_QDRANT_COLLECTION = "drivemind_chunks"
 DEFAULT_QDRANT_UPSERT_BATCH_SIZE = 100
@@ -73,10 +74,7 @@ class QdrantVectorStore:
     def _get_client(self) -> AsyncQdrantClient:
         if self._client is not None:
             return self._client
-        return AsyncQdrantClient(
-            host=self.settings.qdrant_host,
-            port=self.settings.qdrant_port,
-        )
+        return create_qdrant_client(self.settings)
 
     async def ensure_collection(self, *, vector_size: int) -> None:
         """Create the collection when missing."""

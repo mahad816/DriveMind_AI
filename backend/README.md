@@ -115,6 +115,34 @@ curl -X POST http://localhost:8000/api/v1/chat \
 # Set AGENT_GRAPH_ENABLED=false and repeat curl above
 ```
 
+## Production start configuration
+
+Use Python 3.12 (`.python-version`) and the committed `uv.lock` from `backend/`:
+
+```sh
+uv sync --frozen --no-dev
+uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port "$PORT"
+```
+
+The platform supplies `PORT`; start with one worker and no reload. Health is at
+`/api/v1/health`; `/api/v1/health/ready` checks PostgreSQL connectivity only.
+Configure `DATABASE_URL` explicitly with the `postgresql+asyncpg` driver scheme.
+Migrations and demo corpus loading remain separate explicit operations.
+For Qdrant Cloud, use `QDRANT_URL` and backend-only `QDRANT_API_KEY`; otherwise
+existing `QDRANT_HOST`/`QDRANT_PORT` apply. See the root `.env.example`.
+
+Public demo deployments must set `DEMO_MODE=true`, `DEBUG=false`, and
+`APP_ENV=production`. Demo chat accepts at most 4000 question characters and
+128 KiB of request body by default, with at most two active executions and
+20 admitted requests per 60 seconds. Configure these using `DEMO_CHAT_*` settings
+in the root `.env.example`. History retains its existing 8-message, 8000-character
+per-message, 24000-character total bounds; conversation IDs are limited to 200 characters.
+Admission is process-wide, does not trust forwarded client-IP headers, and resets
+on restart. Use one service instance and one worker. These limits do not cover
+other routes or provide distributed abuse protection. Demo query history is not
+persisted; browser-provided bounded history continues to drive conversations.
+Public errors omit internal exception details, while server logs retain diagnostics.
+
 ## System dependencies (Phase 4 image OCR)
 
 Image OCR uses `pytesseract`, which requires the **Tesseract** binary on your `PATH`:

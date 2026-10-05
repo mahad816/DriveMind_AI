@@ -4,13 +4,17 @@ import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.router import router as api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal, engine
+from app.core.public_safety import DemoChatBodyLimit, DemoChatLimits, PUBLIC_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +59,34 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        debug=settings.debug,
+        debug=settings.debug and not settings.demo_mode,
         lifespan=lifespan,
     )
     app.include_router(api_router, prefix=settings.api_prefix)
+    app.state.demo_chat_limits = DemoChatLimits()
+    app.add_middleware(DemoChatBodyLimit)
+
+    @app.exception_handler(Exception)
+    async def internal_error(request: Request, exc: Exception) -> JSONResponse:
+        logger.error("Unhandled API failure", exc_info=exc)
+        return JSONResponse(status_code=500, content={"detail": PUBLIC_ERROR})
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+        current = get_settings()
+        if not current.demo_mode and current.debug:
+            return await request_validation_exception_handler(request, exc)
+        # Never echo submitted secrets or entire oversized input into public errors.
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
+                    for error in exc.errors()
+                ]
+            },
+        )
+
     return app
 
 

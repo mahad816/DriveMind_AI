@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from app.schemas.common import SchemaBase
+from app.core.config import get_settings
 from app.schemas.query import CitationItem
 
 
@@ -38,6 +39,9 @@ class ChatRequest(SchemaBase):
     @field_validator("question")
     @classmethod
     def validate_question(cls, value: str) -> str:
+        settings = get_settings()
+        if settings.demo_mode and len(value) > settings.demo_chat_max_question_chars:
+            raise ValueError("Question exceeds the demo character limit")
         normalized = value.strip()
         if not normalized:
             raise ValueError("Question must not be empty")
@@ -48,6 +52,8 @@ class ChatRequest(SchemaBase):
     def validate_conversation_id(cls, value: str | None) -> str | None:
         if value is None:
             return None
+        if get_settings().demo_mode and len(value) > 200:
+            raise ValueError("Conversation ID exceeds the demo character limit")
         normalized = value.strip()
         if not normalized:
             raise ValueError("Conversation ID must not be empty")

@@ -18,6 +18,7 @@ from app.services.indexing_service import IndexingService
 from app.services.ingestion_service import IngestionService
 from app.demo.service import DemoCorpusService
 from app.demo.manifest import load_manifest
+from app.core.public_safety import public_error_detail
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ async def sync_drive_metadata(
         logger.exception("Could not check Drive connection")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not verify Drive connection: {exc}",
+            detail=public_error_detail(exc),
         ) from exc
 
     if not connected:

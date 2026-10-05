@@ -209,7 +209,7 @@ async def test_vector_checks_reject_foreign_points_and_detect_missing_vectors(
 ) -> None:
     file, doc, chunk = populate(db)
     client = AsyncMock()
-    monkeypatch.setattr("app.demo.service.AsyncQdrantClient", lambda **kwargs: client)
+    monkeypatch.setattr("app.demo.service.create_qdrant_client", lambda settings: client)
     client.collection_exists.return_value = True
     record = SimpleNamespace(
         id=str(chunk.id),

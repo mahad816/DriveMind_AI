@@ -12,6 +12,7 @@ from app.schemas.drive_sync import DriveFileListResponse
 from app.schemas.file import DriveFileRead
 from app.services.drive_content_service import DriveContentService
 from app.services.drive_sync_service import DriveSyncService
+from app.core.public_safety import public_error_detail
 
 router = APIRouter(prefix="/files")
 
@@ -36,7 +37,7 @@ async def list_synced_files(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
+            detail=public_error_detail(exc),
         ) from exc
 
     file_reads = [DriveFileRead.model_validate(f) for f in files]
@@ -65,12 +66,12 @@ async def get_file_content(
             ) from exc
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail,
+            detail=public_error_detail(exc),
         ) from exc
     except DriveClientError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
+            detail=public_error_detail(exc),
         ) from exc
 
     return Response(

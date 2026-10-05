@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -20,6 +21,11 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     # Validate only when resolving demo identity; normal mode does not require this value.
     demo_user_id: str = ""
+    demo_chat_max_question_chars: int = Field(default=4000, ge=1)
+    demo_chat_max_body_bytes: int = Field(default=131072, ge=1)
+    demo_chat_concurrency: int = Field(default=2, ge=1)
+    demo_chat_rate_limit: int = Field(default=20, ge=1, le=10000)
+    demo_chat_rate_window_seconds: int = Field(default=60, ge=1)
 
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
@@ -37,6 +43,8 @@ class Settings(BaseSettings):
 
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
+    qdrant_url: str = ""
+    qdrant_api_key: str = ""
     qdrant_collection: str = "drivemind_chunks"
     qdrant_upsert_batch_size: int = 100
 

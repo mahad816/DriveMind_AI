@@ -10,6 +10,7 @@ from app.api.dependencies import require_normal_mode
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.services.google_oauth_service import GoogleOAuthService
+from app.core.public_safety import public_error_detail
 
 router = APIRouter(prefix="/auth", dependencies=[Depends(require_normal_mode)])
 
@@ -43,7 +44,7 @@ async def google_login(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
+            detail=public_error_detail(exc),
         ) from exc
     return RedirectResponse(url=authorization_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
@@ -78,10 +79,10 @@ async def google_callback(
         if _wants_json_response(request):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
+                detail=public_error_detail(exc),
             ) from exc
         return RedirectResponse(
-            url=_frontend_settings_url(settings, error=str(exc)),
+            url=_frontend_settings_url(settings, error=public_error_detail(exc)),
             status_code=status.HTTP_302_FOUND,
         )
 

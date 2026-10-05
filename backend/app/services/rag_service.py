@@ -84,7 +84,7 @@ class RagService:
     ) -> None:
         self.db = db
         self.settings = settings or get_settings()
-        self.persist_query_history = persist_query_history
+        self.persist_query_history = persist_query_history and not self.settings.demo_mode
         if retriever is not None:
             self.retriever = retriever
         elif self.settings.hybrid_retrieval_enabled:
