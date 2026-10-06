@@ -11,6 +11,7 @@ class ToolErrorCode(str, Enum):
     NOT_FOUND = "NOT_FOUND"
     AMBIGUOUS = "AMBIGUOUS"
     UNSUPPORTED_SCOPE = "UNSUPPORTED_SCOPE"
+    UNRESOLVED_CROSS_TURN_REFERENCE = "UNRESOLVED_CROSS_TURN_REFERENCE"
     EMPTY_RESULT = "EMPTY_RESULT"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -21,6 +22,7 @@ MESSAGES = {
     ToolErrorCode.NOT_FOUND: "No eligible indexed file matches the reference.",
     ToolErrorCode.AMBIGUOUS: "The reference matches multiple eligible files.",
     ToolErrorCode.UNSUPPORTED_SCOPE: "DriveMind cannot currently apply folder, label/tag, or modified-time restrictions. The broader operation was not executed.",
+    ToolErrorCode.UNRESOLVED_CROSS_TURN_REFERENCE: "A file cannot be identified from a previous-turn vague reference. Ask the user which filename they mean.",
     ToolErrorCode.EMPTY_RESULT: "No eligible evidence was found.",
     ToolErrorCode.INTERNAL_ERROR: "The tool could not complete safely.",
 }

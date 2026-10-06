@@ -14,6 +14,7 @@ class ExecutionContext:
     handles: RuntimeHandleRegistry
     retriever: HybridRetriever | None = None
     original_question: str = ""
+    has_prior_history: bool = False
     max_context_chars: int = 12000
 
     def __post_init__(self) -> None:

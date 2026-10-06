@@ -66,6 +66,12 @@ def native_messages(messages: Sequence[AgentMessage]) -> list[ChatCompletionMess
 class OpenAIAgentChatService(OpenAIChatService):
     """Reuse existing configurable model/authentication; no semantic retries."""
 
+    async def aclose(self) -> None:
+        """Close this service's client when its owning API orchestration finishes."""
+        if self._client is not None:
+            await self._client.close()
+            self._client = None
+
     async def step(
         self, *, messages: Sequence[AgentMessage], tools: Sequence[ToolDefinition]
     ) -> AgentStepResult:

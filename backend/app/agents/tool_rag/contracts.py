@@ -92,7 +92,7 @@ class InternalFileSummary(ContractModel):
 
     def to_llm_payload(self, registry: RuntimeHandleRegistry) -> "FileSummary":
         return FileSummary(
-            handle=registry.register_file(self.file_id),
+            handle=registry.register_file(self.file_id, filename=self.filename),
             filename=self.filename,
             mime_type=self.mime_type,
             modified_at=self.modified_at,
@@ -288,7 +288,7 @@ def project_section(section: EvidenceSection, registry: RuntimeHandleRegistry) -
     locators = {m.chunk_id: m.locator for m in section.members}
     return EvidencePayload(
         evidence_handle=registry.register_section(section),
-        file_handle=registry.register_file(anchor.file_id),
+        file_handle=registry.register_file(anchor.file_id, filename=anchor.filename),
         filename=anchor.filename,
         context=section.combined_text,
         citations=tuple(
