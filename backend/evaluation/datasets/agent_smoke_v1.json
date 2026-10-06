@@ -1,0 +1,341 @@
+{
+  "schema": "agent-smoke-gold-1.0",
+  "split": "development",
+  "cases": [
+    {
+      "case_id": "agent-dev-01",
+      "category": "DIRECT",
+      "question": "Hello",
+      "expected_initial_tool": "NO_TOOL",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [],
+      "expected_tool_count": 0,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "DIRECT_REPLY",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-02",
+      "category": "DIRECT",
+      "question": "What can you do?",
+      "expected_initial_tool": "NO_TOOL",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [],
+      "expected_tool_count": 0,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "CAPABILITY_EXPLANATION",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-03",
+      "category": "DIRECT",
+      "question": "Thanks for your help today!",
+      "expected_initial_tool": "NO_TOOL",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [],
+      "expected_tool_count": 0,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "DIRECT_REPLY",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-04",
+      "category": "INVENTORY",
+      "question": "Please list the indexed document filenames.",
+      "expected_initial_tool": "files_query",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "files_query"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": "LIST",
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "FILE_LIST",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-05",
+      "category": "INVENTORY",
+      "question": "How many documents are indexed?",
+      "expected_initial_tool": "files_query",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "files_query"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": "COUNT",
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "COUNT_SEVEN",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-06",
+      "category": "INVENTORY",
+      "question": "Which indexed file is the newest?",
+      "expected_initial_tool": "files_query",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "files_query"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": "LATEST",
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "LATEST_METADATA",
+      "expected_evidence_files": [
+        "architecture_notes.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-07",
+      "category": "KNOWLEDGE",
+      "question": "Who is the HarborDesk pilot intended for, and how many staff will it serve?",
+      "expected_initial_tool": "search_knowledge",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "search_knowledge"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": true,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "GROUNDED_ANSWER",
+      "expected_evidence_files": [
+        "project_overview.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-08",
+      "category": "KNOWLEDGE",
+      "question": "How does HarborDesk avoid losing or duplicating assignment notifications?",
+      "expected_initial_tool": "search_knowledge",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "search_knowledge"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": true,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "GROUNDED_ANSWER",
+      "expected_evidence_files": [
+        "architecture_notes.txt",
+        "engineering_decisions.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-09",
+      "category": "KNOWLEDGE",
+      "question": "When is the pilot launch planned, and what gates must be completed first?",
+      "expected_initial_tool": "search_knowledge",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "search_knowledge"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": true,
+      "broadening_forbidden": false,
+      "expected_final_behavior": "GROUNDED_ANSWER",
+      "expected_evidence_files": [
+        "launch_plan.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-10",
+      "category": "DEPENDENT",
+      "question": "List the files and summarize the first one.",
+      "expected_initial_tool": "files_query",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "files_query",
+        "file_evidence"
+      ],
+      "expected_tool_count": 2,
+      "expected_inventory_operation": "LIST",
+      "handle_dependency": true,
+      "expected_handle_source_step": 1,
+      "expected_result_item_index": 0,
+      "evidence_required": true,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "SUMMARIZE_ACTUAL_RESULT",
+      "expected_evidence_files": [
+        "architecture_notes.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-11",
+      "category": "DEPENDENT",
+      "question": "Summarize the latest file.",
+      "expected_initial_tool": "files_query",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "files_query",
+        "file_evidence"
+      ],
+      "expected_tool_count": 2,
+      "expected_inventory_operation": "LATEST",
+      "handle_dependency": true,
+      "expected_handle_source_step": 1,
+      "expected_result_item_index": null,
+      "evidence_required": true,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "SUMMARIZE_ACTUAL_RESULT",
+      "expected_evidence_files": [
+        "architecture_notes.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-12",
+      "category": "DEPENDENT",
+      "question": "Please resolve engineering_decisions.txt and summarize that file.",
+      "expected_initial_tool": "resolve_file",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "resolve_file",
+        "file_evidence"
+      ],
+      "expected_tool_count": 2,
+      "expected_inventory_operation": null,
+      "handle_dependency": true,
+      "expected_handle_source_step": 1,
+      "expected_result_item_index": null,
+      "evidence_required": true,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "SUMMARIZE_ACTUAL_RESULT",
+      "expected_evidence_files": [
+        "engineering_decisions.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-13",
+      "category": "DEPENDENT",
+      "question": "Show the indexed files, then give a brief overview of the second listed file.",
+      "expected_initial_tool": "files_query",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "files_query",
+        "file_evidence"
+      ],
+      "expected_tool_count": 2,
+      "expected_inventory_operation": "LIST",
+      "handle_dependency": true,
+      "expected_handle_source_step": 1,
+      "expected_result_item_index": 1,
+      "evidence_required": true,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "SUMMARIZE_ACTUAL_RESULT",
+      "expected_evidence_files": [
+        "customer_feedback.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-14",
+      "category": "RESOLUTION",
+      "question": "Resolve architecture_notes.txt and confirm its exact filename.",
+      "expected_initial_tool": "resolve_file",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "resolve_file"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "RESOLVED_FILENAME",
+      "expected_evidence_files": [
+        "architecture_notes.txt"
+      ],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-15",
+      "category": "RESOLUTION",
+      "question": "Find missing_training_handbook.txt and summarize it.",
+      "expected_initial_tool": "resolve_file",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [
+        "resolve_file"
+      ],
+      "expected_tool_count": 1,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "NOT_FOUND_EXPLANATION",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    },
+    {
+      "case_id": "agent-dev-16",
+      "category": "UNSUPPORTED_SCOPE",
+      "question": "Count only the documents tagged confidential.",
+      "expected_initial_tool": "NO_TOOL",
+      "acceptable_initial_alternates": [],
+      "expected_tool_sequence": [],
+      "expected_tool_count": 0,
+      "expected_inventory_operation": null,
+      "handle_dependency": false,
+      "expected_handle_source_step": null,
+      "expected_result_item_index": null,
+      "evidence_required": false,
+      "broadening_forbidden": true,
+      "expected_final_behavior": "UNSUPPORTED_SCOPE_EXPLANATION",
+      "expected_evidence_files": [],
+      "grounding_policy": "Review every substantive final claim against returned authoritative evidence; corpus truth alone is insufficient. No exact prose gold."
+    }
+  ]
+}

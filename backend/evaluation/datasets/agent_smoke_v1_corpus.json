@@ -1,0 +1,56 @@
+{
+  "version": "harbordesk-v1",
+  "files": [
+    {
+      "id": "0e5cfae0-3f6a-55c9-b2cc-aff72de37c2c",
+      "filename": "architecture_notes.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    },
+    {
+      "id": "1fb8936f-4847-5161-bd72-5616a1a0a58f",
+      "filename": "customer_feedback.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    },
+    {
+      "id": "24c66874-5723-58da-8e68-bb5c58e925c3",
+      "filename": "engineering_decisions.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    },
+    {
+      "id": "2ac50ef4-b142-5b57-b764-e1b135f9a8d7",
+      "filename": "meeting_notes.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    },
+    {
+      "id": "36c4e806-6b77-53d3-9709-e643128e5fa9",
+      "filename": "launch_plan.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    },
+    {
+      "id": "9d0236e3-6476-54cd-acbc-c4b76b74e0fd",
+      "filename": "product_requirements.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    },
+    {
+      "id": "c6694f36-037b-5207-9a29-33ecfb3ffd93",
+      "filename": "project_overview.txt",
+      "modified_at": "2030-03-12T00:00:00+00:00",
+      "status": "indexed"
+    }
+  ],
+  "content_hashes": {
+    "project_overview.txt": "75ecab6442ad85cc908c3cd848951af98fe97f1b489071cd44751730d965dc73",
+    "architecture_notes.txt": "8e891fd8690f5bb84049ece45ff72610c8778541dcb65a1429f0254142f17a82",
+    "product_requirements.txt": "2f8918875c5a3178dff5d3abf3e885962034ac4b4fbe70d701f478b0313acfc5",
+    "meeting_notes.txt": "922f65561dc28da5771c91e8b716e2dc52500819c2801d658a17599799e65aa3",
+    "customer_feedback.txt": "b298030d7f858f0f98a319f51a8322ca1ccc1a954f5b985654ef12338bff4325",
+    "launch_plan.txt": "3a20ade76c9422d7d38d554a1b80b5654b170c582e5b3765630334decb1ef1cb",
+    "engineering_decisions.txt": "a1a1a8790e3a57683213e01a49a5c8088cf77c65e18aa9d11f96368b1d4f011d"
+  }
+}
