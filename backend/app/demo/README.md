@@ -19,6 +19,10 @@ Never commit actual environment files or credentials.
 Set these existing backend settings in the isolated environment:
 
 - `DEMO_MODE=true`
+- `TOOL_RAG_AGENT_ENABLED=true` for the validated demo tool-agent path. The
+  application default remains false; set this only in the isolated demo runtime.
+- `AGENT_GRAPH_ENABLED=false`: the old graph is retained for legacy compatibility
+  and is not used when the tool-agent flag is true.
 - `DEMO_USER_ID`: a chosen UUID, kept stable across runs.
 - `DATABASE_URL`: the dedicated demo PostgreSQL database URL.
 - `QDRANT_HOST`, `QDRANT_PORT`, `QDRANT_COLLECTION`: the dedicated demo collection.
@@ -74,8 +78,10 @@ No tenant filtering was added: dedicated storage remains mandatory.
 
 ## Local validation before release
 
-Ask every manifest question using both the default linear pipeline and
-`AGENT_GRAPH_ENABLED=true` where applicable. Inspect returned citations, follow
+Validate the demo with `TOOL_RAG_AGENT_ENABLED=true` through the actual frontend.
+Use `TOOL_RAG_AGENT_ENABLED=false` only for deliberate legacy comparisons; the old
+`AGENT_GRAPH_ENABLED` flag selects a legacy grounded path and does not select the
+new tool-agent. Inspect returned citations, follow
 source links, open sample previews, and record latency. Inventory has no citations;
 grounded answers should cite the expected documents. The subscription-price
 question must not invent a price: no price is approved in this corpus. Review
@@ -86,3 +92,9 @@ Verify unavailable/misconfigured storage cannot serve owner data. Separately run
 normal-mode regression checks with demo settings disabled and the normal environment.
 Existing evaluation-runner adaptation, public-use protection, hosting, and deployment
 are separate phases. Passing unit tests does not certify live RAG quality.
+
+A new chat submitted before its conversation page finishes loading backend
+readiness keeps the deferred question until it can send, then sends exactly once.
+The current chat UI has no Stop/cancel control; no cancellation UI is added here.
+Run-local handles are not conversation memory. Vague cross-turn references ask for
+a filename, while current explicit filenames and same-run tool dependencies work.

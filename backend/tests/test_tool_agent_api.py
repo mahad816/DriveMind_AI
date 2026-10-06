@@ -747,3 +747,32 @@ def test_cross_turn_guard_is_bounded_and_literal_only():
     assert guard(question="Summarize that file: old.report.pdf.", **args)
     assert not guard(question="Summarize the first one.", **{**args, "has_prior_history": False})
     assert not guard(question="Summarize the first one.", **{**args, "returned_in_run": True})
+
+
+@pytest.mark.asyncio
+async def test_empty_file_evidence_does_not_turn_into_an_absence_claim(monkeypatch):
+    from app.llm.prompts import no_evidence_answer
+
+    steps = [
+        call("resolve_file", {"reference": "report.pdf"}),
+        call(
+            "file_evidence",
+            {
+                "file_handle": {"kind": "FILE", "value": "file_1"},
+                "mode": "QUERY_FOCUSED",
+                "query": "deadline",
+            },
+            "read",
+        ),
+        AgentStepResult(text="There is no deadline in that file."),
+    ]
+    async with api(monkeypatch, steps, chunks=[]) as (client, _db, _chat, retriever, _legacy):
+        response = await client.post(
+            "/api/v1/chat", json={"question": "What deadline is in report.pdf?"}
+        )
+        assert response.status_code == 200
+        assert response.json()["answer"] == no_evidence_answer(demo_mode=False)
+        assert not response.json()["citations"]
+        assert response.json()["retrieval_count"] == 0
+        assert isinstance(retriever.requests[0].scope, ResolvedFileScope)
+        assert len(retriever.requests) == 1  # no corpus retry/fallback

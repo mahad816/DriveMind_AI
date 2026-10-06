@@ -12,10 +12,15 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.tool_rag.agent_models import AgentChatService, AgentMessage
 from app.agents.tool_rag.agent_service import ToolRagAgentService
-from app.agents.tool_rag.contracts import FileEvidencePayload
+from app.agents.tool_rag.contracts import (
+    FileEvidencePayload,
+    FileEvidenceResult,
+    SearchKnowledgeResult,
+)
 from app.agents.tool_rag.errors import ToolErrorCode
 from app.core.config import Settings
 from app.llm.base import ChatError
+from app.llm.prompts import no_evidence_answer
 from app.llm.openai_agent_service import OpenAIAgentChatService
 from app.retrieval.hybrid import HybridRetriever
 from app.schemas.chat import ChatHistoryTurn
@@ -138,6 +143,19 @@ class ToolAgentAdapter:
             answer = state["final_answer"]
             if not answer:
                 raise ChatError("The tool agent returned no answer.")
+            # An empty successful read is not proof that a fact is absent from a file.
+            # Use the established safe envelope instead of ungrounded model conclusions.
+            if (
+                state["failure"] is None
+                and not state["evidence"]
+                and any(
+                    isinstance(
+                        h.result.internal_result, (FileEvidenceResult, SearchKnowledgeResult)
+                    )
+                    for h in state["tool_history"]
+                )
+            ):
+                answer = no_evidence_answer(demo_mode=self.settings.demo_mode)
             if any(
                 isinstance(h.result.llm_result, FileEvidencePayload)
                 and h.result.llm_result.truncated

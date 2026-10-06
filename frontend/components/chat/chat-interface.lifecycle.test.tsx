@@ -1,6 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useSearchParams } from "next/navigation";
+
+const readiness = vi.hoisted(() => ({ connected: true }));
+
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { askQuestion } from "@/lib/api/chat";
 import type { ChatResponse } from "@/lib/api/types";
@@ -19,7 +23,7 @@ vi.mock("next/navigation", () => {
 vi.mock("@/lib/api/chat", () => ({ askQuestion: vi.fn() }));
 vi.mock("@/lib/hooks/use-connection-status", () => {
   const value = { data: { connected: true }, error: null, refetch: vi.fn() };
-  return { useConnectionStatus: () => value };
+  return { useConnectionStatus: () => ({ ...value, data: { connected: readiness.connected } }) };
 });
 vi.mock("@/lib/hooks/use-knowledge-status", () => ({
   useKnowledgeStatus: () => ({ needsConnect: false, needsPrepare: false }),
@@ -123,8 +127,31 @@ describe("in-flight conversation ownership", () => {
       },
     });
     vi.mocked(askQuestion).mockReset();
+    readiness.connected = true;
+    const params = useSearchParams() as unknown as URLSearchParams;
+    [...params.keys()].forEach((key) => params.delete(key));
   });
   afterEach(cleanup);
+
+  it("waits for readiness before consuming an empty-chat deferred ask, then sends once", async () => {
+    const chat = createConversation("Hello");
+    const params = useSearchParams() as unknown as URLSearchParams;
+    params.set("ask", "Hello");
+    readiness.connected = false;
+    vi.mocked(askQuestion).mockResolvedValue(answer("Hello!"));
+    const view = render(<ChatInterface conversationId={chat.id} />);
+    await screen.findByText("No messages");
+    expect(askQuestion).not.toHaveBeenCalled();
+
+    readiness.connected = true;
+    view.rerender(<ChatInterface conversationId={chat.id} />);
+    await waitFor(() => expect(askQuestion).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getConversationMessages(chat.id)[0]?.status).toBe("done"));
+    view.rerender(<ChatInterface conversationId={chat.id} />);
+    expect(askQuestion).toHaveBeenCalledTimes(1);
+    expect(getConversationMessages(chat.id)).toHaveLength(1);
+    expect(getConversationMessages(chat.id)[0]?.question).toBe("Hello");
+  });
 
   it("keeps a pending A turn and its eventual answer in A after switching to B", async () => {
     const chatA = createConversation("Travel");

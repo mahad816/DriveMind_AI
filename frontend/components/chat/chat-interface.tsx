@@ -282,6 +282,9 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   useEffect(() => {
     const ask = searchParams.get("ask");
     if (!ask || askHandledRef.current || !messagesLoaded) return;
+    // A newly mounted conversation may hydrate before backend readiness arrives.
+    // Keep the deferred ask until the empty conversation can actually send it.
+    if (conversationId && messages.length === 0 && (!canAsk || needsPrepare || isSending)) return;
     askHandledRef.current = true;
     pendingAskTitleRef.current = ask;
 

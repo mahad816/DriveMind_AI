@@ -110,6 +110,30 @@ AGENT_GRAPH_ENABLED=true
 HYBRID_RETRIEVAL_ENABLED=true
 ```
 
+### Controlled HarborDesk demo runtime
+
+For the isolated, read-only demo backend, configure environment values separately
+from normal/private DriveMind:
+
+```sh
+DEMO_MODE=true
+TOOL_RAG_AGENT_ENABLED=true
+AGENT_GRAPH_ENABLED=false
+DEBUG=false
+```
+
+Provide the designated `DEMO_USER_ID`, dedicated demo `DATABASE_URL` and Qdrant
+collection, and backend-only `OPENAI_API_KEY`. Use the offline approved corpus;
+never point this runtime at private Drive storage. The global application default
+for `TOOL_RAG_AGENT_ENABLED` stays false. No per-request flag or automatic legacy
+fallback exists. See [demo setup](../../backend/app/demo/README.md).
+
+On the frontend, set `NEXT_PUBLIC_DEMO_MODE=true`, `NEXT_PUBLIC_API_URL=/api/v1`
+and server-only `BACKEND_URL` to this demo backend. Restart/rebuild Next.js after
+public environment changes. The existing Vercel rewrite remains unchanged. The
+existing backend start command accepts Railway's `$PORT`; no hosting changes or
+deployment are performed by this local activation checkpoint.
+
 ### Health checks
 
 Configure platform health check on:
