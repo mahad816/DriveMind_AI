@@ -1,13 +1,13 @@
 # DriveMind AI
 
-DriveMind is a single-user Google Drive knowledge assistant. It prepares a searchable copy of supported Drive content, then answers questions from that local index with source citations. The project combines a Next.js interface, a FastAPI backend, PostgreSQL full-text data, Qdrant vectors, OpenAI embeddings and chat generation, and optional LangGraph orchestration.
+DriveMind is a single-user Google Drive knowledge assistant. It prepares a searchable copy of supported Drive content, then answers questions from that local index with source citations. The project combines a Next.js interface, a FastAPI backend, PostgreSQL full-text data, Qdrant vectors, OpenAI embeddings and chat generation, and a feature-flagged LangGraph tool agent.
 
 Drive access is read-only. Google OAuth authorizes that access; it is not an application login system.
 
 ## What it does
 
 - **Prepare knowledge:** Sync Drive metadata, download or export supported files, extract text, chunk it, and build vector representations. Full scans and incremental Changes API sync are supported.
-- **Answer questions:** Route conversation recall, chitchat, file inventory, named-file, and general grounded questions. Grounded answers use bounded evidence and return citations that open the indexed source text.
+- **Answer questions:** A conversational tool agent selects small read-only inventory, file-resolution, and evidence tools. Python validates scope and ownership; grounded answers return citations that open the indexed source text. The legacy path remains available.
 - **Inspect the index:** Browse synced files and their processing status, run or retry preparation, and view cited chunks. Chat history is kept in browser localStorage.
 - **Evaluate behavior:** A controlled gold dataset, deterministic evaluation metrics, execution traces, and CLI runners support retrieval and answer review.
 
@@ -32,7 +32,9 @@ The frontend starts and polls four separate in-process backend jobs: **sync → 
 
 ### Question answering
 
-`RagService` routes each question before retrieval. Conversation-history recall, chitchat, and file inventory have dedicated paths. Named-file questions load matching PostgreSQL chunks; general grounded questions use the linear retrieval path by default. Hybrid retrieval combines vector, PostgreSQL keyword, and metadata candidates when enabled; disabling it selects vector-only retrieval. `AGENT_GRAPH_ENABLED=true` selects the optional LangGraph path for general grounded questions. Selected evidence is bounded before OpenAI generation, citations are normalized against that evidence, and answers are recorded in PostgreSQL. The source viewer resolves cited chunk IDs to PostgreSQL text.
+The demo enables `TOOL_RAG_AGENT_ENABLED=true`: the main LLM chooses read-only tools in a bounded LangGraph loop, with no separate routing classifier. Python owns file resolution, turn-local opaque handles, eligibility, scope, retrieval, and authoritative citations. Hybrid retrieval combines vector, PostgreSQL keyword, and metadata candidates. Specific questions about a resolved file use exact-file retrieval; summaries read that file's ordered indexed chunks within an explicit context budget.
+
+The application default remains false and preserves the legacy routing/linear or `AGENT_GRAPH_ENABLED` path. Both paths keep the same API and citation source viewer. See the [tool-agent architecture](docs/TOOL_RAG_ARCHITECTURE.md) and [integration guide](backend/docs/TOOL_RAG_INTEGRATION.md).
 
 **Explore:** [Interactive RAG answer flow →](https://mahad816.github.io/DriveMind_AI/interactive/answer-flow/)\
 **Read:** [Retrieval guide](docs/guides/RETRIEVAL.md) · [LangGraph guide](docs/guides/LANGGRAPH.md)
@@ -46,6 +48,12 @@ The frontend starts and polls four separate in-process backend jobs: **sync → 
 | Search and storage | PostgreSQL full-text search, Qdrant |
 | Drive integration | Google Drive API and read-only OAuth |
 | AI and extraction | OpenAI embeddings/chat, optional LangGraph, Tesseract OCR |
+
+## Portfolio demo
+
+The read-only demo uses only seven synthetic **HarborDesk** documents, with isolated PostgreSQL/Qdrant storage and no personal Google Drive OAuth. Deploy the existing frontend on Vercel and backend on Railway using the [deployment guide](docs/guides/DEPLOYMENT.md). [Local browser validation](docs/guides/TOOL_AGENT_DEMO_VALIDATION.md) records the tested flows; public deployment must be verified separately.
+
+This is a production-style, single-user portfolio system. Folder/label/time filters are unsupported; vague cross-turn file references require clarification. There is no Stop button. Focused retrieval can safely abstain, full-document reads are bounded, and multi-tool answers take several seconds.
 
 ## Run locally
 
