@@ -319,11 +319,11 @@ def test_retrieval_contract_no_semantic_scope_or_prompt_parameters():
     x = e.RetrievalRequest(
         user_id=USER,
         query="synthetic query",
-        scope=s.ResolvedFileScope(file_ids=()),
+        scope=s.ResolvedFileScope(file_ids=(FILE_A,)),
         candidate_limit=8,
     )
     assert isinstance(x.scope, s.ResolvedFileScope)
-    assert x.scope.file_ids == ()
+    assert x.scope.file_ids == (FILE_A,)
     assert e.RetrievalRequest.model_validate_json(x.model_dump_json()) == x
     for bad in [s.AllVisibleIndexedFiles(), s.DeferredFileResultScope()]:
         with pytest.raises(ValidationError):

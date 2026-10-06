@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
-from pydantic import AwareDatetime, Field, model_validator
+from pydantic import AwareDatetime, Field, model_validator, computed_field
 from app.routing.intent_frame.references import ContractModel
 from app.routing.intent_frame.evidence import EvidenceSection, SourceLocator
 from app.routing.intent_frame.scope import DEFAULT_LIST_ORDER
@@ -84,9 +84,12 @@ class FileListResult(ContractModel):
     kind: Literal["LIST"] = "LIST"
     items: tuple[InternalFileSummary, ...] = Field(max_length=100)
     ordering: Literal["DEFAULT"] = "DEFAULT"
+    total_count: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def distinct_files(self) -> "FileListResult":
+        if self.total_count is not None and self.total_count < len(self.items):
+            raise ValueError("total_count cannot be smaller than returned items")
         if len({f.file_id for f in self.items}) != len(self.items):
             raise ValueError("duplicate file identity")
         return self
@@ -96,6 +99,23 @@ class SafeFileList(ContractModel):
     kind: Literal["LIST"] = "LIST"
     items: tuple[FileSummary, ...] = Field(max_length=100)
     ordering: Literal["DEFAULT"] = "DEFAULT"
+    total_count: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def valid_count(self) -> "SafeFileList":
+        if self.total_count < len(self.items):
+            raise ValueError("invalid total_count")
+        return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def returned_count(self) -> int:
+        return len(self.items)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def truncated(self) -> bool:
+        return self.total_count > len(self.items)
 
 
 class FileCountResult(ContractModel):
@@ -131,7 +151,10 @@ class FilesQueryResult(ContractModel):
     def to_llm_payload(self, registry: RuntimeHandleRegistry) -> FilesQueryPayload:
         if isinstance(self.result, FileListResult):
             value: SafeFileQueryValue = SafeFileList(
-                items=tuple(f.to_llm_payload(registry) for f in self.result.items)
+                items=tuple(f.to_llm_payload(registry) for f in self.result.items),
+                total_count=self.result.total_count
+                if self.result.total_count is not None
+                else len(self.result.items),
             )
         elif isinstance(self.result, FileSelectionResult):
             value = SafeFileSelection(

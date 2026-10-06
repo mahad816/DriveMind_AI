@@ -15,6 +15,7 @@ from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.metadata import MetadataRetriever
 from app.retrieval.rerank import weighted_fusion_rerank
 from app.retrieval.types import RetrievedChunk
+from app.routing.intent_frame.execution import RetrievalRequest
 from app.retrieval.vector import VectorRetriever
 
 
@@ -35,19 +36,22 @@ class HybridRetriever:
         self.keyword_retriever = keyword_retriever or KeywordRetriever(db, self.settings)
         self.metadata_retriever = metadata_retriever or MetadataRetriever(db, self.settings)
 
-    async def retrieve(self, question: str) -> list[RetrievedChunk]:
+    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
         """Return reranked chunks that pass evidence grading."""
         evidence = await self.retrieve_with_grade(question)
         return evidence.chunks
 
     async def retrieve_with_grade(
         self,
-        question: str,
+        question: str | RetrievalRequest,
         *,
         trace: EvalTraceCollector | None = None,
     ) -> EvidenceGrade:
         """Run hybrid retrieval pipeline and return graded evidence."""
-        normalized = question.strip()
+        normalized = (
+            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
+        )
+        retrieval_input = question if isinstance(question, RetrievalRequest) else normalized
         if not normalized:
             return EvidenceGrade(
                 sufficient=False,
@@ -57,9 +61,9 @@ class HybridRetriever:
 
         if trace is None:
             vector_chunks, keyword_chunks, metadata_chunks = await asyncio.gather(
-                self.vector_retriever.retrieve(normalized),
-                self.keyword_retriever.retrieve(normalized),
-                self.metadata_retriever.retrieve(normalized),
+                self.vector_retriever.retrieve(retrieval_input),
+                self.keyword_retriever.retrieve(retrieval_input),
+                self.metadata_retriever.retrieve(retrieval_input),
             )
         else:
             attempt_number = 1
@@ -75,7 +79,7 @@ class HybridRetriever:
             ) -> tuple[list[RetrievedChunk], float]:
                 started_at = perf_counter()
                 try:
-                    chunks = await retriever.retrieve(normalized)
+                    chunks = await retriever.retrieve(retrieval_input)
                 except Exception as exc:
                     trace.record_error(exc, stage="retrieval", component=name)
                     raise
