@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+import logging
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from time import perf_counter
@@ -45,6 +47,10 @@ from app.services.conversation_history import (
     bounded_rewrite_history,
 )
 from app.services.user_resolution import resolve_active_user
+from app.services.tool_agent_service import ToolAgentAdapter
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -81,8 +87,10 @@ class RagService:
         retriever: Retriever | None = None,
         chat_service: ChatService | None = None,
         persist_query_history: bool = True,
+        tool_agent: ToolAgentAdapter | None = None,
     ) -> None:
         self.db = db
+        self.tool_agent = tool_agent
         self.settings = settings or get_settings()
         self.persist_query_history = persist_query_history and not self.settings.demo_mode
         if retriever is not None:
@@ -125,6 +133,41 @@ class RagService:
             if history and not conversation_id:
                 raise ValueError("Non-empty history requires a conversation ID")
             original_question = normalized_question
+            if self.settings.tool_rag_agent_enabled:
+                user = await self._resolve_user(user_id)
+                adapter = self.tool_agent or ToolAgentAdapter(
+                    self.db,
+                    self.settings,
+                    retriever=self.retriever
+                    if isinstance(self.retriever, HybridRetriever)
+                    else None,
+                )
+                if trace is not None:
+                    trace.set_stage("tool_agent")
+                result = await adapter.answer(
+                    original_question,
+                    user_id=user.id,
+                    history=history,
+                    history_window_complete=history_window_complete,
+                )
+                if trace is not None:
+                    trace.record_final(result.answer, list(result.citations))
+                    trace.set_stage("persistence")
+                query_id = await self._persist_query_history(
+                    user_id=user.id,
+                    question=original_question,
+                    answer=result.answer,
+                    citations=list(result.citations),
+                )
+                return RagResult(
+                    query_id=query_id,
+                    user_id=user.id,
+                    question=original_question,
+                    answer=result.answer,
+                    citations=list(result.citations),
+                    retrieval_count=result.retrieval_count,
+                )
+            logger.info("rag_execution path=legacy")
             initial_route = classify_query(normalized_question)
             if (
                 history

@@ -28,20 +28,27 @@ class RuntimeHandleRegistry:
 
     def __init__(self) -> None:
         self._files: dict[UUID, FileHandle] = {}
+        self._returned_filenames: set[str] = set()
         self._file_ids: dict[FileHandle, UUID] = {}
         self._sources: dict[UUID, SourceHandle] = {}
         self._source_ids: dict[SourceHandle, UUID] = {}
         self._sections: dict[EvidenceSection, EvidenceHandle] = {}
         self._section_values: dict[EvidenceHandle, EvidenceSection] = {}
 
-    def register_file(self, file_id: UUID) -> FileHandle:
+    def register_file(self, file_id: UUID, *, filename: str | None = None) -> FileHandle:
         if not isinstance(file_id, UUID):
             raise ToolFailure(ToolErrorCode.INVALID_ARGUMENT)
         if file_id not in self._files:
             handle = FileHandle(value=f"file_{len(self._files) + 1}")
             self._files[file_id] = handle
             self._file_ids[handle] = file_id
+        if filename is not None:
+            self._returned_filenames.add(filename.casefold())
         return self._files[file_id]
+
+    def filename_returned_in_run(self, reference: str) -> bool:
+        """Provenance only, not identity/authorization; populated by safe projections."""
+        return reference.casefold() in self._returned_filenames
 
     def resolve_file(self, handle: FileHandle) -> UUID:
         if not isinstance(handle, FileHandle) or handle not in self._file_ids:

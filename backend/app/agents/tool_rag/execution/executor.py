@@ -8,6 +8,7 @@ from app.db.models.drive_file import DriveFile
 from app.db.models.document import Document
 from app.db.models.chunk import Chunk
 from ..scope_guard import unsupported_scope_widening
+from ..cross_turn_guard import unresolved_cross_turn_reference
 from app.db.enums import DriveFileStatus
 from app.retrieval.hybrid import HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
@@ -286,6 +287,13 @@ class ToolExecutor:
             if isinstance(arguments, c.FilesQueryArguments):
                 result: RichResult = await files_query(arguments, context)
             elif isinstance(arguments, c.ResolveFileArguments):
+                if unresolved_cross_turn_reference(
+                    question=context.original_question,
+                    has_prior_history=context.has_prior_history,
+                    proposed_reference=arguments.reference,
+                    returned_in_run=context.handles.filename_returned_in_run(arguments.reference),
+                ):
+                    raise ToolFailure(ToolErrorCode.UNRESOLVED_CROSS_TURN_REFERENCE)
                 result = await resolve_file(arguments, context)
             elif isinstance(arguments, c.SearchKnowledgeArguments):
                 result = await search_knowledge(arguments, context)

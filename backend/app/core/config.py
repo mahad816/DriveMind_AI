@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     fts_language: str = "english"
     rag_max_context_chars: int = 12000
 
+    tool_rag_agent_enabled: bool = False
     agent_graph_enabled: bool = False
     agent_max_rewrite_attempts: int = 2
 
