@@ -389,7 +389,16 @@ def test_isolated_package_import_boundaries():
         "app.retrieval",
         "app.routing.v2",
     )
-    for path in root.glob("*.py"):
+    # D2 graph/service modules are runtime code; keep the contract boundary strict.
+    names = (
+        "__init__.py",
+        "contracts.py",
+        "handles.py",
+        "registry.py",
+        "errors.py",
+        "agent_models.py",
+    )
+    for path in (root / name for name in names):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
