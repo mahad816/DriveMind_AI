@@ -6,6 +6,7 @@ import math
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TypedDict
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
@@ -14,6 +15,7 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    MatchAny,
     PayloadSchemaType,
     PointIdsList,
     PointStruct,
@@ -27,6 +29,10 @@ DEFAULT_QDRANT_COLLECTION = "drivemind_chunks"
 DEFAULT_QDRANT_UPSERT_BATCH_SIZE = 100
 DEFAULT_RETRIEVAL_TOP_K = 8
 DEFAULT_RETRIEVAL_SCORE_THRESHOLD = 0.35
+
+
+class _SearchFilterArguments(TypedDict, total=False):
+    query_filter: Filter
 
 
 class VectorStoreError(Exception):
@@ -245,10 +251,28 @@ class QdrantVectorStore:
         limit: int,
         score_threshold: float | None = None,
         expected_vector_size: int | None = None,
+        file_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[ScoredChunkHit]:
         """Return chunk IDs ranked by vector similarity to the query embedding."""
         _validate_vector(query_vector, expected_size=expected_vector_size)
 
+        if file_ids is not None and (
+            not file_ids or any(not isinstance(i, uuid.UUID) for i in file_ids)
+        ):
+            raise VectorStoreError("Exact-file search requires resolved non-empty UUID identities")
+        filters: _SearchFilterArguments = (
+            {
+                "query_filter": Filter(
+                    must=[
+                        FieldCondition(
+                            key="drive_file_id", match=MatchAny(any=[str(i) for i in file_ids])
+                        )
+                    ]
+                )
+            }
+            if file_ids is not None
+            else {}
+        )
         client = self._get_client()
         try:
             response = await client.query_points(
@@ -258,6 +282,7 @@ class QdrantVectorStore:
                 score_threshold=score_threshold,
                 with_payload=False,
                 with_vectors=False,
+                **filters,
             )
         except UnexpectedResponse as exc:
             raise VectorStoreError(

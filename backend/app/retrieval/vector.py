@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import Settings, get_settings
-from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -17,6 +16,9 @@ from app.embeddings.base import EmbeddingService
 from app.embeddings.factory import get_embedding_service
 from app.embeddings.vector_store import QdrantVectorStore
 from app.retrieval.types import RetrievedChunk
+from app.retrieval.scope import eligibility, is_eligible, scoped_session
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import ResolvedFileScope
 
 
 class VectorRetriever:
@@ -35,24 +37,43 @@ class VectorRetriever:
         self.embedding_service = embedding_service or get_embedding_service(self.settings)
         self.vector_store = vector_store or QdrantVectorStore(self.settings)
 
-    async def retrieve(self, question: str) -> list[RetrievedChunk]:
+    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
+        if isinstance(question, RetrievalRequest):
+            async with scoped_session(self.db) as db:
+                return await VectorRetriever(
+                    db,
+                    self.settings,
+                    embedding_service=self.embedding_service,
+                    vector_store=self.vector_store,
+                )._retrieve(question)
+        return await self._retrieve(question)
+
+    async def _retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
         """Embed the question, search Qdrant, and hydrate chunk text from PostgreSQL."""
-        normalized = question.strip()
+        request = question if isinstance(question, RetrievalRequest) else None
+        normalized = (
+            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
+        )
         if not normalized:
             return []
 
         query_vector = (await self.embedding_service.embed_texts([normalized]))[0]
         hits = await self.vector_store.search_similar(
             query_vector,
-            limit=self.settings.retrieval_candidate_k,
+            limit=request.candidate_limit if request else self.settings.retrieval_candidate_k,
             score_threshold=self.settings.retrieval_score_threshold,
             expected_vector_size=self.embedding_service.embedding_dimension,
+            **(
+                {"file_ids": request.scope.file_ids}
+                if request and isinstance(request.scope, ResolvedFileScope)
+                else {}
+            ),
         )
         if not hits:
             return []
 
         chunk_ids = [hit.chunk_id for hit in hits]
-        chunks_by_id = await self._load_chunks(chunk_ids)
+        chunks_by_id = await self._load_chunks(chunk_ids, request)
         score_by_id = {hit.chunk_id: hit.score for hit in hits}
 
         retrieved: list[RetrievedChunk] = []
@@ -62,11 +83,7 @@ class VectorRetriever:
                 continue
             document = chunk.document
             drive_file = document.drive_file if document is not None else None
-            if (
-                document is None
-                or drive_file is None
-                or drive_file.status != DriveFileStatus.INDEXED
-            ):
+            if document is None or drive_file is None or not is_eligible(drive_file, request):
                 continue
             retrieved.append(
                 RetrievedChunk(
@@ -85,7 +102,9 @@ class VectorRetriever:
             )
         return retrieved
 
-    async def _load_chunks(self, chunk_ids: list[uuid.UUID]) -> dict[uuid.UUID, Chunk]:
+    async def _load_chunks(
+        self, chunk_ids: list[uuid.UUID], request: RetrievalRequest | None = None
+    ) -> dict[uuid.UUID, Chunk]:
         if not chunk_ids:
             return {}
 
@@ -95,7 +114,7 @@ class VectorRetriever:
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
                 Chunk.id.in_(chunk_ids),
-                DriveFile.status == DriveFileStatus.INDEXED,
+                *eligibility(request),
             )
             .options(
                 selectinload(Chunk.document).selectinload(Document.drive_file),

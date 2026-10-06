@@ -12,13 +12,14 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.config import Settings, get_settings
-from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.retrieval.dates import date_patterns
 from app.retrieval.filename_targets import extract_filename_targets
 from app.retrieval.types import RetrievedChunk
+from app.retrieval.scope import eligibility, is_eligible, scoped_session
+from app.routing.intent_frame.execution import RetrievalRequest
 
 # Regex to detect queries that explicitly name a file with an extension.
 # Examples: "Resume_2024.pdf", "notes.docx", "report.txt"
@@ -77,18 +78,27 @@ class KeywordRetriever:
         self.db = db
         self.settings = settings or get_settings()
 
-    async def retrieve(self, question: str) -> list[RetrievedChunk]:
+    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
+        if isinstance(question, RetrievalRequest):
+            async with scoped_session(self.db) as db:
+                return await KeywordRetriever(db, self.settings)._retrieve(question)
+        return await self._retrieve(question)
+
+    async def _retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
         """Search chunks by keyword and hydrate authoritative text from PostgreSQL."""
-        normalized = question.strip()
+        request = question if isinstance(question, RetrievalRequest) else None
+        normalized = (
+            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
+        )
         if not normalized:
             return []
 
-        hits = await self._search_hits(normalized)
+        hits = await self._search_hits(normalized, request)
         if not hits:
             return []
 
         chunk_ids = [hit.chunk_id for hit in hits]
-        chunks_by_id = await self._load_chunks(chunk_ids)
+        chunks_by_id = await self._load_chunks(chunk_ids, request)
         score_by_id = {hit.chunk_id: hit.score for hit in hits}
 
         retrieved: list[RetrievedChunk] = []
@@ -98,11 +108,7 @@ class KeywordRetriever:
                 continue
             document = chunk.document
             drive_file = document.drive_file if document is not None else None
-            if (
-                document is None
-                or drive_file is None
-                or drive_file.status != DriveFileStatus.INDEXED
-            ):
+            if document is None or drive_file is None or not is_eligible(drive_file, request):
                 continue
             score = score_by_id[chunk.id]
             retrieved.append(
@@ -122,7 +128,9 @@ class KeywordRetriever:
             )
         return retrieved
 
-    async def _search_hits(self, question: str) -> list[KeywordHit]:
+    async def _search_hits(
+        self, question: str, request: RetrievalRequest | None = None
+    ) -> list[KeywordHit]:
         """Return scored hits by merging FTS, filename-only, and phrase-search results.
 
         Five paths (highest to lowest priority):
@@ -148,24 +156,24 @@ class KeywordRetriever:
         # This works even for short names like "HI" that the long-term filter
         # would otherwise skip.
         if quoted_targets:
-            for hit in await self._filename_only_hits_for_terms(quoted_targets):
+            for hit in await self._filename_only_hits_for_terms(quoted_targets, request):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
 
-        for hit in await self._date_hits(question):
+        for hit in await self._date_hits(question, request):
             hits_by_id[hit.chunk_id] = hit
 
         # FTS path
         if ts_query is not None:
-            for hit in await self._fts_hits(question, ts_query):
+            for hit in await self._fts_hits(question, ts_query, request):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
 
         # Filename-explicit path (extension present in query)
         if has_filename:
-            for hit in await self._filename_only_hits(question):
+            for hit in await self._filename_only_hits(question, request):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
@@ -173,21 +181,28 @@ class KeywordRetriever:
         # Filename-always path — use long tokens regardless of extension presence.
         long_terms = [t for t in self._query_terms(question) if len(t) >= _MIN_FILENAME_TERM_LEN]
         if long_terms and not has_filename:
-            for hit in await self._filename_only_hits_for_terms(long_terms):
+            for hit in await self._filename_only_hits_for_terms(long_terms, request):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
 
         # Phrase-search path — exact substring match on chunk text
         if phrase is not None:
-            for hit in await self._phrase_hits(phrase):
+            for hit in await self._phrase_hits(phrase, request):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
 
-        return list(hits_by_id.values())
+        hits = list(hits_by_id.values())
+        return (
+            sorted(hits, key=lambda h: (-h.score, h.chunk_id.int))[: request.candidate_limit]
+            if request
+            else hits
+        )
 
-    async def _date_hits(self, question: str) -> list[KeywordHit]:
+    async def _date_hits(
+        self, question: str, request: RetrievalRequest | None = None
+    ) -> list[KeywordHit]:
         patterns = date_patterns(question)
         if not patterns:
             return []
@@ -196,11 +211,11 @@ class KeywordRetriever:
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
-                DriveFile.status == DriveFileStatus.INDEXED,
+                *eligibility(request),
                 or_(*[Chunk.text.op("~*")(pattern) for pattern in patterns]),
             )
             .order_by(DriveFile.name, Chunk.chunk_index)
-            .limit(self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
         )
         return [
             KeywordHit(chunk_id=chunk_id, score=_FILENAME_ONLY_SCORE) for chunk_id in result.all()
@@ -210,6 +225,7 @@ class KeywordRetriever:
         self,
         question: str,
         ts_query: ColumnElement[object],
+        request: RetrievalRequest | None = None,
     ) -> list[KeywordHit]:
         """Run PostgreSQL full-text search and return ranked hits."""
         filename_match = self._filename_match_expression(question)
@@ -221,11 +237,11 @@ class KeywordRetriever:
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
-                DriveFile.status == DriveFileStatus.INDEXED,
+                *eligibility(request),
                 Chunk.search_vector.op("@@")(ts_query),
             )
             .order_by(combined_score.desc(), Chunk.chunk_index.asc())
-            .limit(self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
         )
 
         hits: list[KeywordHit] = []
@@ -234,16 +250,20 @@ class KeywordRetriever:
                 hits.append(KeywordHit(chunk_id=chunk_id, score=float(score or 0.0)))
         return hits
 
-    async def _filename_only_hits(self, question: str) -> list[KeywordHit]:
+    async def _filename_only_hits(
+        self, question: str, request: RetrievalRequest | None = None
+    ) -> list[KeywordHit]:
         """Return chunk IDs from files whose name matches query terms.
 
         Used when the user mentions a file by name with an extension
         (e.g. ``Resume_2024.pdf``).
         """
         query_terms = self._query_terms(question)
-        return await self._filename_only_hits_for_terms(query_terms)
+        return await self._filename_only_hits_for_terms(query_terms, request)
 
-    async def _filename_only_hits_for_terms(self, terms: list[str]) -> list[KeywordHit]:
+    async def _filename_only_hits_for_terms(
+        self, terms: list[str], request: RetrievalRequest | None = None
+    ) -> list[KeywordHit]:
         """Return chunk IDs from files whose name contains any of the given terms.
 
         Core implementation shared by the explicit-extension path and the
@@ -267,11 +287,11 @@ class KeywordRetriever:
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
-                DriveFile.status == DriveFileStatus.INDEXED,
+                *eligibility(request),
                 or_(*filters),
             )
             .order_by(DriveFile.modified_at.desc(), Chunk.chunk_index.asc())
-            .limit(self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
         )
 
         return [
@@ -280,7 +300,9 @@ class KeywordRetriever:
             if isinstance(row[0], uuid.UUID)
         ]
 
-    async def _phrase_hits(self, phrase: str) -> list[KeywordHit]:
+    async def _phrase_hits(
+        self, phrase: str, request: RetrievalRequest | None = None
+    ) -> list[KeywordHit]:
         """Return chunks whose text contains the exact phrase via ILIKE substring match.
 
         Handles apostrophes and special characters safely via SQLAlchemy parameterised
@@ -298,11 +320,11 @@ class KeywordRetriever:
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
-                DriveFile.status == DriveFileStatus.INDEXED,
+                *eligibility(request),
                 Chunk.text.ilike(f"%{escaped}%", escape="\\"),
             )
             .order_by(Chunk.chunk_index.asc())
-            .limit(self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
         )
 
         return [
@@ -375,7 +397,9 @@ class KeywordRetriever:
             terms.append(cleaned)
         return terms
 
-    async def _load_chunks(self, chunk_ids: list[uuid.UUID]) -> dict[uuid.UUID, Chunk]:
+    async def _load_chunks(
+        self, chunk_ids: list[uuid.UUID], request: RetrievalRequest | None = None
+    ) -> dict[uuid.UUID, Chunk]:
         if not chunk_ids:
             return {}
         result = await self.db.scalars(
@@ -384,7 +408,7 @@ class KeywordRetriever:
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
                 Chunk.id.in_(chunk_ids),
-                DriveFile.status == DriveFileStatus.INDEXED,
+                *eligibility(request),
             )
             .options(selectinload(Chunk.document).selectinload(Document.drive_file))
         )

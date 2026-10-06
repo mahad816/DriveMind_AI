@@ -160,3 +160,9 @@ class RetrievalRequest(ContractModel):
     query: str = Field(min_length=1, max_length=8000, pattern=r"\S")
     scope: RetrievalScope
     candidate_limit: int = Field(ge=1, le=100)
+
+    @model_validator(mode="after")
+    def nonempty_exact_scope(self) -> "RetrievalRequest":
+        if isinstance(self.scope, ResolvedFileScope) and not self.scope.file_ids:
+            raise ValueError("an exact retrieval request requires at least one file")
+        return self
