@@ -1,0 +1,1356 @@
+{
+  "cases": [
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "collection",
+          "capability": "FILE_INVENTORY",
+          "operation": "LIST",
+          "ordering": "DEFAULT",
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 18,
+              "start": 0
+            },
+            {
+              "end": 17,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-001",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Show me the files.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "collection",
+          "capability": "FILE_INVENTORY",
+          "operation": "COUNT",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 27,
+              "start": 0
+            },
+            {
+              "end": 26,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-002",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "How many files are indexed?",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "collection",
+          "capability": "FILE_INVENTORY",
+          "operation": "LIST",
+          "ordering": "NEWEST_FIRST",
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 28,
+              "start": 0
+            },
+            {
+              "end": 27,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-003",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "List the files newest first.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "literal",
+          "capability": "FILE_TARGET",
+          "operation": "SUMMARIZE",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000065",
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 33,
+              "start": 0
+            },
+            {
+              "end": 32,
+              "start": 0
+            }
+          ],
+          "target_name": "architecture_notes.txt"
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-004",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Summarize architecture_notes.txt.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "literal",
+          "capability": "FILE_TARGET",
+          "operation": "ANSWER_QUESTION",
+          "ordering": null,
+          "query_spans": [
+            {
+              "end": 58,
+              "start": 0
+            },
+            {
+              "end": 57,
+              "start": 0
+            }
+          ],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000066",
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 58,
+              "start": 0
+            },
+            {
+              "end": 57,
+              "start": 0
+            }
+          ],
+          "target_name": "security_policy.pdf"
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-005",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "What does security_policy.pdf say about password rotation?",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "selector",
+          "capability": "FILE_TARGET",
+          "operation": "SUMMARIZE",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000067",
+          "resolved_message": null,
+          "role": null,
+          "selector": "LATEST",
+          "source_spans": [
+            {
+              "end": 30,
+              "start": 0
+            },
+            {
+              "end": 29,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-006",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Tell me about the latest file.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "collection",
+          "capability": "COLLECTION_SUMMARY",
+          "operation": "SUMMARIZE_EACH",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 24,
+              "start": 0
+            },
+            {
+              "end": 23,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-007",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Summarize all documents.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "original_query",
+          "capability": "GROUNDED_RAG",
+          "operation": "ANSWER",
+          "ordering": null,
+          "query_spans": [
+            {
+              "end": 47,
+              "start": 0
+            },
+            {
+              "end": 46,
+              "start": 0
+            }
+          ],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 47,
+              "start": 0
+            },
+            {
+              "end": 46,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-008",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "What do the documents say about authentication?",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "history",
+          "capability": "CONVERSATION_HISTORY",
+          "operation": "RECALL",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": 1,
+          "resolved_file_id": null,
+          "resolved_message": "Which documents discuss authentication?",
+          "role": "user",
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 20,
+              "start": 0
+            },
+            {
+              "end": 19,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-009",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "What did I ask last?",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": [
+          {
+            "role": "user",
+            "text": "Which documents discuss authentication?"
+          },
+          {
+            "role": "assistant",
+            "text": "We discussed synthetic authentication notes."
+          }
+        ]
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "context_file",
+          "capability": "FILE_TARGET",
+          "operation": "SUMMARIZE",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000065",
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 13,
+              "start": 0
+            },
+            {
+              "end": 12,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-010",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Summarize it.",
+      "state": {
+        "active_file_ids": [
+          "00000000-0000-0000-0000-000000000065"
+        ],
+        "active_topic": null,
+        "last_substantive_request": {
+          "input": {
+            "candidates": [
+              {
+                "candidate_id": "c1",
+                "kind": "literal_file",
+                "source": {
+                  "end": 32,
+                  "kind": "input",
+                  "start": 10
+                }
+              },
+              {
+                "candidate_id": "c2",
+                "kind": "indexed_collection",
+                "source": null
+              },
+              {
+                "candidate_id": "c3",
+                "kind": "context_file",
+                "reference_kind": "PREVIOUS_DOCUMENT",
+                "source": {
+                  "handle": "ACTIVE_FILES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c4",
+                "kind": "context_topic",
+                "source": {
+                  "handle": "ACTIVE_TOPIC",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c5",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "user"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c6",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "assistant"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c7",
+                "kind": "unspecified_target",
+                "source": {
+                  "end": 33,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c8",
+                "kind": "original_query",
+                "source": {
+                  "end": 33,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c9",
+                "kind": "original_query",
+                "source": {
+                  "end": 32,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c10",
+                "kind": "original_query",
+                "source": {
+                  "end": 32,
+                  "kind": "input",
+                  "start": 10
+                }
+              }
+            ],
+            "question": "Summarize architecture_notes.txt."
+          },
+          "interpretation": {
+            "kind": "requested_operations",
+            "requests": [
+              {
+                "action": {
+                  "operation": "SUMMARIZE",
+                  "target": {
+                    "candidate_id": "c1",
+                    "kind": "literal"
+                  }
+                },
+                "capability": "FILE_TARGET",
+                "input_span": {
+                  "end": 33,
+                  "start": 0
+                }
+              }
+            ]
+          }
+        },
+        "last_successful_request_bundle": {
+          "input": {
+            "candidates": [
+              {
+                "candidate_id": "c1",
+                "kind": "literal_file",
+                "source": {
+                  "end": 32,
+                  "kind": "input",
+                  "start": 10
+                }
+              },
+              {
+                "candidate_id": "c2",
+                "kind": "indexed_collection",
+                "source": null
+              },
+              {
+                "candidate_id": "c3",
+                "kind": "context_file",
+                "reference_kind": "PREVIOUS_DOCUMENT",
+                "source": {
+                  "handle": "ACTIVE_FILES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c4",
+                "kind": "context_topic",
+                "source": {
+                  "handle": "ACTIVE_TOPIC",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c5",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "user"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c6",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "assistant"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c7",
+                "kind": "unspecified_target",
+                "source": {
+                  "end": 33,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c8",
+                "kind": "original_query",
+                "source": {
+                  "end": 33,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c9",
+                "kind": "original_query",
+                "source": {
+                  "end": 32,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c10",
+                "kind": "original_query",
+                "source": {
+                  "end": 32,
+                  "kind": "input",
+                  "start": 10
+                }
+              }
+            ],
+            "question": "Summarize architecture_notes.txt."
+          },
+          "interpretation": {
+            "kind": "requested_operations",
+            "requests": [
+              {
+                "action": {
+                  "operation": "SUMMARIZE",
+                  "target": {
+                    "candidate_id": "c1",
+                    "kind": "literal"
+                  }
+                },
+                "capability": "FILE_TARGET",
+                "input_span": {
+                  "end": 33,
+                  "start": 0
+                }
+              }
+            ]
+          }
+        },
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "context_topic",
+          "capability": "GROUNDED_RAG",
+          "operation": "ANSWER",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 26,
+              "start": 0
+            },
+            {
+              "end": 25,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-011",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Can you elaborate on that?",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": {
+          "answer_summary": "We discussed synthetic authentication requirements.",
+          "original_question": "What does the documentation say about authentication?"
+        },
+        "last_substantive_request": {
+          "input": {
+            "candidates": [
+              {
+                "candidate_id": "c1",
+                "kind": "indexed_collection",
+                "source": null
+              },
+              {
+                "candidate_id": "c2",
+                "kind": "context_file",
+                "reference_kind": "PREVIOUS_DOCUMENT",
+                "source": {
+                  "handle": "ACTIVE_FILES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c3",
+                "kind": "context_topic",
+                "source": {
+                  "handle": "ACTIVE_TOPIC",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c4",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "user"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c5",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "assistant"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c6",
+                "kind": "unspecified_target",
+                "source": {
+                  "end": 53,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c7",
+                "kind": "original_query",
+                "source": {
+                  "end": 53,
+                  "kind": "input",
+                  "start": 0
+                }
+              }
+            ],
+            "question": "What does the documentation say about authentication?"
+          },
+          "interpretation": {
+            "kind": "requested_operations",
+            "requests": [
+              {
+                "capability": "GROUNDED_RAG",
+                "input_span": {
+                  "end": 53,
+                  "start": 0
+                },
+                "operation": "ANSWER",
+                "query": {
+                  "kind": "original_query",
+                  "span": {
+                    "end": 53,
+                    "start": 0
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "last_successful_request_bundle": {
+          "input": {
+            "candidates": [
+              {
+                "candidate_id": "c1",
+                "kind": "indexed_collection",
+                "source": null
+              },
+              {
+                "candidate_id": "c2",
+                "kind": "context_file",
+                "reference_kind": "PREVIOUS_DOCUMENT",
+                "source": {
+                  "handle": "ACTIVE_FILES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c3",
+                "kind": "context_topic",
+                "source": {
+                  "handle": "ACTIVE_TOPIC",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c4",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "user"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c5",
+                "kind": "prior_message",
+                "reference": {
+                  "relative_position": 1,
+                  "role": "assistant"
+                },
+                "source": {
+                  "handle": "RECENT_MESSAGES",
+                  "kind": "context"
+                }
+              },
+              {
+                "candidate_id": "c6",
+                "kind": "unspecified_target",
+                "source": {
+                  "end": 53,
+                  "kind": "input",
+                  "start": 0
+                }
+              },
+              {
+                "candidate_id": "c7",
+                "kind": "original_query",
+                "source": {
+                  "end": 53,
+                  "kind": "input",
+                  "start": 0
+                }
+              }
+            ],
+            "question": "What does the documentation say about authentication?"
+          },
+          "interpretation": {
+            "kind": "requested_operations",
+            "requests": [
+              {
+                "capability": "GROUNDED_RAG",
+                "input_span": {
+                  "end": 53,
+                  "start": 0
+                },
+                "operation": "ANSWER",
+                "query": {
+                  "kind": "original_query",
+                  "span": {
+                    "end": 53,
+                    "start": 0
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "TWO",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "collection",
+          "capability": "FILE_INVENTORY",
+          "operation": "LIST",
+          "ordering": "DEFAULT",
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": null,
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 14,
+              "start": 0
+            }
+          ],
+          "target_name": null
+        },
+        {
+          "binding": "literal",
+          "capability": "FILE_TARGET",
+          "operation": "SUMMARIZE",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000065",
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 52,
+              "start": 19
+            },
+            {
+              "end": 51,
+              "start": 19
+            }
+          ],
+          "target_name": "architecture_notes.txt"
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-012",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "List the files and summarize architecture_notes.txt.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "TWO",
+      "expected_readiness": "READY",
+      "expected_requests": [
+        {
+          "binding": "literal",
+          "capability": "FILE_TARGET",
+          "operation": "SUMMARIZE",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000065",
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 32,
+              "start": 0
+            }
+          ],
+          "target_name": "architecture_notes.txt"
+        },
+        {
+          "binding": "literal",
+          "capability": "FILE_TARGET",
+          "operation": "SUMMARIZE",
+          "ordering": null,
+          "query_spans": [],
+          "relative_position": null,
+          "resolved_file_id": "00000000-0000-0000-0000-000000000066",
+          "resolved_message": null,
+          "role": null,
+          "selector": null,
+          "source_spans": [
+            {
+              "end": 67,
+              "start": 37
+            },
+            {
+              "end": 66,
+              "start": 37
+            }
+          ],
+          "target_name": "security_policy.pdf"
+        }
+      ],
+      "expected_special": null,
+      "id": "v2-smoke-013",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Summarize architecture_notes.txt and summarize security_policy.pdf.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "TWO",
+      "expected_readiness": "UNSUPPORTED",
+      "expected_requests": [],
+      "expected_special": "UNSUPPORTED_OPERATION",
+      "id": "v2-smoke-014",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "List the files and summarize the first one.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "eligibility": "VISIBLE_INDEXED_ONLY",
+      "expected_cardinality": "ONE",
+      "expected_readiness": "UNSUPPORTED",
+      "expected_requests": [],
+      "expected_special": "UNSUPPORTED_OPERATION",
+      "id": "v2-smoke-015",
+      "metadata": [
+        {
+          "file_id": "00000000-0000-0000-0000-000000000065",
+          "modified_at": "2026-01-01T00:00:00Z",
+          "name": "architecture_notes.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000066",
+          "modified_at": "2026-01-02T00:00:00Z",
+          "name": "security_policy.pdf",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        },
+        {
+          "file_id": "00000000-0000-0000-0000-000000000067",
+          "modified_at": "2026-01-03T00:00:00Z",
+          "name": "launch_plan.txt",
+          "user_id": "00000000-0000-0000-0000-000000000001"
+        }
+      ],
+      "question": "Compare architecture_notes.txt and security_policy.pdf.",
+      "state": {
+        "active_file_ids": [],
+        "active_topic": null,
+        "last_substantive_request": null,
+        "last_successful_request_bundle": null,
+        "recent_messages": []
+      },
+      "user_id": "00000000-0000-0000-0000-000000000001"
+    }
+  ],
+  "description": "Fifteen frozen synthetic staged-v2 compatibility smoke cases. Not an accuracy benchmark. All names, metadata, history, and IDs are synthetic.",
+  "fixture_version": "v2-smoke-15-1.0",
+  "synthetic_only": true
+}

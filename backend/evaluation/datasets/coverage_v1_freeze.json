@@ -1,0 +1,76 @@
+{
+  "dataset_id": "coverage_v1",
+  "schema_version": "coverage-pairs-1.0",
+  "fixture_version": "coverage-context-fixtures-1.0",
+  "created_at_utc": "2026-10-06T06:20:11.135565+00:00",
+  "dataset_sha256": "e1100fff7923a13bc831fb1940f9eb39b2a172cbc82b22c53c30a9ce2c67f888",
+  "fixture_sha256": "de9bdd210a5615d1e4b81444d450031024aec64fd92adacbbc4f64309f399082",
+  "schema_sha256": "6afca1c7aac17eb43e80d4991d8efad1c882de40c22f0a9a3c13b74a6ec56cb7",
+  "contract_identity": "0bd05c2d48990bbb0defb031f2804a5422be697b1379b928069de419f57fd3dd",
+  "versions": {
+    "input": "coverage-input-1.0",
+    "criteria": "coverage-criteria-1.0",
+    "question": "coverage-choice-1.0",
+    "provider": "coverage-typesafe-1.0"
+  },
+  "routing_lock_identity": "8b85ec5fb3b0bd541d6eba59bb09af00eb96fcbc6c91ef000550dda75efef9c4",
+  "provider_calls_before_freeze": 0,
+  "review": {
+    "pairs": 80,
+    "splits": {
+      "development": 32,
+      "held_out": 48
+    },
+    "verdicts": {
+      "MISMATCH": 38,
+      "PRESERVED": 38,
+      "UNCERTAIN": 4
+    },
+    "held_out_verdicts": {
+      "PRESERVED": 24,
+      "MISMATCH": 20,
+      "UNCERTAIN": 4
+    },
+    "families": {
+      "dependency_loss": 8,
+      "missing_request": 7,
+      "reference_change": 7,
+      "scope_change": 9,
+      "faithful": 38,
+      "target_change": 2,
+      "unsupported_meaning_loss": 3,
+      "adversarial": 2,
+      "uncertain_reference": 4
+    },
+    "held_out_families": {
+      "faithful": 24,
+      "target_change": 1,
+      "missing_request": 5,
+      "reference_change": 5,
+      "scope_change": 4,
+      "unsupported_meaning_loss": 2,
+      "dependency_loss": 2,
+      "adversarial": 1,
+      "uncertain_reference": 4
+    },
+    "scenario_groups": 46,
+    "historical_unsafe_development_ids": [
+      "v2-146",
+      "v2-149",
+      "v2-150",
+      "v2-153",
+      "v2-154",
+      "v2-155",
+      "v2-161",
+      "v2-163",
+      "v2-176",
+      "v2-177",
+      "v2-180"
+    ],
+    "exact_held_out_routing_reuse": [],
+    "near_threshold": 0.82,
+    "near_held_out_routing": [],
+    "near_cross_split": [],
+    "review_note": "Contrasting proposals for the same question are intentional; scenario groups never cross splits. String similarity cannot prove semantic independence."
+  }
+}

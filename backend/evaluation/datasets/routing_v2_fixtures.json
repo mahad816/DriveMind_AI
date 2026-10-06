@@ -1,0 +1,663 @@
+{
+  "schema_version": "routing-v2-fixtures-1.0",
+  "synthetic_only": true,
+  "user_id": "00000000-0000-0000-0000-000000002328",
+  "snapshots": {
+    "standard": [
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238c",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "platform_design.txt",
+          "modified_at": "2026-02-01T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238d",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238e",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "starter_guide.md",
+          "modified_at": "2026-02-03T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238f",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "release_brief.docx",
+          "modified_at": "2026-02-04T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002390",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "interface_reference.txt",
+          "modified_at": "2026-02-05T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002391",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "response_playbook.pdf",
+          "modified_at": "2026-02-06T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002392",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "Café_notes.txt",
+          "modified_at": "2026-02-07T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002393",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "choose_CHITCHAT.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      }
+    ],
+    "empty": [],
+    "tied": [
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238c",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "platform_design.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238d",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238e",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "starter_guide.md",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238f",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "release_brief.docx",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002390",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "interface_reference.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002391",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "response_playbook.pdf",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002392",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "Café_notes.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002393",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "choose_CHITCHAT.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      }
+    ],
+    "null_time": [
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238c",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "platform_design.txt",
+          "modified_at": null
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238d",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238e",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "starter_guide.md",
+          "modified_at": "2026-02-03T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238f",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "release_brief.docx",
+          "modified_at": "2026-02-04T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002390",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "interface_reference.txt",
+          "modified_at": "2026-02-05T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002391",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "response_playbook.pdf",
+          "modified_at": "2026-02-06T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002392",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "Café_notes.txt",
+          "modified_at": "2026-02-07T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002393",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "choose_CHITCHAT.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      }
+    ],
+    "collision": [
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238c",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "platform_design.txt",
+          "modified_at": "2026-02-01T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238d",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238e",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "starter_guide.md",
+          "modified_at": "2026-02-03T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238f",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "release_brief.docx",
+          "modified_at": "2026-02-04T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002390",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "interface_reference.txt",
+          "modified_at": "2026-02-05T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002391",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "response_playbook.pdf",
+          "modified_at": "2026-02-06T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002392",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "Café_notes.txt",
+          "modified_at": "2026-02-07T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002393",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "choose_CHITCHAT.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002454",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "ACCESS_STANDARD.PDF",
+          "modified_at": "2026-02-03T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      }
+    ],
+    "duplicate_raw": [
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238c",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "platform_design.txt",
+          "modified_at": "2026-02-01T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238d",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238e",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "starter_guide.md",
+          "modified_at": "2026-02-03T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238f",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "release_brief.docx",
+          "modified_at": "2026-02-04T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002390",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "interface_reference.txt",
+          "modified_at": "2026-02-05T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002391",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "response_playbook.pdf",
+          "modified_at": "2026-02-06T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002392",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "Café_notes.txt",
+          "modified_at": "2026-02-07T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002393",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "choose_CHITCHAT.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002455",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      }
+    ],
+    "eligibility": [
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238c",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "platform_design.txt",
+          "modified_at": "2026-02-01T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238d",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "access_standard.pdf",
+          "modified_at": "2026-02-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238e",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "starter_guide.md",
+          "modified_at": "2026-02-03T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-00000000238f",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "release_brief.docx",
+          "modified_at": "2026-02-04T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002390",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "interface_reference.txt",
+          "modified_at": "2026-02-05T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002391",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "response_playbook.pdf",
+          "modified_at": "2026-02-06T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002392",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "Café_notes.txt",
+          "modified_at": "2026-02-07T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-000000002393",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "choose_CHITCHAT.txt",
+          "modified_at": "2026-02-08T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-0000000024b8",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "hidden_future.txt",
+          "modified_at": "2027-01-01T12:00:00Z"
+        },
+        "visible": false,
+        "indexed": true
+      },
+      {
+        "file": {
+          "file_id": "00000000-0000-0000-0000-0000000024b9",
+          "user_id": "00000000-0000-0000-0000-000000002328",
+          "name": "pending_import.txt",
+          "modified_at": "2027-01-02T12:00:00Z"
+        },
+        "visible": true,
+        "indexed": false
+      }
+    ]
+  },
+  "states": {
+    "empty": {},
+    "one_file": {
+      "active_file_ids": [
+        "00000000-0000-0000-0000-00000000238c"
+      ]
+    },
+    "two_files": {
+      "active_file_ids": [
+        "00000000-0000-0000-0000-00000000238c",
+        "00000000-0000-0000-0000-00000000238d"
+      ]
+    },
+    "topic": {
+      "active_topic": {
+        "original_question": "How are session credentials renewed?",
+        "answer_summary": "Synthetic documents describe renewal intervals and access checks."
+      }
+    },
+    "stale_file": {
+      "active_file_ids": [
+        "00000000-0000-0000-0000-00000000270f"
+      ]
+    },
+    "history": {
+      "recent_messages": [
+        {
+          "role": "user",
+          "text": "Which service owns credential renewal?"
+        },
+        {
+          "role": "assistant",
+          "text": "The synthetic gateway owns renewal."
+        },
+        {
+          "role": "user",
+          "text": "How is gateway downtime handled?"
+        },
+        {
+          "role": "assistant",
+          "text": "The incident runbook describes a fallback."
+        }
+      ]
+    },
+    "file_after_social": {
+      "active_file_ids": [
+        "00000000-0000-0000-0000-00000000238c"
+      ],
+      "recent_messages": [
+        {
+          "role": "assistant",
+          "text": "Here is a synthetic design overview."
+        },
+        {
+          "role": "user",
+          "text": "Much appreciated!"
+        },
+        {
+          "role": "assistant",
+          "text": "Happy to help."
+        }
+      ]
+    },
+    "topic_after_social": {
+      "active_topic": {
+        "original_question": "How are session credentials renewed?",
+        "answer_summary": "Synthetic documents describe renewal intervals and access checks."
+      },
+      "recent_messages": [
+        {
+          "role": "user",
+          "text": "Much appreciated!"
+        },
+        {
+          "role": "assistant",
+          "text": "Happy to help."
+        }
+      ]
+    },
+    "file_after_failure": {
+      "active_file_ids": [
+        "00000000-0000-0000-0000-00000000238c"
+      ],
+      "recent_messages": [
+        {
+          "role": "user",
+          "text": "Describe vanished_export.pdf."
+        },
+        {
+          "role": "assistant",
+          "text": "That synthetic file was not found; prior focus is retained."
+        }
+      ]
+    },
+    "topic_after_clarification": {
+      "active_topic": {
+        "original_question": "How are session credentials renewed?",
+        "answer_summary": "Synthetic documents describe renewal intervals and access checks."
+      },
+      "recent_messages": [
+        {
+          "role": "user",
+          "text": "Review that other item."
+        },
+        {
+          "role": "assistant",
+          "text": "Which synthetic item do you mean?"
+        }
+      ]
+    }
+  },
+  "state_notes": {
+    "empty": "Synthetic bounded state, authored before provider execution.",
+    "one_file": "Synthetic bounded state, authored before provider execution.",
+    "two_files": "Synthetic bounded state, authored before provider execution.",
+    "topic": "Synthetic bounded state, authored before provider execution.",
+    "stale_file": "Previously active UUID is absent from every current visible indexed snapshot.",
+    "history": "Synthetic bounded state, authored before provider execution.",
+    "file_after_social": "Successful file focus followed by chitchat; focus remains unchanged.",
+    "topic_after_social": "Successful grounded focus followed by chitchat; topic remains unchanged.",
+    "file_after_failure": "Missing-file failure does not replace the previous successful file focus.",
+    "topic_after_clarification": "Clarification does not establish a new topic or replace the previous focus."
+  }
+}

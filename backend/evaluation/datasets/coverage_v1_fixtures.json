@@ -1,0 +1,92 @@
+{
+  "fixture_version": "coverage-context-fixtures-1.0",
+  "synthetic_only": true,
+  "contexts": {
+    "empty": {
+      "snapshot_identity": "5ba264dd596b440ab08ca042236b0e8563218941396f9a328a8895fd5b8fe70f",
+      "prior_file_count": 0,
+      "prior_topic_count": 0,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "file": {
+      "snapshot_identity": "814fdb2d2ca6446ce15af1c9a4a3667657b5a553b1085bda944287edc6d0640d",
+      "prior_file_count": 1,
+      "prior_topic_count": 0,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "topic": {
+      "snapshot_identity": "88aaaa97284586ba1ab3a351a9c25d92d3d60f09f0320858def8010ce178863e",
+      "prior_file_count": 0,
+      "prior_topic_count": 1,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "history": {
+      "snapshot_identity": "f80aa22a2a6c4973f701100610aabccaa93fdb23f519ea8ffef1d192f986a4d9",
+      "prior_file_count": 0,
+      "prior_topic_count": 0,
+      "user_history_positions": [
+        1,
+        2
+      ],
+      "assistant_history_positions": [
+        1,
+        2
+      ]
+    },
+    "both": {
+      "snapshot_identity": "2ec5efedde89aa91a4f1cd8ce1ff1a2ae632843331ecfc0e6d2d3af5ffcc546c",
+      "prior_file_count": 1,
+      "prior_topic_count": 1,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "historical_one_file": {
+      "snapshot_identity": "3cad1eb25e8c68ae218a2be12a3dbbf08433bb8966920c4647749a2fec3530dd",
+      "prior_file_count": 1,
+      "prior_topic_count": 0,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "historical_two_files": {
+      "snapshot_identity": "a1d7175c599cc43c1fed20352c8c17a68efed5da797d3b8891cbd1dc64ce3966",
+      "prior_file_count": 2,
+      "prior_topic_count": 0,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "historical_empty": {
+      "snapshot_identity": "5ba264dd596b440ab08ca042236b0e8563218941396f9a328a8895fd5b8fe70f",
+      "prior_file_count": 0,
+      "prior_topic_count": 0,
+      "user_history_positions": [],
+      "assistant_history_positions": []
+    },
+    "dev_topic_history": {
+      "snapshot_identity": "6d1b7065a202d0f750ccd39018e85e1b7bf6e1f23a73d0902beb70b71c1c8bae",
+      "prior_file_count": 0,
+      "prior_topic_count": 1,
+      "user_history_positions": [
+        1,
+        2
+      ],
+      "assistant_history_positions": [
+        1,
+        2
+      ]
+    }
+  },
+  "notes": {
+    "empty": "Synthetic bounded descriptors only; snapshot hash binds private state without sending IDs or history text.",
+    "file": "Synthetic bounded descriptors only; snapshot hash binds private state without sending IDs or history text.",
+    "topic": "Synthetic bounded descriptors only; snapshot hash binds private state without sending IDs or history text.",
+    "history": "Synthetic bounded descriptors only; snapshot hash binds private state without sending IDs or history text.",
+    "both": "Synthetic bounded descriptors only; snapshot hash binds private state without sending IDs or history text.",
+    "historical_one_file": "Bounded synthetic context from routing_v2; no historical text/filenames serialized.",
+    "historical_two_files": "Bounded synthetic context from routing_v2; no historical text/filenames serialized.",
+    "historical_empty": "Bounded synthetic context from routing_v2; no historical text/filenames serialized.",
+    "dev_topic_history": "Synthetic topic and bounded history positions; no text sent."
+  }
+}

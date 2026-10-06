@@ -1,0 +1,36 @@
+{
+  "versions": {
+    "preparation": "v2-preparation-2.1",
+    "domain": "v2-domain-2.2",
+    "stage1": "v2-structure-1.1",
+    "stage2": "v2-atomic-requests-2.1",
+    "options": "v2-option-generation-1.1",
+    "resolver": "v2-resolver-2.1",
+    "probabilities": "typesafe-probabilities-2.0"
+  },
+  "source_hashes": {
+    "v2/__init__.py": "0a6eb34347059b319c84ba9901eb1ea0d1ba08686c854f0243e37df3ba75f00e",
+    "v2/checkpoints.py": "a0bcd01f60155d69f075c222a836bde0317aca1d2a53eb80a751c58c0e1f963a",
+    "v2/contracts.py": "99af80c53d58a4b1165dada7fbf6c591b981da07403c11e71b1df4cf043a000d",
+    "v2/domain.py": "dcd3a84fd4a83c38feecbcdf899fe2dfa1dbf24dded3c3ef74f08a75fcc826a9",
+    "v2/observations.py": "7912b133a30f585ba2781b4e3ab2260284f17c0c526b1f181b50c69d0f0d04c8",
+    "v2/options.py": "f27d782abe80c87280eb96e22a62e2113e1a1d6720731f4fba9707b7d6f442de",
+    "v2/preparation.py": "f9519c9fa0551259a91ef785e45625915aa7b0bad1222b72cdd2089a8c969737",
+    "v2/questions.py": "e862c301bcf9e787e278a1e1612b81b376b1ce1b1aa1016d658abd7f11a6d28c",
+    "v2/resolved.py": "adc0c6031eb4b938d258eb0601c434d6d821cc3479ca429f592d779226f6dde0",
+    "v2/resolver.py": "7fa04826d7d0a9a4a5779810a6f49c805a8313b576ef59c7c83692ac1507a4c5",
+    "v2/state.py": "fd623502c74e2be5d3106a04e5205600acaa364c901c9832e26c6b56b4b27f34",
+    "v2/translation.py": "a4094bf20c2645f64eea55c1c343fd1d8c583e387f9fb85dfced8eabef00d68b",
+    "v2/wire.py": "3057bb85e066cbcac34974cfaa41022c4debe44637a50ae02d0d93df75ebe996",
+    "v2/providers/__init__.py": "fbba70573164249d35d1d4b82024ed52f5c395ef3eb96f34c3d7f42645239707",
+    "v2/providers/typesafe.py": "08aa5b7167b017eb3a19fd6c503918504d3be15f2c88755e01583890d6b819b0",
+    "providers/probability_validation.py": "a73a17e177e6bce1371c9742da23d2ec36a25cf351b309f3f77c62970a6bbda2",
+    "providers/typesafe.py": "cfaa0e34492e6e9c68f4e940b85ec42a228c10583b4c80f9d78f9a1f05487247"
+  },
+  "stage1_question_hash": "96989fc432f93fb7275f69780117fcc959a6c9e063f9fbee3bd5ea5a4847f913",
+  "domain_schema_hash": "e8e13f1092698626d3a6ef91c8b7b43faec58caf6ef30d9fdd8bf9e1d69f3f0b",
+  "preparation_schema_hash": "6dcaf0c0da32e3f8eadb0c1e458090671d12d5d5fd2e6be3e8848e5ebd7db10e",
+  "atomic_option_schema_hash": "06dfacd44cb92799678cd5c0f7591b43918437c8928182335162a46d67bd28f1",
+  "special_outcomes_hash": "91909cb8ea702beebfa85a75a5cc57f7868159168610ff20f04aacaefdaed1e4",
+  "pydantic_version": "2.13.4"
+}

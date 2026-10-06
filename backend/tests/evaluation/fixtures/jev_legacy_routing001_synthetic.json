@@ -1,0 +1,168 @@
+{
+  "artifact_version": "jev-shadow-1.0",
+  "base_url": "https://jev-ai.org/api/v1",
+  "criteria_hash": "0ead6ccaaa4a749753ecacff937b1ef9611859fb832de7558228108e1b0f6a10",
+  "criteria_version": "jev-routing-criteria-v1",
+  "dataset_sha256": "4831a76ee7e782e968a0224e6b935729712ba21e2eb25617a2cddbe268549884",
+  "dataset_version": "routing-1.0",
+  "model": "jev-1.13",
+  "stage": "smoke",
+  "timestamp": "2000-01-01T00:00:00+00:00",
+  "cases": [
+    {
+      "id": "routing-001",
+      "gold": {
+        "difficulty": "paraphrase",
+        "expected_clarification_reason": null,
+        "expected_mode": "SINGLE",
+        "expected_requests": [
+          {
+            "argument_constraints": null,
+            "capability": "FILE_INVENTORY",
+            "operation": "LIST"
+          }
+        ],
+        "history": [],
+        "history_window_complete": true,
+        "id": "routing-001",
+        "notes": "Label desired semantics; do not infer file existence or executor support.",
+        "question": "List all files",
+        "tags": []
+      },
+      "jev": {
+        "answers": {
+          "clarification": {
+            "confidence": 0.52,
+            "noul": null,
+            "probabilities": {
+              "AMBIGUOUS_TARGET": 0.12,
+              "COMPETING_INTERPRETATIONS": 0.0,
+              "MISSING_ARGUMENT": 0.09,
+              "MISSING_SCOPE": 0.59,
+              "NONE": 0.18,
+              "UNRESOLVED_REFERENCE": 0.0,
+              "UNSUPPORTED_OPERATION": 0.02
+            },
+            "selected": "MISSING_SCOPE"
+          },
+          "has_chitchat": {
+            "confidence": null,
+            "noul": 0.22,
+            "probabilities": {},
+            "selected": null
+          },
+          "has_collection_summary": {
+            "confidence": null,
+            "noul": 0.09,
+            "probabilities": {},
+            "selected": null
+          },
+          "has_conversation_history": {
+            "confidence": null,
+            "noul": 0.12,
+            "probabilities": {},
+            "selected": null
+          },
+          "has_file_inventory": {
+            "confidence": null,
+            "noul": 0.95,
+            "probabilities": {},
+            "selected": null
+          },
+          "has_file_target": {
+            "confidence": null,
+            "noul": 0.07,
+            "probabilities": {},
+            "selected": null
+          },
+          "has_grounded_rag": {
+            "confidence": null,
+            "noul": 0.68,
+            "probabilities": {},
+            "selected": null
+          },
+          "mode": {
+            "confidence": 0.84,
+            "noul": null,
+            "probabilities": {
+              "CLARIFY": 0.11,
+              "COMPOUND": 0.0,
+              "SINGLE": 0.89
+            },
+            "selected": "SINGLE"
+          },
+          "operation_1": {
+            "confidence": 1.0,
+            "noul": null,
+            "probabilities": {
+              "CHITCHAT:RESPOND": 0.0,
+              "COLLECTION_SUMMARY:SUMMARIZE_EACH": 0.0,
+              "CONVERSATION_HISTORY:RECALL": 0.0,
+              "FILE_INVENTORY:COUNT": 0.0,
+              "FILE_INVENTORY:LATEST": 0.0,
+              "FILE_INVENTORY:LIST": 1.0,
+              "FILE_INVENTORY:OLDEST": 0.0,
+              "FILE_TARGET:ANSWER_QUESTION": 0.0,
+              "FILE_TARGET:SUMMARIZE": 0.0,
+              "GROUNDED_RAG:ANSWER": 0.0,
+              "NONE": 0.0
+            },
+            "selected": "FILE_INVENTORY:LIST"
+          },
+          "operation_2": {
+            "confidence": 0.64,
+            "noul": null,
+            "probabilities": {
+              "CHITCHAT:RESPOND": 0.0,
+              "COLLECTION_SUMMARY:SUMMARIZE_EACH": 0.0,
+              "CONVERSATION_HISTORY:RECALL": 0.0,
+              "FILE_INVENTORY:COUNT": 0.0,
+              "FILE_INVENTORY:LATEST": 0.0,
+              "FILE_INVENTORY:LIST": 0.32,
+              "FILE_INVENTORY:OLDEST": 0.0,
+              "FILE_TARGET:ANSWER_QUESTION": 0.0,
+              "FILE_TARGET:SUMMARIZE": 0.0,
+              "GROUNDED_RAG:ANSWER": 0.0,
+              "NONE": 0.68
+            },
+            "selected": "NONE"
+          },
+          "operation_3": {
+            "confidence": 0.61,
+            "noul": null,
+            "probabilities": {
+              "CHITCHAT:RESPOND": 0.0,
+              "COLLECTION_SUMMARY:SUMMARIZE_EACH": 0.0,
+              "CONVERSATION_HISTORY:RECALL": 0.0,
+              "FILE_INVENTORY:COUNT": 0.0,
+              "FILE_INVENTORY:LATEST": 0.0,
+              "FILE_INVENTORY:LIST": 0.66,
+              "FILE_INVENTORY:OLDEST": 0.0,
+              "FILE_TARGET:ANSWER_QUESTION": 0.0,
+              "FILE_TARGET:SUMMARIZE": 0.0,
+              "GROUNDED_RAG:ANSWER": 0.0,
+              "NONE": 0.34
+            },
+            "selected": "FILE_INVENTORY:LIST"
+          }
+        },
+        "calls": 1,
+        "criteria_version": "jev-routing-criteria-v1",
+        "history_truncated": false,
+        "http_status": 200,
+        "latency_ms": 100.0,
+        "model": "jev-1.13",
+        "model_version": "jev-1.13-20260917",
+        "prediction": null,
+        "provider": "jev-ai.org",
+        "status": "INVALID_RESPONSE",
+        "upstream_latency_ms": 25.0,
+        "usage": {
+          "input_tokens": 100,
+          "output_tokens": 20
+        }
+      }
+    }
+  ],
+  "synthetic_regression_fixture": true
+}

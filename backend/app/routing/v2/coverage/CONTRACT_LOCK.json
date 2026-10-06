@@ -1,0 +1,21 @@
+{
+  "versions": {
+    "input": "coverage-input-1.0",
+    "criteria": "coverage-criteria-1.0",
+    "question": "coverage-choice-1.0",
+    "provider": "coverage-typesafe-1.0"
+  },
+  "routing_lock_identity": "8b85ec5fb3b0bd541d6eba59bb09af00eb96fcbc6c91ef000550dda75efef9c4",
+  "routing_manifest_identity": "52297df6f7f8734c5fc28522dbfaa3b3bda5e9fbfbc4439a46794e06842599ac",
+  "source_hashes": {
+    "__init__.py": "b0551030abca903434d9b115754e84ba9883e3e008f3f2348e28d8e834dea1bb",
+    "contracts.py": "71ab376d4c92102cd8a7183623078bc4ebc66bf7fb1622a1e51b8839ab802ba7",
+    "criteria.py": "0ade9f67bac8793d257925a371d92d6c8aea4d77125b0cf58f8a5e7952d57277",
+    "providers/__init__.py": "c5eedc2f24fa2be0b52cab3582ab48dd87ced6fad8c604ea991d498e69cb6103",
+    "providers/typesafe_coverage.py": "f0390d75e079b619054ffcd42aab34fa322d46edd3f6c645c5d4139d1ed8c9dc"
+  },
+  "shared_probability_source": "a73a17e177e6bce1371c9742da23d2ec36a25cf351b309f3f77c62970a6bbda2",
+  "question_hash": "5b27252bda792122efa7d1c102ee6f753ad1ad61f0fca0b4d54adbe68af4ea54",
+  "input_schema_hash": "7ecd1f464c05dab406475590735f0f34e89ae89fcf08b7630f9b099a2368df31",
+  "result_schema_hash": "1570a22cda15e8211d8782564e64518d94c30b7a7563ab0feb2c4437aa20c29f"
+}

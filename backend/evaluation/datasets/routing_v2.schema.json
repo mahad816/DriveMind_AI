@@ -1,0 +1,445 @@
+{
+  "$defs": {
+    "FileContextKind": {
+      "enum": [
+        "IT",
+        "THAT",
+        "THIS_FILE",
+        "PREVIOUS_DOCUMENT"
+      ],
+      "title": "FileContextKind",
+      "type": "string"
+    },
+    "GoldReadiness": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "READY",
+            "NEEDS_CLARIFICATION",
+            "UNSUPPORTED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "file_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Id"
+        },
+        "message_text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Message Text"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "GoldReadiness",
+      "type": "object"
+    },
+    "GoldReference": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "collection",
+            "literal",
+            "selector",
+            "context_file",
+            "context_topic",
+            "history",
+            "original_query",
+            "social",
+            "unspecified"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "context_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileContextKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "selector": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceSelector"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "role": {
+          "anyOf": [
+            {
+              "enum": [
+                "user",
+                "assistant"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "relative_position": {
+          "anyOf": [
+            {
+              "maximum": 6,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Position"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "GoldReference",
+      "type": "object"
+    },
+    "GoldRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "enum": [
+            "FILE_INVENTORY",
+            "FILE_TARGET",
+            "COLLECTION_SUMMARY",
+            "GROUNDED_RAG",
+            "CONVERSATION_HISTORY",
+            "CHITCHAT"
+          ],
+          "title": "Capability",
+          "type": "string"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "reference": {
+          "$ref": "#/$defs/GoldReference"
+        },
+        "ordering": {
+          "anyOf": [
+            {
+              "enum": [
+                "NAME_ASC",
+                "NAME_DESC",
+                "MODIFIED_AT_ASC",
+                "MODIFIED_AT_DESC"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ordering"
+        },
+        "source_ranges": {
+          "items": {
+            "$ref": "#/$defs/InputSpan"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Source Ranges",
+          "type": "array"
+        },
+        "query_ranges": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InputSpan"
+          },
+          "maxItems": 3,
+          "title": "Query Ranges",
+          "type": "array"
+        },
+        "readiness": {
+          "$ref": "#/$defs/GoldReadiness"
+        }
+      },
+      "required": [
+        "capability",
+        "operation",
+        "reference",
+        "source_ranges",
+        "readiness"
+      ],
+      "title": "GoldRequest",
+      "type": "object"
+    },
+    "InputSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "exclusiveMaximum": 8000,
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "end": {
+          "exclusiveMinimum": 0,
+          "maximum": 8000,
+          "title": "End",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "title": "InputSpan",
+      "type": "object"
+    },
+    "ReferenceSelector": {
+      "enum": [
+        "LATEST",
+        "OLDEST"
+      ],
+      "title": "ReferenceSelector",
+      "type": "string"
+    },
+    "RoutingV2Case": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^v2-[0-9]{3}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "metadata_fixture": {
+          "title": "Metadata Fixture",
+          "type": "string"
+        },
+        "state_fixture": {
+          "title": "State Fixture",
+          "type": "string"
+        },
+        "cohort": {
+          "enum": [
+            "ONE",
+            "COMPOUND",
+            "SAFETY"
+          ],
+          "title": "Cohort",
+          "type": "string"
+        },
+        "expected_cardinality": {
+          "enum": [
+            "ONE",
+            "TWO",
+            "THREE",
+            "OVER_LIMIT",
+            "UNINTERPRETABLE"
+          ],
+          "title": "Expected Cardinality",
+          "type": "string"
+        },
+        "expected_special": {
+          "anyOf": [
+            {
+              "enum": [
+                "UNSUPPORTED_OPERATION",
+                "UNINTERPRETABLE",
+                "OVER_LIMIT"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Special"
+        },
+        "expected_requests": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GoldRequest"
+          },
+          "maxItems": 3,
+          "title": "Expected Requests",
+          "type": "array"
+        },
+        "expected_readiness": {
+          "enum": [
+            "READY",
+            "NEEDS_CLARIFICATION",
+            "UNSUPPORTED",
+            "NOT_APPLICABLE"
+          ],
+          "title": "Expected Readiness",
+          "type": "string"
+        },
+        "unsupported_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UnsupportedReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "difficulty": {
+          "enum": [
+            "LITERAL",
+            "PARAPHRASE",
+            "BOUNDARY",
+            "CONTEXTUAL",
+            "COMPOUND",
+            "AMBIGUOUS_UNSUPPORTED"
+          ],
+          "title": "Difficulty",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Tags",
+          "type": "array"
+        },
+        "notes": {
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "metadata_fixture",
+        "state_fixture",
+        "cohort",
+        "expected_cardinality",
+        "expected_readiness",
+        "difficulty",
+        "tags",
+        "notes"
+      ],
+      "title": "RoutingV2Case",
+      "type": "object"
+    },
+    "UnsupportedReason": {
+      "enum": [
+        "OPERATION",
+        "SCOPE",
+        "DEPENDENCY",
+        "RESULT_DEPENDENCY_UNSUPPORTED",
+        "REQUEST_LIMIT"
+      ],
+      "title": "UnsupportedReason",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "dataset_id": {
+      "const": "routing_v2",
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "routing-v2-gold-1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "synthetic_only": {
+      "const": true,
+      "title": "Synthetic Only",
+      "type": "boolean"
+    },
+    "contract_lock_sha256": {
+      "const": "8b85ec5fb3b0bd541d6eba59bb09af00eb96fcbc6c91ef000550dda75efef9c4",
+      "title": "Contract Lock Sha256",
+      "type": "string"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/RoutingV2Case"
+      },
+      "maxItems": 180,
+      "minItems": 180,
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "dataset_id",
+    "schema_version",
+    "synthetic_only",
+    "contract_lock_sha256",
+    "cases"
+  ],
+  "title": "RoutingV2Dataset",
+  "type": "object"
+}

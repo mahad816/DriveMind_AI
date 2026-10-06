@@ -1,0 +1,163 @@
+{
+  "dataset_id": "routing_v2",
+  "schema_version": "routing-v2-gold-1.0",
+  "fixture_version": "routing-v2-fixtures-1.0",
+  "created_at_utc": "2026-10-05T22:13:15.650788+00:00",
+  "contract_lock_sha256": "8b85ec5fb3b0bd541d6eba59bb09af00eb96fcbc6c91ef000550dda75efef9c4",
+  "dataset_sha256": "06559a24355c021d1b95fa788d9fbc02702f84ef7b47799205f825dae0c6eaa5",
+  "fixture_sha256": "519c9779cb0c5c4fa47f0744001f56df6a67e41eb6296c285a3fdef9563f9df2",
+  "schema_sha256": "8e9bc0a61aa64f68ca90285d2bfd85aa129609273b17c1caa0ff9ff4d2437e55",
+  "provider_calls_before_freeze": 0,
+  "review": {
+    "case_count": 180,
+    "cohorts": {
+      "ONE": 100,
+      "COMPOUND": 45,
+      "SAFETY": 35
+    },
+    "cardinality": {
+      "ONE": 123,
+      "TWO": 45,
+      "THREE": 10,
+      "OVER_LIMIT": 2
+    },
+    "capabilities": {
+      "FILE_INVENTORY": 61,
+      "FILE_TARGET": 84,
+      "COLLECTION_SUMMARY": 17,
+      "GROUNDED_RAG": 32,
+      "CONVERSATION_HISTORY": 17,
+      "CHITCHAT": 12
+    },
+    "operations": {
+      "FILE_INVENTORY:LIST": 27,
+      "FILE_INVENTORY:COUNT": 15,
+      "FILE_INVENTORY:LATEST": 10,
+      "FILE_INVENTORY:OLDEST": 9,
+      "FILE_TARGET:SUMMARIZE": 64,
+      "FILE_TARGET:ANSWER_QUESTION": 20,
+      "COLLECTION_SUMMARY:SUMMARIZE_EACH": 17,
+      "GROUNDED_RAG:ANSWER": 32,
+      "CONVERSATION_HISTORY:RECALL": 17,
+      "CHITCHAT:RESPOND": 12
+    },
+    "difficulty": {
+      "PARAPHRASE": 33,
+      "BOUNDARY": 27,
+      "LITERAL": 22,
+      "CONTEXTUAL": 20,
+      "COMPOUND": 45,
+      "AMBIGUOUS_UNSUPPORTED": 33
+    },
+    "tags": {
+      "inventory": 24,
+      "list": 15,
+      "ordering": 12,
+      "recency": 20,
+      "correction": 4,
+      "count": 3,
+      "social_decoration": 3,
+      "latest": 3,
+      "oldest": 3,
+      "file_target": 24,
+      "summarize": 16,
+      "raw_exact_precedence": 1,
+      "adversarial": 5,
+      "contextual": 25,
+      "answer_question": 8,
+      "misleading_conjunction": 3,
+      "collection_summary": 12,
+      "grounded": 18,
+      "topic": 15,
+      "recency_topic": 2,
+      "filename_topic": 1,
+      "history": 10,
+      "pure_social": 12,
+      "compound": 45,
+      "two": 35,
+      "explicit_independent": 45,
+      "repeated_capability": 7,
+      "three": 10,
+      "dependency": 10,
+      "explicit_runtime": 6,
+      "unsafe_ready_guard": 10,
+      "possible_bundle_context": 4,
+      "readiness": 15,
+      "filename_boundary": 7,
+      "file_not_found": 2,
+      "duplicate_filename": 2,
+      "no_active_file": 1,
+      "multiple_active_files": 1,
+      "active_file_unavailable": 1,
+      "target_required": 1,
+      "empty_collection": 1,
+      "recency_tie": 1,
+      "unknown_recency": 1,
+      "no_active_topic": 1,
+      "history_unavailable": 1,
+      "safe_control": 2,
+      "unsupported": 10,
+      "comparison": 2,
+      "read_only": 3,
+      "filtered_scope": 3,
+      "over_limit": 2
+    },
+    "state_usage": {
+      "empty": 141,
+      "one_file": 14,
+      "file_after_social": 1,
+      "file_after_failure": 2,
+      "topic": 2,
+      "topic_after_social": 1,
+      "topic_after_clarification": 1,
+      "history": 16,
+      "two_files": 1,
+      "stale_file": 1
+    },
+    "snapshot_usage": {
+      "standard": 173,
+      "collision": 2,
+      "duplicate_raw": 1,
+      "empty": 1,
+      "tied": 1,
+      "null_time": 1,
+      "eligibility": 1
+    },
+    "readiness": {
+      "READY": 147,
+      "UNSUPPORTED": 20,
+      "NEEDS_CLARIFICATION": 13
+    },
+    "special": {
+      "UNSUPPORTED_OPERATION": 14,
+      "OVER_LIMIT": 2
+    },
+    "exact_prior_duplicates": [],
+    "near_prior_threshold": 0.8,
+    "near_prior_duplicates": [],
+    "near_internal_threshold": 0.88,
+    "near_internal_pairs": [
+      {
+        "case": "v2-156",
+        "other": "v2-025",
+        "similarity": 0.8941176470588236
+      }
+    ],
+    "internal_review": "v2-025/v2-156 form a deliberate exact-filename/near-miss control; spelling changes readiness.",
+    "state_count": 10,
+    "snapshot_count": 7
+  },
+  "acceptance_targets": {
+    "structural_invalid_count": 0,
+    "cardinality_accuracy_min": 0.95,
+    "one_capability_operation_accuracy_min": 0.9,
+    "compound_operation_recall_min": 0.9,
+    "compound_exact_bundle_accuracy_min": 0.85,
+    "supported_unsupported_accuracy_min": 0.9,
+    "contextual_resolution_readiness_accuracy_min": 0.9,
+    "collection_summary_routing_accuracy_min": 0.9,
+    "false_readiness_rejection_rate_max": 0.05,
+    "unsafe_ready_count": 0,
+    "deterministic_safety_tests_accuracy": 1.0
+  }
+}

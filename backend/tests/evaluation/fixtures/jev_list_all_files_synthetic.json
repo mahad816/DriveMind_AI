@@ -1,0 +1,118 @@
+{
+  "question": "List all files",
+  "provenance": "synthetic regression envelope derived from historical semantic vectors",
+  "response": {
+    "model": "jev-1.13",
+    "model_version": "jev-1.13-20260917",
+    "answers": {
+      "clarification": {
+        "type": "choice",
+        "choice": "MISSING_SCOPE",
+        "probabilities": {
+          "AMBIGUOUS_TARGET": 0.12,
+          "COMPETING_INTERPRETATIONS": 0.0,
+          "MISSING_ARGUMENT": 0.09,
+          "MISSING_SCOPE": 0.59,
+          "NONE": 0.18,
+          "UNRESOLVED_REFERENCE": 0.0,
+          "UNSUPPORTED_OPERATION": 0.02
+        },
+        "confidence": 0.52
+      },
+      "has_chitchat": {
+        "type": "noul",
+        "noul": 0.22
+      },
+      "has_collection_summary": {
+        "type": "noul",
+        "noul": 0.09
+      },
+      "has_conversation_history": {
+        "type": "noul",
+        "noul": 0.12
+      },
+      "has_file_inventory": {
+        "type": "noul",
+        "noul": 0.95
+      },
+      "has_file_target": {
+        "type": "noul",
+        "noul": 0.07
+      },
+      "has_grounded_rag": {
+        "type": "noul",
+        "noul": 0.68
+      },
+      "mode": {
+        "type": "choice",
+        "choice": "SINGLE",
+        "probabilities": {
+          "CLARIFY": 0.11,
+          "COMPOUND": 0.0,
+          "SINGLE": 0.89
+        },
+        "confidence": 0.84
+      },
+      "operation_1": {
+        "type": "choice",
+        "choice": "FILE_INVENTORY:LIST",
+        "probabilities": {
+          "CHITCHAT:RESPOND": 0.0,
+          "COLLECTION_SUMMARY:SUMMARIZE_EACH": 0.0,
+          "CONVERSATION_HISTORY:RECALL": 0.0,
+          "FILE_INVENTORY:COUNT": 0.0,
+          "FILE_INVENTORY:LATEST": 0.0,
+          "FILE_INVENTORY:LIST": 1.0,
+          "FILE_INVENTORY:OLDEST": 0.0,
+          "FILE_TARGET:ANSWER_QUESTION": 0.0,
+          "FILE_TARGET:SUMMARIZE": 0.0,
+          "GROUNDED_RAG:ANSWER": 0.0,
+          "NONE": 0.0
+        },
+        "confidence": 1.0
+      },
+      "operation_2": {
+        "type": "choice",
+        "choice": "NONE",
+        "probabilities": {
+          "CHITCHAT:RESPOND": 0.0,
+          "COLLECTION_SUMMARY:SUMMARIZE_EACH": 0.0,
+          "CONVERSATION_HISTORY:RECALL": 0.0,
+          "FILE_INVENTORY:COUNT": 0.0,
+          "FILE_INVENTORY:LATEST": 0.0,
+          "FILE_INVENTORY:LIST": 0.32,
+          "FILE_INVENTORY:OLDEST": 0.0,
+          "FILE_TARGET:ANSWER_QUESTION": 0.0,
+          "FILE_TARGET:SUMMARIZE": 0.0,
+          "GROUNDED_RAG:ANSWER": 0.0,
+          "NONE": 0.68
+        },
+        "confidence": 0.64
+      },
+      "operation_3": {
+        "type": "choice",
+        "choice": "FILE_INVENTORY:LIST",
+        "probabilities": {
+          "CHITCHAT:RESPOND": 0.0,
+          "COLLECTION_SUMMARY:SUMMARIZE_EACH": 0.0,
+          "CONVERSATION_HISTORY:RECALL": 0.0,
+          "FILE_INVENTORY:COUNT": 0.0,
+          "FILE_INVENTORY:LATEST": 0.0,
+          "FILE_INVENTORY:LIST": 0.66,
+          "FILE_INVENTORY:OLDEST": 0.0,
+          "FILE_TARGET:ANSWER_QUESTION": 0.0,
+          "FILE_TARGET:SUMMARIZE": 0.0,
+          "GROUNDED_RAG:ANSWER": 0.0,
+          "NONE": 0.34
+        },
+        "confidence": 0.61
+      }
+    },
+    "usage": {
+      "input_tokens": 100,
+      "output_tokens": 20,
+      "charged_credits": 1
+    },
+    "latency_ms": 25.0
+  }
+}
