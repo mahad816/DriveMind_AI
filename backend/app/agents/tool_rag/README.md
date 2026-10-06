@@ -1,6 +1,6 @@
 # Read-only tool contracts (Phase C)
 
-The intended runtime uses one conversational agent to choose small read-only tools, rather than a separate routing classifier. Root modules remain provider-independent contracts. The Phase D1 `execution/` subpackage adds deterministic database/retrieval execution; no conversational agent or LangGraph loop is integrated.
+The intended runtime uses one conversational agent to choose small read-only tools, rather than a separate routing classifier. Contract modules remain provider-independent. Phase D1 `execution/` adds deterministic retrieval/tool execution; Phase D2 adds a separate opt-in LangGraph loop and native provider adapter without changing production routing.
 
 ## Initial tools
 
@@ -57,3 +57,18 @@ The temporary `retrieve(str)`/`retrieve_with_grade(str)` compatibility path keep
 Onyx non-ee conceptual references also include `backend/onyx/context/search/pipeline.py` (`_build_index_filters`, `search_pipeline`) and `context/search/models.py` (BaseFilters, IndexFilters, ChunkSearchRequest, ChunkIndexRequest): application resolution produces concrete filters consumed consistently. No source code is copied, and no OpenSearch/enterprise abstractions are adopted.
 
 Phase D2 will add the LangGraph/LLM agent loop. Adjacent-context expansion remains later work. Existing production routing, frontend, and database schemas are unchanged.
+
+
+## Phase D2 agent loop
+
+`ToolRagAgentService.run` is an explicit opt-in entry point, not wired into RagService or an API endpoint. The separate AgentChatService protocol accepts canonical messages plus exactly four ToolDefinitions and returns text and/or native ToolCallRequests. Existing ChatService answer-generation signatures are untouched. `app/llm/openai_agent_service.py` reuses the existing configurable OpenAI client/model setup, uses chat completions native function calls with AUTO, and does not parse prose/XML or add semantic retries. SDK transport retries retain the existing client's defaults.
+
+Topology: START → agent → FINAL/finalize, TOOLS/execute_tools → agent, or ERROR/fail_safe → END. No classifier, planner, rewrite, verifier, or extra model. Multiple calls execute sequentially in provider order through D1 ToolExecutor. SYSTEM/USER/ASSISTANT-with-calls/TOOL-with-matching-ID histories stay canonical. Only safe projections reach the next LLM step; rich results and private diagnostics remain internal.
+
+Installed LangGraph 1.2.8 run-scoped ExecutionContext injection owns the registry outside message state. Every service invocation creates a fresh registry; it survives all calls within that run and is never global or persisted. Internal AgentState holds the original question, user identity, message history, tool history, observations, cycles, final answer, authoritative EvidenceSections and opaque citation handles. retrieval_count is the number of unique accumulated evidence chunks. Model-written citations never create authoritative evidence; public citation conversion is deferred.
+
+At most six LLM steps, at most eight calls in one step. A tool request on the sixth step is cancelled before execution, with a deterministic cycle-limit answer and matching cancellation tool messages. Reused call IDs, corrupted state, provider errors, and oversized model history fail closed. History is bounded at 128,000 serialized characters without silent truncation. Finalization requires text with no tool calls. Expected tool errors are ordinary safe tool messages, allowing the same model to clarify. Missing call IDs/names or an empty provider result are invalid responses. Malformed argument JSON with valid ID/name is marked INVALID_ARGUMENT, never executed or repaired, and receives a matching safe tool error; raw malformed text is not retained in model history.
+
+The system prompt treats user/tool text as untrusted data, instructs actual-handle dependencies, rejects guessing/broadening after unresolved references, and declines unsupported folder/label/time scopes. These instructions require live evaluation: mock tests prove protocol and execution behavior, not model semantic fidelity or groundedness. No live provider calls, checkpoint persistence, Redis, background workers, adjacent expansion, or production integration are introduced.
+
+Additional conceptual Onyx non-ee references at the same frozen commit: `backend/onyx/chat/llm_loop.py`, `chat/llm_step.py`, `tools/tool_runner.py`, `tools/models.py`, `llm/models.py`: native text vs calls, matching call IDs, safe tool responses, sequential async execution and bounded cycles. No upstream code, emitter/streaming infrastructure, personas, memory, enterprise ACLs, MCP, or threadpool runner is copied.
