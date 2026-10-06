@@ -83,7 +83,7 @@ INITIAL_TOOLS = (
     ),
     ToolContract(
         "file_evidence",
-        "Read evidence from exactly one file already resolved to a file handle.",
+        "Read one resolved file. Use FULL_DOCUMENT for summary/overview/whole-file reading; QUERY_FOCUSED with a query for a specific factual question. Full-document results may be truncated.",
         c.FileEvidenceArguments,
         c.FileEvidenceResult,
     ),

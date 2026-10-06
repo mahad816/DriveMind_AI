@@ -1,5 +1,6 @@
 """Strict arguments, rich internal results, and explicit safe projections."""
 
+from enum import Enum
 from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 from pydantic import AwareDatetime, Field, model_validator, computed_field
@@ -52,9 +53,34 @@ class SearchKnowledgeArguments(ContractModel):
     candidate_limit: int = Field(default=20, ge=1, le=50)
 
 
+class EvidenceMode(str, Enum):
+    QUERY_FOCUSED = "QUERY_FOCUSED"
+    FULL_DOCUMENT = "FULL_DOCUMENT"
+
+
 class FileEvidenceArguments(ContractModel):
     file_handle: FileHandle
-    query: str = Field(min_length=1, max_length=8000, pattern=r"\S")
+    mode: EvidenceMode = EvidenceMode.QUERY_FOCUSED
+    query: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=8000,
+        pattern=r"\S",
+        description="Required for QUERY_FOCUSED; omit for FULL_DOCUMENT.",
+    )
+
+    @model_validator(mode="after")
+    def required_query(self) -> "FileEvidenceArguments":
+        if self.mode == EvidenceMode.QUERY_FOCUSED and self.query is None:
+            raise ValueError("QUERY_FOCUSED requires a query")
+        return self
+
+
+class DocumentReadCoverage(ContractModel):
+    """SQL totals for the eligible file; included content is derived from sections."""
+
+    total_chunks: int = Field(ge=0)
+    total_chars: int = Field(ge=0)
 
 
 class InternalFileSummary(ContractModel):
@@ -293,6 +319,16 @@ class SearchKnowledgeResult(ContractModel):
 class FileEvidencePayload(ContractModel):
     file_handle: FileHandle
     sections: tuple[EvidencePayload, ...] = Field(max_length=20)
+    mode: EvidenceMode = EvidenceMode.QUERY_FOCUSED
+    coverage: DocumentReadCoverage | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def truncated(self) -> bool:
+        return self.coverage is not None and (
+            sum(len(s.citations) for s in self.sections) < self.coverage.total_chunks
+            or sum(len(s.context) for s in self.sections) < self.coverage.total_chars
+        )
 
     @model_validator(mode="after")
     def one_file(self) -> "FileEvidencePayload":
@@ -304,15 +340,26 @@ class FileEvidencePayload(ContractModel):
 class FileEvidenceResult(ContractModel):
     file_id: UUID
     sections: tuple[EvidenceSection, ...] = Field(max_length=20)
+    mode: EvidenceMode = EvidenceMode.QUERY_FOCUSED
+    coverage: DocumentReadCoverage | None = None
 
     @model_validator(mode="after")
     def one_file(self) -> "FileEvidenceResult":
         if any(m.file_id != self.file_id for s in self.sections for m in s.members):
             raise ValueError("file evidence must remain scoped to exactly one file")
+        if (self.mode == EvidenceMode.FULL_DOCUMENT) != (self.coverage is not None):
+            raise ValueError("FULL_DOCUMENT requires coverage totals exclusively")
+        if self.coverage is not None and (
+            sum(len(s.members) for s in self.sections) > self.coverage.total_chunks
+            or sum(len(s.combined_text) for s in self.sections) > self.coverage.total_chars
+        ):
+            raise ValueError("included content exceeds indexed totals")
         return self
 
     def to_llm_payload(self, registry: RuntimeHandleRegistry) -> FileEvidencePayload:
         return FileEvidencePayload(
             file_handle=registry.register_file(self.file_id),
             sections=tuple(project_section(s, registry) for s in self.sections),
+            mode=self.mode,
+            coverage=self.coverage,
         )

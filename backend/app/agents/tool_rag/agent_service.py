@@ -4,6 +4,7 @@ from uuid import UUID
 from typing import cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.retrieval.hybrid import HybridRetriever
+from app.core.config import get_settings
 from .agent_models import AgentChatService, AgentMessage
 from .agent_state import AgentState
 from .graph import build_tool_graph, MAX_AGENT_CYCLES
@@ -41,7 +42,17 @@ class ToolRagAgentService:
         if not question.strip() or len(question) > 8000:
             raise ValueError("question must be nonblank and at most 8000 characters")
         context = ExecutionContext(
-            user_id=user_id, db=db, handles=RuntimeHandleRegistry(), retriever=retriever
+            user_id=user_id,
+            db=db,
+            handles=RuntimeHandleRegistry(),
+            retriever=retriever,
+            original_question=question,
+            max_context_chars=min(
+                (
+                    retriever.settings if isinstance(retriever, HybridRetriever) else get_settings()
+                ).rag_max_context_chars,
+                32000,
+            ),
         )
         state: AgentState = {
             "original_question": question,
@@ -58,6 +69,7 @@ class ToolRagAgentService:
             "final_answer": None,
             "evidence": (),
             "citation_handles": (),
+            "citations": (),
             "retrieval_count": 0,
             "failure": None,
         }

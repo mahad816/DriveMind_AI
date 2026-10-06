@@ -283,7 +283,7 @@ def validate(dataset: dict[str, Any]) -> None:
         "UNSUPPORTED_SCOPE": 1,
     }
     assert {k: sum(c["category"] == k for c in rows) for k in expected} == expected
-    names = {d["name"] for d in ToolRegistry().definitions()}
+    names = {cast(str, d["name"]) for d in ToolRegistry().definitions()}
     for case in rows:
         assert 0 < len(case["question"]) <= 8000
         assert set(case["expected_tool_sequence"]) <= names
@@ -344,15 +344,23 @@ async def main() -> None:
         subprocess.check_output(["git", "branch", "--show-current"], cwd=ROOT, text=True).strip()
         == "refactor/tool-orchestrated-rag"
     )
-    assert (
-        subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip() == BASE
-    )
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--freeze", action="store_true")
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument(
+        "--revision",
+        action="store_true",
+        help="Same immutable cases, separate revision identity/results",
+    )
     parser.add_argument("--env-file", action="append", default=[])
     args = parser.parse_args()
     assert not (args.freeze and args.execute)
+    assert args.revision or head == BASE
+    if args.revision:
+        assert not subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=ROOT, text=True
+        ).strip()
     factory = cast(type[BaseSettings], Settings)
     settings = cast(Settings, factory(_env_file=tuple(args.env_file)))
     assert settings.demo_mode and settings.demo_user_id and settings.openai_api_key
@@ -362,7 +370,7 @@ async def main() -> None:
             snapshot, latest = await demo_snapshot(db, settings)
             dataset_path = DATA / "agent_smoke_v1.json"
             freeze_path = DATA / "agent_smoke_v1_freeze.json"
-            if args.freeze:
+            if args.freeze and not args.revision:
                 assert not dataset_path.exists() and not freeze_path.exists()
                 dataset = {
                     "schema": "agent-smoke-gold-1.0",
@@ -400,9 +408,36 @@ async def main() -> None:
             validate(dataset)
             assert hashlib.sha256(dataset_path.read_bytes()).hexdigest() == freeze["dataset_sha256"]
             assert digest(snapshot) == freeze["fixture_sha256"]
+            assert settings.chat_model == freeze["model_requested"]
+            if args.revision:
+                # Original dataset, corpus, prompt and observations are never overwritten.
+                output = Path(__file__).parent / "results/agent_smoke_v1_revision"
+                revision_path = output / "freeze.json"
+                if args.freeze:
+                    assert not revision_path.exists()
+                    output.mkdir(parents=True, exist_ok=True)
+                    revised = {
+                        **freeze,
+                        **identities(),
+                        "version": "agent-smoke-revision-1.0",
+                        "base_commit": head,
+                        "first_run_commit": BASE,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    save(revision_path, revised)
+                    print(
+                        json.dumps({k: v for k, v in revised.items() if k != "sources"}), flush=True
+                    )
+                    return
+                freeze = json.loads(revision_path.read_text())
+                assert freeze["base_commit"] == head
+                assert (
+                    freeze["dataset_sha256"]
+                    == hashlib.sha256(dataset_path.read_bytes()).hexdigest()
+                )
+                assert freeze["fixture_sha256"] == digest(snapshot)
             assert identities()["graph_tool_identity"] == freeze["graph_tool_identity"]
             assert identities()["system_prompt_sha256"] == freeze["system_prompt_sha256"]
-            assert settings.chat_model == freeze["model_requested"]
             print(
                 json.dumps(
                     {
@@ -417,7 +452,9 @@ async def main() -> None:
             )
             if not args.execute:
                 return
-            output = Path(__file__).parent / "results/agent_smoke_v1"
+            output = Path(__file__).parent / (
+                "results/agent_smoke_v1_revision" if args.revision else "results/agent_smoke_v1"
+            )
             output.mkdir(parents=True, exist_ok=True)
             for case in dataset["cases"]:
                 assert identities()["graph_tool_identity"] == freeze["graph_tool_identity"]
@@ -479,6 +516,7 @@ async def main() -> None:
                     ],
                     evidence=[s.model_dump(mode="json") for s in state["evidence"]],
                     citation_handles=[h.value for h in state["citation_handles"]],
+                    citations=[c.model_dump(mode="json") for c in state["citations"]],
                     messages=[m.model_dump(mode="json") for m in state["messages"]],
                 )
                 save(path, record)
