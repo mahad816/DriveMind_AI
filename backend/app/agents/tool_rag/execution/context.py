@@ -13,3 +13,9 @@ class ExecutionContext:
     db: AsyncSession
     handles: RuntimeHandleRegistry
     retriever: HybridRetriever | None = None
+    original_question: str = ""
+    max_context_chars: int = 12000
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_context_chars <= 32000:
+            raise ValueError("context budget must be within 1..32000")

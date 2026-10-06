@@ -20,7 +20,7 @@ MESSAGES = {
     ToolErrorCode.UNKNOWN_HANDLE: "The handle is unknown or has the wrong type in this turn.",
     ToolErrorCode.NOT_FOUND: "No eligible indexed file matches the reference.",
     ToolErrorCode.AMBIGUOUS: "The reference matches multiple eligible files.",
-    ToolErrorCode.UNSUPPORTED_SCOPE: "The requested scope is not supported.",
+    ToolErrorCode.UNSUPPORTED_SCOPE: "DriveMind cannot currently apply folder, label/tag, or modified-time restrictions. The broader operation was not executed.",
     ToolErrorCode.EMPTY_RESULT: "No eligible evidence was found.",
     ToolErrorCode.INTERNAL_ERROR: "The tool could not complete safely.",
 }

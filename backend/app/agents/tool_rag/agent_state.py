@@ -7,9 +7,15 @@ from .agent_models import AgentMessage, AgentStepResult, ToolCallRequest
 from .execution.executor import ToolExecutionResult
 from .handles import SourceHandle
 from app.routing.intent_frame.evidence import EvidenceSection
+from app.schemas.query import CitationItem
 
 Failure = Literal[
-    "PROVIDER_ERROR", "MALFORMED_RESPONSE", "CYCLE_LIMIT", "STATE_ERROR", "MESSAGE_LIMIT"
+    "PROVIDER_ERROR",
+    "MALFORMED_RESPONSE",
+    "CYCLE_LIMIT",
+    "STATE_ERROR",
+    "MESSAGE_LIMIT",
+    "UNSAFE_FINAL_OUTPUT",
 ]
 
 
@@ -31,5 +37,6 @@ class AgentState(TypedDict):
     final_answer: str | None
     evidence: tuple[EvidenceSection, ...]
     citation_handles: tuple[SourceHandle, ...]
+    citations: tuple[CitationItem, ...]
     retrieval_count: int
     failure: Failure | None

@@ -5,6 +5,9 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.sql.elements import ColumnElement
 from app.db.models.drive_file import DriveFile
+from app.db.models.document import Document
+from app.db.models.chunk import Chunk
+from ..scope_guard import unsupported_scope_widening
 from app.db.enums import DriveFileStatus
 from app.retrieval.hybrid import HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
@@ -189,6 +192,9 @@ async def file_evidence(
 ) -> c.FileEvidenceResult:
     file_id = context.handles.resolve_file(arguments.file_handle)
     await validate_files((file_id,), context)
+    if arguments.mode == c.EvidenceMode.FULL_DOCUMENT:
+        return await full_document(file_id, context)
+    assert arguments.query is not None  # validated QUERY_FOCUSED contract
     request = RetrievalRequest(
         query=arguments.query,
         user_id=context.user_id,
@@ -196,6 +202,73 @@ async def file_evidence(
         candidate_limit=20,
     )
     return c.FileEvidenceResult(file_id=file_id, sections=await retrieve_sections(request, context))
+
+
+async def full_document(file_id: UUID, context: ExecutionContext) -> c.FileEvidenceResult:
+    """Read an ordered bounded source prefix, never semantic search or other files.
+
+    SQL clips each row to budget characters and fetches at most 20 rows. Thus even
+    corrupted oversized chunks cannot create an unbounded materialization. Totals
+    describe all nonblank indexed chunks; missing tail/partial chunk is explicit.
+    The retained text is an exact source prefix, with its original chunk identity.
+    """
+    filters = (*eligible_user(context), DriveFile.id == file_id, func.btrim(Chunk.text) != "")
+    totals = await context.db.execute(
+        select(func.count(Chunk.id), func.coalesce(func.sum(func.length(Chunk.text)), 0))
+        .select_from(Chunk)
+        .join(Document, Chunk.document_id == Document.id)
+        .join(DriveFile, Document.drive_file_id == DriveFile.id)
+        .where(*filters)
+    )
+    total_chunks, total_chars = totals.one()
+    budget = context.max_context_chars
+    rows = await context.db.execute(
+        select(
+            Chunk.id,
+            Chunk.document_id,
+            Chunk.chunk_index,
+            func.substr(Chunk.text, 1, budget),
+            DriveFile.name,
+        )
+        .select_from(Chunk)
+        .join(Document, Chunk.document_id == Document.id)
+        .join(DriveFile, Document.drive_file_id == DriveFile.id)
+        .where(*filters)
+        .order_by(Document.id.asc(), Chunk.chunk_index.asc())
+        .limit(20)
+    )
+    sections = []
+    remaining = budget
+    for chunk_id, document_id, index, text, filename in rows:
+        if remaining <= 0:
+            break
+        source_prefix = text[:remaining]
+        remaining -= len(source_prefix)
+        if not source_prefix.strip():
+            continue
+        chunk = EvidenceChunk(
+            chunk_id=chunk_id,
+            document_id=document_id,
+            file_id=file_id,
+            chunk_index=index,
+            text=source_prefix,
+            filename=filename,
+        )
+        sections.append(
+            EvidenceSection(
+                anchor_chunk_id=chunk_id,
+                members=(chunk,),
+                parts=(ChunkTextRange(chunk_id=chunk_id, start=0, end=len(source_prefix)),),
+            )
+        )
+    return c.FileEvidenceResult(
+        file_id=file_id,
+        sections=tuple(sections),
+        mode=c.EvidenceMode.FULL_DOCUMENT,
+        coverage=c.DocumentReadCoverage(
+            total_chunks=int(total_chunks), total_chars=int(total_chars)
+        ),
+    )
 
 
 class ToolExecutor:
@@ -208,6 +281,8 @@ class ToolExecutor:
         try:
             contract = self.registry.get(name)
             arguments = contract.validate_arguments(arguments_json)
+            if unsupported_scope_widening(context.original_question, arguments):
+                raise ToolFailure(ToolErrorCode.UNSUPPORTED_SCOPE)
             if isinstance(arguments, c.FilesQueryArguments):
                 result: RichResult = await files_query(arguments, context)
             elif isinstance(arguments, c.ResolveFileArguments):

@@ -23,6 +23,8 @@ from .contracts import (
     FileEvidencePayload,
 )
 
+from .finalization import finalize_answer
+
 MAX_AGENT_CYCLES = 6
 MAX_MODEL_HISTORY_CHARS = 128000
 CYCLE_LIMIT_MESSAGE = "I wasn't able to complete that request within the available tool steps."
@@ -124,11 +126,19 @@ def build_tool_graph(
             "pending": None,
         }
 
-    def finalize(state: AgentState) -> dict[str, object]:
+    def finalize(state: AgentState, runtime: Runtime[ExecutionContext]) -> dict[str, object]:
         pending = state["pending"]
         if pending is None or not pending.text or pending.tool_calls:
             return {"failure": "STATE_ERROR", "final_answer": FAILURE_MESSAGE}
-        return {"final_answer": pending.text.strip()}
+        try:
+            answer = finalize_answer(pending.text.strip(), state, runtime.context.handles)
+        except Exception:
+            return {
+                "failure": "UNSAFE_FINAL_OUTPUT",
+                "final_answer": FAILURE_MESSAGE,
+                "citations": (),
+            }
+        return {"final_answer": answer.answer, "citations": answer.citations}
 
     def fail_safe(state: AgentState) -> dict[str, object]:
         answer = CYCLE_LIMIT_MESSAGE if state["failure"] == "CYCLE_LIMIT" else FAILURE_MESSAGE

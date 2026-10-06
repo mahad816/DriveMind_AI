@@ -9,7 +9,7 @@ The intended runtime uses one conversational agent to choose small read-only too
 | `files_query` | LIST, COUNT, LATEST, or OLDEST; explicit ALL_ELIGIBLE_INDEXED_FILES scope | Ordered internal file summaries, non-negative count, or zero/one selection; projection replaces IDs with file handles |
 | `resolve_file` | Nonblank human reference, at most 1024 code points | RESOLVED, NOT_FOUND, or bounded AMBIGUOUS; never trusts the string as identity |
 | `search_knowledge` | Nonblank query (8000 max), explicit ALL or 1–20 exact file handles, candidate limit 1–50 (default 20) | Up to 20 existing Phase 1 EvidenceSections; safe context with evidence and citation handles |
-| `file_evidence` | Exactly one file handle and nonblank query | EvidenceSections for exactly one internal file, with no filename or corpus fallback |
+| `file_evidence` | Exactly one file handle; FULL_DOCUMENT or QUERY_FOCUSED (requires a nonblank query) | EvidenceSections for exactly one internal file, with no filename or corpus fallback |
 
 LIST execution's default is filename Unicode casefold ascending, then stable internal file identity as tie-breaker. There is no sorting argument. The result's item order is authoritative: the first item means that actual returned item's handle, never an independent file lookup. LIST results are bounded to 100 items and ambiguous candidates to 10. Phase D1 LIST exposes total_count, returned_count, and truncated explicitly; it never claims a partial list is complete. Ambiguous reference overflow returns a controlled AMBIGUOUS error rather than silently trimming candidates. LATEST/OLDEST may return null, and empty evidence is safe. Known/trustworthy source modification time is optional and must be timezone-aware; missing time must not be replaced with indexing time.
 
@@ -65,10 +65,47 @@ Phase D2 will add the LangGraph/LLM agent loop. Adjacent-context expansion remai
 
 Topology: START → agent → FINAL/finalize, TOOLS/execute_tools → agent, or ERROR/fail_safe → END. No classifier, planner, rewrite, verifier, or extra model. Multiple calls execute sequentially in provider order through D1 ToolExecutor. SYSTEM/USER/ASSISTANT-with-calls/TOOL-with-matching-ID histories stay canonical. Only safe projections reach the next LLM step; rich results and private diagnostics remain internal.
 
-Installed LangGraph 1.2.8 run-scoped ExecutionContext injection owns the registry outside message state. Every service invocation creates a fresh registry; it survives all calls within that run and is never global or persisted. Internal AgentState holds the original question, user identity, message history, tool history, observations, cycles, final answer, authoritative EvidenceSections and opaque citation handles. retrieval_count is the number of unique accumulated evidence chunks. Model-written citations never create authoritative evidence; public citation conversion is deferred.
+Installed LangGraph 1.2.8 run-scoped ExecutionContext injection owns the registry outside message state. Every service invocation creates a fresh registry; it survives all calls within that run and is never global or persisted. Internal AgentState holds the original question, user identity, message history, tool history, observations, cycles, final answer, authoritative EvidenceSections and opaque citation handles. retrieval_count is the number of unique accumulated evidence chunks. Model-written citations never create authoritative evidence; final citations are derived from retained authoritative ranges and mapped source handles.
 
 At most six LLM steps, at most eight calls in one step. A tool request on the sixth step is cancelled before execution, with a deterministic cycle-limit answer and matching cancellation tool messages. Reused call IDs, corrupted state, provider errors, and oversized model history fail closed. History is bounded at 128,000 serialized characters without silent truncation. Finalization requires text with no tool calls. Expected tool errors are ordinary safe tool messages, allowing the same model to clarify. Missing call IDs/names or an empty provider result are invalid responses. Malformed argument JSON with valid ID/name is marked INVALID_ARGUMENT, never executed or repaired, and receives a matching safe tool error; raw malformed text is not retained in model history.
 
 The system prompt treats user/tool text as untrusted data, instructs actual-handle dependencies, rejects guessing/broadening after unresolved references, and declines unsupported folder/label/time scopes. These instructions require live evaluation: mock tests prove protocol and execution behavior, not model semantic fidelity or groundedness. No live provider calls, checkpoint persistence, Redis, background workers, adjacent expansion, or production integration are introduced.
 
 Additional conceptual Onyx non-ee references at the same frozen commit: `backend/onyx/chat/llm_loop.py`, `chat/llm_step.py`, `tools/tool_runner.py`, `tools/models.py`, `llm/models.py`: native text vs calls, matching call IDs, safe tool responses, sequential async execution and bounded cycles. No upstream code, emitter/streaming infrastructure, personas, memory, enterprise ACLs, MCP, or threadpool runner is copied.
+
+## Single development revision
+
+`FULL_DOCUMENT` reads only the resolved, owned INDEXED file through PostgreSQL,
+ordered by document identity then chunk index. No similarity query, Qdrant or
+hybrid search is used. Each SQL row is clipped to the application context budget
+(`rag_max_context_chars`, at most 32,000 characters), and at most 20 chunks are
+loaded. Returned source text collectively stays within that budget. The original
+chunk/document identities remain attached to exact source prefixes; totals of
+all nonblank indexed chunks and characters produce explicit `truncated` metadata.
+`QUERY_FOCUSED` retains exact-file hybrid retrieval. This is not adjacent expansion
+or a map/reduce summary pipeline.
+
+Before ALL inventory/corpus execution, a finite guard recognizes `in/within/under/from
+... folder`, `tagged/labelled/labeled ...`, and `files/documents/items changed/modified/
+updated this/last/after/before/since/between/on/in ...`. It returns UNSUPPORTED_SCOPE
+before DB/retrieval access. It does not select capabilities or operations, interpret
+arbitrary filters, or claim coverage of every linguistic restriction. Original
+current-turn text is application context, never model arguments. New forms require
+separate safety review; this guard is not a full semantic parser.
+
+Only explicit `[source_N]` / `[evidence_N]` citation markers map to retained sources.
+Unknown source markers cannot create citations. Existing numeric citation
+normalization is reused; when markers are absent, an honest “Sources consulted”
+footer lists actual evidence. This records consulted provenance, not a proof that
+every generated claim is entailed. Bare runtime tokens and UUID-shaped final prose
+fail closed without mutating source text or running a repair model. CitationItem
+objects remain internal and retain the real source endpoint identity. No public
+API, RagService, old graph or frontend integration changes here.
+
+Concepts only from Onyx MIT non-ee commit
+`438b54447dd0e4e3b78a43457c911e340a881e5f`: `DocumentSectionRequest`
+(`backend/onyx/document_index/interfaces.py`), `_retrieve_adjacent_chunks` /
+`merge_overlapping_sections` (`tools/tool_implementations/search/search_utils.py`),
+and `InferenceChunk` / `InferenceSection` (`context/search/models.py`).
+Document-local identity reads and source-member provenance inform this code;
+no upstream fragments, OpenSearch code or adjacent expansion are copied.

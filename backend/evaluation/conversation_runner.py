@@ -18,6 +18,7 @@ from typing import Any, Protocol
 from app.core.config import get_settings
 from app.evaluation.trace import EvalTraceCollector
 from app.llm.base import ChatService
+from app.routing.intent_frame.execution import RetrievalRequest
 from app.retrieval.base import Retriever
 from app.retrieval.conversation_intent import classify_conversation_reference
 from app.retrieval.query_router import QueryRoute, classify_query
@@ -62,7 +63,7 @@ class ConversationService(Protocol):
 
 
 class _ForbiddenRetriever(Retriever):
-    async def retrieve(self, question: str) -> list[RetrievedChunk]:
+    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
         raise AssertionError(f"EXP-03 attempted document retrieval: {question!r}")
 
 
