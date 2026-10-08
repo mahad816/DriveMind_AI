@@ -28,7 +28,7 @@ export function PrepareKnowledgeView({
   onPreparingChange,
   className,
 }: PrepareKnowledgeViewProps) {
-  const { setupState, isConnected, jobError, fileStats, refresh, error } = useKnowledgeStatus({ pollIntervalMs: 0 });
+  const { setupState, isConnected, jobError, fileStats, refresh, error } = useKnowledgeStatus({ pollIntervalMs: 0, includeInventory: DEMO_MODE });
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
   const [hasPrepared, setHasPrepared] = useState(false);

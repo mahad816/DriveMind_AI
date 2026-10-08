@@ -17,6 +17,7 @@ const suggestedQuestions = [
 
 type EmptyStateHeroProps = {
   demoReady?: boolean;
+  isChecking?: boolean;
   needsConnect: boolean;
   needsPrepare: boolean;
   isSending: boolean;
@@ -26,6 +27,7 @@ type EmptyStateHeroProps = {
 
 export function EmptyStateHero({
   demoReady = true,
+  isChecking = false,
   needsConnect,
   needsPrepare,
   isSending,
@@ -35,7 +37,7 @@ export function EmptyStateHero({
   const canAsk = !needsConnect && !needsPrepare;
 
   if (DEMO_MODE && !demoReady) {
-    return <p className="p-6 text-sm text-muted-foreground" role="status">The sample knowledge base is unavailable. Try refreshing status; no Google Drive setup is needed.</p>;
+    return <p className="p-6 text-sm text-muted-foreground" role="status">{isChecking ? "Checking the sample knowledge base. You can type a draft while waiting." : "The sample knowledge base is unavailable. Try refreshing status; no Google Drive setup is needed."}</p>;
   }
 
   if (needsConnect) {

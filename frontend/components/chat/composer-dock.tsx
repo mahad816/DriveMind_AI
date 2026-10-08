@@ -14,12 +14,13 @@ type ComposerDockProps = {
   onSubmit: () => void;
   disabled: boolean;
   isLoading: boolean;
+  submissionStatus?: string;
   className?: string;
 };
 
 export const ComposerDock = forwardRef<ChatComposerHandle, ComposerDockProps>(
   function ComposerDock(
-    { value, onChange, onSubmit, disabled, isLoading, className },
+    { value, onChange, onSubmit, disabled, isLoading, submissionStatus, className },
     ref,
   ) {
     return (
@@ -36,6 +37,7 @@ export const ComposerDock = forwardRef<ChatComposerHandle, ComposerDockProps>(
           onSubmit={onSubmit}
           disabled={disabled}
           isLoading={isLoading}
+          submissionStatus={submissionStatus}
         />
       </div>
     );

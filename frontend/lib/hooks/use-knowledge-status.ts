@@ -60,9 +60,11 @@ function countFiles(files: Awaited<ReturnType<typeof listDriveFiles>>["files"]):
 }
 
 export function useKnowledgeStatus(
-  options: { pollIntervalMs?: number } = {},
+  options: { pollIntervalMs?: number; includeInventory?: boolean } = {},
 ): UseKnowledgeStatusResult {
-  const { pollIntervalMs = 30_000 } = options;
+  const { pollIntervalMs = 30_000, includeInventory = false } = options;
+  // Normal setup still requires file stats; demo chat needs only backend readiness.
+  const requiresInventory = !DEMO_MODE || includeInventory;
   const {
     data: connection,
     isLoading: connectionLoading,
@@ -78,9 +80,7 @@ export function useKnowledgeStatus(
   const fileRequestId = useRef(0);
 
   const isConnected = !connectionError && (connection?.connected ?? false);
-  const canBrowse = !connectionError && (DEMO_MODE
-    ? connection?.demo_mode === true
-    : isConnected);
+  const canBrowse = requiresInventory && !connectionError && (DEMO_MODE ? connection?.demo_mode === true : isConnected);
 
   const loadFiles = useCallback(async () => {
     const requestId = ++fileRequestId.current;
@@ -132,7 +132,7 @@ export function useKnowledgeStatus(
     };
   }, [canBrowse, loadFiles]);
 
-  const isReady = !connectionError && knowledgeAvailable(connection) && !filesError && filesLoaded && fileStats.indexed > 0;
+  const isReady = !connectionError && knowledgeAvailable(connection) && (!requiresInventory || (!filesError && filesLoaded && fileStats.indexed > 0));
   const needsConnect = !DEMO_MODE && !connectionError && connection?.connected === false;
   const needsPrepare = !DEMO_MODE && isConnected && filesLoaded && !filesError && fileStats.indexed === 0;
   const job = connection?.job;
@@ -143,7 +143,7 @@ export function useKnowledgeStatus(
       : !connection
         ? "checking"
         : DEMO_MODE
-          ? !filesLoaded ? "checking" : isReady ? "ready" : "error"
+          ? requiresInventory && !filesLoaded ? "checking" : isReady ? "ready" : "error"
         : !connection.connected
           ? "not_connected"
           : job?.status === "queued" || job?.status === "running"
