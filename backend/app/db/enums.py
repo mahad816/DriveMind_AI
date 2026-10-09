@@ -21,3 +21,10 @@ class IndexingJobStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELED = "canceled"
+
+
+class ApplicationSessionKind(StrEnum):
+    """Application browser identity, not a document/corpus ownership override."""
+
+    GOOGLE_ACCOUNT = "GOOGLE_ACCOUNT"
+    DEMO_VISITOR = "DEMO_VISITOR"
