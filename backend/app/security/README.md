@@ -43,3 +43,69 @@ loopback database whose name starts with drivemind_session_test. Tests create an
 drop only generated test schemas there, exercise the actual Alembic revision, and
 never use Settings.database_url. Without that explicit URL they skip, rather than
 claiming real database validation. Do not use an existing real/demo datastore.
+
+
+## Step 2A: inactive Google session login
+
+`GOOGLE_APPLICATION_SESSIONS_ENABLED=false` is the default. Existing
+`/auth/google` and its Drive callback retain their single-user behavior and do
+not issue application sessions. Existing chat/files/index/sources routes still
+have their existing authorization; this step does **not** make them multi-user
+safe. The new dependency is attached only to the opt-in session endpoints.
+
+The separate `/api/v1/auth/session` flow requires both the flag and an explicit
+`GOOGLE_SESSION_REDIRECT_URI` on the exact trusted `FRONTEND_URL` origin, with
+path `/api/v1/auth/session/google/callback`. A direct Railway callback cannot
+set a host-only cookie for Vercel. The old `GOOGLE_REDIRECT_URI` is untouched.
+No deployed configuration or Google callback registration was changed.
+
+Before future activation, register the new callback with Google, verify that
+Next.js's same-origin rewrite forwards all `Set-Cookie` headers and request
+cookies correctly in a real browser, and complete owner scoping of all private
+API, SQL, vector and background-job paths. Do not enable public multi-user
+operation merely because session login works. Local HTTP requires the existing
+explicit development/debug/loopback cookie policy; production requires HTTPS.
+
+Protocol:
+- POST `/auth/session/google`, JSON `intent: LOGIN | CONNECT_DRIVE`, trusted
+  Origin and `X-DriveMind-Auth: 1`. CONNECT_DRIVE additionally requires an active
+  application session and `X-CSRF-Token`. LOGIN requests identity scopes only;
+  CONNECT_DRIVE requests existing read-only Drive scopes and offline access.
+- A short-lived HttpOnly host-only cookie binds the browser to a one-shot DB
+  state with PKCE and nonce. Starting another login replaces that binding;
+  parallel login windows should restart rather than reuse an older transaction.
+- Callback atomically consumes and commits state before Google I/O. Google's
+  maintained ID-token verifier checks signature, issuer, audience, expiry and
+  issued-at. Nonce, verified email and stable subject are checked; userinfo must
+  match the subject. CONNECT_DRIVE must match the initiating session's account
+  and actually granted Drive scopes. Missing refresh tokens preserve the old
+  refresh token. LOGIN never overwrites Drive credentials.
+- Existing sessions rotate only after verified login. A revoked, expired or
+  changed initiating session fails closed. Successful user/token/session changes
+  commit together before the bearer cookie is emitted. State remains consumed
+  on failure. Session cookies are never returned in JSON; generic failures hide
+  provider and DB payloads.
+- GET `/auth/session` validates the session freshly and returns user/kind and
+  session-bound CSRF material (not a bearer credential), with `no-store`.
+  POST `/auth/session/logout` requires trusted Origin and CSRF, commits revocation
+  before clearing the cookie. Logout does **not** yet protect legacy private APIs
+  or disconnect Drive; those changes belong to the authorization rollout.
+
+All Google network stages have bounded transport timeouts; the async callback
+has a 60-second exchange deadline. Cancellation rolls back pending local writes.
+A cancelled worker thread may finish bounded Google I/O but performs no DB work
+or cookie issuance. No semantic/provider retry loop was added.
+
+Existing users remain keyed by stable Google subject. The existing unique email
+constraint is retained: a different subject with a colliding email is rejected,
+never silently linked. Concurrent first-time creation of the same user may fail
+safely and require a fresh login; account linking is outside this step.
+
+The additive migration preserves legacy pending rows. Secure pending states
+cannot be redeemed through the legacy callback. Downgrading invalidates pending
+secure logins; stop the opt-in flow before rollback. Existing user IDs and stored
+Drive grants are unchanged by the migration.
+
+Verification uses mocked Google exchanges and isolated loopback PostgreSQL;
+no live Google login, production migration or browser proxy-cookie verification
+is claimed.

@@ -174,6 +174,15 @@ class ApplicationSessionService:
         except SQLAlchemyError:
             raise SessionStoreUnavailable() from None
 
+    async def csrf_token(self, credential: str | None) -> SecretStr:
+        """Same-origin authenticated inspection exposes CSRF material, never bearer."""
+        try:
+            row = await self._lookup(credential)
+            await self._principal(row)
+            return SecretStr(encode_token(row.csrf_secret))
+        except SQLAlchemyError:
+            raise SessionStoreUnavailable() from None
+
     async def verify_csrf(
         self, credential: str | None, csrf_token: str | None
     ) -> ApplicationPrincipal:

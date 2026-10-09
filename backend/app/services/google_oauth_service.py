@@ -57,7 +57,9 @@ class GoogleOAuthService:
                 scopes.append(scope)
         return scopes
 
-    def _build_flow(self) -> Flow:
+    def _build_flow(
+        self, *, scopes: list[str] | None = None, redirect_uri: str | None = None
+    ) -> Flow:
         self._validate_google_config()
         client_config = {
             "web": {
@@ -69,8 +71,8 @@ class GoogleOAuthService:
         }
         return Flow.from_client_config(
             client_config,
-            scopes=self._oauth_scopes(),
-            redirect_uri=self.settings.google_redirect_uri,
+            scopes=scopes if scopes is not None else self._oauth_scopes(),
+            redirect_uri=redirect_uri or self.settings.google_redirect_uri,
         )
 
     async def create_authorization_url(self) -> str:
@@ -101,7 +103,9 @@ class GoogleOAuthService:
             raise ValueError(f"Invalid OAuth state. {_OAUTH_STATE_RETRY_HINT}")
 
         pending = await self.db.scalar(
-            select(OAuthPendingState).where(OAuthPendingState.state == state)
+            select(OAuthPendingState).where(
+                OAuthPendingState.state == state, OAuthPendingState.browser_binding_hash.is_(None)
+            )
         )
         if pending is None:
             raise ValueError(f"Invalid OAuth state. {_OAUTH_STATE_RETRY_HINT}")

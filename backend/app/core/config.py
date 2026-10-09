@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://drivemind:drivemind@localhost:5432/drivemind"
 
+    # Inactive until same-origin callback registration and authorization rollout are reviewed.
+    google_application_sessions_enabled: bool = False
+    google_session_redirect_uri: str = ""
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
