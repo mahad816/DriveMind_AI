@@ -3,7 +3,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,6 +136,7 @@ async def sync_drive_metadata(
 
 @router.get("/status", summary="Latest Drive sync status", response_model_exclude_unset=True)
 async def get_sync_status(
+    request: Request,
     service: DriveSyncService = Depends(get_drive_sync_service),
     settings: Settings = Depends(get_settings),
 ) -> DriveSyncStatusResponse:
@@ -143,7 +144,9 @@ async def get_sync_status(
     if settings.demo_mode:
         try:
             manifest = load_manifest()
-            ready = await DemoCorpusService(service.db, settings).is_ready()
+            ready = await DemoCorpusService(
+                service.db, settings, readiness_client=request.app.state.demo_readiness_client
+            ).is_ready()
         except Exception:
             logger.warning("Controlled demo index unavailable")
             return DriveSyncStatusResponse(

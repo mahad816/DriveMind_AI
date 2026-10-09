@@ -13,6 +13,7 @@ from app.db.models.drive_file import DriveFile
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.demo.manifest import load_manifest
+from app.demo.readiness_client import DemoReadinessClient
 from app.embeddings.qdrant_connection import create_qdrant_client
 from app.ingestion.chunking import chunk_text
 from app.ingestion.hash_util import compute_extracted_text_hash
@@ -24,9 +25,16 @@ class DemoCorpusError(ValueError):
 
 
 class DemoCorpusService:
-    def __init__(self, db: AsyncSession, settings: Settings) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        settings: Settings,
+        *,
+        readiness_client: DemoReadinessClient | None = None,
+    ) -> None:
         self.db = db
         self.settings = settings
+        self.readiness_client = readiness_client
         if (
             settings.database_url == Settings.model_fields["database_url"].default
             or settings.qdrant_collection == Settings.model_fields["qdrant_collection"].default
@@ -87,7 +95,11 @@ class DemoCorpusService:
 
     async def inspect_vectors(self, *, chunks: list[Chunk]) -> bool:
         """Reject foreign points; return whether every PostgreSQL chunk has a vector."""
-        client = create_qdrant_client(self.settings)
+        client = (
+            await self.readiness_client.get(self.settings)
+            if self.readiness_client is not None
+            else create_qdrant_client(self.settings)
+        )
         expected = {str(chunk.id): chunk for chunk in chunks}
         documents = {str(entry.document_id): entry for entry in self.manifest.files}
         seen: set[str] = set()
@@ -118,7 +130,8 @@ class DemoCorpusService:
                     break
             return bool(expected) and seen == set(expected)
         finally:
-            await client.close()
+            if self.readiness_client is None:
+                await client.close()
 
     async def is_ready(self) -> bool:
         user = await resolve_active_user(self.db, self.settings)

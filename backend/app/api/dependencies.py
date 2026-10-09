@@ -1,6 +1,6 @@
 """Shared API dependencies for runtime operation boundaries."""
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,13 +19,15 @@ def require_normal_mode(settings: Settings = Depends(get_settings)) -> None:
 
 
 async def require_demo_index(
-    settings: Settings = Depends(get_settings), db: AsyncSession = Depends(get_db)
+    request: Request, settings: Settings = Depends(get_settings), db: AsyncSession = Depends(get_db)
 ) -> None:
     """Do not serve globally retrieved evidence from unapproved or incomplete demo storage."""
     if not settings.demo_mode:
         return
     try:
-        ready = await DemoCorpusService(db, settings).is_ready()
+        ready = await DemoCorpusService(
+            db, settings, readiness_client=request.app.state.demo_readiness_client
+        ).is_ready()
     except Exception:
         ready = False
     if not ready:

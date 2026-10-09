@@ -14,6 +14,7 @@ from app.api.router import router as api_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal, engine
+from app.demo.readiness_client import DemoReadinessClient
 from app.core.public_safety import DemoChatBodyLimit, DemoChatLimits, PUBLIC_ERROR
 
 logger = logging.getLogger(__name__)
@@ -43,15 +44,20 @@ async def _cleanup_stuck_jobs() -> None:
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize application-level resources during startup."""
     settings = get_settings()
     configure_logging(settings.log_level)
     # Demo indexing is offline; public runtime startup must not mutate index jobs.
     if not settings.demo_mode:
         await _cleanup_stuck_jobs()
-    yield
-    await engine.dispose()
+    try:
+        yield
+    finally:
+        try:
+            await app.state.demo_readiness_client.close()
+        finally:
+            await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -64,6 +70,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(api_router, prefix=settings.api_prefix)
     app.state.demo_chat_limits = DemoChatLimits()
+    app.state.demo_readiness_client = DemoReadinessClient()
     app.add_middleware(DemoChatBodyLimit)
 
     @app.exception_handler(Exception)
