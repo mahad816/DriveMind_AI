@@ -154,7 +154,9 @@ async def test_errors_are_sanitized_logged_and_permit_released(
     assert response.status_code == status
     assert response.json()["detail"] == PUBLIC_ERROR
     assert "secret" not in response.text
-    assert any(record.exc_info for record in caplog.records)
+    assert caplog.records
+    assert all(record.exc_info is None for record in caplog.records)
+    assert "secret" not in caplog.text
     service.ask.side_effect = None
     assert (await client.post("/api/v1/chat", json={"question": "hello"})).status_code == 200
 
@@ -183,7 +185,7 @@ async def test_non_demo_limits_disabled_and_production_errors_safe(
     service.ask.side_effect = ChatError("private provider detail")
     response = await client.post("/api/v1/chat", json={"question": "hello"})
     assert response.status_code == 503
-    assert response.json()["detail"] == ("private provider detail" if debug else PUBLIC_ERROR)
+    assert response.json()["detail"] == PUBLIC_ERROR
 
 
 @pytest.mark.asyncio

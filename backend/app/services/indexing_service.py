@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.credential_diagnostics import safe_failure
 from app.core.config import Settings, get_settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
@@ -283,7 +284,7 @@ class IndexingService:
             await self.db.commit()
         except Exception as exc:
             job.status = IndexingJobStatus.FAILED
-            job.error = str(exc)
+            job.error = safe_failure(exc, "indexing job")
             job.completed_at = datetime.now(UTC)
             await self.db.commit()
             raise

@@ -67,7 +67,7 @@ async def test_sync_drive_metadata_no_connection_returns_503(async_client: Async
     response = await async_client.post("/api/v1/index/sync")
 
     assert response.status_code == 503
-    assert "No Google Drive connection" in response.json()["detail"]
+    assert response.json()["detail"] == "No Google Drive connection found. Complete OAuth first."
 
 
 @pytest.mark.asyncio
@@ -198,4 +198,7 @@ async def test_list_synced_files_no_connection_returns_503(async_client: AsyncCl
     response = await async_client.get("/api/v1/files")
 
     assert response.status_code == 503
-    assert "No Google Drive connection" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )

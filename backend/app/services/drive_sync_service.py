@@ -20,6 +20,7 @@ from app.connectors.google_drive.client import (
     TokenPersister,
 )
 from app.connectors.google_drive.constants import GOOGLE_FOLDER_MIME, is_supported_mime_type
+from app.core.credential_diagnostics import safe_failure
 from app.core.config import Settings, get_settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.drive_file import DriveFile
@@ -405,16 +406,16 @@ class DriveSyncService:
             await self.db.commit()
         except (DriveClientError, ValueError) as exc:
             job.status = IndexingJobStatus.FAILED
-            job.error = str(exc)
+            job.error = safe_failure(exc, "drive sync job")
             job.completed_at = datetime.now(UTC)
             await self.db.commit()
             raise
         except Exception as exc:
             job.status = IndexingJobStatus.FAILED
-            job.error = str(exc)
+            job.error = safe_failure(exc, "drive sync job")
             job.completed_at = datetime.now(UTC)
             await self.db.commit()
-            raise DriveClientError(f"Drive metadata sync failed: {exc}") from exc
+            raise DriveClientError("Drive metadata sync failed.") from None
 
         return DriveSyncResult(
             job_id=job.id,

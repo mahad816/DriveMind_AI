@@ -92,7 +92,10 @@ async def test_chat_no_connection_returns_503(async_client: AsyncClient) -> None
     )
 
     assert response.status_code == 503
-    assert "No Google Drive connection" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -109,7 +112,10 @@ async def test_chat_missing_openai_key_returns_503(async_client: AsyncClient) ->
     )
 
     assert response.status_code == 503
-    assert "OPENAI_API_KEY" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -126,7 +132,10 @@ async def test_chat_openai_failure_returns_503(async_client: AsyncClient) -> Non
     )
 
     assert response.status_code == 503
-    assert "OpenAI chat request failed" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -174,7 +183,10 @@ async def test_chat_vector_store_error_returns_503(async_client: AsyncClient) ->
     )
 
     assert response.status_code == 503
-    assert "Qdrant connection failed" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -193,7 +205,10 @@ async def test_chat_embedding_error_returns_503(async_client: AsyncClient) -> No
     )
 
     assert response.status_code == 503
-    assert "embedding request failed" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -212,7 +227,10 @@ async def test_chat_configuration_error_returns_503(async_client: AsyncClient) -
     )
 
     assert response.status_code == 503
-    assert "OPENAI_API_KEY" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio

@@ -12,17 +12,16 @@ from starlette.types import ASGIApp, Receive, Scope, Send, Message
 
 from app.core.config import Settings, get_settings
 
+from app.core.credential_diagnostics import log_safe_failure
+
 logger = logging.getLogger(__name__)
 PUBLIC_ERROR = "The service is temporarily unavailable. Please try again later."
 
 
 def public_error_detail(exc: Exception) -> str:
-    """Keep diagnostics in logs, not visitor-facing exception responses."""
-    settings = get_settings()
-    if settings.demo_mode or not settings.debug:
-        logger.error("API operation failed", exc_info=exc)
-        return PUBLIC_ERROR
-    return str(exc)
+    """Never expose provider or database details, including in debug mode."""
+    log_safe_failure(logger, "API operation", exc)
+    return PUBLIC_ERROR
 
 
 class DemoChatLimits:

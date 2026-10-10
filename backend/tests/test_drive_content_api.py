@@ -68,7 +68,10 @@ async def test_get_file_content_drive_error_returns_502(async_client: AsyncClien
     response = await async_client.get(f"/api/v1/files/{file_id}/content")
 
     assert response.status_code == 502
-    assert "download failed" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -83,4 +86,7 @@ async def test_get_file_content_no_connection_returns_503(async_client: AsyncCli
     response = await async_client.get(f"/api/v1/files/{file_id}/content")
 
     assert response.status_code == 503
-    assert "No Google Drive connection" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )

@@ -12,6 +12,8 @@ settings = get_settings()
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
+    hide_parameters=True,
+    echo=False,
 )
 SessionLocal = async_sessionmaker(
     bind=engine,

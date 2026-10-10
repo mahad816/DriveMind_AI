@@ -15,7 +15,12 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal, engine
 from app.demo.readiness_client import DemoReadinessClient
-from app.core.public_safety import DemoChatBodyLimit, DemoChatLimits, PUBLIC_ERROR
+from app.core.public_safety import (
+    public_error_detail,
+    DemoChatBodyLimit,
+    DemoChatLimits,
+    PUBLIC_ERROR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +70,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title=settings.app_name,
-        debug=settings.debug and not settings.demo_mode,
+        debug=False,  # Starlette debug tracebacks can contain credentials.
         lifespan=lifespan,
     )
     app.include_router(api_router, prefix=settings.api_prefix)
@@ -75,13 +80,17 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception) -> JSONResponse:
-        logger.error("Unhandled API failure", exc_info=exc)
+        public_error_detail(exc)
         return JSONResponse(status_code=500, content={"detail": PUBLIC_ERROR})
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
         current = get_settings()
-        if not current.demo_mode and current.debug:
+        if (
+            not current.demo_mode
+            and current.debug
+            and not request.url.path.startswith(f"{current.api_prefix}/auth")
+        ):
             return await request_validation_exception_handler(request, exc)
         # Never echo submitted secrets or entire oversized input into public errors.
         return JSONResponse(

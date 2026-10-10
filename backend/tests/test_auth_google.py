@@ -44,7 +44,10 @@ async def test_google_login_returns_503_when_oauth_not_configured(
 
     app.dependency_overrides.clear()
     assert response.status_code == 503
-    assert "not configured" in response.json()["detail"]
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio
@@ -145,7 +148,10 @@ async def test_google_callback_invalid_state_returns_400(async_client: AsyncClie
 
     app.dependency_overrides.clear()
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid OAuth state"
+    assert (
+        response.json()["detail"]
+        == "The service is temporarily unavailable. Please try again later."
+    )
 
 
 @pytest.mark.asyncio

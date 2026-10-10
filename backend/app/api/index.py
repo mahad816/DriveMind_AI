@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import require_normal_mode
+from app.core.credential_diagnostics import log_safe_failure
 from app.core.config import Settings, get_settings
 from app.db.session import SessionLocal, get_db
 from app.schemas.drive_sync import DriveSyncStatusResponse
@@ -44,32 +45,32 @@ async def _bg_sync(full: bool) -> None:
     async with SessionLocal() as db:
         try:
             await DriveSyncService(db=db).sync_metadata(full=full)
-        except Exception:
-            logger.exception("Background Drive sync failed")
+        except Exception as exc:
+            log_safe_failure(logger, "Background Drive sync failed", exc)
 
 
 async def _bg_ingest(file_id: uuid.UUID | None) -> None:
     async with SessionLocal() as db:
         try:
             await IngestionService(db=db).ingest_files(file_id=file_id)
-        except Exception:
-            logger.exception("Background ingestion failed")
+        except Exception as exc:
+            log_safe_failure(logger, "Background ingestion failed", exc)
 
 
 async def _bg_chunk(file_id: uuid.UUID | None) -> None:
     async with SessionLocal() as db:
         try:
             await ChunkingService(db=db).chunk_documents(file_id=file_id)
-        except Exception:
-            logger.exception("Background chunking failed")
+        except Exception as exc:
+            log_safe_failure(logger, "Background chunking failed", exc)
 
 
 async def _bg_build(file_id: uuid.UUID | None) -> None:
     async with SessionLocal() as db:
         try:
             await IndexingService(db=db).build_index(file_id=file_id)
-        except Exception:
-            logger.exception("Background index build failed")
+        except Exception as exc:
+            log_safe_failure(logger, "Background index build failed", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +119,7 @@ async def sync_drive_metadata(
     try:
         connected = await service.is_connected()
     except Exception as exc:
-        logger.exception("Could not check Drive connection")
+        log_safe_failure(logger, "Drive connection check", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=public_error_detail(exc),

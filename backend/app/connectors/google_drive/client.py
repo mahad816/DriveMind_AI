@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, cast
 
+from google.auth.exceptions import GoogleAuthError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -30,12 +31,13 @@ from app.connectors.google_drive.constants import (
     output_content_mime_type,
     requires_export,
 )
+from app.core.credential_diagnostics import CredentialFailure, failure_category, safe_failure
 from app.core.config import Settings, get_settings
 
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
-class DriveClientError(RuntimeError):
+class DriveClientError(CredentialFailure, RuntimeError):
     """Raised when the Drive API client cannot complete an operation."""
 
 
@@ -163,7 +165,10 @@ class GoogleDriveClient:
         try:
             credentials.refresh(Request())  # type: ignore[no-untyped-call]
         except Exception as exc:  # google-auth raises RefreshError subclasses
-            raise DriveClientError(f"Failed to refresh Google OAuth token: {exc}") from exc
+            raise DriveClientError(
+                safe_failure(exc, "Failed to refresh Google OAuth token"),
+                category=failure_category(exc),
+            ) from None
         self._tokens = DriveTokens(
             access_token=cast(str, credentials.token),
             refresh_token=credentials.refresh_token or self._tokens.refresh_token,
@@ -221,8 +226,11 @@ class GoogleDriveClient:
                     )
                     .execute()
                 )
-            except HttpError as exc:
-                raise DriveClientError(f"Drive list_files request failed: {exc}") from exc
+            except (HttpError, GoogleAuthError) as exc:
+                raise DriveClientError(
+                    safe_failure(exc, "Drive list_files request failed"),
+                    category=failure_category(exc),
+                ) from None
 
             for payload in response.get("files", []):
                 if supported_only and not is_supported_mime_type(payload.get("mimeType")):
@@ -255,8 +263,11 @@ class GoogleDriveClient:
         service = self._get_service()
         try:
             payload = service.files().get(fileId=file_id, fields=FILE_FIELDS).execute()
-        except HttpError as exc:
-            raise DriveClientError(f"Drive get_file_metadata request failed: {exc}") from exc
+        except (HttpError, GoogleAuthError) as exc:
+            raise DriveClientError(
+                safe_failure(exc, "Drive get_file_metadata request failed"),
+                category=failure_category(exc),
+            ) from None
         return DriveFileMetadata.from_api(payload)
 
     def get_start_page_token(self) -> str:
@@ -264,8 +275,11 @@ class GoogleDriveClient:
         service = self._get_service()
         try:
             response = service.changes().getStartPageToken().execute()
-        except HttpError as exc:
-            raise DriveClientError(f"Drive getStartPageToken request failed: {exc}") from exc
+        except (HttpError, GoogleAuthError) as exc:
+            raise DriveClientError(
+                safe_failure(exc, "Drive getStartPageToken request failed"),
+                category=failure_category(exc),
+            ) from None
         token = response.get("startPageToken")
         if not token:
             raise DriveClientError("Drive getStartPageToken returned no token")
@@ -292,8 +306,11 @@ class GoogleDriveClient:
                     )
                     .execute()
                 )
-            except HttpError as exc:
-                raise DriveClientError(f"Drive changes.list request failed: {exc}") from exc
+            except (HttpError, GoogleAuthError) as exc:
+                raise DriveClientError(
+                    safe_failure(exc, "Drive changes.list request failed"),
+                    category=failure_category(exc),
+                ) from None
 
             for payload in response.get("changes", []):
                 changes.append(DriveChange.from_api(payload))
@@ -337,9 +354,11 @@ class GoogleDriveClient:
             else:
                 request = service.files().get_media(fileId=file_id)
             return self._read_media_bytes(request)
-        except HttpError as exc:
+        except (HttpError, GoogleAuthError) as exc:
             action = "export" if requires_export(source_mime_type) else "download"
-            raise DriveClientError(f"Drive file {action} failed: {exc}") from exc
+            raise DriveClientError(
+                safe_failure(exc, f"Drive file {action} failed"), category=failure_category(exc)
+            ) from None
 
     def get_file_content_with_type(self, file_id: str, source_mime_type: str) -> tuple[bytes, str]:
         """Return file bytes and the MIME type of the returned content."""

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.google_drive.client import DriveClientError
 from app.connectors.google_drive.constants import SUPPORTED_MIME_TYPES, is_supported_mime_type
+from app.core.credential_diagnostics import safe_failure
 from app.core.config import Settings, get_settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.document import Document
@@ -247,7 +248,7 @@ class IngestionService:
             await self.db.commit()
         except Exception as exc:
             job.status = IndexingJobStatus.FAILED
-            job.error = str(exc)
+            job.error = safe_failure(exc, "ingestion job")
             job.completed_at = datetime.now(UTC)
             await self.db.commit()
             raise

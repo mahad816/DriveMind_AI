@@ -389,4 +389,4 @@ async def test_ingest_files_unexpected_exception_fails_job_with_error(
 
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
-    assert job.error == "unexpected failure"
+    assert job.error == "ingestion job failed (unexpected_failure)."

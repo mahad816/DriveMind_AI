@@ -8,12 +8,14 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from google_auth_oauthlib.flow import Flow
+from google.auth.exceptions import GoogleAuthError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.credential_diagnostics import OAuthCredentialFailure, failure_category, safe_failure
 from app.core.config import Settings, get_settings
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.oauth_pending_state import OAuthPendingState
@@ -48,7 +50,9 @@ class GoogleOAuthService:
 
     def _validate_google_config(self) -> None:
         if not self.settings.google_client_id or not self.settings.google_client_secret:
-            raise ValueError("Google OAuth credentials are not configured")
+            raise OAuthCredentialFailure(
+                "Google OAuth credentials are not configured", category="configuration_error"
+            )
 
     def _oauth_scopes(self) -> list[str]:
         scopes: list[str] = list(_identity_scopes)
@@ -124,7 +128,9 @@ class GoogleOAuthService:
         try:
             flow.fetch_token(code=code)
         except Exception as exc:
-            raise ValueError(f"OAuth token exchange failed: {exc}") from exc
+            raise OAuthCredentialFailure(
+                safe_failure(exc, "OAuth token exchange"), category=failure_category(exc)
+            ) from None
         credentials = cast(Credentials, flow.credentials)
         if not credentials.token:
             raise ValueError("Failed to obtain Google OAuth credentials")
@@ -134,8 +140,10 @@ class GoogleOAuthService:
         try:
             oauth2_service = build("oauth2", "v2", credentials=credentials, cache_discovery=False)
             profile = oauth2_service.userinfo().get().execute()
-        except HttpError as exc:
-            raise ValueError(f"Failed to fetch Google profile: {exc}") from exc
+        except (HttpError, GoogleAuthError) as exc:
+            raise OAuthCredentialFailure(
+                safe_failure(exc, "Google profile request"), category=failure_category(exc)
+            ) from None
         email = profile.get("email")
         google_id = profile.get("id")
         if not email or not google_id:

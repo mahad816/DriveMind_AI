@@ -568,7 +568,7 @@ async def test_build_index_ensure_collection_failure_persists_failed_job(
 
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
-    assert job.error == "collection unavailable"
+    assert job.error == "indexing job failed (unexpected_failure)."
     assert job.completed_at is not None
     assert mock_db.commit.await_count == 2
 
@@ -586,5 +586,5 @@ async def test_build_index_unexpected_guarded_exception_fails_job(
 
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
-    assert job.error == "database unavailable"
+    assert job.error == "indexing job failed (unexpected_failure)."
     assert job.completed_at is not None

@@ -560,7 +560,9 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
 
     mock_client = MagicMock()
     mock_client.get_start_page_token.return_value = "early-token"
-    mock_client.list_files.side_effect = DriveClientError("Drive API down")
+    mock_client.list_files.side_effect = DriveClientError(
+        "synthetic-access-918 synthetic-refresh-732 synthetic-code-541 synthetic-key-129"
+    )
 
     with (
         patch.object(service, "_build_drive_client", return_value=mock_client),
@@ -568,7 +570,7 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
         patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
-        with pytest.raises(DriveClientError, match="Drive API down"):
+        with pytest.raises(DriveClientError, match="synthetic-access-918"):
             await service.sync_metadata()
 
     mock_client.get_start_page_token.assert_called_once_with()
@@ -579,7 +581,12 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
     added_job = mock_db.add.call_args_list[0][0][0]
     assert isinstance(added_job, IndexingJob)
     assert added_job.status == IndexingJobStatus.FAILED
-    assert added_job.error == "Drive API down"
+    assert added_job.error == "drive sync job failed (unexpected_failure)."
+    from app.schemas.indexing import IndexingJobRead
+
+    added_job.id = uuid.uuid4()
+    added_job.created_at = added_job.updated_at = datetime.now(UTC)
+    assert "synthetic-" not in IndexingJobRead.model_validate(added_job).model_dump_json()
 
 
 @pytest.mark.asyncio
@@ -605,7 +612,7 @@ async def test_full_sync_does_not_reconcile_when_upsert_fails(
         patch.object(service, "_reconcile_missing_files", new_callable=AsyncMock) as reconcile,
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
-        with pytest.raises(DriveClientError, match="upsert failed"):
+        with pytest.raises(DriveClientError, match="Drive metadata sync failed"):
             await service.sync_metadata()
 
     mock_client.get_start_page_token.assert_called_once_with()
