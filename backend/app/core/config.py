@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_ROOT.parent
@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Inactive until same-origin callback registration and authorization rollout are reviewed.
     google_application_sessions_enabled: bool = False
     google_session_redirect_uri: str = ""
+    # Optional, backend-only; parsed only when the inactive crypto component is invoked.
+    google_credential_encryption_keyring: SecretStr | None = Field(
+        default=None, repr=False, exclude=True
+    )
+    google_credential_encryption_active_key_id: str = Field(default="", repr=False, exclude=True)
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"

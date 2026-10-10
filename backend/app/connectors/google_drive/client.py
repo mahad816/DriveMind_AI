@@ -43,8 +43,8 @@ class DriveClientError(RuntimeError):
 class DriveTokens:
     """Minimal OAuth token snapshot needed to build Drive credentials."""
 
-    access_token: str
-    refresh_token: str | None
+    access_token: str = field(repr=False)
+    refresh_token: str | None = field(repr=False)
     token_expiry: datetime | None
     scopes: str
 
