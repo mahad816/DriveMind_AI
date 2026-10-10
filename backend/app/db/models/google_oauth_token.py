@@ -29,6 +29,8 @@ class GoogleOAuthToken(TimestampMixin, Base):
     )
     access_token: Mapped[str] = mapped_column(Text, nullable=False)
     refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Inactive additive storage; legacy readers/writers remain unchanged.
+    encrypted_credentials: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_expiry: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     scopes: Mapped[str] = mapped_column(Text, nullable=False)
 

@@ -359,7 +359,7 @@ def test_app_without_keys_and_no_production_crypto_imports(settings: Settings):
         GoogleCredentialCrypto.from_settings(settings)
     app_dir = Path(__file__).resolve().parents[2] / "app"
     for path in app_dir.rglob("*.py"):
-        if path.name == "google_credential_crypto.py":
+        if path.name in {"google_credential_crypto.py", "google_credential_repository.py"}:
             continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):

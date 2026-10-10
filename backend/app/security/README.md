@@ -172,3 +172,69 @@ review. Never silently fall back to plaintext after ciphertext verification
 fails, and never remove old keys before verifying recovery requirements.
 
 Reference: https://cryptography.io/en/stable/fernet/ (maintained Fernet API).
+
+
+## Step 3B2-A: inactive storage/repository foundation
+
+Migration `20261010_1200`, following `20261009_1300`, adds only nullable PostgreSQL
+TEXT `google_oauth_tokens.encrypted_credentials`, with no default, trigger,
+backfill or new uniqueness constraint. Established plaintext columns, nullability,
+User foreign key, per-user uniqueness, row UUIDs and timestamps are preserved.
+Downgrade drops only the optional envelope. It loses ciphertext and is safe only
+while plaintext compatibility remains authoritative; it is not an encrypted-only
+rollback strategy. Never apply this migration to a real database without a later
+reviewed rollout. New application ORM queries require the additive column before
+deployment, even though storage integration is inactive.
+
+`GoogleCredentialRepository` is not imported by current routes, OAuth callbacks,
+sync/content services or refresh code. No rollout flag or engine configuration
+changed. Its internal API requires an explicit trusted User UUID; neither an HTTP
+endpoint nor first-account fallback exists. This does not authenticate a caller.
+
+Operations:
+- `load_record(owner)` returns immutable, secret-safe row identity/metadata.
+- `load_encrypted(owner)` requires a present, verified envelope. Missing,
+  corrupted, wrongly bound or undecryptable ciphertext never selects plaintext.
+- `load_legacy(owner)` is an explicit compatibility operation for rows without
+  ciphertext; it rejects every row where ciphertext is present, including empty
+  or corrupted ciphertext.
+- `prepare_encrypted(owner, stable_row_id, ...)` is pure preparation and does not
+  establish database ownership. Callers must supply stable trusted identities.
+- `write_encrypted_compatibility(...)` is an explicitly named encrypted+plaintext
+  mirror writer for future compatibility. It requires configured keys; it is
+  **not** encrypted-only storage. Existing legacy rows require explicit
+  `ExistingCredentialStorage.LEGACY`; the default requires encrypted reading.
+  A `None` refresh replacement preserves the currently loaded refresh token.
+  Replacing a refresh token is explicit; clearing/revoking grants is deferred.
+  Existing row IDs stay unchanged; new rows receive a UUID once before encryption
+  and are inserted with that exact UUID. `expected_record_id` optionally rejects
+  deletion/replacement observed since the caller loaded the record.
+
+Repository operations require a parameter-hidden SQLAlchemy engine
+(`hide_parameters=True`), SQL echo disabled and engine DEBUG row logging disabled.
+They refuse unsafe logging configuration without mutating the legacy engine.
+Future integration must satisfy this requirement. Repository exceptions are fixed
+safe messages; no SQL parameters, token/ciphertext values or underlying database
+exception strings are logged or returned. Snapshots are internal-only, never
+HTTP response models. Explicit unwrapping, raw ORM values and caller commits are
+still sensitive; caller-owned commit failures require safe application handling.
+
+Caller owns commit/rollback. Writes flush and acquire owner/token row locks until
+the caller completes its transaction; invoke them AFTER Google network calls.
+Locking the stable User row serializes cooperating writers, including concurrent
+new-row creation, while different owners can proceed independently. Fresh reads
+avoid stale ORM identity-map values. Reads disable autoflush and writes flush only
+the selected token row, so unrelated pending owner changes are not implicitly
+written by repository operations. Failed database writes require caller rollback.
+This does not fence late refresh results, solve external refresh rotation races,
+or protect against existing legacy writers that bypass the repository. Grant
+version/revision and disconnect/job lifecycle protection remain separate work.
+
+Before Step 3B2-B: review compatibility modes and all reader/writer call sites,
+provision external keys only through approved backend secret management, ensure
+safe SQL logging, test every OAuth/refresh path against existing synthetic rows,
+and define schema-first deployment and rollback. Mixed legacy writers can leave
+ciphertext stale; no backfill or encrypted-only activation is safe until those
+writers are integrated and a separate rollout is approved. Existing plaintext
+rows, backups, provider exception logging and first-account fallbacks remain
+known risks. Demo corpus admission remains unchanged and permits no OAuth tokens.

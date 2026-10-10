@@ -41,6 +41,7 @@ REVISION = "20261009_1300"
 async def oauth_engine(pg_engine: AsyncEngine):
     async with pg_engine.begin() as connection:
         await connection.run_sync(apply_revision, REVISION)
+        await connection.run_sync(apply_revision, "20261010_1200")
     return pg_engine
 
 
