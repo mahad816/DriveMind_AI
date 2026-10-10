@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from tests.credential_fixtures import synthetic_oauth_row
+
 from app.core.config import Settings
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.services.user_resolution import DemoIdentityError, resolve_active_user
 
@@ -26,7 +27,7 @@ def isolate_demo_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_normal_mode_preserves_first_oauth_token_resolution(demo_user_id: str) -> None:
     db = AsyncMock()
     owner = User(id=OWNER_ID, email="owner@example.test", google_id="normal-user")
-    db.scalar.return_value = GoogleOAuthToken(user_id=OWNER_ID, access_token="test-token")
+    db.scalar.return_value = synthetic_oauth_row(user_id=OWNER_ID, access_token="test-token")
     db.get.return_value = owner
 
     result = await resolve_active_user(db, Settings(demo_mode=False, demo_user_id=demo_user_id))
@@ -65,7 +66,7 @@ async def test_normal_errors_are_preserved(
     db = AsyncMock()
     db.get.return_value = None
     db.scalar.return_value = (
-        GoogleOAuthToken(user_id=OWNER_ID, access_token="test-token") if token_exists else None
+        synthetic_oauth_row(user_id=OWNER_ID, access_token="test-token") if token_exists else None
     )
 
     with pytest.raises(ValueError) as exc_info:

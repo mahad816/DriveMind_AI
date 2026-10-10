@@ -15,7 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.credential_diagnostics import OAuthCredentialFailure, failure_category, safe_failure
 from app.core.config import Settings, get_settings
-from app.db.models.google_oauth_token import GoogleOAuthToken
+from pydantic import SecretStr
+from app.services.google_credential_repository import (
+    GoogleCredentialRepository,
+    CredentialRepositoryError,
+    CredentialReauthorizationRequired,
+)
+from app.security.google_credential_crypto import CredentialCryptoError
 from app.db.models.oauth_pending_state import OAuthPendingState
 from app.db.models.user import User
 
@@ -134,11 +140,26 @@ class GoogleOAuthService:
             raise ValueError("Failed to obtain Google OAuth credentials")
         return credentials
 
+    @staticmethod
+    def _userinfo_credentials(credentials: Credentials) -> Credentials:
+        """Fresh OAuth access only: userinfo must never refresh an unpersisted grant."""
+        expiry = credentials.expiry
+        if expiry is not None and expiry.tzinfo is not None:
+            expiry = expiry.astimezone(UTC).replace(tzinfo=None)
+        return Credentials(  # type: ignore[no-untyped-call]
+            token=credentials.token, scopes=credentials.scopes, expiry=expiry
+        )
+
     def _fetch_google_profile(self, credentials: Credentials) -> dict[str, str]:
         failure: OAuthCredentialFailure | None = None
         profile: dict[str, str] = {}
         try:
-            oauth2_service = build("oauth2", "v2", credentials=credentials, cache_discovery=False)
+            oauth2_service = build(
+                "oauth2",
+                "v2",
+                credentials=self._userinfo_credentials(credentials),
+                cache_discovery=False,
+            )
             profile = oauth2_service.userinfo().get().execute()
         except Exception as exc:
             failure = OAuthCredentialFailure(
@@ -163,37 +184,33 @@ class GoogleOAuthService:
         return user
 
     async def _upsert_token(self, user: User, credentials: Credentials) -> None:
-        token_row = await self.db.scalar(
-            select(GoogleOAuthToken).where(GoogleOAuthToken.user_id == user.id)
-        )
         expiry = credentials.expiry
-        if expiry is not None and expiry.tzinfo is None:
-            expiry = expiry.replace(tzinfo=UTC)
-
-        scopes = (
-            " ".join(credentials.scopes)
-            if credentials.scopes
-            else self.settings.google_drive_scopes
-        )
-        access_token = credentials.token
-        if access_token is None:
+        if expiry is not None:
+            expiry = expiry.replace(tzinfo=UTC) if expiry.tzinfo is None else expiry.astimezone(UTC)
+        if not credentials.token:
             raise ValueError("Failed to obtain Google access token")
-
-        if token_row is None:
-            token_row = GoogleOAuthToken(
-                user_id=user.id,
-                access_token=access_token,
-                refresh_token=credentials.refresh_token,
+        granted_scopes = credentials.granted_scopes or credentials.scopes
+        try:
+            await GoogleCredentialRepository(self.db, self.settings).write_verified_grant(
+                user.id,
+                access_token=SecretStr(credentials.token),
+                refresh_token=SecretStr(credentials.refresh_token)
+                if credentials.refresh_token
+                else None,
                 token_expiry=expiry,
-                scopes=scopes,
+                scopes=" ".join(granted_scopes)
+                if granted_scopes
+                else self.settings.google_drive_scopes,
             )
-            self.db.add(token_row)
-        else:
-            token_row.access_token = access_token
-            if credentials.refresh_token:
-                token_row.refresh_token = credentials.refresh_token
-            token_row.token_expiry = expiry
-            token_row.scopes = scopes
+        except CredentialReauthorizationRequired:
+            raise OAuthCredentialFailure(
+                "Reconnect Google Drive with offline authorization.",
+                category="reauthorization_required",
+            ) from None
+        except (CredentialRepositoryError, CredentialCryptoError):
+            raise OAuthCredentialFailure(
+                "Google credential storage is unavailable.", category="configuration_error"
+            ) from None
 
     async def handle_callback(self, code: str, state: str | None) -> OAuthCallbackResult:
         """Validate callback, exchange code, and persist user + token records."""

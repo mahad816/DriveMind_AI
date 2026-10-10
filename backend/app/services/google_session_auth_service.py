@@ -42,6 +42,7 @@ from app.services.application_session_service import (
     ApplicationSessionService,
     IssuedApplicationSession,
 )
+from app.core.credential_diagnostics import OAuthCredentialFailure
 from app.services.google_oauth_service import GoogleOAuthService, _identity_scopes
 
 
@@ -230,7 +231,7 @@ class GoogleSessionAuthService(GoogleOAuthService):
             client = build(
                 "oauth2",
                 "v2",
-                http=AuthorizedHttp(credentials, http=transport),
+                http=AuthorizedHttp(self._userinfo_credentials(credentials), http=transport),
                 cache_discovery=False,
             )
             profile = client.userinfo().get().execute(num_retries=0)
@@ -306,7 +307,7 @@ class GoogleSessionAuthService(GoogleOAuthService):
                 await self._session_service().revoke(credential)
             await self.db.commit()  # Cookie issuance is exclusively AFTER this commit.
             return issued
-        except (SQLAlchemyError, SessionStoreUnavailable):
+        except (SQLAlchemyError, SessionStoreUnavailable, OAuthCredentialFailure):
             await self.db.rollback()
             raise SessionStoreUnavailable() from None
         except (GoogleLoginRejected, InvalidApplicationSession, TimeoutError):

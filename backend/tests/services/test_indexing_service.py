@@ -9,11 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
+from tests.credential_fixtures import synthetic_oauth_row
+
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
 from app.embeddings.base import EmbeddingError
@@ -26,7 +27,7 @@ FILE_ID = uuid.uuid4()
 DOCUMENT_ID = uuid.uuid4()
 CHUNK_ID = uuid.uuid4()
 USER = User(id=USER_ID, email="user@example.com", google_id="gid-1")
-TOKEN_ROW = GoogleOAuthToken(
+TOKEN_ROW = synthetic_oauth_row(
     id=uuid.uuid4(),
     user_id=USER_ID,
     access_token="access",

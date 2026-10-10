@@ -6,7 +6,7 @@ import asyncio
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, cast
+from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,12 +15,12 @@ from app.connectors.google_drive.client import (
     DriveChange,
     DriveClientError,
     DriveFileMetadata,
-    DriveTokens,
     GoogleDriveClient,
-    TokenPersister,
 )
 from app.connectors.google_drive.constants import GOOGLE_FOLDER_MIME, is_supported_mime_type
 from app.core.credential_diagnostics import safe_failure
+from app.services.google_credential_service import GoogleCredentialService
+from app.services.google_credential_repository import CredentialSnapshot
 from app.core.config import Settings, get_settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.drive_file import DriveFile
@@ -72,13 +72,9 @@ class DriveSyncService:
             raise ValueError("Connected Google account has no user record")
         return user
 
-    async def _load_oauth_token(self, user_id: uuid.UUID) -> GoogleOAuthToken:
-        token_row = await self.db.scalar(
-            select(GoogleOAuthToken).where(GoogleOAuthToken.user_id == user_id)
-        )
-        if token_row is None:
-            raise ValueError("No Google Drive connection found. Complete OAuth first.")
-        return token_row
+    async def _load_oauth_token(self, user_id: uuid.UUID) -> CredentialSnapshot:
+        self._credential_service = GoogleCredentialService(self.db, self.settings)
+        return await self._credential_service.load(user_id)
 
     async def _get_sync_state(self, user_id: uuid.UUID) -> DriveSyncState | None:
         state: DriveSyncState | None = await self.db.scalar(
@@ -108,40 +104,8 @@ class DriveSyncService:
             return parsed.replace(tzinfo=UTC)
         return parsed
 
-    def _build_drive_client(
-        self,
-        token_row: GoogleOAuthToken,
-        on_token_refresh: list[DriveTokens],
-    ) -> GoogleDriveClient:
-        tokens = DriveTokens(
-            access_token=token_row.access_token,
-            refresh_token=token_row.refresh_token,
-            token_expiry=token_row.token_expiry,
-            scopes=token_row.scopes,
-        )
-
-        def capture_refresh(updated: DriveTokens) -> None:
-            on_token_refresh.append(updated)
-
-        return GoogleDriveClient(
-            tokens=tokens,
-            settings=self.settings,
-            on_token_refresh=cast(TokenPersister, capture_refresh),
-        )
-
-    async def _persist_refreshed_tokens(
-        self,
-        token_row: GoogleOAuthToken,
-        refreshed: list[DriveTokens],
-    ) -> None:
-        if not refreshed:
-            return
-        latest = refreshed[-1]
-        token_row.access_token = latest.access_token
-        if latest.refresh_token:
-            token_row.refresh_token = latest.refresh_token
-        token_row.token_expiry = latest.token_expiry
-        token_row.scopes = latest.scopes
+    def _build_drive_client(self, snapshot: CredentialSnapshot) -> GoogleDriveClient:
+        return self._credential_service.client(snapshot)
 
     @staticmethod
     def _folder_query() -> str:
@@ -380,12 +344,11 @@ class DriveSyncService:
         await self.db.commit()
         await self.db.refresh(job)
 
-        refreshed_tokens: list[DriveTokens] = []
         created = updated = unchanged = removed = 0
         total_seen = 0
 
         try:
-            client = self._build_drive_client(token_row, refreshed_tokens)
+            client = self._build_drive_client(token_row)
             if mode == "full":
                 created, updated, unchanged, removed, total_seen = await self._run_full_sync(
                     user, client
@@ -398,8 +361,6 @@ class DriveSyncService:
                     sync_state,
                 )
                 total_seen = created + updated + unchanged + removed
-
-            await self._persist_refreshed_tokens(token_row, refreshed_tokens)
 
             job.status = IndexingJobStatus.COMPLETED
             job.completed_at = datetime.now(UTC)
@@ -460,10 +421,11 @@ class DriveSyncService:
             user = await self._resolve_user(user_id)
         except ValueError:
             return False
-        token_row = await self.db.scalar(
-            select(GoogleOAuthToken).where(GoogleOAuthToken.user_id == user.id)
-        )
-        return token_row is not None
+        try:
+            await self._load_oauth_token(user.id)
+            return True
+        except DriveClientError:
+            return False
 
     async def get_pending_counts(self, user_id: uuid.UUID | None = None) -> "PendingCounts":
         """Return how many files still need each indexing step.

@@ -2,7 +2,7 @@
 
 import logging
 
-from google.auth.exceptions import RefreshError
+from google.auth.exceptions import RefreshError, TransportError
 from googleapiclient.errors import HttpError
 
 
@@ -41,7 +41,7 @@ def failure_category(exc: Exception) -> str:
             return "authentication_expired"
         if exc.resp.status == 429 or 500 <= exc.resp.status <= 599:
             return "temporary_provider_failure"
-    if isinstance(exc, (TimeoutError, ConnectionError)):
+    if isinstance(exc, (TimeoutError, ConnectionError, TransportError)):
         return "temporary_provider_failure"
     return "unexpected_failure"
 

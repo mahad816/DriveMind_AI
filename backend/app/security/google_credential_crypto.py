@@ -1,4 +1,4 @@
-"""Inactive Google credential encryption. No storage, network or key generation.
+"""Google credential encryption. No storage, network or key generation.
 
 All identity arguments must come from trusted application code. Encryption does
 not establish ownership, revoke Google grants or authenticate an API request.

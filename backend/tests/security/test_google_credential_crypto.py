@@ -16,7 +16,6 @@ from pydantic import SecretStr
 
 from app.connectors.google_drive.client import DriveTokens
 from app.core.config import Settings
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.main import create_app
 from app.security.google_credential_crypto import (
@@ -351,7 +350,7 @@ def test_secret_safe_representations_errors_settings_and_drive_tokens(settings: 
         original.provider = "other"  # type: ignore[misc]
 
 
-def test_app_without_keys_and_no_production_crypto_imports(settings: Settings):
+def test_app_without_keys_and_crypto_imports_stay_in_credential_boundary(settings: Settings):
     assert settings.google_credential_encryption_keyring is None
     assert settings.google_credential_encryption_active_key_id == ""
     assert create_app().routes
@@ -359,7 +358,12 @@ def test_app_without_keys_and_no_production_crypto_imports(settings: Settings):
         GoogleCredentialCrypto.from_settings(settings)
     app_dir = Path(__file__).resolve().parents[2] / "app"
     for path in app_dir.rglob("*.py"):
-        if path.name in {"google_credential_crypto.py", "google_credential_repository.py"}:
+        if path.name in {
+            "google_credential_crypto.py",
+            "google_credential_repository.py",
+            "google_credential_service.py",
+            "google_oauth_service.py",
+        }:
             continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
@@ -369,29 +373,23 @@ def test_app_without_keys_and_no_production_crypto_imports(settings: Settings):
                 assert all("google_credential_crypto" not in alias.name for alias in node.names)
 
 
-async def test_existing_oauth_writer_remains_plaintext_even_with_optional_keys(
-    settings: Settings,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    settings.google_credential_encryption_keyring = SecretStr(json.dumps({"old": OLD_KEY}))
-    settings.google_credential_encryption_active_key_id = "old"
+async def test_existing_oauth_writer_uses_encrypted_repository(settings: Settings):
+    from unittest.mock import patch
+    from app.services.google_credential_repository import GoogleCredentialRepository
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("Existing OAuth must not invoke inactive crypto")
-
-    monkeypatch.setattr(GoogleCredentialCrypto, "from_settings", forbidden)
-    monkeypatch.setattr(GoogleCredentialCrypto, "encrypt", forbidden)
-    monkeypatch.setattr(GoogleCredentialCrypto, "decrypt", forbidden)
     db = AsyncMock()
-    row = GoogleOAuthToken(
-        id=ROW, user_id=USER, access_token="old-synthetic", refresh_token=REFRESH, scopes="openid"
-    )
-    db.scalar.return_value = row
     user = User(id=USER, google_id="verified-synthetic-subject", email="synthetic@example.invalid")
-    await GoogleOAuthService(db, settings)._upsert_token(
-        user, Credentials(token=ACCESS, refresh_token=None, scopes=["openid"])
-    )
-    assert row.access_token == ACCESS and row.refresh_token == REFRESH
+    with patch.object(
+        GoogleCredentialRepository, "write_verified_grant", new_callable=AsyncMock
+    ) as write:
+        await GoogleOAuthService(db, settings)._upsert_token(
+            user, Credentials(token=ACCESS, refresh_token=None, scopes=["openid"])
+        )
+    assert write.await_args is not None
+    assert write.await_args.kwargs["access_token"].get_secret_value() == ACCESS
+    assert write.await_args.kwargs["refresh_token"] is None
+    assert write.await_args.args[0] == USER
+    db.commit.assert_not_awaited()
 
 
 def test_no_key_generation_and_safe_failure_logs(monkeypatch: pytest.MonkeyPatch, caplog):

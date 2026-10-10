@@ -3,22 +3,24 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.credential_fixtures import synthetic_oauth_row
+
 from app.connectors.google_drive.client import DriveClientError
 from app.connectors.google_drive.constants import GOOGLE_DOC_MIME, PDF_MIME
 from app.db.enums import DriveFileStatus
 from app.db.models.drive_file import DriveFile
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.services.drive_content_service import DriveContentService
 
 USER_ID = uuid.uuid4()
 FILE_ID = uuid.uuid4()
-TOKEN_ROW = GoogleOAuthToken(
+TOKEN_ROW = synthetic_oauth_row(
     id=uuid.uuid4(),
     user_id=USER_ID,
     access_token="access",
@@ -46,8 +48,19 @@ def mock_db() -> AsyncMock:
 
 
 @pytest.fixture
-def service(mock_db: AsyncMock) -> DriveContentService:
-    return DriveContentService(db=mock_db, settings=MagicMock(demo_mode=False))
+def service(mock_db: AsyncMock) -> Generator[DriveContentService, None, None]:
+    instance = DriveContentService(db=mock_db, settings=MagicMock(demo_mode=False))
+
+    async def load(owner):
+        row = await mock_db.scalar(None)
+        if row is None:
+            raise DriveClientError("No Google Drive connection found. Complete OAuth first.")
+        return row
+
+    # Metadata orchestration unit tests mock encrypted credential I/O. The real
+    # repository/coordinator is exercised against isolated PostgreSQL separately.
+    with patch.object(instance, "_load_oauth_token", side_effect=load):
+        yield instance
 
 
 @pytest.mark.asyncio

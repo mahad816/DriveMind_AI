@@ -27,6 +27,8 @@ from app.security.session_helpers import (
 )
 from app.services.application_session_service import ApplicationSessionService
 from app.services.google_oauth_service import GoogleOAuthService
+from app.services.google_credential_repository import GoogleCredentialRepository
+from tests.credential_fixtures import configure_test_keys, synthetic_oauth_row, secret_value
 from app.services.google_session_auth_service import (
     GoogleAuthIntent,
     GoogleLoginRejected,
@@ -42,6 +44,7 @@ async def oauth_engine(pg_engine: AsyncEngine):
     async with pg_engine.begin() as connection:
         await connection.run_sync(apply_revision, REVISION)
         await connection.run_sync(apply_revision, "20261010_1200")
+        await connection.run_sync(apply_revision, "20261011_1200")
     return pg_engine
 
 
@@ -53,7 +56,7 @@ def login_settings(settings: Settings) -> Settings:
     )
     settings.google_client_id = "synthetic-client"
     settings.google_client_secret = "synthetic-client-secret"
-    return settings
+    return configure_test_keys(settings)
 
 
 async def begin(service: GoogleSessionAuthService, intent=GoogleAuthIntent.LOGIN, credential=None):
@@ -167,7 +170,7 @@ async def test_connect_subject_mismatch_rotation_and_refresh_preservation(
         sessions_service = ApplicationSessionService(db, login_settings)
         old = await sessions_service.issue_google(VerifiedGoogleIdentity("verified-subject-a"))
         db.add(
-            GoogleOAuthToken(
+            synthetic_oauth_row(
                 user_id=USER_A,
                 access_token="synthetic-old-access",
                 refresh_token="synthetic-refresh",
@@ -183,8 +186,10 @@ async def test_connect_subject_mismatch_rotation_and_refresh_preservation(
             await service.callback(code="code", state=state, binding=binding, credential=token)
         assert (await sessions_service.resolve_principal(token)).authenticated_user_id == USER_A
         assert (
-            await db.scalar(
-                select(GoogleOAuthToken.access_token).where(GoogleOAuthToken.user_id == USER_A)
+            secret_value(
+                (
+                    await GoogleCredentialRepository(db, login_settings).load_encrypted(USER_A)
+                ).payload.access_token
             )
             == "synthetic-old-access"
         )
@@ -197,8 +202,10 @@ async def test_connect_subject_mismatch_rotation_and_refresh_preservation(
             await sessions_service.resolve_principal(new.credential.get_secret_value())
         ).authenticated_user_id == USER_A
         assert (
-            await db.scalar(
-                select(GoogleOAuthToken.refresh_token).where(GoogleOAuthToken.user_id == USER_A)
+            secret_value(
+                (
+                    await GoogleCredentialRepository(db, login_settings).load_encrypted(USER_A)
+                ).payload.refresh_token
             )
             == "synthetic-refresh"
         )

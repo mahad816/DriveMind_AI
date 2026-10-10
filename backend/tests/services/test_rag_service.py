@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.credential_fixtures import synthetic_oauth_row
+
 from app.core.config import Settings
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
 from app.evaluation.trace import AbstentionReason, EvalTraceCollector, TraceOutcome
@@ -28,7 +29,7 @@ CHUNK_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
 DOCUMENT_ID = uuid.uuid4()
 QUERY_ID = uuid.uuid4()
-TOKEN_ROW = GoogleOAuthToken(
+TOKEN_ROW = synthetic_oauth_row(
     id=uuid.uuid4(),
     user_id=USER_ID,
     access_token="access",

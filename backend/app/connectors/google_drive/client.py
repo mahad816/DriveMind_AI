@@ -7,9 +7,9 @@ files on Google Drive. Sync orchestration lives in services/.
 from __future__ import annotations
 
 import io
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 
 from google.auth.exceptions import GoogleAuthError
@@ -126,12 +126,14 @@ class GoogleDriveClient:
         settings: Settings | None = None,
         on_token_refresh: TokenPersister | None = None,
         service: Any | None = None,
+        refresh_handler: Callable[..., tuple[str, datetime]] | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._tokens = tokens
         self._on_token_refresh = on_token_refresh
         self._service = service
         self._credentials: Credentials | None = None
+        self._refresh_handler = refresh_handler
 
     def _build_credentials(self) -> Credentials:
         if not self._tokens.access_token and not self._tokens.refresh_token:
@@ -144,20 +146,25 @@ class GoogleDriveClient:
             client_secret=self._settings.google_client_secret or None,
             scopes=self._tokens.scopes.split() if self._tokens.scopes else None,
             expiry=self._strip_tzinfo(self._tokens.token_expiry),
+            refresh_handler=self._refresh_handler,
         )
 
     @staticmethod
     def _strip_tzinfo(expiry: datetime | None) -> datetime | None:
         # google-auth stores/compares expiry as naive UTC.
         if expiry is not None and expiry.tzinfo is not None:
-            return expiry.replace(tzinfo=None)
+            return expiry.astimezone(UTC).replace(tzinfo=None)
         return expiry
 
     def _ensure_credentials(self) -> Credentials:
         if self._credentials is None:
             self._credentials = self._build_credentials()
         credentials = self._credentials
-        if not credentials.valid and credentials.expired and credentials.refresh_token:
+        if (
+            not credentials.valid
+            and credentials.expired
+            and (credentials.refresh_token or self._refresh_handler)
+        ):
             self._refresh(credentials)
         return credentials
 
