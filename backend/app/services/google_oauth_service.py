@@ -8,10 +8,8 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from google_auth_oauthlib.flow import Flow
-from google.auth.exceptions import GoogleAuthError
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -137,13 +135,17 @@ class GoogleOAuthService:
         return credentials
 
     def _fetch_google_profile(self, credentials: Credentials) -> dict[str, str]:
+        failure: OAuthCredentialFailure | None = None
+        profile: dict[str, str] = {}
         try:
             oauth2_service = build("oauth2", "v2", credentials=credentials, cache_discovery=False)
             profile = oauth2_service.userinfo().get().execute()
-        except (HttpError, GoogleAuthError) as exc:
-            raise OAuthCredentialFailure(
+        except Exception as exc:
+            failure = OAuthCredentialFailure(
                 safe_failure(exc, "Google profile request"), category=failure_category(exc)
-            ) from None
+            )
+        if failure is not None:
+            raise failure from None
         email = profile.get("email")
         google_id = profile.get("id")
         if not email or not google_id:

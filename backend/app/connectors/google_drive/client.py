@@ -181,12 +181,23 @@ class GoogleDriveClient:
     def _get_service(self) -> Any:
         if self._service is None:
             credentials = self._ensure_credentials()
-            self._service = build(
-                "drive",
-                "v3",
-                credentials=credentials,
-                cache_discovery=False,
-            )
+            failure: DriveClientError | None = None
+            try:
+                self._service = build(
+                    "drive",
+                    "v3",
+                    credentials=credentials,
+                    cache_discovery=False,
+                )
+            except Exception as exc:
+                failure = DriveClientError(
+                    safe_failure(exc, "Google Drive service construction"),
+                    category=failure_category(exc),
+                )
+            # Raise outside the provider handler: do not retain its exception as
+            # implicit context, even for loggers that inspect exception chains.
+            if failure is not None:
+                raise failure from None
         return self._service
 
     @staticmethod
