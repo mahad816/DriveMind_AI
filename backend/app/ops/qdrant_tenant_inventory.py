@@ -1,4 +1,4 @@
-"""Read-only, bounded tenant inventory. No repair or storage mutation APIs."""
+"""Bounded tenant inventory; audit/verify are read-only, apply is explicitly gated."""
 
 import argparse
 import asyncio
@@ -156,6 +156,22 @@ def refuse_demo(settings: Settings) -> None:
         raise InventoryError("Demo targets are prohibited")
 
 
+def point_issues(record: Any, row: Any | None, vector_size: int) -> list[str]:
+    """Shared provenance and vector gate for scans and controlled owner repair."""
+    point_id = canonical_uuid(record.id)
+    if point_id is None:
+        return ["invalid_point_id"]
+    issues = classify(point_id, record.payload or {}, row)
+    vector = record.vector
+    if (
+        not isinstance(vector, list)
+        or len(vector) != vector_size
+        or not all(isinstance(v, (int, float)) and math.isfinite(v) for v in vector)
+    ):
+        issues.append("invalid_vector")
+    return issues
+
+
 async def inventory(
     engine: AsyncEngine,
     client: AsyncQdrantClient,
@@ -282,16 +298,7 @@ async def inventory(
                                 record.id if isinstance(record.id, int) else None,
                             )
                         else:
-                            issues = classify(point_id, payload, by_id.get(point_id))
-                            vector = record.vector
-                            if (
-                                not isinstance(vector, list)
-                                or len(vector) != vector_config.size
-                                or not all(
-                                    isinstance(v, (int, float)) and math.isfinite(v) for v in vector
-                                )
-                            ):
-                                issues.append("invalid_vector")
+                            issues = point_issues(record, by_id.get(point_id), vector_config.size)
                             if not issues:
                                 report.correct_points += 1
                             report.record(issues, point_id)
@@ -338,13 +345,25 @@ async def run_cli(args: argparse.Namespace) -> int:
             "qdrant_host": urlsplit(args.qdrant_url).hostname,
             "collection": args.collection,
         }
+        if args.command == "apply":
+            from app.ops.qdrant_tenant_repair import confirmation_target
+
+            if not args.writers_stopped or args.confirm_target != confirmation_target(settings):
+                raise InventoryError("Exact target confirmation and stopped writers are required")
         engine = create_async_engine(database, hide_parameters=True, echo=False, pool_pre_ping=True)
         client = create_qdrant_client(settings)
-        report = await inventory(engine, client, settings, args.batch_size, args.max_samples)
-        result = report.as_dict()
+        if args.command == "apply":
+            from app.ops.qdrant_tenant_repair import apply_repair
+
+            result, exit_code = await apply_repair(
+                engine, client, settings, args.batch_size, args.max_samples
+            )
+        else:
+            report = await inventory(engine, client, settings, args.batch_size, args.max_samples)
+            result = report.as_dict()
+            exit_code = 2 if report.error else 1 if report.issues else 0
         result["target"] = target
         result["command"] = args.command
-        exit_code = 2 if report.error else 1 if report.issues else 0
     except Exception:
         pass  # Fixed configuration error above; never serialize raw exception text.
     finally:
@@ -364,7 +383,7 @@ async def run_cli(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["audit", "verify"])
+    parser.add_argument("command", choices=["audit", "verify", "apply"])
     parser.add_argument(
         "--database-env",
         required=True,
@@ -374,6 +393,14 @@ def main() -> None:
     parser.add_argument("--collection", required=True)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--max-samples", type=int, default=100)
+    parser.add_argument(
+        "--confirm-target", help="Apply only: exact target string documented in the cutover guide"
+    )
+    parser.add_argument(
+        "--writers-stopped",
+        action="store_true",
+        help="Apply only: acknowledge writers are stopped or isolated",
+    )
     raise SystemExit(asyncio.run(run_cli(parser.parse_args())))
 
 
