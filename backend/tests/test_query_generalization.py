@@ -10,6 +10,8 @@ from app.llm.openai_service import OpenAIChatService
 from app.llm.prompts import GROUNDING_RULES
 from app.retrieval.dates import date_patterns
 from app.retrieval.keyword import KeywordRetriever
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
 from app.retrieval.query_router import QueryRoute, classify_query
 from app.services.conversation_history import bounded_rewrite_history
 from app.services.rag_service import RagService
@@ -75,7 +77,15 @@ async def test_followup_retrieval(followup: str, resolved: str) -> None:
         followup, conversation_id="test", history=history, user_id=uuid.UUID(int=101)
     )
     chat.rewrite_followup.assert_awaited_once_with(followup, history)
-    retriever.retrieve.assert_awaited_once_with(resolved)
+    retriever.retrieve.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=rag._resolve_user.return_value.id,
+            query=resolved,
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
     assert result.question == followup
 
 
@@ -131,7 +141,15 @@ async def test_standalone_no_rewrite() -> None:
         user_id=uuid.UUID(int=101),
     )
     chat.rewrite_followup.assert_not_called()
-    retriever.retrieve.assert_awaited_once_with("What is database replication?")
+    retriever.retrieve.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=rag._resolve_user.return_value.id,
+            query="What is database replication?",
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
 
 
 @pytest.mark.asyncio
@@ -155,7 +173,15 @@ async def test_grammatical_that_does_not_require_history_rewrite() -> None:
         history=[{"role": "assistant", "text": "The previous topic was the onboarding workshop."}],
         user_id=uuid.UUID(int=101),
     )
-    retriever.retrieve.assert_awaited_once_with(question)
+    retriever.retrieve.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=rag._resolve_user.return_value.id,
+            query=question,
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
 
 
 def test_rewrite_bound() -> None:
@@ -275,7 +301,13 @@ async def test_date_lookup_bounds() -> None:
     assert (
         len(
             await KeywordRetriever(db, Settings(demo_mode=False))._date_hits(
-                "What changed on October 9?"
+                "What changed on October 9?",
+                RetrievalRequest(
+                    user_id=uuid.UUID(int=101),
+                    query="What changed on October 9?",
+                    scope=EligibleCollectionScope(),
+                    candidate_limit=24,
+                ),
             )
         )
         == 1

@@ -18,7 +18,7 @@ from app.db.models.drive_file import DriveFile
 from app.retrieval.dates import date_patterns
 from app.retrieval.filename_targets import extract_filename_targets
 from app.retrieval.types import RetrievedChunk
-from app.retrieval.scope import eligibility, is_eligible, scoped_session
+from app.retrieval.scope import eligibility, is_eligible, require_request, scoped_session
 from app.routing.intent_frame.execution import RetrievalRequest
 
 # Regex to detect queries that explicitly name a file with an extension.
@@ -78,18 +78,14 @@ class KeywordRetriever:
         self.db = db
         self.settings = settings or get_settings()
 
-    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        if isinstance(question, RetrievalRequest):
-            async with scoped_session(self.db) as db:
-                return await KeywordRetriever(db, self.settings)._retrieve(question)
-        return await self._retrieve(question)
+    async def retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        require_request(request)
+        async with scoped_session(self.db) as db:
+            return await KeywordRetriever(db, self.settings)._retrieve(request)
 
-    async def _retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        """Search chunks by keyword and hydrate authoritative text from PostgreSQL."""
-        request = question if isinstance(question, RetrievalRequest) else None
-        normalized = (
-            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
-        )
+    async def _retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        require_request(request)
+        normalized = request.query.strip()
         if not normalized:
             return []
 
@@ -128,9 +124,7 @@ class KeywordRetriever:
             )
         return retrieved
 
-    async def _search_hits(
-        self, question: str, request: RetrievalRequest | None = None
-    ) -> list[KeywordHit]:
+    async def _search_hits(self, question: str, request: RetrievalRequest) -> list[KeywordHit]:
         """Return scored hits by merging FTS, filename-only, and phrase-search results.
 
         Five paths (highest to lowest priority):
@@ -196,13 +190,11 @@ class KeywordRetriever:
         hits = list(hits_by_id.values())
         return (
             sorted(hits, key=lambda h: (-h.score, h.chunk_id.int))[: request.candidate_limit]
-            if request
+            if request.candidate_policy == "BOUNDED"
             else hits
         )
 
-    async def _date_hits(
-        self, question: str, request: RetrievalRequest | None = None
-    ) -> list[KeywordHit]:
+    async def _date_hits(self, question: str, request: RetrievalRequest) -> list[KeywordHit]:
         patterns = date_patterns(question)
         if not patterns:
             return []
@@ -215,7 +207,7 @@ class KeywordRetriever:
                 or_(*[Chunk.text.op("~*")(pattern) for pattern in patterns]),
             )
             .order_by(DriveFile.name, Chunk.chunk_index)
-            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit)
         )
         return [
             KeywordHit(chunk_id=chunk_id, score=_FILENAME_ONLY_SCORE) for chunk_id in result.all()
@@ -225,7 +217,7 @@ class KeywordRetriever:
         self,
         question: str,
         ts_query: ColumnElement[object],
-        request: RetrievalRequest | None = None,
+        request: RetrievalRequest,
     ) -> list[KeywordHit]:
         """Run PostgreSQL full-text search and return ranked hits."""
         filename_match = self._filename_match_expression(question)
@@ -241,7 +233,7 @@ class KeywordRetriever:
                 Chunk.search_vector.op("@@")(ts_query),
             )
             .order_by(combined_score.desc(), Chunk.chunk_index.asc())
-            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit)
         )
 
         hits: list[KeywordHit] = []
@@ -251,7 +243,7 @@ class KeywordRetriever:
         return hits
 
     async def _filename_only_hits(
-        self, question: str, request: RetrievalRequest | None = None
+        self, question: str, request: RetrievalRequest
     ) -> list[KeywordHit]:
         """Return chunk IDs from files whose name matches query terms.
 
@@ -262,7 +254,7 @@ class KeywordRetriever:
         return await self._filename_only_hits_for_terms(query_terms, request)
 
     async def _filename_only_hits_for_terms(
-        self, terms: list[str], request: RetrievalRequest | None = None
+        self, terms: list[str], request: RetrievalRequest
     ) -> list[KeywordHit]:
         """Return chunk IDs from files whose name contains any of the given terms.
 
@@ -291,7 +283,7 @@ class KeywordRetriever:
                 or_(*filters),
             )
             .order_by(DriveFile.modified_at.desc(), Chunk.chunk_index.asc())
-            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit)
         )
 
         return [
@@ -300,9 +292,7 @@ class KeywordRetriever:
             if isinstance(row[0], uuid.UUID)
         ]
 
-    async def _phrase_hits(
-        self, phrase: str, request: RetrievalRequest | None = None
-    ) -> list[KeywordHit]:
+    async def _phrase_hits(self, phrase: str, request: RetrievalRequest) -> list[KeywordHit]:
         """Return chunks whose text contains the exact phrase via ILIKE substring match.
 
         Handles apostrophes and special characters safely via SQLAlchemy parameterised
@@ -324,7 +314,7 @@ class KeywordRetriever:
                 Chunk.text.ilike(f"%{escaped}%", escape="\\"),
             )
             .order_by(Chunk.chunk_index.asc())
-            .limit(request.candidate_limit if request else self.settings.retrieval_candidate_k)
+            .limit(request.candidate_limit)
         )
 
         return [
@@ -398,7 +388,7 @@ class KeywordRetriever:
         return terms
 
     async def _load_chunks(
-        self, chunk_ids: list[uuid.UUID], request: RetrievalRequest | None = None
+        self, chunk_ids: list[uuid.UUID], request: RetrievalRequest
     ) -> dict[uuid.UUID, Chunk]:
         if not chunk_ids:
             return {}

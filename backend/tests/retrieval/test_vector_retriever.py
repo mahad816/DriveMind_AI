@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.config import Settings
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
+from pydantic import ValidationError
 from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
@@ -124,7 +127,7 @@ async def test_retrieve_returns_hydrated_chunks(
         return_value=MagicMock(all=MagicMock(return_value=[chunk])),
     )
 
-    results = await retriever.retrieve("What is in my notes?")
+    results = await retriever.retrieve(_request("What is in my notes?"))
 
     assert len(results) == 1
     assert results[0].chunk_id == CHUNK_ID
@@ -139,14 +142,13 @@ async def test_retrieve_returns_hydrated_chunks(
 
 
 @pytest.mark.asyncio
-async def test_retrieve_returns_empty_for_blank_question(
+async def test_retrieve_rejects_blank_request(
     retriever: VectorRetriever,
     mock_embedding: AsyncMock,
     mock_vector_store: AsyncMock,
 ) -> None:
-    results = await retriever.retrieve("   ")
-
-    assert results == []
+    with pytest.raises(ValidationError):
+        await retriever.retrieve(_request("   "))
     mock_embedding.embed_texts.assert_not_awaited()
     mock_vector_store.search_similar.assert_not_awaited()
 
@@ -168,7 +170,7 @@ async def test_retrieve_drops_orphan_qdrant_hits(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
 
-    results = await retriever.retrieve("orphan test")
+    results = await retriever.retrieve(_request("orphan test"))
 
     assert len(results) == 1
     assert results[0].chunk_id == CHUNK_ID
@@ -183,7 +185,7 @@ async def test_retrieve_drops_qdrant_hit_for_skipped_file(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk(DriveFileStatus.SKIPPED)])),
     )
 
-    results = await retriever.retrieve("removed notes")
+    results = await retriever.retrieve(_request("removed notes"))
 
     assert results == []
 
@@ -213,7 +215,7 @@ async def test_retrieve_preserves_qdrant_rank_order(
         return_value=MagicMock(all=MagicMock(return_value=[first_chunk, second_chunk])),
     )
 
-    results = await retriever.retrieve("ordered results")
+    results = await retriever.retrieve(_request("ordered results"))
 
     assert [result.chunk_id for result in results] == [first_id, second_id]
     assert results[0].score == 0.95
@@ -230,9 +232,19 @@ async def test_retrieve_passes_retrieval_settings_to_vector_store(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
 
-    await retriever.retrieve("settings test")
+    await retriever.retrieve(_request("settings test"))
 
     call_kwargs = mock_vector_store.search_similar.await_args.kwargs
     assert call_kwargs["limit"] == 11
     assert call_kwargs["score_threshold"] == 0.35
     assert call_kwargs["expected_vector_size"] == 1536
+
+
+def _request(query: str) -> RetrievalRequest:
+    return RetrievalRequest(
+        user_id=USER_ID,
+        query=query,
+        scope=EligibleCollectionScope(),
+        candidate_limit=11,
+        candidate_policy="LEGACY",
+    )

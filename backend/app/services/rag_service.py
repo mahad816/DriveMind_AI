@@ -37,6 +37,8 @@ from app.retrieval.file_target import FileTargetRetriever
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.query_router import QueryRoute, classify_query
 from app.retrieval.types import RetrievedChunk
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
 from app.retrieval.vector import VectorRetriever
 from app.schemas.chat import ChatHistoryTurn
 from app.schemas.query import CitationItem
@@ -508,19 +510,26 @@ class RagService:
         if trace is not None:
             trace.record_route(route, "linear")
             trace.set_stage("retrieval")
+        retrieval_request = RetrievalRequest(
+            user_id=user.id,
+            query=normalized_question,
+            scope=EligibleCollectionScope(),
+            candidate_limit=self.settings.retrieval_candidate_k,
+            candidate_policy="LEGACY",
+        )
         evidence = None
         if self.settings.hybrid_retrieval_enabled and isinstance(self.retriever, HybridRetriever):
             if trace is None:
-                evidence = await self.retriever.retrieve_with_grade(normalized_question)
+                evidence = await self.retriever.retrieve_with_grade(retrieval_request)
             else:
                 evidence = await self.retriever.retrieve_with_grade(
-                    normalized_question,
+                    retrieval_request,
                     trace=trace,
                 )
             retrieved = evidence.chunks
         else:
             if trace is None:
-                retrieved = await self.retriever.retrieve(normalized_question)
+                retrieved = await self.retriever.retrieve(retrieval_request)
             else:
                 trace.begin_attempt(
                     attempt_number=1,
@@ -529,7 +538,7 @@ class RagService:
                 )
                 retrieval_started = perf_counter()
                 try:
-                    retrieved = await self.retriever.retrieve(normalized_question)
+                    retrieved = await self.retriever.retrieve(retrieval_request)
                 except Exception as exc:
                     trace.record_error(exc, stage="retrieval", component="vector")
                     trace.finish_attempt(1)

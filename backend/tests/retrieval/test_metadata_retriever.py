@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.config import Settings
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
 from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
@@ -96,7 +98,7 @@ def retriever(mock_db: AsyncMock, settings: Settings) -> MetadataRetriever:
 async def test_retrieve_returns_empty_without_metadata_signals(
     retriever: MetadataRetriever,
 ) -> None:
-    results = await retriever.retrieve("what is tensile strength")
+    results = await retriever.retrieve(_request("what is tensile strength"))
     assert results == []
 
 
@@ -136,7 +138,7 @@ async def test_retrieve_scores_latest_files_higher(
         return_value=MagicMock(all=MagicMock(return_value=[chunk_new, chunk_old])),
     )
 
-    results = await retriever.retrieve("latest pdf notes")
+    results = await retriever.retrieve(_request("latest pdf notes"))
 
     assert len(results) == 2
     assert results[0].chunk_id == CHUNK_A_ID
@@ -172,7 +174,7 @@ async def test_retrieve_limits_results_to_candidate_k(
         return_value=MagicMock(all=MagicMock(return_value=chunks)),
     )
 
-    results = await retriever.retrieve("latest pdf")
+    results = await retriever.retrieve(_request("latest pdf"))
 
     assert len(results) == settings.retrieval_candidate_k
 
@@ -217,7 +219,7 @@ async def test_retrieve_excludes_skipped_files(
         ),
     )
 
-    results = await retriever.retrieve("latest pdf")
+    results = await retriever.retrieve(_request("latest pdf"))
 
     assert [result.chunk_id for result in results] == [CHUNK_B_ID]
 
@@ -310,8 +312,36 @@ async def test_retrieve_latest_resume_filters_by_filename(
         return_value=MagicMock(all=MagicMock(return_value=[chunk_resume, chunk_other])),
     )
 
-    results = await retriever.retrieve("Find my latest resume")
+    results = await retriever.retrieve(_request("Find my latest resume"))
 
     assert len(results) >= 1
     # Resume-named chunk should score higher due to filename match
     assert results[0].chunk_id == CHUNK_A_ID
+
+
+def _request(query: str) -> RetrievalRequest:
+    return RetrievalRequest(
+        user_id=USER_ID,
+        query=query,
+        scope=EligibleCollectionScope(),
+        candidate_limit=4,
+        candidate_policy="LEGACY",
+    )
+
+
+@pytest.mark.asyncio
+async def test_candidate_policy_preserves_metadata_preselection(retriever, mock_db):
+    mock_db.scalars.return_value = MagicMock(all=lambda: [])
+    legacy = _request("latest resume")
+    bounded = legacy.model_copy(update={"candidate_policy": "BOUNDED"})
+    spec = retriever._parse_query(legacy.query)
+    await retriever._query_chunks(spec, legacy)
+    statement = mock_db.scalars.await_args.args[0]
+    assert statement.compile().params["param_1"] == 8
+    assert "lower(drive_files.name) LIKE" in str(statement)
+    assert "drive_files.user_id =" in str(statement)
+    await retriever._query_chunks(spec, bounded)
+    statement = mock_db.scalars.await_args.args[0]
+    assert statement.compile().params["param_1"] == 4
+    assert "lower(drive_files.name) LIKE" not in str(statement)
+    assert "drive_files.user_id =" in str(statement)

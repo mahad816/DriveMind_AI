@@ -76,10 +76,10 @@ class ScriptRetriever(HybridRetriever):
         self.chunks = chunks
         self.requests = []
 
-    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        assert isinstance(question, RetrievalRequest)
-        assert question.user_id == USER
-        self.requests.append(question)
+    async def retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        assert isinstance(request, RetrievalRequest)
+        assert request.user_id == USER
+        self.requests.append(request)
         return self.chunks
 
 

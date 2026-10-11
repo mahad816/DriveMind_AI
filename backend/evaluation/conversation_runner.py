@@ -63,8 +63,8 @@ class ConversationService(Protocol):
 
 
 class _ForbiddenRetriever(Retriever):
-    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        raise AssertionError(f"EXP-03 attempted document retrieval: {question!r}")
+    async def retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        raise AssertionError(f"EXP-03 attempted document retrieval: {request!r}")
 
 
 class _ForbiddenChat(ChatService):

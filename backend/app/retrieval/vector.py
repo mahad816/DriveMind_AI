@@ -16,7 +16,7 @@ from app.embeddings.base import EmbeddingService
 from app.embeddings.factory import get_embedding_service
 from app.embeddings.vector_store import QdrantVectorStore
 from app.retrieval.types import RetrievedChunk
-from app.retrieval.scope import eligibility, is_eligible, scoped_session
+from app.retrieval.scope import eligibility, is_eligible, require_request, scoped_session
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import ResolvedFileScope
 
@@ -37,35 +37,31 @@ class VectorRetriever:
         self.embedding_service = embedding_service or get_embedding_service(self.settings)
         self.vector_store = vector_store or QdrantVectorStore(self.settings)
 
-    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        if isinstance(question, RetrievalRequest):
-            async with scoped_session(self.db) as db:
-                return await VectorRetriever(
-                    db,
-                    self.settings,
-                    embedding_service=self.embedding_service,
-                    vector_store=self.vector_store,
-                )._retrieve(question)
-        return await self._retrieve(question)
+    async def retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        require_request(request)
+        async with scoped_session(self.db) as db:
+            return await VectorRetriever(
+                db,
+                self.settings,
+                embedding_service=self.embedding_service,
+                vector_store=self.vector_store,
+            )._retrieve(request)
 
-    async def _retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        """Embed the question, search Qdrant, and hydrate chunk text from PostgreSQL."""
-        request = question if isinstance(question, RetrievalRequest) else None
-        normalized = (
-            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
-        )
+    async def _retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        require_request(request)
+        normalized = request.query.strip()
         if not normalized:
             return []
 
         query_vector = (await self.embedding_service.embed_texts([normalized]))[0]
         hits = await self.vector_store.search_similar(
             query_vector,
-            limit=request.candidate_limit if request else self.settings.retrieval_candidate_k,
+            limit=request.candidate_limit,
             score_threshold=self.settings.retrieval_score_threshold,
             expected_vector_size=self.embedding_service.embedding_dimension,
             **(
                 {"file_ids": request.scope.file_ids}
-                if request and isinstance(request.scope, ResolvedFileScope)
+                if isinstance(request.scope, ResolvedFileScope)
                 else {}
             ),
         )
@@ -103,7 +99,7 @@ class VectorRetriever:
         return retrieved
 
     async def _load_chunks(
-        self, chunk_ids: list[uuid.UUID], request: RetrievalRequest | None = None
+        self, chunk_ids: list[uuid.UUID], request: RetrievalRequest
     ) -> dict[uuid.UUID, Chunk]:
         if not chunk_ids:
             return {}

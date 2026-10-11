@@ -21,6 +21,7 @@ from app.llm.factory import get_chat_service
 from app.llm.prompts import no_evidence_answer, normalize_answer_citations
 from app.llm.prompts import format_citation_snippet, select_prompt_chunks
 from app.retrieval.base import Retriever
+from app.routing.intent_frame.execution import RetrievalRequest
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
 from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.rerank import weighted_fusion_rerank
@@ -94,6 +95,13 @@ def make_retrieve_node(
             return {"raw_chunks": [], "ranked_chunks": [], "retrieval_count": 0}
 
         working_query = state["working_query"]
+        request = RetrievalRequest(
+            user_id=state["user_id"],
+            query=working_query,
+            scope=state["retrieval_scope"],
+            candidate_limit=settings.retrieval_candidate_k,
+            candidate_policy="LEGACY",
+        )
         attempt_number = state["rewrite_count"] + 1
         if trace is not None:
             intent = state.get("intent")
@@ -123,7 +131,7 @@ def make_retrieve_node(
             if retriever is None:
                 raise ValueError(f"Missing retriever for active name: {name}")
             if active_trace is None:
-                tasks.append(retriever.retrieve(working_query))
+                tasks.append(retriever.retrieve(request))
             else:
 
                 async def timed_retrieve(
@@ -132,7 +140,7 @@ def make_retrieve_node(
                 ) -> list[RetrievedChunk]:
                     started_at = perf_counter()
                     try:
-                        chunks = await active_retriever.retrieve(working_query)
+                        chunks = await active_retriever.retrieve(request)
                     except Exception as exc:
                         active_trace.record_error(
                             exc,

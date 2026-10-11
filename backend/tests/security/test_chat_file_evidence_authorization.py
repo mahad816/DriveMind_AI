@@ -284,7 +284,10 @@ async def test_unindexed_named_file_never_generates_content(chat_reads):
     assert not r.chat.inputs
 
 
-async def test_approved_anonymous_demo_chat_and_invalid_storage(chat_reads):
+@pytest.mark.parametrize(
+    "hybrid,graph", [(False, False), (True, False), (False, True), (True, True)]
+)
+async def test_approved_anonymous_demo_chat_and_invalid_storage(chat_reads, hybrid, graph):
     r = chat_reads
     r.settings.demo_mode = True
     r.settings.database_url = (
@@ -348,6 +351,55 @@ async def test_approved_anonymous_demo_chat_and_invalid_storage(chat_reads):
     response = await r.client.post("/api/v1/chat", json={"question": "List all files"})
     assert response.status_code == 200 and response.json()["user_id"] == str(DEMO_USER)
     assert manifest.files[0].filename in response.json()["answer"]
+    # Exercise shared grounded retrieval after real corpus admission, with only providers mocked.
+    from unittest.mock import patch
+    from app.embeddings.vector_store import ScoredChunkHit
+    from app.retrieval.vector import VectorRetriever
+    from app.retrieval.hybrid import HybridRetriever
+    from app.retrieval.keyword import KeywordRetriever
+    from app.retrieval.metadata import MetadataRetriever
+
+    r.settings.hybrid_retrieval_enabled = hybrid
+    r.settings.agent_graph_enabled = graph
+    r.settings.agent_max_rewrite_attempts = 0
+    r.settings.evidence_min_fusion_score = 0.001
+    embedding = AsyncMock()
+    embedding.embedding_dimension = 3
+    embedding.embed_texts.return_value = [[0.1, 0.2, 0.3]]
+    store = AsyncMock()
+    store.search_similar.return_value = [ScoredChunkHit(chunk_id=v.id, score=0.99) for v in vectors]
+    grounded = AsyncMock()
+    captured = []
+    grounded.generate_grounded_answer.side_effect = lambda q, chunks, **kw: (
+        captured.append(chunks) or chunks[0].text + " [1]"
+    )
+
+    def service(db: AsyncSession = Depends(get_db)):
+        vector = VectorRetriever(db, r.settings, embedding_service=embedding, vector_store=store)
+        retrieval = (
+            HybridRetriever(
+                db,
+                r.settings,
+                vector_retriever=vector,
+                keyword_retriever=KeywordRetriever(db, r.settings),
+                metadata_retriever=MetadataRetriever(db, r.settings),
+            )
+            if hybrid
+            else vector
+        )
+        return RagService(db, r.settings, retriever=retrieval, chat_service=grounded)
+
+    r.app.dependency_overrides[get_rag_service] = service
+    with (
+        patch("app.retrieval.vector.get_embedding_service", return_value=embedding),
+        patch("app.retrieval.vector.QdrantVectorStore", return_value=store),
+    ):
+        response = await r.client.post(
+            "/api/v1/chat", json={"question": "Explain onboarding approvals"}
+        )
+    assert response.status_code == 200 and response.json()["user_id"] == str(DEMO_USER)
+    assert captured and all(c.drive_file_id in {f.id for f in manifest.files} for c in captured[0])
+    assert response.json()["citations"]
     async with r.factory() as db:
         assert not list((await db.scalars(select(QueryHistory))).all())
         db.add(User(id=USER_B, email="foreign@invalid", google_id="foreign-subject"))

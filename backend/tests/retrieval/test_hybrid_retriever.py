@@ -9,9 +9,15 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.config import Settings
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
+from pydantic import ValidationError
 from app.evaluation.trace import EvalTraceCollector
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievalSource, RetrievedChunk
+
+
+USER_ID = uuid.uuid4()
 
 
 def _chunk(*, score: float, source: RetrievalSource) -> RetrievedChunk:
@@ -56,7 +62,7 @@ async def test_hybrid_retriever_runs_sources_and_returns_graded_chunks() -> None
         metadata_retriever=metadata,
     )
 
-    chunks = await retriever.retrieve("latest pdf")
+    chunks = await retriever.retrieve(_request("latest pdf"))
 
     assert len(chunks) >= 1
     vector.retrieve.assert_awaited_once()
@@ -65,7 +71,7 @@ async def test_hybrid_retriever_runs_sources_and_returns_graded_chunks() -> None
 
 
 @pytest.mark.asyncio
-async def test_hybrid_retriever_returns_insufficient_for_empty_question() -> None:
+async def test_hybrid_retriever_rejects_blank_request() -> None:
     retriever = HybridRetriever(
         db=AsyncMock(),
         settings=Settings(),
@@ -73,9 +79,8 @@ async def test_hybrid_retriever_returns_insufficient_for_empty_question() -> Non
         keyword_retriever=AsyncMock(),
         metadata_retriever=AsyncMock(),
     )
-    evidence = await retriever.retrieve_with_grade("   ")
-    assert evidence.sufficient is False
-    assert evidence.chunks == []
+    with pytest.raises(ValidationError):
+        await retriever.retrieve_with_grade(_request("   "))
 
 
 @pytest.mark.asyncio
@@ -104,7 +109,7 @@ async def test_hybrid_retriever_retrieve_returns_empty_for_insufficient_evidence
         metadata_retriever=metadata,
     )
 
-    chunks = await retriever.retrieve("latest pdf")
+    chunks = await retriever.retrieve(_request("latest pdf"))
     assert chunks == []
 
 
@@ -124,7 +129,7 @@ async def test_hybrid_retriever_returns_grade_reason() -> None:
         keyword_retriever=keyword,
         metadata_retriever=metadata,
     )
-    evidence = await retriever.retrieve_with_grade("latest file")
+    evidence = await retriever.retrieve_with_grade(_request("latest file"))
     assert evidence.sufficient is False
     assert "No retrieval evidence" in evidence.reason
 
@@ -169,7 +174,7 @@ async def test_hybrid_trace_preserves_raw_fusion_rerank_and_grade() -> None:
     trace = EvalTraceCollector()
     trace.start("topic")
 
-    evidence = await retriever.retrieve_with_grade("topic", trace=trace)
+    evidence = await retriever.retrieve_with_grade(_request("topic"), trace=trace)
 
     attempt = trace.trace.attempts[0]
     assert [result.retriever for result in attempt.retriever_results] == [
@@ -214,6 +219,16 @@ async def test_hybrid_without_trace_does_not_build_snapshots(
 
     monkeypatch.setattr("app.evaluation.trace.snapshot_candidates", fail_snapshot)
 
-    evidence = await retriever.retrieve_with_grade("topic")
+    evidence = await retriever.retrieve_with_grade(_request("topic"))
 
     assert evidence.sufficient is False
+
+
+def _request(query: str) -> RetrievalRequest:
+    return RetrievalRequest(
+        user_id=USER_ID,
+        query=query,
+        scope=EligibleCollectionScope(),
+        candidate_limit=8,
+        candidate_policy="LEGACY",
+    )

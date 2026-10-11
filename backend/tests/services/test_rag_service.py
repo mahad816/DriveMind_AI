@@ -20,6 +20,8 @@ from app.llm.prompts import DEMO_NO_EVIDENCE_ANSWER, NO_EVIDENCE_ANSWER, select_
 from app.retrieval.file_target import FileTargetResult
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
 from app.retrieval.vector import VectorRetriever
 from app.schemas.query import CitationItem
 from app.services.rag_service import RagResult, RagService
@@ -249,7 +251,15 @@ async def test_ask_generates_answer_and_persists_history(
     assert result.citations[0].chunk_id == CHUNK_ID
     assert result.citations[0].filename == "notes.txt"
     assert "Tensile strength" in result.citations[0].snippet
-    mock_retriever.retrieve.assert_awaited_once_with("What is tensile strength?")
+    mock_retriever.retrieve.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=USER_ID,
+            query="What is tensile strength?",
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
     mock_chat.generate_grounded_answer.assert_awaited_once()
     mock_db.commit.assert_awaited_once()
     added = mock_db.add.call_args.args[0]
@@ -569,7 +579,15 @@ async def test_ask_uses_evidence_grading_path_when_retriever_supports_it(
     result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
     assert result.answer == NO_EVIDENCE_ANSWER
-    graded_retriever.retrieve_with_grade.assert_awaited_once_with("What is tensile strength?")
+    graded_retriever.retrieve_with_grade.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=USER_ID,
+            query="What is tensile strength?",
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
     mock_chat.generate_grounded_answer.assert_not_awaited()
 
 
@@ -673,7 +691,15 @@ async def test_ask_uses_linear_path_when_agent_disabled_even_if_graph_available(
 
     assert result.query_id == QUERY_ID
     assert result.answer == "Tensile strength is discussed in [1]."
-    mock_retriever.retrieve.assert_awaited_once_with("What is tensile strength?")
+    mock_retriever.retrieve.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=USER_ID,
+            query="What is tensile strength?",
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
 
 
 # ── Chitchat bypass ────────────────────────────────────────────────────────────
@@ -762,7 +788,15 @@ async def test_ask_short_substantive_topic_uses_grounded_retrieval(
 
     await service.ask("CoreChain architecture", user_id=USER_ID)
 
-    mock_retriever.retrieve.assert_awaited_once_with("CoreChain architecture")
+    mock_retriever.retrieve.assert_awaited_once_with(
+        RetrievalRequest(
+            user_id=USER_ID,
+            query="CoreChain architecture",
+            scope=EligibleCollectionScope(),
+            candidate_limit=24,
+            candidate_policy="LEGACY",
+        )
+    )
     mock_chat.generate_grounded_answer.assert_awaited_once()
     mock_chat.generate_direct_answer.assert_not_awaited()
 

@@ -15,6 +15,7 @@ from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.metadata import MetadataRetriever
 from app.retrieval.rerank import weighted_fusion_rerank
 from app.retrieval.types import RetrievedChunk
+from app.retrieval.scope import require_request
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.retrieval.vector import VectorRetriever
 
@@ -36,22 +37,21 @@ class HybridRetriever:
         self.keyword_retriever = keyword_retriever or KeywordRetriever(db, self.settings)
         self.metadata_retriever = metadata_retriever or MetadataRetriever(db, self.settings)
 
-    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
+    async def retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
         """Return reranked chunks that pass evidence grading."""
-        evidence = await self.retrieve_with_grade(question)
+        evidence = await self.retrieve_with_grade(request)
         return evidence.chunks
 
     async def retrieve_with_grade(
         self,
-        question: str | RetrievalRequest,
+        request: RetrievalRequest,
         *,
         trace: EvalTraceCollector | None = None,
     ) -> EvidenceGrade:
         """Run hybrid retrieval pipeline and return graded evidence."""
-        normalized = (
-            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
-        )
-        retrieval_input = question if isinstance(question, RetrievalRequest) else normalized
+        require_request(request)
+        normalized = request.query.strip()
+        retrieval_input = request
         if not normalized:
             return EvidenceGrade(
                 sufficient=False,

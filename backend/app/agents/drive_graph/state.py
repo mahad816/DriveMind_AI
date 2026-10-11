@@ -8,6 +8,7 @@ from typing import NotRequired, TypedDict
 from app.agents.drive_graph.types import QueryIntent, RetrievalPlan
 from app.retrieval.types import RetrievedChunk
 from app.schemas.query import CitationItem
+from app.routing.intent_frame.scope import RetrievalScope, EligibleCollectionScope
 
 
 class DriveGraphState(TypedDict):
@@ -16,6 +17,7 @@ class DriveGraphState(TypedDict):
     question: str
     working_query: str
     user_id: uuid.UUID
+    retrieval_scope: RetrievalScope
     rewrite_count: int
     raw_chunks: list[RetrievedChunk]
     ranked_chunks: list[RetrievedChunk]
@@ -36,8 +38,11 @@ def create_initial_state(
     *,
     question: str,
     user_id: uuid.UUID,
+    scope: RetrievalScope | None = None,
 ) -> DriveGraphState:
     """Build the initial graph state for a single-turn question."""
+    if not isinstance(user_id, uuid.UUID):
+        raise ValueError("A valid corpus owner UUID is required")
     normalized = question.strip()
     if not normalized:
         raise ValueError("Question must not be empty")
@@ -46,6 +51,7 @@ def create_initial_state(
         question=normalized,
         working_query=normalized,
         user_id=user_id,
+        retrieval_scope=scope if scope is not None else EligibleCollectionScope(),
         rewrite_count=0,
         raw_chunks=[],
         ranked_chunks=[],

@@ -16,7 +16,7 @@ from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.retrieval.types import RetrievedChunk
-from app.retrieval.scope import eligibility, is_eligible, scoped_session
+from app.retrieval.scope import eligibility, is_eligible, require_request, scoped_session
 from app.routing.intent_frame.execution import RetrievalRequest
 
 _LATEST_KEYWORDS = {"latest", "recent", "newest", "last"}
@@ -91,18 +91,14 @@ class MetadataRetriever:
         self.db = db
         self.settings = settings or get_settings()
 
-    async def retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        if isinstance(question, RetrievalRequest):
-            async with scoped_session(self.db) as db:
-                return await MetadataRetriever(db, self.settings)._retrieve(question)
-        return await self._retrieve(question)
+    async def retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        require_request(request)
+        async with scoped_session(self.db) as db:
+            return await MetadataRetriever(db, self.settings)._retrieve(request)
 
-    async def _retrieve(self, question: str | RetrievalRequest) -> list[RetrievedChunk]:
-        """Retrieve metadata-matched chunks ranked by heuristic relevance."""
-        request = question if isinstance(question, RetrievalRequest) else None
-        normalized = (
-            question.query.strip() if isinstance(question, RetrievalRequest) else question.strip()
-        )
+    async def _retrieve(self, request: RetrievalRequest) -> list[RetrievedChunk]:
+        require_request(request)
+        normalized = request.query.strip()
         if not normalized:
             return []
 
@@ -115,9 +111,7 @@ class MetadataRetriever:
             return []
 
         scored = self._score_chunks(matched_chunks, spec)
-        top_scored = scored[
-            : request.candidate_limit if request else self.settings.retrieval_candidate_k
-        ]
+        top_scored = scored[: request.candidate_limit]
 
         retrieved: list[RetrievedChunk] = []
         for chunk, score in top_scored:
@@ -143,7 +137,7 @@ class MetadataRetriever:
         return retrieved
 
     async def _query_chunks(
-        self, spec: MetadataQuerySpec, request: RetrievalRequest | None = None
+        self, spec: MetadataQuerySpec, request: RetrievalRequest
     ) -> list[Chunk]:
         statement = (
             select(Chunk)
@@ -157,10 +151,8 @@ class MetadataRetriever:
             .order_by(DriveFile.modified_at.desc())
             .limit(
                 request.candidate_limit
-                if request
-                else max(
-                    self.settings.retrieval_candidate_k * 2, self.settings.retrieval_candidate_k
-                )
+                if request.candidate_policy == "BOUNDED"
+                else request.candidate_limit * 2
             )
         )
 
@@ -176,7 +168,7 @@ class MetadataRetriever:
         if text_filters:
             filters.append(or_(*text_filters))
 
-        if filters and request is None:
+        if filters and request.candidate_policy == "LEGACY":
             statement = statement.where(and_(*filters))
 
         result = await self.db.scalars(statement)

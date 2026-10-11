@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.core.config import Settings
+from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import EligibleCollectionScope
+from pydantic import ValidationError
 from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
@@ -81,9 +84,9 @@ def retriever(mock_db: AsyncMock, settings: Settings) -> KeywordRetriever:
 
 
 @pytest.mark.asyncio
-async def test_retrieve_returns_empty_for_blank_question(retriever: KeywordRetriever) -> None:
-    results = await retriever.retrieve("   ")
-    assert results == []
+async def test_retrieve_rejects_blank_request(retriever: KeywordRetriever) -> None:
+    with pytest.raises(ValidationError):
+        await retriever.retrieve(_request("   "))
 
 
 @pytest.mark.asyncio
@@ -102,7 +105,7 @@ async def test_retrieve_returns_keyword_scored_chunks(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
 
-    results = await retriever.retrieve("materials tensile")
+    results = await retriever.retrieve(_request("materials tensile"))
 
     assert len(results) == 1
     assert results[0].chunk_id == CHUNK_ID
@@ -122,7 +125,7 @@ async def test_retrieve_drops_missing_chunks_from_hydration(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
 
-    results = await retriever.retrieve("materials tensile")
+    results = await retriever.retrieve(_request("materials tensile"))
 
     assert len(results) == 1
     assert results[0].chunk_id == CHUNK_ID
@@ -138,7 +141,7 @@ async def test_retrieve_drops_keyword_hit_for_skipped_file(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk(DriveFileStatus.SKIPPED)])),
     )
 
-    results = await retriever.retrieve("materials tensile")
+    results = await retriever.retrieve(_request("materials tensile"))
 
     assert results == []
 
@@ -150,7 +153,10 @@ async def test_candidate_queries_require_indexed_files(
 ) -> None:
     mock_db.execute = AsyncMock(side_effect=[[], [], [], []])
 
-    await retriever._search_hits('find "this is a very specific sentence that appears verbatim"')
+    await retriever._search_hits(
+        'find "this is a very specific sentence that appears verbatim"',
+        _request('find "this is a very specific sentence that appears verbatim"'),
+    )
 
     assert mock_db.execute.await_count == 4
     for call in mock_db.execute.await_args_list:
@@ -165,7 +171,7 @@ async def test_search_hits_uses_candidate_k_limit(
 ) -> None:
     mock_db.execute = AsyncMock(return_value=[])
 
-    await retriever._search_hits("materials science")
+    await retriever._search_hits("materials science", _request("materials science"))
 
     statement = mock_db.execute.await_args.args[0]
     assert statement._limit_clause.value == 17
@@ -232,7 +238,7 @@ async def test_retrieve_merges_filename_only_hits_when_fts_empty(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
 
-    await retriever.retrieve("What is in Resume_2024.pdf?")
+    await retriever.retrieve(_request("What is in Resume_2024.pdf?"))
 
     assert mock_db.execute.await_count == 3
 
@@ -251,7 +257,7 @@ async def test_retrieve_always_on_filename_runs_for_long_tokens(
 
     mock_db.execute = AsyncMock(side_effect=[[], []])  # FTS + always-on filename
 
-    await retriever.retrieve("What is tensile strength?")
+    await retriever.retrieve(_request("What is tensile strength?"))
 
     assert mock_db.execute.await_count == 2
 
@@ -276,7 +282,7 @@ async def test_fts_score_kept_when_higher_than_filename_score(
         return_value=MagicMock(all=MagicMock(return_value=[_chunk()])),
     )
 
-    results = await retriever.retrieve("what is in notes.txt?")
+    results = await retriever.retrieve(_request("what is in notes.txt?"))
 
     assert len(results) == 1
     assert results[0].score == high_fts_score  # FTS score preserved, not overwritten
@@ -346,7 +352,9 @@ async def test_phrase_search_runs_when_quoted_phrase_detected(
     mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
 
     results = await retriever.retrieve(
-        'Which file contains "Connects to a user\'s Google Drive and stores file metadata"?'
+        _request(
+            'Which file contains "Connects to a user\'s Google Drive and stores file metadata"?'
+        )
     )
 
     assert mock_db.execute.await_count == 4
@@ -376,7 +384,7 @@ async def test_phrase_search_finds_chunk_when_fts_empty(
     mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
 
     results = await retriever.retrieve(
-        '"Connects to a user\'s Google Drive and stores file metadata in PostgreSQL"'
+        _request('"Connects to a user\'s Google Drive and stores file metadata in PostgreSQL"')
     )
 
     assert len(results) == 1
@@ -393,7 +401,7 @@ async def test_phrase_search_not_triggered_without_quotes_or_cue(
     retriever = KeywordRetriever(db=mock_db, settings=settings)
     mock_db.execute = AsyncMock(side_effect=[[], []])  # FTS + always-on filename
 
-    await retriever.retrieve("What is tensile strength?")
+    await retriever.retrieve(_request("What is tensile strength?"))
 
     # FTS + always-on filename; phrase path NOT triggered (no quotes/cue)
     assert mock_db.execute.await_count == 2
@@ -422,7 +430,33 @@ async def test_phrase_score_beats_fts_score_for_exact_phrase(
     mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
 
     results = await retriever.retrieve(
-        'find "this is a very specific sentence that appears verbatim in one document"'
+        _request('find "this is a very specific sentence that appears verbatim in one document"')
     )
 
     assert results[0].score == pytest.approx(0.6)
+
+
+def _request(query: str) -> RetrievalRequest:
+    return RetrievalRequest(
+        user_id=USER_ID,
+        query=query,
+        scope=EligibleCollectionScope(),
+        candidate_limit=17,
+        candidate_policy="LEGACY",
+    )
+
+
+@pytest.mark.asyncio
+async def test_candidate_policy_preserves_legacy_merge_and_bounded_tool_order(retriever):
+    from app.retrieval.keyword import KeywordHit
+
+    first, second = uuid.UUID(int=1), uuid.UUID(int=2)
+    retriever._fts_hits = AsyncMock(return_value=[KeywordHit(first, 0.2)])
+    retriever._filename_only_hits_for_terms = AsyncMock(return_value=[KeywordHit(second, 0.85)])
+    legacy = _request("materials").model_copy(update={"candidate_limit": 1})
+    bounded = legacy.model_copy(update={"candidate_policy": "BOUNDED"})
+    assert [h.chunk_id for h in await retriever._search_hits(legacy.query, legacy)] == [
+        first,
+        second,
+    ]
+    assert [h.chunk_id for h in await retriever._search_hits(bounded.query, bounded)] == [second]

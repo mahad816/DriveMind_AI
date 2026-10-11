@@ -157,12 +157,19 @@ class ExecutionPlan(ContractModel):
 
 class RetrievalRequest(ContractModel):
     user_id: UUID
-    query: str = Field(min_length=1, max_length=8000, pattern=r"\S")
+    query: str = Field(min_length=1, pattern=r"\S")
     scope: RetrievalScope
-    candidate_limit: int = Field(ge=1, le=100)
+    candidate_limit: int = Field(ge=1)
+
+    # Legacy callers preserve their historical candidate selection; tools stay bounded.
+    candidate_policy: Literal["BOUNDED", "LEGACY"] = "BOUNDED"
 
     @model_validator(mode="after")
     def nonempty_exact_scope(self) -> "RetrievalRequest":
         if isinstance(self.scope, ResolvedFileScope) and not self.scope.file_ids:
             raise ValueError("an exact retrieval request requires at least one file")
+        if self.candidate_policy == "BOUNDED" and (
+            len(self.query) > 8000 or self.candidate_limit > 100
+        ):
+            raise ValueError("bounded retrieval requires query <= 8000 and candidate limit <= 100")
         return self
