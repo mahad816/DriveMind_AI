@@ -1,6 +1,7 @@
 """Controlled owner-only repair, reusing the independent inventory verifier."""
 
 from typing import Any
+from ipaddress import IPv6Address
 from uuid import UUID
 
 from qdrant_client import AsyncQdrantClient
@@ -15,7 +16,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 from sqlalchemy import select, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
@@ -35,10 +36,42 @@ from app.ops.qdrant_tenant_inventory import (
 OWNER_ISSUES = {"missing_owner", "wrong_owner"}
 
 
-def confirmation_target(settings: Settings) -> str:
+def validate_apply_database_url(database: str) -> URL:
+    """Single explicit TCP target only; no driver-routing or other URL options."""
+    try:
+        if "?" in database or "#" in database:
+            raise ValueError
+        url = make_url(database)
+        if (
+            url.drivername != "postgresql+asyncpg"
+            or url.query
+            or not url.host
+            or url.port is None
+            or not 1 <= url.port <= 65535
+            or not url.database
+        ):
+            raise ValueError
+        if any(
+            not c.isprintable() or c.isspace() or c in "/\\%,?|#" for c in url.host + url.database
+        ):
+            raise ValueError
+        if ":" in url.host:
+            IPv6Address(url.host)
+        return url
+    except Exception:
+        raise InventoryError(
+            "Apply requires an explicit PostgreSQL TCP host, port and database without URL query parameters"
+        ) from None
+
+
+def confirmation_target(settings: Settings, *, database_target: URL | None = None) -> str:
     """Exact nonsecret target identity; connection passwords/parameters are never displayed."""
-    url = make_url(settings.database_url)
-    return f"{url.host}:{url.port or 5432}/{url.database}|{settings.qdrant_url.strip()}|{settings.qdrant_collection}"
+    url = (
+        database_target
+        if database_target is not None
+        else validate_apply_database_url(settings.database_url)
+    )
+    return f"{url.host}:{url.port}/{url.database}|{settings.qdrant_url.strip()}|{settings.qdrant_collection}"
 
 
 async def current_rows(engine: AsyncEngine, ids: list[UUID]) -> dict[UUID, Any]:

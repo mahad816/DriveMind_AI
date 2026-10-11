@@ -184,8 +184,16 @@ uv run python -m app.ops.qdrant_tenant_inventory apply \
 ```
 
 Confirmation is exactly `PG_HOST:PG_PORT/PG_DATABASE|QDRANT_URL|COLLECTION`, with
-PostgreSQL port defaulting to 5432 and the Qdrant URL matching the explicit
-argument after surrounding whitespace is removed. Do not include passwords or
+an explicit PostgreSQL TCP host, port and database, and the Qdrant URL matching the explicit
+argument after surrounding whitespace is removed. Apply rejects ALL PostgreSQL
+URL query parameters, even non-routing options such as `ssl`, plus fragments,
+Unix-socket/multi-host targets and ambiguous or missing target fields. Encoded
+and repeated query keys cannot bypass this policy. Supply a query-free
+`postgresql+asyncpg` URL with an explicit port; no default port is inferred.
+Audit/verify retain their existing read-only URL handling. Any future requirement
+for additional apply connection options needs a separately reviewed extension.
+The validated apply URL is passed to the engine and supplies the confirmation
+and JSON target fields. Do not include passwords or
 API keys. Connection role/schema must also be checked by the operator; the
 confirmation string does not encode those privileges. The acknowledgement is
 an accidental-operation safeguard, not evidence that writers are actually stopped.

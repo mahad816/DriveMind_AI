@@ -338,6 +338,17 @@ async def run_cli(args: argparse.Namespace) -> int:
         url = make_url(database)
         if url.drivername != "postgresql+asyncpg":
             raise InventoryError("PostgreSQL asyncpg target is required")
+        if args.command == "apply":
+            from app.ops.qdrant_tenant_repair import (
+                confirmation_target,
+                validate_apply_database_url,
+            )
+
+            url = validate_apply_database_url(database)
+            if not args.writers_stopped or args.confirm_target != confirmation_target(
+                settings, database_target=url
+            ):
+                raise InventoryError("Exact target confirmation and stopped writers are required")
         target = {
             "database_host": url.host,
             "database_port": url.port,
@@ -345,12 +356,12 @@ async def run_cli(args: argparse.Namespace) -> int:
             "qdrant_host": urlsplit(args.qdrant_url).hostname,
             "collection": args.collection,
         }
-        if args.command == "apply":
-            from app.ops.qdrant_tenant_repair import confirmation_target
-
-            if not args.writers_stopped or args.confirm_target != confirmation_target(settings):
-                raise InventoryError("Exact target confirmation and stopped writers are required")
-        engine = create_async_engine(database, hide_parameters=True, echo=False, pool_pre_ping=True)
+        engine = create_async_engine(
+            url if args.command == "apply" else database,
+            hide_parameters=True,
+            echo=False,
+            pool_pre_ping=True,
+        )
         client = create_qdrant_client(settings)
         if args.command == "apply":
             from app.ops.qdrant_tenant_repair import apply_repair

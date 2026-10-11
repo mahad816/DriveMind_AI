@@ -10,7 +10,15 @@ from uuid import uuid4
 import httpx
 import pytest
 from qdrant_client import AsyncQdrantClient
-from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue, StrictModeConfig
+from qdrant_client.models import (
+    PointStruct,
+    Filter,
+    FieldCondition,
+    MatchValue,
+    StrictModeConfig,
+    VectorParams,
+    Distance,
+)
 from sqlalchemy.engine import make_url
 from sqlalchemy import delete, select, update
 
@@ -20,7 +28,12 @@ from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.ops.qdrant_tenant_inventory import inventory
-from app.ops.qdrant_tenant_repair import apply_repair, confirmation_target
+from app.ops.qdrant_tenant_repair import (
+    apply_repair,
+    confirmation_target,
+    validate_apply_database_url,
+)
+from app.ops.qdrant_tenant_inventory import InventoryError
 from .conftest import USER_A, USER_B
 from .test_qdrant_tenant_inventory import (
     world,
@@ -295,7 +308,16 @@ async def test_revalidation_uses_current_authority(world, race):
         await client.close()
 
 
-async def run_apply_cli(w, env, *, confirmed=True, drained=True, command="apply", collection=None):
+async def run_apply_cli(
+    w,
+    env,
+    *,
+    confirmed=True,
+    drained=True,
+    command="apply",
+    collection=None,
+    target_confirmation=None,
+):
     chosen = collection or w.settings.qdrant_collection
     settings = Settings(
         database_url=env["INVENTORY_SUBPROCESS_DATABASE"],
@@ -317,7 +339,16 @@ async def run_apply_cli(w, env, *, confirmed=True, drained=True, command="apply"
         "2",
     ]
     if command == "apply":
-        args += ["--confirm-target", confirmation_target(settings) if confirmed else "wrong-target"]
+        args += [
+            "--confirm-target",
+            (
+                target_confirmation
+                if target_confirmation is not None
+                else confirmation_target(settings)
+            )
+            if confirmed
+            else "wrong-target",
+        ]
         if drained:
             args += ["--writers-stopped"]
     process = await asyncio.create_subprocess_exec(
@@ -357,6 +388,10 @@ async def test_actual_cli_interlocks_apply_and_standalone_verify(world, subproce
     assert await snapshot(w) == before
     code, report = await run_apply_cli(w, subprocess_target)
     assert code == 0 and report["changed"] == 2 and report["verification"]["clean"]
+    url = make_url(subprocess_target["INVENTORY_SUBPROCESS_DATABASE"])
+    assert report["target"]["database_host"] == url.host
+    assert report["target"]["database_port"] == url.port
+    assert report["target"]["database_name"] == url.database
     code, report = await run_apply_cli(w, subprocess_target, command="verify")
     assert code == 0 and report["clean"]
     code, report = await run_apply_cli(w, subprocess_target)
@@ -474,3 +509,105 @@ async def test_second_owner_group_revalidates_after_first_write(world):
         assert sum(r.payload.get("user_id") is None for r in records) == 3
     finally:
         await client.close()
+
+
+async def test_decoy_database_query_overrides_refused_on_both_collections(world, subprocess_target):
+    w = world
+    await missing_owners(w)
+    actual = make_url(subprocess_target["INVENTORY_SUBPROCESS_DATABASE"])
+    assert actual.host is not None and actual.port is not None and actual.database is not None
+    decoy = actual.set(port=55455, database="drivemind_session_test_decoy").update_query_dict(
+        {"host": actual.host, "port": str(actual.port), "database": actual.database}
+    )
+    env = dict(
+        subprocess_target, INVENTORY_SUBPROCESS_DATABASE=decoy.render_as_string(hide_password=False)
+    )
+    other_collection = "target_decoy_test_" + uuid4().hex
+    await w.client.create_collection(
+        other_collection, vectors_config=VectorParams(size=3, distance=Distance.COSINE)
+    )
+    await w.client.upsert(other_collection, w.points, wait=True)
+    try:
+        original = await snapshot(w)
+        other = await w.client.retrieve(
+            other_collection, [str(i) for i in w.ids], with_payload=True, with_vectors=True
+        )
+        # Existing read-only commands retain query URL support and cannot perform apply.
+        for command in ("audit", "verify"):
+            code, report = await run_apply_cli(w, env, command=command)
+            assert code == 1 and report["issue_counts"] == {"missing_owner": 2}
+            assert await snapshot(w) == original
+        for collection in (w.settings.qdrant_collection, other_collection):
+            # Literal confirmation of the decoy, not computed by the production validator.
+            confirmation = f"127.0.0.1:55455/drivemind_session_test_decoy|{os.environ['QDRANT_TEST_URL']}|{collection}"
+            code, report = await run_apply_cli(
+                w, env, collection=collection, target_confirmation=confirmation
+            )
+            assert code == 2 and not report["complete"] and not report["clean"]
+            assert report["error"] == "Invalid or prohibited operator configuration"
+            assert "target" not in report  # Never label a rejected decoy as the actual target.
+            assert await snapshot(w) == original
+            assert (
+                await w.client.retrieve(
+                    other_collection, [str(i) for i in w.ids], with_payload=True, with_vectors=True
+                )
+                == other
+            )
+    finally:
+        await w.client.delete_collection(other_collection)
+
+
+async def test_actual_cli_rejects_query_routing_and_ambiguous_targets(world, subprocess_target):
+    w = world
+    await missing_owners(w)
+    url = make_url(subprocess_target["INVENTORY_SUBPROCESS_DATABASE"])
+    base = url.render_as_string(hide_password=False)
+    prohibited = [
+        base + "?host=127.0.0.1&host=localhost",
+        base + "?%68ost=127.0.0.1&%70ort=55454",
+        base + "?host=%2Ftmp",
+        base + "?service=synthetic&dsn=postgresql%3A%2F%2Flocalhost%2Fother",
+        base
+        + "?ssl=require",  # All apply query options are prohibited, including non-routing ones.
+        base + "?",
+        base + "#fragment",
+        url.set(host=None).render_as_string(hide_password=False),
+        url.set(port=None).render_as_string(hide_password=False),
+        url.set(database=None).render_as_string(hide_password=False),
+        url.set(host="127.0.0.1,localhost").render_as_string(hide_password=False),
+        url.set(host="%2Ftmp").render_as_string(hide_password=False),
+        url.set(database="ambiguous%3Fhost=other").render_as_string(hide_password=False),
+    ]
+    before = await snapshot(w)
+    for database in prohibited:
+        env = dict(subprocess_target, INVENTORY_SUBPROCESS_DATABASE=database)
+        code, report = await run_apply_cli(
+            w, env, target_confirmation="explicit-but-prohibited-target"
+        )
+        assert code == 2 and not report["complete"] and not report["clean"]
+        assert "target" not in report
+        assert await snapshot(w) == before
+
+
+def test_apply_target_validation_and_driver_resolution():
+    from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
+
+    for host in ("localhost", "127.0.0.1", "::1"):
+        raw = make_url("postgresql+asyncpg://synthetic:synthetic@localhost:5432/drivemind").set(
+            host=host
+        )
+        target = validate_apply_database_url(raw.render_as_string(hide_password=False))
+        _, actual = PGDialect_asyncpg().create_connect_args(target)
+        assert (
+            actual["host"] == target.host
+            and actual["port"] == target.port
+            and actual["database"] == target.database
+        )
+    for raw in (
+        "postgresql+asyncpg://synthetic:SECRET@localhost:0/db",
+        "postgresql+asyncpg://synthetic:SECRET@localhost:65536/db",
+        "postgresql+asyncpg://synthetic:SECRET@localhost:5432/a/b",
+    ):
+        with pytest.raises(InventoryError) as exc:
+            validate_apply_database_url(raw)
+        assert "SECRET" not in str(exc.value)
