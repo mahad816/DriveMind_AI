@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.demo.service import DemoCorpusService
-from app.api.session_dependencies import require_application_principal
+from app.api.session_dependencies import require_application_principal, require_session_mutation
 from app.services.application_session_service import ApplicationSessionService
 
 
@@ -20,6 +20,21 @@ def require_normal_mode(settings: Settings = Depends(get_settings)) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This operation is unavailable in public demo mode.",
         )
+
+
+async def require_index_user(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+    _normal: None = Depends(require_normal_mode),
+) -> UUID:
+    """Verify identity before mutation protection, keeping unauthenticated errors 401."""
+    service = ApplicationSessionService(db, settings)
+    await require_application_principal(request, service)
+    principal = await require_session_mutation(request, service)
+    if settings.demo_user_id and str(principal.corpus_user_id) == settings.demo_user_id:
+        raise HTTPException(401, "A normal Google account session is required.")
+    return principal.corpus_user_id
 
 
 async def require_demo_index(

@@ -380,8 +380,8 @@ async def test_normal_mode_does_not_acquire_demo_client(
             transport=ASGITransport(app=application), base_url="http://test"
         ) as h:
             response = await h.get("/api/v1/index/status")
-    assert response.json() == {"connected": False, "job": None}
-    service.is_connected.assert_awaited_once()
+    assert response.status_code == 401
+    service.is_connected.assert_not_awaited()
     factory.assert_not_called()
     cleanup.assert_awaited_once()
 

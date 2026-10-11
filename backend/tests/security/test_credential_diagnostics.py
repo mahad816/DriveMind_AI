@@ -135,23 +135,15 @@ async def test_credential_api_failures_are_safe(
 
 
 @pytest.mark.asyncio
-async def test_background_failure_logs_no_provider_details(
+async def test_indexing_failure_logs_no_provider_details(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    from unittest.mock import AsyncMock
+    import logging
+    from app.core.credential_diagnostics import log_safe_failure
 
-    from app.api.index import _bg_sync
-
-    context = MagicMock()
-    context.__aenter__ = AsyncMock(return_value=MagicMock())
-    context.__aexit__ = AsyncMock(return_value=None)
-    with (
-        patch("app.api.index.SessionLocal", return_value=context),
-        patch("app.api.index.DriveSyncService") as factory,
-    ):
-        factory.return_value.sync_metadata = AsyncMock(side_effect=DriveClientError(RAW))
-        await _bg_sync(False)
-        factory.return_value.sync_metadata.assert_awaited_once_with(full=False)
+    log_safe_failure(
+        logging.getLogger("app.api.index"), "Indexing storage operation", DriveClientError(RAW)
+    )
     assert caplog.records
     assert_clean(caplog.text)
     assert all(record.exc_info is None for record in caplog.records)
@@ -177,7 +169,11 @@ async def test_status_api_returns_safe_new_job_error(async_client: AsyncClient) 
     from unittest.mock import AsyncMock
     from uuid import uuid4
 
-    from app.api.index import get_drive_sync_service
+    from app.api.index import (
+        get_drive_sync_service,
+        get_indexing_job_service,
+        require_index_read_user,
+    )
     from app.core.credential_diagnostics import safe_failure
     from app.db.enums import IndexingJobStatus
     from app.db.models.indexing_job import IndexingJob
@@ -193,7 +189,12 @@ async def test_status_api_returns_safe_new_job_error(async_client: AsyncClient) 
     )
     service = MagicMock()
     service.is_connected = AsyncMock(return_value=True)
-    service.get_latest_sync_job = AsyncMock(return_value=job)
+    jobs = MagicMock()
+    jobs.get_job = AsyncMock(return_value=job)
+    job.full_sync = job.recovery_required = False
+    job.total = job.processed = job.succeeded = job.failed = job.skipped = 0
+    app.dependency_overrides[require_index_read_user] = lambda: job.user_id
+    app.dependency_overrides[get_indexing_job_service] = lambda: jobs
     app.dependency_overrides[get_drive_sync_service] = lambda: service
     try:
         response = await async_client.get("/api/v1/index/status")
@@ -203,3 +204,5 @@ async def test_status_api_returns_safe_new_job_error(async_client: AsyncClient) 
         assert_clean(response.text)
     finally:
         app.dependency_overrides.pop(get_drive_sync_service, None)
+        app.dependency_overrides.pop(require_index_read_user, None)
+        app.dependency_overrides.pop(get_indexing_job_service, None)

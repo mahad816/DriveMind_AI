@@ -10,7 +10,7 @@ from app.api.dependencies import require_demo_index
 from app.api.auth import get_oauth_service
 from app.api.chat import get_rag_service
 from app.api.files import get_drive_sync_service as get_file_service
-from app.api.index import get_drive_sync_service as get_index_service
+from app.api.index import get_drive_sync_service as get_index_service, get_indexing_job_service
 from app.api.sources import get_source_service
 from app.core.config import Settings, get_settings
 from app.main import app
@@ -54,20 +54,18 @@ async def test_demo_index_mutations_never_reach_services_or_background_jobs(
     async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, stage: str
 ) -> None:
     factory = MagicMock()
-    background = AsyncMock()
 
     def forbidden_service() -> None:
         factory()
         raise AssertionError("Blocked sync must not inspect the owner's connection")
 
     monkeypatch.setitem(app.dependency_overrides, get_index_service, forbidden_service)
-    monkeypatch.setattr(f"app.api.index._bg_{stage}", background)
+    monkeypatch.setitem(app.dependency_overrides, get_indexing_job_service, forbidden_service)
     response = await async_client.post(f"/api/v1/index/{stage}")
 
     assert response.status_code == 403
     assert response.json() == REJECTION
     factory.assert_not_called()
-    background.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -86,18 +84,15 @@ async def test_normal_oauth_still_reaches_existing_logic(
 
 
 @pytest.mark.asyncio
-async def test_normal_build_still_runs_existing_background_job(
+async def test_normal_build_requires_session(
     async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, runtime_settings: Settings
 ) -> None:
+    from app.db.session import get_db
+
     runtime_settings.demo_mode = False
-    background = AsyncMock()
-    monkeypatch.setattr("app.api.index._bg_build", background)
-
+    monkeypatch.setitem(app.dependency_overrides, get_db, lambda: MagicMock())
     response = await async_client.post("/api/v1/index/build")
-
-    assert response.status_code == 202
-    assert response.json()["status"] == "started"
-    background.assert_awaited_once_with(None)
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

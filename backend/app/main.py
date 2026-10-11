@@ -78,6 +78,9 @@ def create_app() -> FastAPI:
     app.state.demo_chat_limits = DemoChatLimits()
     app.state.demo_readiness_client = DemoReadinessClient()
     app.state.google_refresh_lifecycle = google_refresh_lifecycle
+    # No consumer/recovery capability exists in 4E1. Only future worker lifecycle
+    # wiring may open this server-owned boundary after both are ready.
+    app.state.indexing_admission_ready = False
     app.add_middleware(DemoChatBodyLimit)
 
     @app.exception_handler(Exception)

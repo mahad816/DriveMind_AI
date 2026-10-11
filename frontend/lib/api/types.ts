@@ -84,6 +84,15 @@ export type DriveFileListResponse = {
 };
 
 export type IndexingJobRead = {
+  operation?: "SYNC" | "INGEST" | "CHUNK" | "BUILD" | null;
+  file_id?: string | null;
+  full_sync?: boolean;
+  recovery_required?: boolean;
+  total?: number;
+  processed?: number;
+  succeeded?: number;
+  failed?: number;
+  skipped?: number;
   id: string;
   user_id: string;
   status: IndexingJobStatus;
@@ -103,9 +112,10 @@ export type DriveSyncStatusResponse = {
   job: IndexingJobRead | null;
 };
 
-/** Returned immediately (HTTP 202) when an index job is kicked off in the background. */
+/** Durable acceptance (HTTP 202); execution may not have started. */
 export type JobStartedResponse = {
-  status: "started";
+  job_id: string;
+  status: "queued";
   message: string;
 };
 

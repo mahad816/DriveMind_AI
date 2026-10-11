@@ -1,34 +1,18 @@
-"""Tests for document ingestion API route (background task pattern)."""
+"""The new indexing consumer is not ready: no legacy dispatch fallback."""
 
-from __future__ import annotations
-
-from collections.abc import Generator
-import uuid
-from unittest.mock import patch
-
+from uuid import UUID
+from unittest.mock import AsyncMock
 import pytest
-from httpx import AsyncClient
-
+from app.api.dependencies import require_index_user
+from app.db.session import get_db
 from app.main import app
 
 
-@pytest.fixture(autouse=True)
-def clear_dependency_overrides() -> Generator[None, None, None]:
-    yield
-    app.dependency_overrides.clear()
-
-
-@pytest.mark.asyncio
-async def test_ingest_returns_202(async_client: AsyncClient) -> None:
-    with patch("app.api.index._bg_ingest"):
-        response = await async_client.post("/api/v1/index/ingest")
-    assert response.status_code == 202
-    assert response.json()["status"] == "started"
-
-
-@pytest.mark.asyncio
-async def test_ingest_with_file_id_returns_202(async_client: AsyncClient) -> None:
-    file_id = uuid.uuid4()
-    with patch("app.api.index._bg_ingest"):
-        response = await async_client.post(f"/api/v1/index/ingest?file_id={file_id}")
-    assert response.status_code == 202
+@pytest.mark.parametrize("target", ["", "?file_id=00000000-0000-0000-0000-000000000123"])
+async def test_ingest_closed_until_worker_ready(async_client, monkeypatch, target):
+    monkeypatch.setitem(app.dependency_overrides, require_index_user, lambda: UUID(int=101))
+    monkeypatch.setitem(app.dependency_overrides, get_db, lambda: AsyncMock())
+    app.state.indexing_admission_ready = False
+    response = await async_client.post("/api/v1/index/ingest" + target)
+    assert response.status_code == 503
+    assert "worker and recovery" in response.json()["detail"]

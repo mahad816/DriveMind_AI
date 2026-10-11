@@ -7,50 +7,51 @@ import type {
   PendingCountsResponse,
 } from "@/lib/api/types";
 
-export async function getDriveSyncStatus(): Promise<DriveSyncStatusResponse> {
-  return apiFetch<DriveSyncStatusResponse>("/index/status");
+export async function getDriveSyncStatus(jobId?: string): Promise<DriveSyncStatusResponse> {
+  return apiFetch<DriveSyncStatusResponse>(`/index/status${buildQueryString({ job_id: jobId })}`);
 }
 
 export async function getPendingCounts(): Promise<PendingCountsResponse> {
   return apiFetch<PendingCountsResponse>("/index/pending");
 }
 
+async function submitIndexJob(path: string): Promise<JobStartedResponse> {
+  // Existing same-origin session inspection supplies CSRF material. Fetch per
+  // mutation: do not cache a token across logout/account changes.
+  const session = await apiFetch<{ csrf_token: string }>("/auth/session");
+  if (typeof session.csrf_token !== "string" || !session.csrf_token) {
+    throw new ApiError(503, "Application session verification is unavailable.");
+  }
+  return apiFetch<JobStartedResponse>(path, {
+    method: "POST",
+    headers: { "X-CSRF-Token": session.csrf_token },
+  });
+}
+
 export async function syncDriveMetadata(full = false): Promise<JobStartedResponse> {
-  return apiFetch<JobStartedResponse>(
-    `/index/sync${buildQueryString({ full })}`,
-    { method: "POST" },
-  );
+  return submitIndexJob(`/index/sync${buildQueryString({ full })}`);
 }
 
 export async function ingestDriveFiles(fileId?: string): Promise<JobStartedResponse> {
-  return apiFetch<JobStartedResponse>(
-    `/index/ingest${buildQueryString({ file_id: fileId })}`,
-    { method: "POST" },
-  );
+  return submitIndexJob(`/index/ingest${buildQueryString({ file_id: fileId })}`);
 }
 
 export async function chunkDocuments(fileId?: string): Promise<JobStartedResponse> {
-  return apiFetch<JobStartedResponse>(
-    `/index/chunk${buildQueryString({ file_id: fileId })}`,
-    { method: "POST" },
-  );
+  return submitIndexJob(`/index/chunk${buildQueryString({ file_id: fileId })}`);
 }
 
 export async function buildVectorIndex(fileId?: string): Promise<JobStartedResponse> {
-  return apiFetch<JobStartedResponse>(
-    `/index/build${buildQueryString({ file_id: fileId })}`,
-    { method: "POST" },
-  );
+  return submitIndexJob(`/index/build${buildQueryString({ file_id: fileId })}`);
 }
 
 /**
  * Poll GET /index/status every `intervalMs` until the latest job reaches
- * "completed" or "failed". Only considers jobs created on or after `after`.
+ * "completed" or "failed". Uses the exact server-issued job UUID.
  *
  * Throws if the job fails (unless explicitly allowed) or if `timeoutMs` is exceeded.
  */
 export async function pollUntilJobDone(
-  after: Date,
+  jobId: string,
   options: { intervalMs?: number; timeoutMs?: number; allowFailed?: boolean } = {},
 ): Promise<IndexingJobRead> {
   const { intervalMs = 2000, timeoutMs = 180_000, allowFailed = false } = options;
@@ -61,8 +62,9 @@ export async function pollUntilJobDone(
 
     let statusResp: DriveSyncStatusResponse;
     try {
-      statusResp = await getDriveSyncStatus();
-    } catch {
+      statusResp = await getDriveSyncStatus(jobId);
+    } catch (error) {
+      if (error instanceof ApiError && [401, 403, 404, 409, 503].includes(error.status)) throw error;
       // Transient fetch error — keep polling
       continue;
     }
@@ -70,14 +72,14 @@ export async function pollUntilJobDone(
     const job = statusResp.job;
     if (!job) continue;
 
-    // Only care about jobs that started after we fired the request
-    if (new Date(job.created_at) < after) continue;
+    if (job.id !== jobId) throw new ApiError(503, "The indexing status did not match the submitted job.");
 
     if (job.status === "completed") return job;
     if (job.status === "failed") {
       if (allowFailed) return job;
       throw new ApiError(500, job.error ?? "Job failed");
     }
+    if (job.status === "canceled") throw new ApiError(409, "Indexing job was canceled.");
     // "queued" or "running" — keep waiting
   }
 

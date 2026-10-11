@@ -601,6 +601,11 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
 
     added_job.id = uuid.uuid4()
     added_job.created_at = added_job.updated_at = datetime.now(UTC)
+    # Mocked flushes do not apply SQLAlchemy/server defaults.
+    added_job.full_sync = added_job.recovery_required = False
+    added_job.total = added_job.processed = added_job.succeeded = added_job.failed = (
+        added_job.skipped
+    ) = 0
     assert "synthetic-" not in IndexingJobRead.model_validate(added_job).model_dump_json()
 
 

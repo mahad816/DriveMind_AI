@@ -23,6 +23,13 @@ class IndexingJobStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class IndexingOperation(StrEnum):
+    SYNC = "SYNC"
+    INGEST = "INGEST"
+    CHUNK = "CHUNK"
+    BUILD = "BUILD"
+
+
 class ApplicationSessionKind(StrEnum):
     """Application browser identity, not a document/corpus ownership override."""
 

@@ -37,6 +37,9 @@ async def final_engine(pg_engine: AsyncEngine):
         await connection.run_sync(apply_revision, "20261009_1300")
         await connection.run_sync(apply_revision, OLD)
         await connection.run_sync(apply_revision, NEW)
+        # Job-model columns used by all current services. This additive revision
+        # is independent of the Drive constraint under test in owner_engine.
+        await connection.run_sync(apply_revision, "20261012_1200")
     return pg_engine
 
 

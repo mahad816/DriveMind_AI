@@ -44,10 +44,10 @@ function job(status: "completed" | "failed", error: string | null = null): Index
 describe("prepareKnowledge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(syncDriveMetadata).mockResolvedValue({ status: "started", message: "ok" });
-    vi.mocked(ingestDriveFiles).mockResolvedValue({ status: "started", message: "ok" });
-    vi.mocked(chunkDocuments).mockResolvedValue({ status: "started", message: "ok" });
-    vi.mocked(buildVectorIndex).mockResolvedValue({ status: "started", message: "ok" });
+    vi.mocked(syncDriveMetadata).mockResolvedValue({ job_id: "syncDriveMetadata-id", status: "queued", message: "ok" });
+    vi.mocked(ingestDriveFiles).mockResolvedValue({ job_id: "ingestDriveFiles-id", status: "queued", message: "ok" });
+    vi.mocked(chunkDocuments).mockResolvedValue({ job_id: "chunkDocuments-id", status: "queued", message: "ok" });
+    vi.mocked(buildVectorIndex).mockResolvedValue({ job_id: "buildVectorIndex-id", status: "queued", message: "ok" });
     vi.mocked(pollUntilJobDone).mockResolvedValue(job("completed"));
     vi.mocked(getPendingCounts).mockResolvedValue(PENDING);
   });
@@ -66,10 +66,13 @@ describe("prepareKnowledge", () => {
     expect(ingestDriveFiles).toHaveBeenCalledTimes(1);
     expect(chunkDocuments).toHaveBeenCalledTimes(1);
     expect(buildVectorIndex).toHaveBeenCalledTimes(1);
-    expect(pollUntilJobDone).toHaveBeenNthCalledWith(2, expect.any(Date), {
+    expect(pollUntilJobDone).toHaveBeenNthCalledWith(2, "ingestDriveFiles-id", {
       timeoutMs: 180_000,
       allowFailed: true,
     });
+    expect(vi.mocked(pollUntilJobDone).mock.calls.map(([id]) => id)).toEqual([
+      "syncDriveMetadata-id", "ingestDriveFiles-id", "chunkDocuments-id", "buildVectorIndex-id",
+    ]);
     expect(progress.at(-1)).toBe(100);
   });
 

@@ -1,147 +1,163 @@
-"""Drive indexing routes — all write operations run in background tasks."""
+"""Session-bound durable indexing admission. No execution until 4E2/4E3."""
 
 import logging
 import uuid
-
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.api.dependencies import require_normal_mode
-from app.core.credential_diagnostics import log_safe_failure
+from app.api.dependencies import require_index_user
+from app.api.session_dependencies import require_application_principal
 from app.core.config import Settings, get_settings
-from app.db.session import SessionLocal, get_db
-from app.schemas.drive_sync import DriveSyncStatusResponse
-from app.schemas.indexing import IndexingJobRead
-from app.services.chunking_service import ChunkingService
-from app.services.drive_sync_service import DriveSyncService
-from app.services.indexing_service import IndexingService
-from app.services.ingestion_service import IngestionService
-from app.demo.service import DemoCorpusService
+from app.core.credential_diagnostics import log_safe_failure
+from app.db.enums import IndexingOperation
+from app.db.models.drive_file import DriveFile
+from app.db.session import get_db
 from app.demo.manifest import load_manifest
-from app.core.public_safety import public_error_detail
+from app.demo.service import DemoCorpusService
+from app.schemas.drive_sync import DriveSyncStatusResponse
+from app.schemas.indexing import IndexingJobAccepted, IndexingJobRead
+from app.services.application_session_service import ApplicationSessionService
+from app.services.drive_sync_service import DriveSyncService
+from app.services.indexing_job_service import (
+    IndexingJobService,
+    IndexingAdmissionConflict,
+    IndexingTargetNotFound,
+    IndexingStoreUnavailable,
+)
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/index")
 
 
-# ---------------------------------------------------------------------------
-# Dependency factories
-# ---------------------------------------------------------------------------
+def get_drive_sync_service(
+    db: AsyncSession = Depends(get_db), settings: Settings = Depends(get_settings)
+) -> DriveSyncService:
+    return DriveSyncService(db, settings)
 
 
-def get_drive_sync_service(db: AsyncSession = Depends(get_db)) -> DriveSyncService:
-    return DriveSyncService(db=db)
+def get_indexing_job_service(db: AsyncSession = Depends(get_db)) -> IndexingJobService:
+    return IndexingJobService(db)
 
 
-# ---------------------------------------------------------------------------
-# Background task helpers — each opens its own DB session so the HTTP session
-# can close as soon as we return 202.
-# ---------------------------------------------------------------------------
-
-
-async def _bg_sync(full: bool) -> None:
-    async with SessionLocal() as db:
-        try:
-            await DriveSyncService(db=db).sync_metadata(full=full)
-        except Exception as exc:
-            log_safe_failure(logger, "Background Drive sync failed", exc)
-
-
-async def _bg_ingest(file_id: uuid.UUID | None) -> None:
-    async with SessionLocal() as db:
-        try:
-            await IngestionService(db=db).ingest_files(file_id=file_id)
-        except Exception as exc:
-            log_safe_failure(logger, "Background ingestion failed", exc)
-
-
-async def _bg_chunk(file_id: uuid.UUID | None) -> None:
-    async with SessionLocal() as db:
-        try:
-            await ChunkingService(db=db).chunk_documents(file_id=file_id)
-        except Exception as exc:
-            log_safe_failure(logger, "Background chunking failed", exc)
-
-
-async def _bg_build(file_id: uuid.UUID | None) -> None:
-    async with SessionLocal() as db:
-        try:
-            await IndexingService(db=db).build_index(file_id=file_id)
-        except Exception as exc:
-            log_safe_failure(logger, "Background index build failed", exc)
-
-
-# ---------------------------------------------------------------------------
-# Shared response model for kicked-off background jobs
-# ---------------------------------------------------------------------------
-
-_STARTED_RESPONSE = {
-    "status": "started",
-    "message": "Job started — poll /index/status for progress",
-}
+async def require_index_read_user(
+    request: Request, settings: Settings = Depends(get_settings), db: AsyncSession = Depends(get_db)
+) -> uuid.UUID | None:
+    # Status readiness must remain anonymous even when demo admission is unavailable.
+    if settings.demo_mode:
+        return None
+    principal = await require_application_principal(
+        request, ApplicationSessionService(db, settings)
+    )
+    return principal.corpus_user_id
 
 
 class PendingCountsResponse(BaseModel):
-    """How many files still need each indexing step."""
-
     to_ingest: int
     to_chunk: int
     to_build: int
     any_pending: bool
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+def _job_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, IndexingAdmissionConflict):
+        return HTTPException(409, "An unresolved indexing job already exists for this account.")
+    if isinstance(exc, IndexingTargetNotFound):
+        return HTTPException(404, "Indexing resource not found")
+    log_safe_failure(logger, "Indexing storage operation", exc)
+    return HTTPException(503, "Indexing is temporarily unavailable.")
 
 
-@router.post(
-    "/sync",
-    summary="Start Drive metadata sync (background)",
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_normal_mode)],
-)
-async def sync_drive_metadata(
-    background_tasks: BackgroundTasks,
-    full: bool = Query(
-        default=False,
-        description="Force a full Drive scan. Default uses incremental sync.",
-    ),
-    service: DriveSyncService = Depends(get_drive_sync_service),
-) -> dict[str, str]:
-    """Kick off Drive metadata sync as a background task; returns 202 immediately.
-
-    Poll ``GET /index/status`` to track progress.
-    """
-    # Guard: ensure there is a connected Drive account before queueing work.
-    try:
-        connected = await service.is_connected()
-    except Exception as exc:
-        log_safe_failure(logger, "Drive connection check", exc)
+async def _accept(
+    request: Request,
+    owner: uuid.UUID,
+    operation: IndexingOperation,
+    jobs: IndexingJobService,
+    settings: Settings,
+    *,
+    file_id: uuid.UUID | None = None,
+    full: bool = False,
+) -> IndexingJobAccepted:
+    if getattr(request.app.state, "indexing_admission_ready", False) is not True:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=public_error_detail(exc),
-        ) from exc
-
-    if not connected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No Google Drive connection found. Complete OAuth first.",
+            503,
+            "Indexing execution is unavailable until its worker and recovery support are ready.",
         )
+    try:
+        if file_id is not None:
+            target = await jobs.db.scalar(
+                select(DriveFile.id).where(DriveFile.id == file_id, DriveFile.user_id == owner)
+            )
+            if target is None:
+                raise IndexingTargetNotFound()
+        if operation in (IndexingOperation.SYNC, IndexingOperation.INGEST):
+            if not await DriveSyncService(jobs.db, settings).is_connected(user_id=owner):
+                raise HTTPException(503, "No Google Drive connection found. Complete OAuth first.")
+        job = await jobs.admit(owner, operation, file_id=file_id, full_sync=full)
+        return IndexingJobAccepted(job_id=job.id)
+    except (
+        IndexingAdmissionConflict,
+        IndexingTargetNotFound,
+        IndexingStoreUnavailable,
+        SQLAlchemyError,
+    ) as exc:
+        raise _job_error(exc) from None
 
-    background_tasks.add_task(_bg_sync, full)
-    return _STARTED_RESPONSE
+
+@router.post("/sync", status_code=202)
+async def sync_drive_metadata(
+    request: Request,
+    full: bool = Query(False),
+    owner: uuid.UUID = Depends(require_index_user),
+    jobs: IndexingJobService = Depends(get_indexing_job_service),
+    settings: Settings = Depends(get_settings),
+) -> IndexingJobAccepted:
+    return await _accept(request, owner, IndexingOperation.SYNC, jobs, settings, full=full)
 
 
-@router.get("/status", summary="Latest Drive sync status", response_model_exclude_unset=True)
+@router.post("/ingest", status_code=202)
+async def ingest_drive_files(
+    request: Request,
+    file_id: uuid.UUID | None = Query(None),
+    owner: uuid.UUID = Depends(require_index_user),
+    jobs: IndexingJobService = Depends(get_indexing_job_service),
+    settings: Settings = Depends(get_settings),
+) -> IndexingJobAccepted:
+    return await _accept(request, owner, IndexingOperation.INGEST, jobs, settings, file_id=file_id)
+
+
+@router.post("/chunk", status_code=202)
+async def chunk_extracted_documents(
+    request: Request,
+    file_id: uuid.UUID | None = Query(None),
+    owner: uuid.UUID = Depends(require_index_user),
+    jobs: IndexingJobService = Depends(get_indexing_job_service),
+    settings: Settings = Depends(get_settings),
+) -> IndexingJobAccepted:
+    return await _accept(request, owner, IndexingOperation.CHUNK, jobs, settings, file_id=file_id)
+
+
+@router.post("/build", status_code=202)
+async def build_vector_index(
+    request: Request,
+    file_id: uuid.UUID | None = Query(None),
+    owner: uuid.UUID = Depends(require_index_user),
+    jobs: IndexingJobService = Depends(get_indexing_job_service),
+    settings: Settings = Depends(get_settings),
+) -> IndexingJobAccepted:
+    return await _accept(request, owner, IndexingOperation.BUILD, jobs, settings, file_id=file_id)
+
+
+@router.get("/status", response_model_exclude_unset=True)
 async def get_sync_status(
     request: Request,
+    job_id: uuid.UUID | None = Query(None),
+    owner: uuid.UUID | None = Depends(require_index_read_user),
     service: DriveSyncService = Depends(get_drive_sync_service),
+    jobs: IndexingJobService = Depends(get_indexing_job_service),
     settings: Settings = Depends(get_settings),
 ) -> DriveSyncStatusResponse:
-    """Return the latest indexing job status for the connected user."""
     if settings.demo_mode:
         try:
             manifest = load_manifest()
@@ -161,77 +177,39 @@ async def get_sync_status(
             corpus_version=manifest.version,
             demo_questions=[q.question for q in manifest.questions],
         )
-    connected = await service.is_connected()
-    if not connected:
-        return DriveSyncStatusResponse(connected=False, job=None)
 
-    job = await service.get_latest_sync_job()
-    job_read = IndexingJobRead.model_validate(job) if job is not None else None
-    return DriveSyncStatusResponse(connected=True, job=job_read)
-
-
-@router.get("/pending", summary="Count files pending each indexing step")
-async def get_pending_counts(
-    service: DriveSyncService = Depends(get_drive_sync_service),
-) -> PendingCountsResponse:
-    """Return how many files still need each pipeline step.
-
-    The frontend uses this to skip steps that have no pending work — making
-    a routine 'add one file + Set up' flow much faster than always running
-    all four steps.
-    """
+    assert owner is not None
     try:
-        counts = await service.get_pending_counts()
-    except ValueError:
-        return PendingCountsResponse(to_ingest=0, to_chunk=0, to_build=0, any_pending=False)
+        job = await jobs.get_job(owner, job_id)
+        connected = await service.is_connected(user_id=owner)
+        return DriveSyncStatusResponse(
+            connected=connected,
+            job=IndexingJobRead.model_validate(job) if job is not None else None,
+        )
+    except (IndexingTargetNotFound, IndexingStoreUnavailable, SQLAlchemyError) as exc:
+        raise _job_error(exc) from None
+
+
+@router.get("/pending")
+async def get_pending_counts(
+    owner: uuid.UUID | None = Depends(require_index_read_user),
+    service: DriveSyncService = Depends(get_drive_sync_service),
+    settings: Settings = Depends(get_settings),
+) -> PendingCountsResponse:
+    if settings.demo_mode:
+        try:
+            counts = await service.get_pending_counts(user_id=uuid.UUID(settings.demo_user_id))
+        except ValueError:
+            return PendingCountsResponse(to_ingest=0, to_chunk=0, to_build=0, any_pending=False)
+    else:
+        assert owner is not None
+        try:
+            counts = await service.get_pending_counts(user_id=owner)
+        except (ValueError, SQLAlchemyError) as exc:
+            raise _job_error(exc) from None
     return PendingCountsResponse(
         to_ingest=counts.to_ingest,
         to_chunk=counts.to_chunk,
         to_build=counts.to_build,
         any_pending=counts.any_pending,
     )
-
-
-@router.post(
-    "/ingest",
-    summary="Start Drive file ingestion (background)",
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_normal_mode)],
-)
-async def ingest_drive_files(
-    background_tasks: BackgroundTasks,
-    file_id: uuid.UUID | None = Query(default=None),
-) -> dict[str, str]:
-    """Kick off file ingestion as a background task; returns 202 immediately."""
-    background_tasks.add_task(_bg_ingest, file_id)
-    return _STARTED_RESPONSE
-
-
-@router.post(
-    "/chunk",
-    summary="Start document chunking (background)",
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_normal_mode)],
-)
-async def chunk_extracted_documents(
-    background_tasks: BackgroundTasks,
-    file_id: uuid.UUID | None = Query(default=None),
-) -> dict[str, str]:
-    """Kick off chunking as a background task; returns 202 immediately."""
-    background_tasks.add_task(_bg_chunk, file_id)
-    return _STARTED_RESPONSE
-
-
-@router.post(
-    "/build",
-    summary="Start vector index build (background)",
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_normal_mode)],
-)
-async def build_vector_index(
-    background_tasks: BackgroundTasks,
-    file_id: uuid.UUID | None = Query(default=None),
-) -> dict[str, str]:
-    """Kick off vector index build as a background task; returns 202 immediately."""
-    background_tasks.add_task(_bg_build, file_id)
-    return _STARTED_RESPONSE

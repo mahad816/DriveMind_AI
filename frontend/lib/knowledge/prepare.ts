@@ -87,9 +87,8 @@ export async function prepareKnowledge(
 
   // Step 1: sync Drive metadata (always runs — discovers new/changed files).
   await runStep("scan", 10, 30, async () => {
-    const before = new Date();
-    await syncDriveMetadata(fullScan);
-    await pollUntilJobDone(before, { timeoutMs: 180_000 });
+    const accepted = await syncDriveMetadata(fullScan);
+    await pollUntilJobDone(accepted.job_id, { timeoutMs: 180_000 });
   });
 
   // Check what still needs work after the sync.
@@ -114,9 +113,8 @@ export async function prepareKnowledge(
   // Step 2: download + extract text (only if files need it).
   if (pending.to_ingest > 0) {
     await runStep("read", 35, 60, async () => {
-      const before = new Date();
-      await ingestDriveFiles();
-      const job = await pollUntilJobDone(before, {
+      const accepted = await ingestDriveFiles();
+      const job = await pollUntilJobDone(accepted.job_id, {
         timeoutMs: 180_000,
         allowFailed: true,
       });
@@ -146,16 +144,14 @@ export async function prepareKnowledge(
   if (pending.to_chunk > 0 || pending.to_build > 0) {
     await runStep("search", 65, 95, async () => {
       if (pending.to_chunk > 0) {
-        const before = new Date();
-        await chunkDocuments();
-        await pollUntilJobDone(before, { timeoutMs: 120_000 });
+        const accepted = await chunkDocuments();
+        await pollUntilJobDone(accepted.job_id, { timeoutMs: 120_000 });
         // Chunking changes build eligibility, so use authoritative fresh counts.
         pending = await getPendingCounts();
       }
       if (pending.to_build > 0) {
-        const before = new Date();
-        await buildVectorIndex();
-        await pollUntilJobDone(before, { timeoutMs: 180_000 });
+        const accepted = await buildVectorIndex();
+        await pollUntilJobDone(accepted.job_id, { timeoutMs: 180_000 });
       }
     });
   } else {
