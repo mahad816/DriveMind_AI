@@ -21,6 +21,7 @@ from qdrant_client.models import (
     PointIdsList,
     PointStruct,
     VectorParams,
+    UpdateStatus,
 )
 
 from app.core.config import Settings, get_settings
@@ -66,9 +67,11 @@ class QdrantVectorStore:
         *,
         client: AsyncQdrantClient | None = None,
         upsert_batch_size: int | None = None,
+        verify_writes: bool = False,
     ) -> None:
         self.settings = settings or get_settings()
         self._client = client
+        self.verify_writes = verify_writes
         self.upsert_batch_size = (
             upsert_batch_size
             if upsert_batch_size is not None
@@ -89,10 +92,29 @@ class QdrantVectorStore:
         client = self._get_client()
         try:
             if not await client.collection_exists(self.collection_name):
-                await client.create_collection(
-                    collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
-                )
+                try:
+                    await client.create_collection(
+                        collection_name=self.collection_name,
+                        vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+                    )
+                except UnexpectedResponse as exc:
+                    # Independent owners can discover the same absent collection.
+                    # Accept only a now-existing, compatible collection; never
+                    # replace it or mask other provider failures.
+                    if exc.status_code not in (400, 409) or not await client.collection_exists(
+                        self.collection_name
+                    ):
+                        raise
+                    info = await client.get_collection(self.collection_name)
+                    vectors = info.config.params.vectors
+                    if (
+                        not isinstance(vectors, VectorParams)
+                        or vectors.size != vector_size
+                        or vectors.distance != Distance.COSINE
+                    ):
+                        raise VectorStoreError(
+                            "Concurrent Qdrant collection is incompatible"
+                        ) from None
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(
                 f"Failed to ensure Qdrant collection '{self.collection_name}': {exc}"
@@ -176,7 +198,7 @@ class QdrantVectorStore:
                         point_id = _parse_point_id(record.id)
                         if point_id is not None and record.payload is not None:
                             existing_payloads[point_id] = record.payload
-                await client.upsert(
+                result = await client.upsert(
                     collection_name=self.collection_name,
                     points=[
                         PointStruct(
@@ -189,7 +211,9 @@ class QdrantVectorStore:
                         )
                         for point in batch
                     ],
+                    wait=True,
                 )
+                self._check_write(getattr(result, "status", None))
             except UnexpectedResponse as exc:
                 raise VectorStoreError(
                     f"Qdrant rejected vector upsert (HTTP {exc.status_code}): {exc.content}"
@@ -208,10 +232,12 @@ class QdrantVectorStore:
 
         client = self._get_client()
         try:
-            await client.delete(
+            result = await client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=[str(chunk_id) for chunk_id in chunk_ids]),
+                wait=True,
             )
+            self._check_write(getattr(result, "status", None))
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(f"Failed to delete vectors from Qdrant: {exc}") from exc
 
@@ -320,14 +346,19 @@ class QdrantVectorStore:
                         or payload.get("extracted_text_hash") != expected_hashes[chunk_id]
                     ):
                         raise VectorStoreError("Unchanged vector linkage could not be verified")
-                await client.set_payload(
+                result = await client.set_payload(
                     collection_name=self.collection_name,
                     payload={"user_id": owner},
                     points=[str(i) for i in batch],
                     wait=True,
                 )
+                self._check_write(getattr(result, "status", None))
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError("Failed to update unchanged vector ownership") from exc
+
+    def _check_write(self, status: object) -> None:
+        if self.verify_writes and status != UpdateStatus.COMPLETED:
+            raise VectorStoreError("Vector write completion could not be confirmed")
 
     async def search_similar(
         self,

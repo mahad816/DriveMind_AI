@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -280,10 +281,14 @@ class DriveSyncService:
         self,
         user: User,
         client: GoogleDriveClient,
+        *,
+        before_apply: Callable[[], Awaitable[None]] | None = None,
     ) -> tuple[int, int, int, int, int]:
         page_token = await asyncio.to_thread(client.get_start_page_token)
         folder_lookup = await asyncio.to_thread(self._build_folder_lookup, client)
         drive_files = await asyncio.to_thread(client.list_files, supported_only=True)
+        if before_apply is not None:
+            await before_apply()
         seen_drive_file_ids = {metadata.id for metadata in drive_files}
         created = updated = unchanged = 0
         for metadata in drive_files:
@@ -306,12 +311,16 @@ class DriveSyncService:
         user: User,
         client: GoogleDriveClient,
         sync_state: DriveSyncState,
+        *,
+        before_apply: Callable[[], Awaitable[None]] | None = None,
     ) -> tuple[int, int, int, int]:
         folder_lookup = await asyncio.to_thread(self._build_folder_lookup, client)
         changes, new_token = await asyncio.to_thread(
             client.list_changes,
             sync_state.changes_page_token,
         )
+        if before_apply is not None:
+            await before_apply()
         created = updated = unchanged = removed = 0
         for change in changes:
             removed += await self._process_change(user.id, change)

@@ -99,6 +99,8 @@ class DriveContentService:
         token_row = await self._load_oauth_token(user.id)
 
         client = self._build_drive_client(token_row)
+        # Credential refresh owns independent sessions. A content read must
+        # never commit unrelated writes accumulated by its caller.
 
         try:
             data = await asyncio.to_thread(
@@ -108,8 +110,6 @@ class DriveContentService:
             )
         except DriveClientError:
             raise
-
-        await self.db.commit()
 
         return DriveFileContent(
             data=data,

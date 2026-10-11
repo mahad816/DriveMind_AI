@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -131,9 +132,17 @@ class IndexingService:
             payload["user_id"] = str(drive_file.user_id)
         return payload
 
-    async def _index_document(self, document: Document) -> tuple[int, int, int, int]:
+    async def _index_document(
+        self,
+        document: Document,
+        *,
+        before_external: Callable[[], Awaitable[None]] | None = None,
+        before_persist: Callable[[], Awaitable[None]] | None = None,
+        prepared: bool = False,
+    ) -> tuple[int, int, int, int]:
         """Chunk, embed, and upsert one document. Returns embedded/unchanged/skipped/removed."""
-        await self.chunking_service.sync_document_chunks(document)
+        if not prepared:
+            await self.chunking_service.sync_document_chunks(document)
         await self.db.flush()
 
         chunks = await self._load_chunks_for_document(document.id)
@@ -147,12 +156,16 @@ class IndexingService:
             raise VectorStoreError("Indexed document is no longer eligible for indexing")
 
         keep_chunk_ids = {chunk.id for chunk in chunks}
+        if before_external is not None:
+            await before_external()
         removed = await self.vector_store.delete_points_for_drive_file_except(
             drive_file_id=drive_file.id,
             keep_chunk_ids=keep_chunk_ids,
         )
 
         if not chunks:
+            if before_persist is not None:
+                await before_persist()
             drive_file.status = DriveFileStatus.SKIPPED
             return 0, 0, 1, removed
 
@@ -195,6 +208,8 @@ class IndexingService:
             embedded = len(points)
 
         # Mark the drive file as fully indexed now that vectors are in Qdrant.
+        if before_persist is not None:
+            await before_persist()
         drive_file.status = DriveFileStatus.INDEXED
         drive_file.indexed_at = datetime.now(UTC)
 

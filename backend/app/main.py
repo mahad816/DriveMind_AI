@@ -26,11 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 async def _cleanup_stuck_jobs() -> None:
-    """Mark any RUNNING jobs left over from a previous process as FAILED.
+    """Clean historical unmanaged RUNNING jobs only.
 
     Background tasks that were interrupted by a server restart never get the
     chance to update their own status, so they stay RUNNING forever.  Polling
     clients will wait on them indefinitely unless we clean them up at startup.
+    Managed claims may belong to another live process; 4E3 owns their recovery.
     """
     async with SessionLocal() as db:
         result = await db.execute(
@@ -39,7 +40,7 @@ async def _cleanup_stuck_jobs() -> None:
                 " SET status = 'FAILED',"
                 "     error  = 'Server restarted while job was running',"
                 "     completed_at = now()"
-                " WHERE status = 'RUNNING' AND completed_at IS NULL"
+                " WHERE status = 'RUNNING' AND completed_at IS NULL AND operation IS NULL"
             )
         )
         await db.commit()
@@ -78,8 +79,8 @@ def create_app() -> FastAPI:
     app.state.demo_chat_limits = DemoChatLimits()
     app.state.demo_readiness_client = DemoReadinessClient()
     app.state.google_refresh_lifecycle = google_refresh_lifecycle
-    # No consumer/recovery capability exists in 4E1. Only future worker lifecycle
-    # wiring may open this server-owned boundary after both are ready.
+    # The managed executor is intentionally not started in 4E2. Only the future
+    # recovery-ready worker lifespan may open this server-owned boundary.
     app.state.indexing_admission_ready = False
     app.add_middleware(DemoChatBodyLimit)
 

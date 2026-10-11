@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +28,7 @@ from app.ingestion.extractors import (
     get_extractor,
 )
 from app.ingestion.hash_util import compute_extracted_text_hash
-from app.services.drive_content_service import DriveContentService
+from app.services.drive_content_service import DriveContentService, DriveFileContent
 
 
 @dataclass
@@ -42,6 +44,12 @@ class IngestionResult:
     total: int
 
 
+class ContentFetcher(Protocol):
+    async def fetch_file_content(
+        self, file_id: uuid.UUID, user_id: uuid.UUID | None = None
+    ) -> DriveFileContent: ...
+
+
 class IngestionService:
     """Orchestrates Drive content fetch, text extraction, and document persistence."""
 
@@ -49,11 +57,13 @@ class IngestionService:
         self,
         db: AsyncSession,
         settings: Settings | None = None,
-        content_service: DriveContentService | None = None,
+        content_service: ContentFetcher | None = None,
     ) -> None:
         self.db = db
         self.settings = settings or get_settings()
-        self.content_service = content_service or DriveContentService(db, self.settings)
+        self.content_service: ContentFetcher = content_service or DriveContentService(
+            db, self.settings
+        )
 
     async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
         if user_id is not None:
@@ -134,6 +144,9 @@ class IngestionService:
     async def _ingest_single_file(
         self,
         drive_file: DriveFile,
+        *,
+        before_external: Callable[[], Awaitable[None]] | None = None,
+        before_persist: Callable[[], Awaitable[None]] | None = None,
     ) -> str:
         """Ingest one drive file. Returns 'ingested', 'unchanged', 'failed', or 'skipped'."""
         if drive_file.status == DriveFileStatus.SKIPPED:
@@ -152,9 +165,9 @@ class IngestionService:
             await self.db.flush()
             return "unchanged"
 
-        drive_file.status = DriveFileStatus.INDEXING
-
         try:
+            if before_external is not None:
+                await before_external()
             content = await self.content_service.fetch_file_content(
                 drive_file.id,
                 user_id=drive_file.user_id,
@@ -167,8 +180,13 @@ class IngestionService:
                 filename=drive_file.name,
             )
         except (ValueError, DriveClientError, UnsupportedMimeTypeError, ExtractionError):
+            if before_persist is not None:
+                await before_persist()
             drive_file.status = DriveFileStatus.FAILED
             return "failed"
+
+        if before_persist is not None:
+            await before_persist()
 
         if not extraction.text.strip():
             # Keep any previously persisted document/chunks coherent with each

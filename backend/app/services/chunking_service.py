@@ -18,7 +18,7 @@ from app.db.models.drive_file import DriveFile
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
-from app.ingestion.chunking import ChunkingConfig, chunk_text
+from app.ingestion.chunking import ChunkingConfig, TextChunk, chunk_text
 
 
 @dataclass
@@ -107,11 +107,17 @@ class ChunkingService:
             for chunk in chunks
         )
 
-    async def _replace_chunks(self, document: Document) -> str:
+    async def _replace_chunks(
+        self, document: Document, *, prepared_chunks: list[TextChunk] | None = None
+    ) -> str:
         """Chunk one document. Returns 'chunked', 'unchanged', or 'skipped'."""
         existing = await self._get_existing_chunks(document.id)
         text_hash = document.extracted_text_hash
-        text_chunks = chunk_text(document.extracted_text, config=self.chunking_config)
+        text_chunks = (
+            prepared_chunks
+            if prepared_chunks is not None
+            else chunk_text(document.extracted_text, config=self.chunking_config)
+        )
 
         if not text_chunks:
             drive_file = await self.db.get(DriveFile, document.drive_file_id)

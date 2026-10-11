@@ -81,7 +81,9 @@ async def test_fetch_file_content_returns_bytes(
     assert result.filename == "resume.pdf"
     assert result.drive_file_id == "gdrive-file-1"
     mock_client.get_file_content.assert_called_once_with("gdrive-file-1", PDF_MIME)
-    mock_db.commit.assert_awaited()
+    # Reads must not commit writes accumulated by the caller (managed ingestion
+    # additionally supplies an independent download session).
+    mock_db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
