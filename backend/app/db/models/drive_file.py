@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -17,6 +17,7 @@ class DriveFile(TimestampMixin, Base):
 
     __tablename__ = "drive_files"
     __table_args__ = (
+        UniqueConstraint("user_id", "drive_file_id", name="uq_drive_files_user_id_drive_file_id"),
         Index("ix_drive_files_user_id_modified_at", "user_id", "modified_at"),
         Index("ix_drive_files_status", "status"),
     )
@@ -31,7 +32,7 @@ class DriveFile(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
-    drive_file_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    drive_file_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(1024), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     folder_path: Mapped[str | None] = mapped_column(String(2048), nullable=True)

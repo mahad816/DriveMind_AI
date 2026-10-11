@@ -10,6 +10,7 @@ from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
 
 from app.connectors.google_drive.client import (
     DriveChange,
@@ -162,14 +163,22 @@ class DriveSyncService:
         folder_path: str | None,
     ) -> str:
         """Insert or update a drive_files row. Returns 'created', 'updated', or 'unchanged'."""
-        existing = await self.db.scalar(
-            select(DriveFile).where(DriveFile.drive_file_id == metadata.id)
+        statement = (
+            select(DriveFile)
+            .where(DriveFile.user_id == user_id, DriveFile.drive_file_id == metadata.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
+        existing = await self.db.scalar(statement)
         modified_at = self._parse_drive_timestamp(metadata.modified_time)
 
         if existing is None:
-            self.db.add(
-                DriveFile(
+            # Another sync may insert this owner's file after our initial lookup.
+            # PostgreSQL waits for that transaction; no failed flush/rollback is needed.
+            inserted_id = await self.db.scalar(
+                insert(DriveFile)
+                .values(
+                    id=uuid.uuid4(),
                     user_id=user_id,
                     drive_file_id=metadata.id,
                     name=metadata.name,
@@ -178,8 +187,14 @@ class DriveSyncService:
                     modified_at=modified_at,
                     status=DriveFileStatus.DISCOVERED,
                 )
+                .on_conflict_do_nothing(constraint="uq_drive_files_user_id_drive_file_id")
+                .returning(DriveFile.id)
             )
-            return "created"
+            if inserted_id is not None:
+                return "created"
+            existing = await self.db.scalar(statement)
+            if existing is None:
+                raise ValueError("Drive file changed during metadata sync. Retry the sync.")
 
         content_may_have_changed = existing.modified_at != modified_at
         changed = (

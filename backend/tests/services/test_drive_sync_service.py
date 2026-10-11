@@ -125,17 +125,19 @@ def test_resolve_folder_path_returns_none_when_unknown_parent(
 
 @pytest.mark.asyncio
 async def test_upsert_file_creates_new_row(service: DriveSyncService, mock_db: AsyncMock) -> None:
-    mock_db.scalar = AsyncMock(return_value=None)
+    inserted_id = uuid.uuid4()
+    mock_db.scalar = AsyncMock(side_effect=[None, inserted_id])
 
     outcome = await service._upsert_file(USER_ID, _metadata(), folder_path="/Course")
 
     assert outcome == "created"
-    mock_db.add.assert_called_once()
-    added = mock_db.add.call_args[0][0]
-    assert isinstance(added, DriveFile)
-    assert added.drive_file_id == "file-1"
-    assert added.folder_path == "/Course"
-    assert added.status == DriveFileStatus.DISCOVERED
+    mock_db.add.assert_not_called()
+    statement = mock_db.scalar.call_args.args[0]
+    parameters = statement.compile().params
+    assert parameters["user_id"] == USER_ID
+    assert parameters["drive_file_id"] == "file-1"
+    assert parameters["folder_path"] == "/Course"
+    assert parameters["status"] == DriveFileStatus.DISCOVERED
 
 
 @pytest.mark.asyncio

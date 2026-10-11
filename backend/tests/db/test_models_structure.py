@@ -1,5 +1,7 @@
 """Structural tests for Phase 2 core DB models."""
 
+from sqlalchemy import UniqueConstraint
+
 from app.db.base import Base
 from app.db.models import Chunk, Document, DriveFile, IndexingJob, QueryHistory, User
 
@@ -46,4 +48,11 @@ def test_expected_unique_constraints_are_present() -> None:
     assert {"email", "google_id"}.issubset(user_unique_columns)
 
     drive_file_unique_columns = {col.name for col in DriveFile.__table__.columns if col.unique}
-    assert "drive_file_id" in drive_file_unique_columns
+    assert "drive_file_id" not in drive_file_unique_columns
+    owner_constraint = next(
+        constraint
+        for constraint in Base.metadata.tables["drive_files"].constraints
+        if isinstance(constraint, UniqueConstraint)
+        and constraint.name == "uq_drive_files_user_id_drive_file_id"
+    )
+    assert tuple(column.name for column in owner_constraint.columns) == ("user_id", "drive_file_id")
