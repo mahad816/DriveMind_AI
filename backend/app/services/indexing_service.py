@@ -116,7 +116,7 @@ class IndexingService:
 
     def _chunk_payload(self, chunk: Chunk, drive_file: DriveFile) -> dict[str, object]:
         text_hash = chunk.metadata_json.get("extracted_text_hash", "")
-        return {
+        payload: dict[str, object] = {
             "chunk_id": str(chunk.id),
             "drive_file_id": str(drive_file.id),
             "filename": drive_file.name,
@@ -125,6 +125,11 @@ class IndexingService:
             "chunk_index": chunk.chunk_index,
             "extracted_text_hash": text_hash,
         }
+        if not self.settings.demo_mode:
+            if not isinstance(drive_file.user_id, uuid.UUID):
+                raise VectorStoreError("Indexed file has no valid owner")
+            payload["user_id"] = str(drive_file.user_id)
+        return payload
 
     async def _index_document(self, document: Document) -> tuple[int, int, int, int]:
         """Chunk, embed, and upsert one document. Returns embedded/unchanged/skipped/removed."""
@@ -133,8 +138,13 @@ class IndexingService:
 
         chunks = await self._load_chunks_for_document(document.id)
         drive_file = await self.db.get(DriveFile, document.drive_file_id)
-        if drive_file is None:
-            return 0, 0, 1, 0
+        if drive_file is None or not isinstance(drive_file.user_id, uuid.UUID):
+            raise VectorStoreError("Indexed document has no valid owning file")
+        if any(chunk.document_id != document.id for chunk in chunks):
+            raise VectorStoreError("Indexed chunk has invalid document linkage")
+
+        if chunks and drive_file.status != DriveFileStatus.INDEXING:
+            raise VectorStoreError("Indexed document is no longer eligible for indexing")
 
         keep_chunk_ids = {chunk.id for chunk in chunks}
         removed = await self.vector_store.delete_points_for_drive_file_except(
@@ -149,13 +159,22 @@ class IndexingService:
         stored_hashes = await self.vector_store.get_stored_hashes([chunk.id for chunk in chunks])
         pending: list[Chunk] = []
         unchanged = 0
+        unchanged_hashes: dict[uuid.UUID, str] = {}
 
         for chunk in chunks:
             text_hash = chunk.metadata_json.get("extracted_text_hash")
             if isinstance(text_hash, str) and stored_hashes.get(chunk.id) == text_hash:
                 unchanged += 1
+                unchanged_hashes[chunk.id] = text_hash
             else:
                 pending.append(chunk)
+
+        if unchanged_hashes and not self.settings.demo_mode:
+            await self.vector_store.update_unchanged_point_owners(
+                unchanged_hashes,
+                user_id=drive_file.user_id,
+                drive_file_id=drive_file.id,
+            )
 
         embedded = 0
         if pending:
@@ -170,6 +189,7 @@ class IndexingService:
             ]
             await self.vector_store.upsert_points(
                 points,
+                user_id=drive_file.user_id,
                 expected_vector_size=self.embedding_service.embedding_dimension,
             )
             embedded = len(points)

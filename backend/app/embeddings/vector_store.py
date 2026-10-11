@@ -11,6 +11,7 @@ from typing import TypedDict
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.models import (
+    Condition,
     Distance,
     FieldCondition,
     Filter,
@@ -99,53 +100,92 @@ class QdrantVectorStore:
         await self._ensure_required_payload_indexes(client)
 
     async def _ensure_required_payload_indexes(self, client: AsyncQdrantClient) -> None:
-        """Ensure exact UUID-string matching without replacing compatible existing indexes."""
+        """Reconcile filter indexes; never silently replace an incompatible schema."""
+        fields = ["drive_file_id"]
+        if not self.settings.demo_mode:
+            fields.append("user_id")
+        field = "drive_file_id"
         try:
             info = await client.get_collection(self.collection_name)
-            existing = info.payload_schema.get("drive_file_id")
-            if existing is not None:
-                if existing.data_type in (PayloadSchemaType.KEYWORD, PayloadSchemaType.UUID):
-                    return
-                raise VectorStoreError(
-                    "Qdrant payload index 'drive_file_id' must have keyword or UUID schema "
-                    f"in collection '{self.collection_name}'"
+            for field in fields:
+                existing = info.payload_schema.get(field)
+                if existing is not None:
+                    if existing.data_type in (PayloadSchemaType.KEYWORD, PayloadSchemaType.UUID):
+                        continue
+                    raise VectorStoreError(
+                        f"Qdrant payload index '{field}' must have keyword or UUID schema "
+                        f"in collection '{self.collection_name}'"
+                    )
+                await client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                    wait=True,
                 )
-            await client.create_payload_index(
-                collection_name=self.collection_name,
-                field_name="drive_file_id",
-                field_schema=PayloadSchemaType.KEYWORD,
-                wait=True,
-            )
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(
-                f"Failed to ensure Qdrant payload index 'drive_file_id' "
+                f"Failed to ensure Qdrant payload index '{field}' "
                 f"in collection '{self.collection_name}': {exc}"
             ) from exc
+
+    def _validate_owner(self, user_id: uuid.UUID) -> str:
+        """Server runtime selects the realm; neither client input nor failures may switch it."""
+        if not isinstance(user_id, uuid.UUID):
+            raise VectorStoreError("Vector operations require an explicit owner UUID")
+        if self.settings.demo_mode:
+            try:
+                demo_owner = uuid.UUID(self.settings.demo_user_id)
+            except ValueError:
+                raise VectorStoreError("Demo vector configuration is invalid") from None
+            if user_id != demo_owner or self.collection_name == DEFAULT_QDRANT_COLLECTION:
+                raise VectorStoreError("Demo vector operations require the isolated demo corpus")
+        return str(user_id)
 
     async def upsert_points(
         self,
         points: list[VectorPoint],
         *,
+        user_id: uuid.UUID,
         expected_vector_size: int | None = None,
     ) -> None:
         """Insert or update chunk vectors in bounded batches."""
+        owner = self._validate_owner(user_id)
         if not points:
             return
 
         for point in points:
             _validate_vector(point.vector, expected_size=expected_vector_size)
+            if not self.settings.demo_mode and point.payload.get("user_id") != owner:
+                raise VectorStoreError(
+                    "Normal vector upserts require the authoritative owner payload"
+                )
 
         client = self._get_client()
         for start in range(0, len(points), self.upsert_batch_size):
             batch = points[start : start + self.upsert_batch_size]
             try:
+                existing_payloads: dict[uuid.UUID, dict[str, object]] = {}
+                if not self.settings.demo_mode:
+                    records = await client.retrieve(
+                        collection_name=self.collection_name,
+                        ids=[str(point.chunk_id) for point in batch],
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    for record in records:
+                        point_id = _parse_point_id(record.id)
+                        if point_id is not None and record.payload is not None:
+                            existing_payloads[point_id] = record.payload
                 await client.upsert(
                     collection_name=self.collection_name,
                     points=[
                         PointStruct(
                             id=str(point.chunk_id),
                             vector=point.vector,
-                            payload=_serialize_payload(point.payload),
+                            payload={
+                                **existing_payloads.get(point.chunk_id, {}),
+                                **_serialize_payload(point.payload),
+                            },
                         )
                         for point in batch
                     ],
@@ -244,34 +284,78 @@ class QdrantVectorStore:
                     stored[chunk_id] = text_hash
         return stored
 
+    async def update_unchanged_point_owners(
+        self,
+        expected_hashes: dict[uuid.UUID, str],
+        *,
+        user_id: uuid.UUID,
+        drive_file_id: uuid.UUID,
+    ) -> None:
+        """Repair only inspected unchanged points, without replacing vectors or other payloads.
+
+        PostgreSQL supplies the row/file/owner identities and expected content hashes.
+        This is ordinary per-document indexing, not a collection migration.
+        """
+        owner = self._validate_owner(user_id)
+        if self.settings.demo_mode or not expected_hashes:
+            return
+        client = self._get_client()
+        ids = list(expected_hashes)
+        try:
+            for start in range(0, len(ids), self.upsert_batch_size):
+                batch = ids[start : start + self.upsert_batch_size]
+                records = await client.retrieve(
+                    collection_name=self.collection_name,
+                    ids=[str(i) for i in batch],
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                by_id = {_parse_point_id(record.id): record.payload for record in records}
+                for chunk_id in batch:
+                    payload = by_id.get(chunk_id)
+                    if (
+                        payload is None
+                        or _parse_chunk_id(payload) != chunk_id
+                        or payload.get("drive_file_id") != str(drive_file_id)
+                        or payload.get("extracted_text_hash") != expected_hashes[chunk_id]
+                    ):
+                        raise VectorStoreError("Unchanged vector linkage could not be verified")
+                await client.set_payload(
+                    collection_name=self.collection_name,
+                    payload={"user_id": owner},
+                    points=[str(i) for i in batch],
+                    wait=True,
+                )
+        except (UnexpectedResponse, ResponseHandlingException) as exc:
+            raise VectorStoreError("Failed to update unchanged vector ownership") from exc
+
     async def search_similar(
         self,
         query_vector: list[float],
         *,
+        user_id: uuid.UUID,
         limit: int,
         score_threshold: float | None = None,
         expected_vector_size: int | None = None,
         file_ids: tuple[uuid.UUID, ...] | None = None,
     ) -> list[ScoredChunkHit]:
         """Return chunk IDs ranked by vector similarity to the query embedding."""
+        owner = self._validate_owner(user_id)
         _validate_vector(query_vector, expected_size=expected_vector_size)
 
         if file_ids is not None and (
             not file_ids or any(not isinstance(i, uuid.UUID) for i in file_ids)
         ):
             raise VectorStoreError("Exact-file search requires resolved non-empty UUID identities")
+        conditions: list[Condition] = []
+        if not self.settings.demo_mode:
+            conditions.append(FieldCondition(key="user_id", match=MatchValue(value=owner)))
+        if file_ids is not None:
+            conditions.append(
+                FieldCondition(key="drive_file_id", match=MatchAny(any=[str(i) for i in file_ids]))
+            )
         filters: _SearchFilterArguments = (
-            {
-                "query_filter": Filter(
-                    must=[
-                        FieldCondition(
-                            key="drive_file_id", match=MatchAny(any=[str(i) for i in file_ids])
-                        )
-                    ]
-                )
-            }
-            if file_ids is not None
-            else {}
+            {"query_filter": Filter(must=conditions)} if conditions else {}
         )
         client = self._get_client()
         try:

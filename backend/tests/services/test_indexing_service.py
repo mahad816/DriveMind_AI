@@ -11,6 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 from tests.credential_fixtures import synthetic_oauth_row
 
+from app.core.config import Settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
@@ -139,7 +140,7 @@ def service(
 ) -> IndexingService:
     return IndexingService(
         db=mock_db,
-        settings=MagicMock(),
+        settings=Settings(demo_mode=False),
         chunking_service=mock_chunking,
         embedding_service=mock_embedding,
         vector_store=mock_vector_store,
@@ -355,22 +356,7 @@ async def test_build_index_batch_processes_documents(
     mock_db: AsyncMock,
     mock_embedding: AsyncMock,
 ) -> None:
-    documents = [_document(text="doc one"), _document(text="doc two")]
-    chunks = [
-        _chunk(text="doc one", text_hash=documents[0].extracted_text_hash),
-        _chunk(text="doc two", text_hash=documents[1].extracted_text_hash),
-    ]
-    drive_file = _drive_file()
-    mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
-    mock_db.scalars = AsyncMock(
-        side_effect=[
-            MagicMock(all=MagicMock(return_value=documents)),
-            MagicMock(all=MagicMock(return_value=[chunks[0]])),
-            MagicMock(all=MagicMock(return_value=[chunks[1]])),
-        ],
-    )
-
+    _configure_two_document_build(mock_db)
     result = await service.build_index()
 
     assert result.total == 2
@@ -386,21 +372,7 @@ async def test_build_index_continues_after_document_failure(
     mock_embedding: AsyncMock,
     mock_vector_store: AsyncMock,
 ) -> None:
-    documents = [_document(text="doc one"), _document(text="doc two")]
-    chunks = [
-        _chunk(text="doc one", text_hash=documents[0].extracted_text_hash),
-        _chunk(text="doc two", text_hash=documents[1].extracted_text_hash),
-    ]
-    drive_file = _drive_file()
-    mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
-    mock_db.scalars = AsyncMock(
-        side_effect=[
-            MagicMock(all=MagicMock(return_value=documents)),
-            MagicMock(all=MagicMock(return_value=[chunks[0]])),
-            MagicMock(all=MagicMock(return_value=[chunks[1]])),
-        ],
-    )
+    _configure_two_document_build(mock_db)
     mock_vector_store.upsert_points = AsyncMock(
         side_effect=[VectorStoreError("Qdrant rejected vector upsert"), None],
     )
@@ -589,3 +561,11 @@ async def test_build_index_unexpected_guarded_exception_fails_job(
     assert job.status == IndexingJobStatus.FAILED
     assert job.error == "indexing job failed (unexpected_failure)."
     assert job.completed_at is not None
+
+
+def test_normal_payload_uses_postgres_owner_and_demo_keeps_original_format(service):
+    chunk = _chunk(text="synthetic", text_hash="hash")
+    file = _drive_file()
+    assert service._chunk_payload(chunk, file)["user_id"] == str(USER_ID)
+    service.settings.demo_mode = True
+    assert "user_id" not in service._chunk_payload(chunk, file)

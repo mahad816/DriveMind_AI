@@ -20,6 +20,7 @@ from app.embeddings.vector_store import (
 
 CHUNK_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
+USER_ID = uuid.uuid4()
 
 
 @pytest.fixture
@@ -59,7 +60,7 @@ async def test_ensure_collection_creates_missing_collection(
 
     mock_client.collection_exists.assert_awaited_once_with("drivemind_chunks")
     mock_client.create_collection.assert_awaited_once()
-    mock_client.create_payload_index.assert_awaited_once_with(
+    mock_client.create_payload_index.assert_any_await(
         collection_name="drivemind_chunks",
         field_name="drive_file_id",
         field_schema=PayloadSchemaType.KEYWORD,
@@ -83,7 +84,7 @@ async def test_ensure_collection_skips_existing_collection(
     await store.ensure_collection(vector_size=1536)
 
     mock_client.create_collection.assert_not_awaited()
-    mock_client.create_payload_index.assert_awaited_once_with(
+    mock_client.create_payload_index.assert_any_await(
         collection_name="drivemind_chunks",
         field_name="drive_file_id",
         field_schema=PayloadSchemaType.KEYWORD,
@@ -100,12 +101,12 @@ async def test_repeated_ensure_preserves_compatible_payload_index(
     mock_client.get_collection.return_value = info
 
     async def create_index(**kwargs: object) -> None:
-        info.payload_schema["drive_file_id"] = MagicMock(data_type=PayloadSchemaType.KEYWORD)
+        info.payload_schema[kwargs["field_name"]] = MagicMock(data_type=PayloadSchemaType.KEYWORD)
 
     mock_client.create_payload_index.side_effect = create_index
     await store.ensure_collection(vector_size=1536)
     await store.ensure_collection(vector_size=1536)
-    assert mock_client.create_payload_index.await_count == 1
+    assert mock_client.create_payload_index.await_count == 2
     mock_client.create_collection.assert_not_awaited()
     mock_client.delete.assert_not_awaited()
 
@@ -117,7 +118,10 @@ async def test_existing_compatible_payload_index_is_not_replaced(
 ) -> None:
     mock_client.collection_exists.return_value = True
     mock_client.get_collection.return_value = MagicMock(
-        payload_schema={"drive_file_id": MagicMock(data_type=schema)}
+        payload_schema={
+            "drive_file_id": MagicMock(data_type=schema),
+            "user_id": MagicMock(data_type=schema),
+        }
     )
     await store.ensure_collection(vector_size=1536)
     mock_client.create_payload_index.assert_not_awaited()
@@ -166,6 +170,7 @@ async def test_upsert_points_sends_chunk_vectors(
         chunk_id=CHUNK_ID,
         vector=[0.1, 0.2],
         payload={
+            "user_id": str(USER_ID),
             "chunk_id": str(CHUNK_ID),
             "drive_file_id": str(DRIVE_FILE_ID),
             "filename": "notes.txt",
@@ -176,7 +181,10 @@ async def test_upsert_points_sends_chunk_vectors(
         },
     )
 
-    await store.upsert_points([point])
+    await store.upsert_points(
+        [point],
+        user_id=USER_ID,
+    )
 
     mock_client.upsert.assert_awaited_once()
     call_kwargs = mock_client.upsert.await_args.kwargs
@@ -194,12 +202,15 @@ async def test_upsert_points_batches_large_inputs(
         VectorPoint(
             chunk_id=uuid.uuid4(),
             vector=[0.1, 0.2],
-            payload={"chunk_index": index},
+            payload={"chunk_index": index, "user_id": str(USER_ID)},
         )
         for index in range(5)
     ]
 
-    await store.upsert_points(points)
+    await store.upsert_points(
+        points,
+        user_id=USER_ID,
+    )
 
     assert mock_client.upsert.await_count == 3
 
@@ -212,7 +223,11 @@ async def test_upsert_points_rejects_invalid_vector_dimension(
     point = VectorPoint(chunk_id=CHUNK_ID, vector=[0.1, 0.2], payload={})
 
     with pytest.raises(VectorStoreError, match="expected 1536"):
-        await store.upsert_points([point], expected_vector_size=1536)
+        await store.upsert_points(
+            [point],
+            expected_vector_size=1536,
+            user_id=USER_ID,
+        )
 
     mock_client.upsert.assert_not_awaited()
 
@@ -232,10 +247,15 @@ async def test_upsert_points_wraps_qdrant_http_errors(
             headers=httpx.Headers({}),
         ),
     )
-    point = VectorPoint(chunk_id=CHUNK_ID, vector=[0.1, 0.2], payload={"chunk_index": 0})
+    point = VectorPoint(
+        chunk_id=CHUNK_ID, vector=[0.1, 0.2], payload={"chunk_index": 0, "user_id": str(USER_ID)}
+    )
 
     with pytest.raises(VectorStoreError, match="HTTP 400"):
-        await store.upsert_points([point])
+        await store.upsert_points(
+            [point],
+            user_id=USER_ID,
+        )
 
 
 @pytest.mark.asyncio
@@ -323,6 +343,7 @@ async def test_search_similar_returns_scored_chunk_hits(
         limit=8,
         score_threshold=0.35,
         expected_vector_size=1536,
+        user_id=USER_ID,
     )
 
     assert hits == [ScoredChunkHit(chunk_id=CHUNK_ID, score=0.87)]
@@ -343,6 +364,7 @@ async def test_search_similar_rejects_invalid_query_vector(
             [0.1, 0.2],
             limit=8,
             expected_vector_size=1536,
+            user_id=USER_ID,
         )
 
     mock_client.query_points.assert_not_awaited()
@@ -365,4 +387,63 @@ async def test_search_similar_wraps_qdrant_http_errors(
     )
 
     with pytest.raises(VectorStoreError, match="HTTP 400"):
-        await store.search_similar([0.1] * 1536, limit=5)
+        await store.search_similar(
+            [0.1] * 1536,
+            limit=5,
+            user_id=USER_ID,
+        )
+
+
+@pytest.mark.asyncio
+async def test_owner_is_required_before_search_or_upsert(store, mock_client):
+    from typing import cast
+
+    with pytest.raises(TypeError):
+        await store.search_similar([0.1, 0.2], limit=1)  # type: ignore[call-arg]
+    with pytest.raises(VectorStoreError, match="owner UUID"):
+        await store.search_similar([0.1, 0.2], user_id=cast(uuid.UUID, None), limit=1)
+    mock_client.query_points.assert_not_awaited()
+    payloads: list[dict[str, object]] = [{}, {"user_id": str(uuid.uuid4())}]
+    for payload in payloads:
+        with pytest.raises(VectorStoreError, match="authoritative owner"):
+            await store.upsert_points([VectorPoint(CHUNK_ID, [0.1, 0.2], payload)], user_id=USER_ID)
+    mock_client.upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_normal_owner_filter_exists_even_without_file_scope(store, mock_client):
+    mock_client.query_points.return_value = MagicMock(points=[])
+    await store.search_similar([0.1, 0.2], user_id=USER_ID, limit=1)
+    conditions = mock_client.query_points.await_args.kwargs["query_filter"].must
+    assert len(conditions) == 1
+    assert conditions[0].key == "user_id" and conditions[0].match.value == str(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_filter_failure_never_retries_unfiltered(store, mock_client):
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    mock_client.query_points.side_effect = UnexpectedResponse(
+        status_code=400,
+        reason_phrase="Bad Request",
+        content=b"unsupported filter",
+        headers=httpx.Headers({}),
+    )
+    with pytest.raises(VectorStoreError):
+        await store.search_similar([0.1, 0.2], user_id=USER_ID, limit=1, file_ids=(DRIVE_FILE_ID,))
+    mock_client.query_points.assert_awaited_once()
+    assert len(mock_client.query_points.await_args.kwargs["query_filter"].must) == 2
+
+
+@pytest.mark.asyncio
+async def test_normal_tenant_index_is_created_without_replacing_file_index(store, mock_client):
+    mock_client.get_collection.return_value = MagicMock(
+        payload_schema={"drive_file_id": MagicMock(data_type=PayloadSchemaType.KEYWORD)}
+    )
+    await store.ensure_collection(vector_size=3)
+    mock_client.create_payload_index.assert_awaited_once_with(
+        collection_name=store.collection_name,
+        field_name="user_id",
+        field_schema=PayloadSchemaType.KEYWORD,
+        wait=True,
+    )

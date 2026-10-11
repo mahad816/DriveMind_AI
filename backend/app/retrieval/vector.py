@@ -56,6 +56,7 @@ class VectorRetriever:
         query_vector = (await self.embedding_service.embed_texts([normalized]))[0]
         hits = await self.vector_store.search_similar(
             query_vector,
+            user_id=request.user_id,
             limit=request.candidate_limit,
             score_threshold=self.settings.retrieval_score_threshold,
             expected_vector_size=self.embedding_service.embedding_dimension,

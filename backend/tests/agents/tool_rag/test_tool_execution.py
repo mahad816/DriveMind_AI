@@ -316,15 +316,27 @@ async def test_qdrant_payload_file_filter(ids):
     client = AsyncMock()
     client.query_points.return_value = SimpleNamespace(points=[])
     store = QdrantVectorStore(Settings(), client=client)
-    await store.search_similar([0.1, 0.2], limit=3, file_ids=ids)
+    await store.search_similar(
+        [0.1, 0.2],
+        limit=3,
+        file_ids=ids,
+        user_id=USER,
+    )
     kw = client.query_points.await_args.kwargs
+    conditions = kw["query_filter"].must
+    assert conditions[0].key == "user_id" and conditions[0].match.value == str(USER)
     if ids is None:
-        assert "query_filter" not in kw
+        assert len(conditions) == 1
     else:
-        condition = kw["query_filter"].must[0]
+        condition = conditions[1]
         assert condition.key == "drive_file_id" and condition.match.any == [str(i) for i in ids]
     with pytest.raises(VectorStoreError):
-        await store.search_similar([0.1, 0.2], limit=3, file_ids=())
+        await store.search_similar(
+            [0.1, 0.2],
+            limit=3,
+            file_ids=(),
+            user_id=USER,
+        )
     client.query_points.assert_awaited_once()
 
 
