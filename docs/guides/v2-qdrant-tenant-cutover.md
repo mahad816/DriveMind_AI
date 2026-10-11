@@ -59,3 +59,93 @@ rollback. Cross-store indexing/job races remain a later job-ownership concern.
 
 References: [Qdrant multitenancy](https://qdrant.tech/documentation/manage-data/multitenancy/)
 and [payload updates](https://qdrant.tech/documentation/manage-data/payload/).
+
+## Step 4D4A: read-only inventory and independent verification
+
+From `backend/`, after explicit approval of the target stores:
+
+```bash
+uv run python -m app.ops.qdrant_tenant_inventory audit \
+  --database-env AUDIT_DATABASE_URL \
+  --qdrant-url https://your-approved-qdrant-host \
+  --collection your-approved-normal-collection \
+  --batch-size 100 --max-samples 100
+
+uv run python -m app.ops.qdrant_tenant_inventory verify \
+  --database-env AUDIT_DATABASE_URL \
+  --qdrant-url https://your-approved-qdrant-host \
+  --collection your-approved-normal-collection
+```
+
+Supply the PostgreSQL URL through the named environment variable, not command-line
+arguments or committed files. Existing backend `QDRANT_API_KEY` configuration is
+supported for HTTPS targets. Explicit database, Qdrant URL and collection are
+required; the CLI never implicitly selects the default development database.
+The JSON target identifies database host/port/name and Qdrant host/collection,
+omitting passwords, usernames, URL query parameters and API keys.
+
+Both commands perform the same exhaustive read-only scan. Exit codes are `0`
+for completed clean coverage, `1` for completed coverage with defects and `2`
+for configuration, segregation, pagination, storage or cleanup failure. Always
+check `complete` and `clean`; partial counts from a failed scan are not a gate.
+An empty existing collection with no indexed SQL chunks is explicitly `empty`.
+A missing or unavailable collection is an operational failure, never empty.
+
+Authority is Chunk → Document → internal DriveFile → User. All chunks of
+INDEXED files are expected, matching current SQL retrieval eligibility. Other
+file states do not require points, but lingering points for them are defects.
+External Google file IDs are never ownership or point identity. Different users
+may share a provider ID while retaining separate internal file and chunk UUIDs.
+
+Classifications in `issue_counts`:
+
+| Classification | Meaning |
+| --- | --- |
+| `missing_owner`, `wrong_owner` | Missing or canonical but incorrect owner UUID |
+| `invalid_owner` | Noncanonical UUID or unsupported owner value type |
+| `orphan_point`, `missing_point` | Point without SQL chunk, or indexed chunk without point |
+| `wrong_file_id`, `wrong_chunk_link` | Incorrect internal file or chunk provenance |
+| `wrong_hash`, `wrong_chunk_index` | Payload differs from authoritative chunk metadata |
+| `missing_provenance` | Missing/null chunk ID, internal file ID, content hash or chunk index |
+| `ineligible_point` | Point belongs to a non-INDEXED file |
+| `invalid_point_id` | Numeric point ID, unsupported by DriveMind's UUID contract |
+| `inconsistent_lineage` | Unresolved SQL relationship or inconsistent chunk/document content hash |
+| `invalid_vector` | Missing, wrong-size or nonfinite unnamed dense vector |
+
+`correct_points` counts points passing all checks. Issue counts are occurrences,
+not distinct point counts; a record may have multiple defects. Bounded ID-only
+samples include `owner_only_repairable=true` only when ownership is the sole
+defect. Samples are not an exhaustive repair manifest. Display metadata such as
+filenames is not an ownership authority and is not compared or reported.
+The scanner does not verify embedding relevance or recompute content hashes.
+
+PostgreSQL uses a read-only REPEATABLE READ transaction and UUID keyset pages.
+Indexed chunk IDs are retrieved from Qdrant in bounded batches to find missing
+points. A separate Qdrant scroll accounts for every actual point and checks SQL
+lineage, provenance, owner and dense-vector shape. Only provenance payload fields
+and bounded vector batches are read; neither text nor vectors are exported.
+Exact collection counts before/after, monotonic page identities and scanned
+cardinality detect incomplete or non-progressing pagination. Matching aggregate
+counts alone cannot pass: equal counts with substituted/orphan IDs still fail.
+Memory is bounded by batch size (1–1000), vector dimensions and sample limit
+(0–1000), rather than collection size.
+
+This is not an atomic cross-store snapshot. Stop incompatible and concurrent
+writers for the final cutover gate. Count checks cannot detect every same-count
+replacement during an active scan; a clean result under changing stores is not
+reliable. Long scans hold a SQL snapshot and may delay vacuum cleanup. Prefer a
+read-only database role and appropriately restricted Qdrant credentials.
+
+Demo mode, recognizable demo/HarborDesk collection names, SQL `demo:` identities,
+approved synthetic file UUIDs and collections containing their payloads are
+rejected. Arbitrarily renamed unidentified stores cannot be inferred magically;
+operators must still verify the displayed targets and approved environment.
+No deployed demo data needs this normal-mode migration.
+
+The scanner calls no collection initialization, index creation, payload update,
+upsert, deletion or repair API. Payload-index readiness remains a separate
+controlled rollout check. Step 4D4B may reuse the pure classifier and bounded
+authoritative lineage query, but must re-read and validate current records before
+any separately approved owner-only update, then rerun this verifier. There is no
+apply option in Step 4D4A, and no existing store has been scanned or migrated by
+implementation tests.
