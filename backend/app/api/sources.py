@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.source import SourceChunkRead
 from app.services.source_service import SourceService
-from app.api.dependencies import require_demo_index
+from app.api.dependencies import require_resource_user
 
-router = APIRouter(prefix="/sources", dependencies=[Depends(require_demo_index)])
+router = APIRouter(prefix="/sources")
 
 
 def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
@@ -21,10 +21,11 @@ def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
 @router.get("/{chunk_id}", summary="View source chunk for a citation")
 async def get_source_chunk(
     chunk_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(require_resource_user),
     service: SourceService = Depends(get_source_service),
 ) -> SourceChunkRead:
     """Return full chunk text and file metadata for a cited source."""
-    source = await service.get_source_chunk(chunk_id)
+    source = await service.get_source_chunk(chunk_id, user_id=user_id)
     if source is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import require_resource_user
 from app.connectors.google_drive.client import DriveClientError
 from app.db.session import get_db
 from app.schemas.drive_sync import DriveFileListResponse
@@ -29,11 +30,12 @@ def get_drive_content_service(db: AsyncSession = Depends(get_db)) -> DriveConten
 
 @router.get("", summary="List synced Drive files")
 async def list_synced_files(
+    user_id: uuid.UUID = Depends(require_resource_user),
     service: DriveSyncService = Depends(get_drive_sync_service),
 ) -> DriveFileListResponse:
     """Return Drive file metadata stored in PostgreSQL after sync."""
     try:
-        files = await service.list_synced_files()
+        files = await service.list_synced_files(user_id=user_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -47,11 +49,12 @@ async def list_synced_files(
 @router.get("/{file_id}/content", summary="Download or export synced file content")
 async def get_file_content(
     file_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(require_resource_user),
     service: DriveContentService = Depends(get_drive_content_service),
 ) -> Response:
     """Export or download bytes for a supported synced Drive file."""
     try:
-        content = await service.fetch_file_content(file_id=file_id)
+        content = await service.fetch_file_content(file_id=file_id, user_id=user_id)
     except ValueError as exc:
         detail = str(exc)
         if detail == "Synced file not found":

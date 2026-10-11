@@ -14,6 +14,7 @@ from uvicorn._types import ASGI3Application
 from uvicorn.protocols.http.h11_impl import RequestResponseCycle
 
 from app.api.files import get_drive_content_service
+from app.api.dependencies import require_resource_user
 from app.connectors.google_drive.client import DriveClientError, DriveTokens, GoogleDriveClient
 from app.core.credential_diagnostics import failure_category
 from app.core.public_safety import PUBLIC_ERROR
@@ -144,6 +145,7 @@ async def test_content_api_under_uvicorn_cycle_has_no_secret_traceback(
     client = drive_client()
     app = create_app()
     app.dependency_overrides[get_drive_content_service] = lambda: service
+    app.dependency_overrides[require_resource_user] = lambda: uuid4()
     path = f"/api/v1/files/{uuid4()}/content"
     conn = h11.Connection(h11.SERVER)
     conn.receive_data(f"GET {path} HTTP/1.1\r\nHost: testserver\r\n\r\n".encode())

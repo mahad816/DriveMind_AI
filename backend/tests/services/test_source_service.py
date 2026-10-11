@@ -73,7 +73,7 @@ async def test_get_source_chunk_returns_metadata_and_text(
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=_chunk_bundle())
 
-    source = await service.get_source_chunk(CHUNK_ID)
+    source = await service.get_source_chunk(CHUNK_ID, user_id=uuid.UUID(int=101))
 
     assert source is not None
     assert source.chunk_id == CHUNK_ID
@@ -91,7 +91,7 @@ async def test_get_source_chunk_returns_none_when_missing(
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
 
-    source = await service.get_source_chunk(CHUNK_ID)
+    source = await service.get_source_chunk(CHUNK_ID, user_id=uuid.UUID(int=101))
 
     assert source is None
 
@@ -103,6 +103,6 @@ async def test_get_source_chunk_returns_none_for_skipped_file(
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=_chunk_bundle(DriveFileStatus.SKIPPED))
 
-    source = await service.get_source_chunk(CHUNK_ID)
+    source = await service.get_source_chunk(CHUNK_ID, user_id=uuid.UUID(int=101))
 
     assert source is None

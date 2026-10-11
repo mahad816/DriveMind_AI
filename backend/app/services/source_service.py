@@ -21,14 +21,17 @@ class SourceService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def get_source_chunk(self, chunk_id: uuid.UUID) -> SourceChunkRead | None:
-        """Return chunk source details when the chunk exists."""
+    async def get_source_chunk(
+        self, chunk_id: uuid.UUID, *, user_id: uuid.UUID
+    ) -> SourceChunkRead | None:
+        """Return eligible source details only within the explicitly authorized owner."""
         chunk = await self.db.scalar(
             select(Chunk)
             .join(Document, Chunk.document_id == Document.id)
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
                 Chunk.id == chunk_id,
+                DriveFile.user_id == user_id,
                 DriveFile.status == DriveFileStatus.INDEXED,
             )
             .options(

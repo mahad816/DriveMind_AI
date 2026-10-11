@@ -1,5 +1,7 @@
 """Shared API dependencies for runtime operation boundaries."""
 
+from uuid import UUID
+
 from fastapi import Depends, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
@@ -7,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.demo.service import DemoCorpusService
+from app.api.session_dependencies import require_application_principal
+from app.services.application_session_service import ApplicationSessionService
 
 
 def require_normal_mode(settings: Settings = Depends(get_settings)) -> None:
@@ -32,3 +36,23 @@ async def require_demo_index(
         ready = False
     if not ready:
         raise HTTPException(status_code=503, detail="The sample knowledge base is unavailable.")
+
+
+async def require_resource_user(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+    _demo_admission: None = Depends(require_demo_index),
+) -> UUID:
+    """Authorize a private read, or an admitted anonymous synthetic-corpus read."""
+    if settings.demo_mode:
+        # Admission verified the configured identity and the entire isolated corpus.
+        try:
+            return UUID(settings.demo_user_id)
+        except ValueError:
+            raise HTTPException(503, "The sample knowledge base is unavailable.") from None
+
+    principal = await require_application_principal(
+        request, ApplicationSessionService(db, settings)
+    )
+    return principal.corpus_user_id

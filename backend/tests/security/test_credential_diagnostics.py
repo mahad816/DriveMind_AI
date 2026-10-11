@@ -108,6 +108,7 @@ async def test_credential_api_failures_are_safe(
 
     from app.api.auth import get_oauth_service
     from app.api.files import get_drive_content_service
+    from app.api.dependencies import require_resource_user
     from app.main import app
 
     service = MagicMock()
@@ -120,6 +121,8 @@ async def test_credential_api_failures_are_safe(
         service.fetch_file_content = AsyncMock(side_effect=DriveClientError(RAW))
         url = f"/api/v1/files/{uuid4()}/content"
     app.dependency_overrides[dependency] = lambda: service
+    if endpoint == "content":
+        app.dependency_overrides[require_resource_user] = lambda: uuid4()
     try:
         response = await async_client.get(url, headers={"Accept": "application/json"})
         assert response.status_code == status
@@ -128,6 +131,7 @@ async def test_credential_api_failures_are_safe(
         assert_clean(caplog.text)
     finally:
         app.dependency_overrides.pop(dependency, None)
+        app.dependency_overrides.pop(require_resource_user, None)
 
 
 @pytest.mark.asyncio

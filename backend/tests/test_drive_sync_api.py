@@ -16,10 +16,12 @@ from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.drive_file import DriveFile
 from app.db.models.indexing_job import IndexingJob
 from app.main import app
+from app.api.dependencies import require_resource_user
 
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Generator[None, None, None]:
+    app.dependency_overrides[require_resource_user] = lambda: uuid.UUID(int=101)
     yield
     app.dependency_overrides.clear()
 

@@ -21,7 +21,7 @@ REJECTION = {"detail": "This operation is unavailable in public demo mode."}
 
 @pytest.fixture(autouse=True)
 def runtime_settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
-    settings = Settings(demo_mode=True)
+    settings = Settings(demo_mode=True, demo_user_id=str(uuid.UUID(int=103)))
     monkeypatch.setitem(app.dependency_overrides, get_settings, lambda: settings)
     return settings
 
@@ -140,7 +140,7 @@ async def test_demo_source_lookup_remains_available(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Source chunk not found"}
-    service.get_source_chunk.assert_awaited_once_with(chunk_id)
+    service.get_source_chunk.assert_awaited_once_with(chunk_id, user_id=uuid.UUID(int=103))
 
 
 @pytest.mark.asyncio
@@ -149,13 +149,14 @@ async def test_demo_file_listing_remains_available(
 ) -> None:
     service = MagicMock()
     service.list_synced_files = AsyncMock(return_value=[])
+    monkeypatch.setitem(app.dependency_overrides, require_demo_index, lambda: None)
     monkeypatch.setitem(app.dependency_overrides, get_file_service, lambda: service)
 
     response = await async_client.get("/api/v1/files")
 
     assert response.status_code == 200
     assert response.json() == {"files": [], "total": 0}
-    service.list_synced_files.assert_awaited_once()
+    service.list_synced_files.assert_awaited_once_with(user_id=uuid.UUID(int=103))
 
 
 @pytest.mark.asyncio

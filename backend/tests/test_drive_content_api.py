@@ -12,11 +12,13 @@ from httpx import AsyncClient
 from app.api.files import get_drive_content_service
 from app.connectors.google_drive.client import DriveClientError
 from app.main import app
+from app.api.dependencies import require_resource_user
 from app.services.drive_content_service import DriveFileContent
 
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Generator[None, None, None]:
+    app.dependency_overrides[require_resource_user] = lambda: uuid.UUID(int=101)
     yield
     app.dependency_overrides.clear()
 

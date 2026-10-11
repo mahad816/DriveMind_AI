@@ -12,6 +12,7 @@ from httpx import AsyncClient
 
 from app.api.sources import get_source_service
 from app.main import app
+from app.api.dependencies import require_resource_user
 from app.schemas.source import SourceChunkRead
 
 CHUNK_ID = uuid.uuid4()
@@ -20,6 +21,7 @@ DRIVE_FILE_ID = uuid.uuid4()
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Generator[None, None, None]:
+    app.dependency_overrides[require_resource_user] = lambda: uuid.UUID(int=101)
     yield
     app.dependency_overrides.clear()
 
@@ -48,7 +50,7 @@ async def test_get_source_chunk_success(async_client: AsyncClient) -> None:
     assert body["drive_file_id"] == str(DRIVE_FILE_ID)
     assert body["filename"] == "notes.txt"
     assert body["text"] == "Tensile strength is a material property."
-    fake_service.get_source_chunk.assert_awaited_once_with(CHUNK_ID)
+    fake_service.get_source_chunk.assert_awaited_once_with(CHUNK_ID, user_id=uuid.UUID(int=101))
 
 
 @pytest.mark.asyncio
