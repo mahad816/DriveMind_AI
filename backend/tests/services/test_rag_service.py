@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import cast
 from dataclasses import replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -238,7 +239,7 @@ async def test_ask_generates_answer_and_persists_history(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("What is tensile strength?")
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
     assert result.query_id == QUERY_ID
     assert result.user_id == USER_ID
@@ -355,7 +356,7 @@ async def test_ask_returns_no_evidence_answer_without_retrieval(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("What is quantum foam?")
+    result = await service.ask("What is quantum foam?", user_id=USER_ID)
 
     assert result.answer == NO_EVIDENCE_ANSWER
     assert result.citations == []
@@ -368,7 +369,7 @@ async def test_ask_returns_no_evidence_answer_without_retrieval(
 @pytest.mark.asyncio
 async def test_ask_rejects_empty_question(service: RagService) -> None:
     with pytest.raises(ValueError, match="Question must not be empty"):
-        await service.ask("   ")
+        await service.ask("   ", user_id=USER_ID)
 
 
 @pytest.mark.asyncio
@@ -393,14 +394,15 @@ async def test_ask_resolves_explicit_user_id(
 
 
 @pytest.mark.asyncio
-async def test_ask_raises_when_no_oauth_connection(
+async def test_ask_rejects_missing_owner_without_oauth_fallback(
     service: RagService,
     mock_db: AsyncMock,
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
 
-    with pytest.raises(ValueError, match="No Google Drive connection"):
-        await service.ask("What files do I have?")
+    with pytest.raises(ValueError, match="explicit corpus owner"):
+        await service.ask("What files do I have?", user_id=cast(uuid.UUID, None))
+    mock_db.scalar.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -425,7 +427,7 @@ async def test_demo_ask_resolves_configured_user_without_oauth(
         persist_query_history=False,
     )
 
-    result = await demo_service.ask("What is tensile strength?")
+    result = await demo_service.ask("What is tensile strength?", user_id=demo_id)
 
     assert result.user_id == demo_id
     assert result.answer == DEMO_NO_EVIDENCE_ANSWER
@@ -473,7 +475,7 @@ async def test_ask_passes_max_context_chars_to_chat_service(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    await service.ask("What is tensile strength?")
+    await service.ask("What is tensile strength?", user_id=USER_ID)
 
     call_kwargs = mock_chat.generate_grounded_answer.await_args.kwargs
     assert call_kwargs["max_context_chars"] == 12000
@@ -507,7 +509,7 @@ async def test_ask_uses_filename_when_chunk_text_is_blank(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("What does the blank section mean?")
+    result = await service.ask("What does the blank section mean?", user_id=USER_ID)
 
     assert len(result.citations) == 1
     assert result.citations[0].snippet == "notes.txt"
@@ -564,7 +566,7 @@ async def test_ask_uses_evidence_grading_path_when_retriever_supports_it(
 
     mock_db.refresh = AsyncMock(side_effect=refresh_history)
 
-    result = await service.ask("What is tensile strength?")
+    result = await service.ask("What is tensile strength?", user_id=USER_ID)
 
     assert result.answer == NO_EVIDENCE_ANSWER
     graded_retriever.retrieve_with_grade.assert_awaited_once_with("What is tensile strength?")
@@ -790,7 +792,7 @@ async def test_ask_file_inventory_bypasses_chunk_retrieval(
         latest_file=None,
     )
 
-    async def fake_search(self: object, question: str) -> InventoryResult:
+    async def fake_search(self: object, question: str, *, user_id: uuid.UUID) -> InventoryResult:
         return fake_result
 
     monkeypatch.setattr(
@@ -845,7 +847,7 @@ async def test_ask_file_inventory_retrieval_count_reflects_file_count(
         latest_file=None,
     )
 
-    async def fake_search(self: object, question: str) -> InventoryResult:
+    async def fake_search(self: object, question: str, *, user_id: uuid.UUID) -> InventoryResult:
         return fake_result
 
     monkeypatch.setattr(
@@ -1120,7 +1122,7 @@ async def test_ask_file_inventory_bypasses_graph_when_agent_enabled(
         latest_file=None,
     )
 
-    async def fake_search(self: object, question: str) -> InventoryResult:
+    async def fake_search(self: object, question: str, *, user_id: uuid.UUID) -> InventoryResult:
         return fake_inv_result
 
     monkeypatch.setattr(
@@ -1276,7 +1278,7 @@ async def test_trace_records_chitchat_and_inventory_routes(
         latest_file=None,
     )
 
-    async def fake_search(self: object, question: str) -> InventoryResult:
+    async def fake_search(self: object, question: str, *, user_id: uuid.UUID) -> InventoryResult:
         return inventory_result
 
     monkeypatch.setattr(

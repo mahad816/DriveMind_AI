@@ -1,5 +1,7 @@
 """Grounded chat routes."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,11 +11,11 @@ from app.embeddings.vector_store import VectorStoreError
 from app.llm.base import ChatConfigurationError, ChatError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.rag_service import RagService
-from app.api.dependencies import require_demo_index
+from app.api.dependencies import require_resource_user
 from app.core.config import Settings, get_settings
 from app.core.public_safety import DemoChatLimits, public_error_detail
 
-router = APIRouter(prefix="/chat", dependencies=[Depends(require_demo_index)])
+router = APIRouter(prefix="/chat")
 
 
 def get_rag_service(db: AsyncSession = Depends(get_db)) -> RagService:
@@ -25,6 +27,7 @@ def get_rag_service(db: AsyncSession = Depends(get_db)) -> RagService:
 async def ask_grounded_question(
     payload: ChatRequest,
     request: Request,
+    user_id: UUID = Depends(require_resource_user),
     service: RagService = Depends(get_rag_service),
     settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
@@ -35,12 +38,13 @@ async def ask_grounded_question(
             if {"conversation_id", "history", "history_window_complete"} & payload.model_fields_set:
                 result = await service.ask(
                     payload.question,
+                    user_id=user_id,
                     conversation_id=payload.conversation_id,
                     history=[turn.model_dump() for turn in payload.history],
                     history_window_complete=payload.history_window_complete,
                 )
             else:
-                result = await service.ask(payload.question)
+                result = await service.ask(payload.question, user_id=user_id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

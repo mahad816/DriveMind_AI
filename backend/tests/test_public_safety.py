@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.api.chat import get_rag_service
-from app.api.dependencies import require_demo_index
+from app.api.dependencies import require_demo_index, require_resource_user
 from app.core.config import Settings, get_settings
 from app.core.public_safety import DemoChatLimits, PUBLIC_ERROR
 from app.llm.base import ChatError
@@ -22,6 +22,7 @@ from app.services.rag_service import RagResult, RagService
 async def demo(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[tuple[AsyncClient, MagicMock]]:
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     monkeypatch.setenv("DEMO_MODE", "true")
+    monkeypatch.setenv("DEMO_USER_ID", str(uuid.UUID(int=103)))
     monkeypatch.setenv("DEBUG", "true")
     monkeypatch.setenv("DEMO_CHAT_CONCURRENCY", "1")
     monkeypatch.setenv("DEMO_CHAT_RATE_LIMIT", "2")
@@ -42,6 +43,8 @@ async def demo(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[tuple[AsyncClie
     )
     app.dependency_overrides[get_rag_service] = lambda: service
     app.dependency_overrides[require_demo_index] = lambda: None
+    # These unit tests exercise limits/errors after authorization; real sessions are tested separately.
+    app.dependency_overrides[require_resource_user] = lambda: uuid.UUID(int=103)
     async with AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test"
     ) as client:
@@ -105,7 +108,7 @@ async def test_concurrency_rejects_without_queue_and_releases_on_success(
     entered, release = asyncio.Event(), asyncio.Event()
     result = service.ask.return_value
 
-    async def waiting(question: str) -> RagResult:
+    async def waiting(question: str, *, user_id: uuid.UUID) -> RagResult:
         entered.set()
         await release.wait()
         return result

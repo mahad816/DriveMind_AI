@@ -8,7 +8,7 @@ This module answers two types of inventory questions:
    content excerpt from the latest match, and targeted content checks (GPA, skills…).
 
 2. **Global count** — "List total number of files", "How many files do I have?"
-   No filename term needed.  Queries ALL indexed drive_files and groups by MIME type.
+   No filename term needed.  Queries the owner's indexed drive_files and groups by MIME type.
 
 Unlike the chunk-based retrievers (vector, keyword, metadata), this retriever
 queries ``drive_files`` directly and returns a structured result that the LLM can
@@ -17,6 +17,8 @@ content checks (e.g. "GPA mentioned: YES — excerpt: GPA: 3.8/4.0").
 """
 
 from __future__ import annotations
+
+from uuid import UUID
 
 import re
 from dataclasses import dataclass, field
@@ -272,7 +274,7 @@ class FileInventoryRetriever:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def search(self, question: str) -> InventoryResult:
+    async def search(self, question: str, *, user_id: UUID) -> InventoryResult:
         """Extract filename terms from the question then query ``drive_files``.
 
         Phases:
@@ -281,11 +283,13 @@ class FileInventoryRetriever:
         3. Query files by ILIKE name patterns; hydrate latest file's chunks.
         4. Run targeted content checks when question has "mention/include/contain X".
         """
+        if not isinstance(user_id, UUID):
+            raise ValueError("An explicit corpus owner is required")
         search_terms = extract_search_terms(question)
 
         if not search_terms:
             if _COUNT_INTENT_RE.search(question):
-                return await self._search_all_files()
+                return await self._search_all_files(user_id)
             return InventoryResult(
                 search_terms=[],
                 total_count=0,
@@ -293,7 +297,7 @@ class FileInventoryRetriever:
                 latest_file=None,
             )
 
-        drive_files = await self._query_files(search_terms)
+        drive_files = await self._query_files(search_terms, user_id)
         inventory_files = [
             InventoryFile(
                 drive_file_id=f.drive_file_id,
@@ -310,12 +314,14 @@ class FileInventoryRetriever:
         content_checks: list[ContentCheckItem] = []
 
         if drive_files:
-            latest_chunks = await self._fetch_content_chunks(drive_files[0])
+            latest_chunks = await self._fetch_content_chunks(drive_files[0], user_id)
 
             # Targeted content checks — GPA, skills, certifications, etc.
             check_terms = extract_content_check_terms(question)
             if check_terms:
-                content_checks = await self._run_content_checks(drive_files[0], check_terms)
+                content_checks = await self._run_content_checks(
+                    drive_files[0], check_terms, user_id=user_id
+                )
 
         return InventoryResult(
             search_terms=search_terms,
@@ -326,9 +332,9 @@ class FileInventoryRetriever:
             content_checks=content_checks,
         )
 
-    async def _search_all_files(self) -> InventoryResult:
-        """Return a global inventory of all indexed files grouped by MIME type."""
-        all_drive_files = await self._query_all_files()
+    async def _search_all_files(self, user_id: UUID) -> InventoryResult:
+        """Return the authorized owner's indexed inventory grouped by MIME type."""
+        all_drive_files = await self._query_all_files(user_id)
         inventory_files = [
             InventoryFile(
                 drive_file_id=f.drive_file_id,
@@ -348,12 +354,13 @@ class FileInventoryRetriever:
             mime_type_counts=mime_counts,
         )
 
-    async def _query_files(self, terms: list[str]) -> list[DriveFile]:
-        """Return INDEXED drive files whose name contains any of the given terms."""
+    async def _query_files(self, terms: list[str], user_id: UUID) -> list[DriveFile]:
+        """Return the owner's INDEXED files matching the given filename terms."""
         name_filters = [DriveFile.name.ilike(f"%{term}%") for term in terms]
         stmt = (
             select(DriveFile)
             .where(
+                DriveFile.user_id == user_id,
                 DriveFile.status == DriveFileStatus.INDEXED,
                 or_(*name_filters),
             )
@@ -363,23 +370,28 @@ class FileInventoryRetriever:
         result = await self.db.scalars(stmt)
         return list(result.all())
 
-    async def _query_all_files(self) -> list[DriveFile]:
-        """Return all INDEXED drive files, most recently modified first."""
+    async def _query_all_files(self, user_id: UUID) -> list[DriveFile]:
+        """Return the owner's INDEXED files, most recently modified first."""
         stmt = (
             select(DriveFile)
-            .where(DriveFile.status == DriveFileStatus.INDEXED)
+            .where(DriveFile.user_id == user_id, DriveFile.status == DriveFileStatus.INDEXED)
             .order_by(DriveFile.modified_at.desc())
             .limit(_MAX_GLOBAL_FILES)
         )
         result = await self.db.scalars(stmt)
         return list(result.all())
 
-    async def _fetch_content_chunks(self, drive_file: DriveFile) -> list[str]:
+    async def _fetch_content_chunks(self, drive_file: DriveFile, user_id: UUID) -> list[str]:
         """Fetch text chunks from the most recently modified matched file."""
         stmt = (
             select(Chunk)
             .join(Document, Chunk.document_id == Document.id)
-            .where(Document.drive_file_id == drive_file.id)
+            .join(DriveFile, Document.drive_file_id == DriveFile.id)
+            .where(
+                Document.drive_file_id == drive_file.id,
+                DriveFile.user_id == user_id,
+                DriveFile.status == DriveFileStatus.INDEXED,
+            )
             .order_by(Chunk.chunk_index.asc())
             .limit(_MAX_CONTENT_CHUNKS)
         )
@@ -390,6 +402,8 @@ class FileInventoryRetriever:
         self,
         drive_file: DriveFile,
         terms: list[tuple[str, str]],
+        *,
+        user_id: UUID,
     ) -> list[ContentCheckItem]:
         """Check if specific terms appear in the latest file's chunks or extracted_text.
 
@@ -412,8 +426,11 @@ class FileInventoryRetriever:
             chunk_text = await self.db.scalar(
                 select(Chunk.text)
                 .join(Document, Chunk.document_id == Document.id)
+                .join(DriveFile, Document.drive_file_id == DriveFile.id)
                 .where(
                     Document.drive_file_id == drive_file.id,
+                    DriveFile.user_id == user_id,
+                    DriveFile.status == DriveFileStatus.INDEXED,
                     Chunk.text.ilike(pattern),
                 )
                 .order_by(Chunk.chunk_index.asc())
@@ -428,8 +445,11 @@ class FileInventoryRetriever:
             # 2. Fallback: search documents.extracted_text for this file.
             extracted_text = await self.db.scalar(
                 select(Document.extracted_text)
+                .join(DriveFile, Document.drive_file_id == DriveFile.id)
                 .where(
                     Document.drive_file_id == drive_file.id,
+                    DriveFile.user_id == user_id,
+                    DriveFile.status == DriveFileStatus.INDEXED,
                     Document.extracted_text.ilike(pattern),
                 )
                 .limit(1)

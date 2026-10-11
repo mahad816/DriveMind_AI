@@ -18,7 +18,6 @@ from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.retrieval.filename_targets import extract_filename_targets, filename_matches_target
 from app.retrieval.types import RetrievedChunk
@@ -48,7 +47,7 @@ class FileTargetRetriever:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def search(self, question: str, user_id: uuid.UUID | None = None) -> FileTargetResult:
+    async def search(self, question: str, user_id: uuid.UUID) -> FileTargetResult:
         """Resolve filename targets and hydrate all chunks for matching files."""
         targets = extract_filename_targets(question)
         if not targets:
@@ -59,22 +58,15 @@ class FileTargetRetriever:
         if not files:
             return FileTargetResult(files=[], chunks=[], targets=targets)
 
-        chunks = await self._load_chunks_for_files(files)
+        chunks = await self._load_chunks_for_files(files, user_id=user.id)
         return FileTargetResult(files=files, chunks=chunks, targets=targets)
 
-    async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
-        if user_id is not None:
-            user = await self.db.get(User, user_id)
-            if user is None:
-                raise ValueError("User not found")
-            return user
-
-        token_row = await self.db.scalar(select(GoogleOAuthToken).limit(1))
-        if token_row is None:
-            raise ValueError("No Google Drive connection found. Complete OAuth first.")
-        user = await self.db.get(User, token_row.user_id)
+    async def _resolve_user(self, user_id: uuid.UUID) -> User:
+        if not isinstance(user_id, uuid.UUID):
+            raise ValueError("An explicit corpus owner is required")
+        user = await self.db.get(User, user_id)
         if user is None:
-            raise ValueError("Connected Google account has no user record")
+            raise ValueError("User not found")
         return user
 
     async def _resolve_files(
@@ -160,7 +152,9 @@ class FileTargetRetriever:
 
         return None
 
-    async def _load_chunks_for_files(self, files: list[DriveFile]) -> list[RetrievedChunk]:
+    async def _load_chunks_for_files(
+        self, files: list[DriveFile], *, user_id: uuid.UUID
+    ) -> list[RetrievedChunk]:
         file_ids = [f.id for f in files if f.status == DriveFileStatus.INDEXED]
         if not file_ids:
             return []
@@ -171,6 +165,7 @@ class FileTargetRetriever:
             .join(DriveFile, Document.drive_file_id == DriveFile.id)
             .where(
                 Document.drive_file_id.in_(file_ids),
+                DriveFile.user_id == user_id,
                 DriveFile.status == DriveFileStatus.INDEXED,
             )
             .options(selectinload(Chunk.document).selectinload(Document.drive_file))

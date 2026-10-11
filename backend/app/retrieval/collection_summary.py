@@ -52,7 +52,8 @@ class CollectionSummaryRetriever:
                         func.substr(Chunk.text, 1, max_chars),
                     )
                     .join(Document, Chunk.document_id == Document.id)
-                    .where(Document.drive_file_id == file.id)
+                    .join(DriveFile, Document.drive_file_id == DriveFile.id)
+                    .where(Document.drive_file_id == file.id, *eligible)
                     .order_by(Chunk.chunk_index, Chunk.id)
                     .limit(MAX_CHUNKS_PER_FILE)
                 )

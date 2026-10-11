@@ -84,7 +84,7 @@ class EvaluationService(Protocol):
     async def ask(
         self,
         question: str,
-        user_id: uuid.UUID | None = None,
+        user_id: uuid.UUID,
         *,
         trace: EvalTraceCollector | None = None,
     ) -> RagResult: ...

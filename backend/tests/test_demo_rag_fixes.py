@@ -140,7 +140,9 @@ async def test_greeting_prompt_and_abstention_wording(demo: bool) -> None:
         db, settings, retriever=retriever, chat_service=chat, persist_query_history=False
     )
     rag._resolve_user = AsyncMock(return_value=User(id=uuid.uuid4()))
-    result = await rag.ask("an unavailable technical fact")
+    result = await rag.ask(
+        "an unavailable technical fact", user_id=rag._resolve_user.return_value.id
+    )
     assert ("Google Drive" in result.answer) is not demo
     if not demo:
         assert result.answer == NO_EVIDENCE_ANSWER
@@ -168,7 +170,7 @@ async def test_collection_covers_small_corpus_and_preserves_source_mapping(
     rag = RagService(db, Settings(demo_mode=False), chat_service=chat, persist_query_history=False)
     user = User(id=uuid.uuid4())
     rag._resolve_user = AsyncMock(return_value=user)
-    result = await rag.ask("summarize each document")
+    result = await rag.ask("summarize each document", user_id=rag._resolve_user.return_value.id)
     assert "Covering 7 of 7" in result.answer
     assert len(result.citations) == 7
     for index, (filename, chunks) in enumerate(files, 1):
@@ -195,7 +197,9 @@ async def test_collection_reports_limited_coverage(monkeypatch: pytest.MonkeyPat
         AsyncMock(), Settings(demo_mode=False), chat_service=chat, persist_query_history=False
     )
     rag._resolve_user = AsyncMock(return_value=User(id=uuid.uuid4()))
-    result = await rag.ask("give me one sentence for every file")
+    result = await rag.ask(
+        "give me one sentence for every file", user_id=rag._resolve_user.return_value.id
+    )
     assert "Covering 10 of 18" in result.answer
     assert "large files may not be covered in full" in result.answer
     assert chat.generate_collection_answer.await_count == 1

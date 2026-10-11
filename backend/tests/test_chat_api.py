@@ -13,6 +13,7 @@ from app.api.chat import get_rag_service
 from app.embeddings.base import EmbeddingConfigurationError
 from app.llm.base import ChatError
 from app.main import app
+from app.api.dependencies import require_resource_user
 from app.schemas.query import CitationItem
 from app.services.rag_service import RagResult
 
@@ -24,6 +25,7 @@ DRIVE_FILE_ID = uuid.uuid4()
 
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Generator[None, None, None]:
+    app.dependency_overrides[require_resource_user] = lambda: USER_ID
     yield
     app.dependency_overrides.clear()
 
@@ -65,7 +67,7 @@ async def test_chat_success_returns_grounded_answer(async_client: AsyncClient) -
     assert body["message"] == "Answer generated from indexed Drive content"
     assert len(body["citations"]) == 1
     assert body["citations"][0]["chunk_id"] == str(CHUNK_ID)
-    fake_service.ask.assert_awaited_once_with("What is tensile strength?")
+    fake_service.ask.assert_awaited_once_with("What is tensile strength?", user_id=USER_ID)
 
 
 @pytest.mark.asyncio
@@ -261,7 +263,7 @@ async def test_chat_strips_question_whitespace(async_client: AsyncClient) -> Non
     )
 
     assert response.status_code == 200
-    fake_service.ask.assert_awaited_once_with("What is tensile strength?")
+    fake_service.ask.assert_awaited_once_with("What is tensile strength?", user_id=USER_ID)
 
 
 @pytest.mark.asyncio
@@ -300,6 +302,7 @@ async def test_chat_forwards_bounded_history_for_conversation_recall(
     assert response.json()["retrieval_count"] == 0
     fake_service.ask.assert_awaited_once_with(
         "What did you just tell me?",
+        user_id=USER_ID,
         conversation_id="workshop-chat",
         history=history,
         history_window_complete=True,

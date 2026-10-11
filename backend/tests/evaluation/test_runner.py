@@ -597,7 +597,7 @@ async def test_executor_uses_fresh_isolation_sequential_order_and_continues_fail
         async def ask(
             self,
             question: str,
-            user_id: uuid.UUID | None = None,
+            user_id: uuid.UUID,
             *,
             trace: EvalTraceCollector | None = None,
         ) -> RagResult:

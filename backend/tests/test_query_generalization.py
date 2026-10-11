@@ -71,7 +71,9 @@ async def test_followup_retrieval(followup: str, resolved: str) -> None:
         {"role": "user", "text": "Tell me about the recent project milestone."},
         {"role": "assistant", "text": "The milestone is recorded in project notes."},
     ]
-    result = await rag.ask(followup, conversation_id="test", history=history)
+    result = await rag.ask(
+        followup, conversation_id="test", history=history, user_id=uuid.UUID(int=101)
+    )
     chat.rewrite_followup.assert_awaited_once_with(followup, history)
     retriever.retrieve.assert_awaited_once_with(resolved)
     assert result.question == followup
@@ -102,6 +104,7 @@ async def test_file_reference_rewrites_before_named_file_lookup(
         "What about that file?",
         conversation_id="test",
         history=[{"role": "assistant", "text": 'The file is "handover.txt".'}],
+        user_id=uuid.UUID(int=101),
     )
     lookup.assert_awaited_once_with(resolved, user_id=user.id)
     retriever.retrieve.assert_not_called()
@@ -125,6 +128,7 @@ async def test_standalone_no_rewrite() -> None:
         "What is database replication?",
         conversation_id="test",
         history=[{"role": "user", "text": "When is training?"}],
+        user_id=uuid.UUID(int=101),
     )
     chat.rewrite_followup.assert_not_called()
     retriever.retrieve.assert_awaited_once_with("What is database replication?")
@@ -149,6 +153,7 @@ async def test_grammatical_that_does_not_require_history_rewrite() -> None:
         question,
         conversation_id="test",
         history=[{"role": "assistant", "text": "The previous topic was the onboarding workshop."}],
+        user_id=uuid.UUID(int=101),
     )
     retriever.retrieve.assert_awaited_once_with(question)
 
@@ -411,7 +416,7 @@ async def test_collection_preserves_all_requested_operations(
         AsyncMock(), Settings(demo_mode=False), chat_service=chat, persist_query_history=False
     )
     rag._resolve_user = AsyncMock(return_value=User(id=uuid.uuid4()))
-    result = await rag.ask(question)
+    result = await rag.ask(question, user_id=uuid.UUID(int=101))
     chat.generate_collection_answer.assert_awaited_once()
     args = chat.generate_collection_answer.await_args.args
     assert args[0] == question

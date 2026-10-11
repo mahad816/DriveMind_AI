@@ -101,20 +101,22 @@ class RagService:
             self.retriever = VectorRetriever(db, self.settings)
         self.chat_service = chat_service or get_chat_service(self.settings)
 
-    async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
+    async def _resolve_user(self, user_id: uuid.UUID) -> User:
+        if not isinstance(user_id, uuid.UUID):
+            raise ValueError("An explicit corpus owner is required")
         return await resolve_active_user(self.db, self.settings, user_id)
 
     async def ask(
         self,
         question: str,
-        user_id: uuid.UUID | None = None,
+        user_id: uuid.UUID,
         *,
         trace: EvalTraceCollector | None = None,
         conversation_id: str | None = None,
         history: Sequence[ChatHistoryTurn | Mapping[str, str]] = (),
         history_window_complete: bool = False,
     ) -> RagResult:
-        """Answer a question and persist query history.
+        """Answer for an explicit corpus owner and persist query history.
 
         Routing runs first regardless of agent_graph_enabled:
           CONVERSATION_HISTORY → deterministic prior-message recall, no sources.
@@ -133,8 +135,8 @@ class RagService:
             if history and not conversation_id:
                 raise ValueError("Non-empty history requires a conversation ID")
             original_question = normalized_question
+            user = await self._resolve_user(user_id)
             if self.settings.tool_rag_agent_enabled:
-                user = await self._resolve_user(user_id)
                 adapter = self.tool_agent or ToolAgentAdapter(
                     self.db,
                     self.settings,
@@ -191,7 +193,7 @@ class RagService:
                         )
             return await self._ask_normalized(
                 normalized_question,
-                user_id,
+                user,
                 trace=trace,
                 original_question=original_question,
                 history=history,
@@ -208,7 +210,7 @@ class RagService:
     async def _ask_normalized(
         self,
         normalized_question: str,
-        user_id: uuid.UUID | None,
+        user: User,
         *,
         trace: EvalTraceCollector | None,
         original_question: str,
@@ -218,8 +220,6 @@ class RagService:
         """Execute the existing routed pipeline for an already-normalized question."""
         if trace is not None:
             trace.set_stage("user_resolution")
-
-        user = await self._resolve_user(user_id)
 
         # ── Route first — applies to ALL execution paths ──────────────────────
         if trace is not None:
@@ -300,7 +300,7 @@ class RagService:
                 trace.set_stage("inventory_lookup")
                 retrieval_started = perf_counter()
             inv_retriever = FileInventoryRetriever(self.db)
-            inv_result = await inv_retriever.search(normalized_question)
+            inv_result = await inv_retriever.search(normalized_question, user_id=user.id)
             context = build_inventory_context(inv_result)
             if trace is not None:
                 trace.add_retrieval_duration(elapsed_ms(retrieval_started))

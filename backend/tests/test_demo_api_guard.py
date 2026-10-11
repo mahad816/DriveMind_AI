@@ -123,7 +123,9 @@ async def test_demo_chat_still_reaches_rag_service(
     )
 
     assert response.status_code == 200
-    service.ask.assert_awaited_once_with("What is in the sample corpus?")
+    service.ask.assert_awaited_once_with(
+        "What is in the sample corpus?", user_id=uuid.UUID(int=103)
+    )
 
 
 @pytest.mark.asyncio
