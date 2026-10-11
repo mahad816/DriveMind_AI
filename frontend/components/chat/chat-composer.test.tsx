@@ -47,7 +47,11 @@ describe("chat composer input", () => {
     cleanup();
 
     const blocked = composer("Ready", { disabled: true });
-    expect(blocked.input).toBeDisabled();
+    expect(blocked.input).toBeEnabled();
+    fireEvent.change(blocked.input, { target: { value: "Draft" } });
+    expect(blocked.onChange).toHaveBeenCalledWith("Draft");
+    fireEvent.keyDown(blocked.input, { key: "Enter" });
+    expect(blocked.onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     cleanup();
 

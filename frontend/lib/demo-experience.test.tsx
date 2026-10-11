@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const originalMode = vi.hoisted(() => {
@@ -145,6 +145,37 @@ describe("public demo experience", () => {
     render(<EmptyStateHero demoReady={false} needsConnect={false} needsPrepare={false} isSending={false} onSuggestionClick={send} />);
     expect(screen.getByRole("status")).toHaveTextContent("sample knowledge base is unavailable");
     expect(screen.queryByRole("button", { name: question })).not.toBeInTheDocument();
+  });
+
+  it("preserves a demo draft through readiness and its pending message through a later status change", async () => {
+    vi.mocked(useConnectionStatus).mockReturnValue({ data: null, isLoading: true, error: null, refetch: vi.fn(async () => {}) });
+    let complete!: () => void;
+    vi.mocked(askQuestion).mockImplementation(() => new Promise((resolve) => {
+      complete = () => resolve({ query_id: "query", user_id: "demo-user", answer: "Pilot launch is March 25.", citations: [], retrieval_count: 1, message: "Answer generated" });
+    }));
+    const conversation = createConversation("HarborDesk demo");
+    const view = render(<ToastProvider><ChatInterface conversationId={conversation.id} /></ToastProvider>);
+    const input = screen.getByRole("textbox", { name: "Message" });
+    expect(input).toBeEnabled();
+    fireEvent.change(input, { target: { value: "When is the pilot launch?" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(askQuestion).not.toHaveBeenCalled();
+    status();
+    view.rerender(<ToastProvider><ChatInterface conversationId={conversation.id} /></ToastProvider>);
+    expect(input).toHaveValue("When is the pilot launch?");
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await waitFor(() => expect(askQuestion).toHaveBeenCalledOnce());
+    expect(getConversationMessages(conversation.id)[0]).toMatchObject({ question: "When is the pilot launch?", status: "pending" });
+    status({ ...ready, demo_ready: false });
+    view.rerender(<ToastProvider><ChatInterface conversationId={conversation.id} /></ToastProvider>);
+    expect(getConversationMessages(conversation.id)[0].status).toBe("pending");
+    expect(askQuestion).toHaveBeenCalledOnce();
+    await act(async () => { complete(); });
+    expect(await screen.findByText("Pilot launch is March 25.")).toBeInTheDocument();
+    expect(getConversationMessages(conversation.id)[0].status).toBe("done");
+    expect(prepareKnowledge).not.toHaveBeenCalled();
+    expect(prepareSingleFile).not.toHaveBeenCalled();
   });
 
   it("keeps demo composer feedback quiet until near the limit and prevents oversized sends", () => {

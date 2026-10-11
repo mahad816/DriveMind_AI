@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { ConnectionStatusProvider } from "@/components/providers/connection-status-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ToastProvider } from "@/components/ui/toast-provider";
@@ -39,7 +40,9 @@ export default function RootLayout({
         <ThemeProvider>
           <ToastProvider>
             <TooltipProvider>
-              <AppShell>{children}</AppShell>
+              <ConnectionStatusProvider>
+                <AppShell>{children}</AppShell>
+              </ConnectionStatusProvider>
             </TooltipProvider>
           </ToastProvider>
         </ThemeProvider>

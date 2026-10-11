@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSearchParams } from "next/navigation";
 
-const readiness = vi.hoisted(() => ({ connected: true }));
+const readiness = vi.hoisted(() => ({ connected: true, error: null as string | null }));
 
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { askQuestion } from "@/lib/api/chat";
@@ -23,7 +23,7 @@ vi.mock("next/navigation", () => {
 vi.mock("@/lib/api/chat", () => ({ askQuestion: vi.fn() }));
 vi.mock("@/lib/hooks/use-connection-status", () => {
   const value = { data: { connected: true }, error: null, refetch: vi.fn() };
-  return { useConnectionStatus: () => ({ ...value, data: { connected: readiness.connected } }) };
+  return { useConnectionStatus: () => ({ ...value, data: { connected: readiness.connected }, error: readiness.error }) };
 });
 vi.mock("@/lib/hooks/use-knowledge-status", () => ({
   useKnowledgeStatus: () => ({ needsConnect: false, needsPrepare: false }),
@@ -43,15 +43,17 @@ vi.mock("@/components/chat/composer-dock", () => ({
     onChange,
     onSubmit,
     isLoading,
+    disabled,
   }: {
     value: string;
     onChange: (value: string) => void;
     onSubmit: () => void;
     isLoading: boolean;
+    disabled: boolean;
   }) => (
     <div>
       <input aria-label="Question" value={value} onChange={(event) => onChange(event.target.value)} />
-      <button type="button" onClick={onSubmit} disabled={isLoading}>Send</button>
+      <button type="button" onClick={onSubmit} disabled={isLoading || disabled}>Send</button>
     </div>
   ),
 }));
@@ -128,6 +130,7 @@ describe("in-flight conversation ownership", () => {
     });
     vi.mocked(askQuestion).mockReset();
     readiness.connected = true;
+    readiness.error = null;
     const params = useSearchParams() as unknown as URLSearchParams;
     [...params.keys()].forEach((key) => params.delete(key));
   });
@@ -307,4 +310,25 @@ describe("in-flight conversation ownership", () => {
     expect(await screen.findByText("Find the itinerary")).toBeInTheDocument();
     expect(askQuestion).not.toHaveBeenCalled();
   });
+
+  it("keeps a typed draft while readiness changes and blocks sending until confirmed", async () => {
+    readiness.connected = false;
+    const conversation = createConversation();
+    vi.mocked(askQuestion).mockResolvedValue(answer("Done"));
+    const view = render(<ChatInterface conversationId={conversation.id} />);
+    await waitFor(() => expect(screen.getByLabelText("Question")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "My draft" } });
+    expect(screen.getByText("Send")).toBeDisabled(); expect(askQuestion).not.toHaveBeenCalled();
+    readiness.connected = true; view.rerender(<ChatInterface conversationId={conversation.id} />);
+    expect(screen.getByLabelText("Question")).toHaveValue("My draft");
+    fireEvent.click(screen.getByText("Send")); await waitFor(() => expect(askQuestion).toHaveBeenCalledOnce());
+  });
+  it("blocks stale normal-mode readiness after a status failure", async () => {
+    readiness.connected = true; readiness.error = "Offline";
+    const conversation = createConversation(); render(<ChatInterface conversationId={conversation.id} />);
+    fireEvent.change(screen.getByLabelText("Question"), { target: { value: "Draft" } });
+    expect(screen.getByText("Send")).toBeDisabled(); expect(askQuestion).not.toHaveBeenCalled();
+    expect(screen.getByText("Retry status check")).toBeInTheDocument();
+  });
+
 });

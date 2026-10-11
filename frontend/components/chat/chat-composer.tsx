@@ -16,8 +16,10 @@ type ChatComposerProps = {
   value: string;
   onChange: (next: string) => void;
   onSubmit: () => void;
+  /** Blocks submission, not draft editing. */
   disabled: boolean;
   isLoading: boolean;
+  submissionStatus?: string;
   placeholder?: string;
   className?: string;
 };
@@ -33,6 +35,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
       onSubmit,
       disabled,
       isLoading,
+      submissionStatus,
       placeholder = "Message DriveMind…",
       className,
     },
@@ -41,6 +44,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const isComposingRef = useRef(false);
     const helperId = useId();
+    const readinessId = useId();
     const count = DEMO_MODE ? questionCharacters(value) : 0;
     const overLimit = DEMO_MODE && count > DEMO_QUESTION_LIMIT;
     const nearLimit = DEMO_MODE && count >= DEMO_QUESTION_LIMIT * 0.8;
@@ -83,7 +87,6 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
             value={value}
             onChange={(event) => onChange(event.target.value)}
             placeholder={placeholder}
-            disabled={disabled}
             rows={1}
             className="min-h-[52px] max-h-[200px] flex-1 resize-none border-0 bg-transparent px-3 py-3 text-base shadow-none focus-visible:ring-0"
             onKeyDown={(event) => {
@@ -100,7 +103,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
               isComposingRef.current = false;
             }}
             aria-label="Message"
-            aria-describedby={DEMO_MODE ? helperId : undefined}
+            aria-describedby={[DEMO_MODE ? helperId : "", disabled ? readinessId : ""].filter(Boolean).join(" ") || undefined}
             aria-invalid={overLimit || undefined}
           />
 
@@ -115,6 +118,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
             <ArrowUp className="size-4" />
           </Button>
         </div>
+        {disabled ? <p id={readinessId} role="status" className="px-2 pt-2 text-xs text-muted-foreground">{submissionStatus ?? "Sending is unavailable; you can still edit your draft."}</p> : null}
         {DEMO_MODE ? (
           <div id={helperId} className="grid min-h-10 grid-cols-1 px-2 pt-2 text-xs leading-4 text-muted-foreground sm:min-h-6 sm:grid-cols-[1fr_auto] sm:gap-3">
             <span>Public demo · Questions up to 4,000 characters</span>

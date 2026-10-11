@@ -97,17 +97,13 @@ type ChatInterfaceProps = {
 export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: connection, error: connectionError, refetch } = useConnectionStatus({
+  const { data: connection, isLoading: connectionLoading, error: connectionError, refetch } = useConnectionStatus({
     pollIntervalMs: 30_000,
   });
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
   const { conversations, startNewConversation, renameConversation, bumpConversation } = useConversations();
 
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-
-  const canAsk = DEMO_MODE ? !connectionError && knowledgeAvailable(connection) : connection?.connected ?? false;
+  const canAsk = !connectionError && knowledgeAvailable(connection);
   const titledRef = useRef(false);
   const askHandledRef = useRef(false);
   const pendingAskTitleRef = useRef<string | null>(null);
@@ -361,6 +357,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
           <Alert variant="destructive" className="mb-4">
             <AlertTitle>Connection status error</AlertTitle>
             <AlertDescription>{DEMO_MODE ? "The sample knowledge base is temporarily unavailable. Please try again shortly." : connectionError}</AlertDescription>
+            <button type="button" className="mt-2 text-sm underline" onClick={() => void refetch()}>Retry status check</button>
           </Alert>
         </div>
       ) : null}
@@ -375,6 +372,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
           {visibleMessages.length === 0 ? (
             <EmptyStateHero
               demoReady={canAsk}
+              isChecking={connectionLoading || !connection && !connectionError}
               needsConnect={needsConnect}
               needsPrepare={needsPrepare}
               isSending={isSending}
@@ -402,6 +400,11 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
             onSubmit={() => send()}
             disabled={!canAsk || needsPrepare}
             isLoading={isSending}
+            submissionStatus={!canAsk || needsPrepare
+              ? connectionError ? "Sending is unavailable. Retry the status check."
+                : connectionLoading || !connection ? "Checking knowledge readiness. You can type a draft while waiting."
+                : "Knowledge is not ready. Sending is unavailable."
+              : undefined}
           />
         </div>
       </div>
