@@ -97,7 +97,11 @@ def classify(point_id: UUID, payload: dict[str, Any], row: Any | None) -> list[s
         issues.append("inconsistent_lineage")
     if row.status != DriveFileStatus.INDEXED:
         issues.append("ineligible_point")
-    if not row.chunk_hash or row.chunk_hash != row.document_hash:
+    if (
+        not isinstance(row.chunk_hash, str)
+        or not row.chunk_hash
+        or row.chunk_hash != row.document_hash
+    ):
         issues.append("inconsistent_lineage")
     required = {"chunk_id", "drive_file_id", "extracted_text_hash", "chunk_index"}
     if any(k not in payload or payload[k] is None for k in required):
@@ -106,7 +110,11 @@ def classify(point_id: UUID, payload: dict[str, Any], row: Any | None) -> list[s
         issues.append("wrong_chunk_link")
     if "drive_file_id" in payload and payload["drive_file_id"] != str(row.file_id):
         issues.append("wrong_file_id")
-    if "extracted_text_hash" in payload and payload["extracted_text_hash"] != row.chunk_hash:
+    if "extracted_text_hash" in payload and (
+        not isinstance(payload["extracted_text_hash"], str)
+        or not payload["extracted_text_hash"]
+        or payload["extracted_text_hash"] != row.chunk_hash
+    ):
         issues.append("wrong_hash")
     if "chunk_index" in payload and (
         type(payload["chunk_index"]) is not int or payload["chunk_index"] != row.chunk_index
@@ -128,7 +136,7 @@ def lineage_query() -> Select[Any]:
             Chunk.id.label("id"),
             Chunk.document_id.label("document_id"),
             Chunk.chunk_index,
-            Chunk.metadata_json["extracted_text_hash"].as_string().label("chunk_hash"),
+            Chunk.metadata_json["extracted_text_hash"].label("chunk_hash"),
             Document.extracted_text_hash.label("document_hash"),
             DriveFile.id.label("file_id"),
             User.id.label("owner"),
@@ -201,7 +209,11 @@ async def inventory(
                             or row.document_hash is None
                             or (
                                 row.status == DriveFileStatus.INDEXED
-                                and (not row.chunk_hash or row.chunk_hash != row.document_hash)
+                                and (
+                                    not isinstance(row.chunk_hash, str)
+                                    or not row.chunk_hash
+                                    or row.chunk_hash != row.document_hash
+                                )
                             )
                         ):
                             report.record(["inconsistent_lineage"], row.id)
@@ -362,7 +374,7 @@ def main() -> None:
     parser.add_argument("--collection", required=True)
     parser.add_argument("--batch-size", type=int, default=100)
     parser.add_argument("--max-samples", type=int, default=100)
-    asyncio.run(run_cli(parser.parse_args()))
+    raise SystemExit(asyncio.run(run_cli(parser.parse_args())))
 
 
 if __name__ == "__main__":
