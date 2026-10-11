@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.services.google_credential_service import GoogleRefreshLifecycle
 
 settings = get_settings()
 
@@ -15,10 +16,12 @@ engine = create_async_engine(
     hide_parameters=True,
     echo=False,
 )
+google_refresh_lifecycle = GoogleRefreshLifecycle()
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    info={"google_refresh_lifecycle": google_refresh_lifecycle},
 )
 
 
