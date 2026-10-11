@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "@/lib/api/client";
-import { buildVectorIndex, chunkDocuments, pollUntilJobDone } from "@/lib/api/indexing";
+import { buildVectorIndex, chunkDocuments, getPendingCounts, pollUntilJobDone } from "@/lib/api/indexing";
 import { ApiError } from "@/lib/api/errors";
 import type { DriveSyncStatusResponse, IndexingJobRead } from "@/lib/api/types";
 
@@ -108,4 +108,33 @@ it("does not treat a canceled job as successful partial ingestion", async () => 
   await expect(pollUntilJobDone(FAILED_JOB.id, {
     intervalMs: 0, timeoutMs: 100, allowFailed: true,
   })).rejects.toMatchObject({ status: 409 });
+});
+
+
+describe("authoritative pending counts", () => {
+  it.each([
+    undefined, null, {},
+    { to_ingest: 0, to_chunk: 0, any_pending: false },
+    ...["0", true, -1, 0.5, NaN, Infinity].map((count) => ({
+      to_ingest: count, to_chunk: 0, to_build: 0, any_pending: false,
+    })),
+    { to_ingest: 0, to_chunk: 0, to_build: 0, any_pending: "false" },
+    { to_ingest: 1, to_chunk: 0, to_build: 0, any_pending: false },
+    { to_ingest: 0, to_chunk: 0, to_build: 0, any_pending: true },
+  ])("rejects malformed/unavailable pending state %j", async (response) => {
+    vi.mocked(apiFetch).mockResolvedValue(response);
+    await expect(getPendingCounts()).rejects.toMatchObject({ status: 503 });
+  });
+
+  it.each([false, true])("accepts valid fresh counts (pending=%s)", async (any_pending) => {
+    const response = { to_ingest: Number(any_pending), to_chunk: 0, to_build: 0, any_pending };
+    vi.mocked(apiFetch).mockResolvedValue(response);
+    await expect(getPendingCounts()).resolves.toEqual(response);
+  });
+
+  it("preserves typed transport errors", async () => {
+    const error = new ApiError(401, "Session revoked");
+    vi.mocked(apiFetch).mockRejectedValue(error);
+    await expect(getPendingCounts()).rejects.toBe(error);
+  });
 });

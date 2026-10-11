@@ -12,7 +12,18 @@ export async function getDriveSyncStatus(jobId?: string): Promise<DriveSyncStatu
 }
 
 export async function getPendingCounts(): Promise<PendingCountsResponse> {
-  return apiFetch<PendingCountsResponse>("/index/pending");
+  const pending = await apiFetch<PendingCountsResponse | null | undefined>("/index/pending");
+  if (
+    !pending ||
+    ![pending.to_ingest, pending.to_chunk, pending.to_build].every(
+      (count) => Number.isSafeInteger(count) && count >= 0,
+    ) ||
+    typeof pending.any_pending !== "boolean" ||
+    pending.any_pending !== (pending.to_ingest > 0 || pending.to_chunk > 0 || pending.to_build > 0)
+  ) {
+    throw new ApiError(503, "Indexing pending state is unavailable.");
+  }
+  return pending;
 }
 
 async function submitIndexJob(path: string): Promise<JobStartedResponse> {

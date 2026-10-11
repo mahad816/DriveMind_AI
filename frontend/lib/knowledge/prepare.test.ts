@@ -9,8 +9,11 @@ import {
   syncDriveMetadata,
 } from "@/lib/api/indexing";
 import { ApiError } from "@/lib/api/errors";
+import { apiFetch } from "@/lib/api/client";
 import type { IndexingJobRead, PendingCountsResponse } from "@/lib/api/types";
 import { prepareKnowledge } from "@/lib/knowledge/prepare";
+
+vi.mock("@/lib/api/client", () => ({ apiFetch: vi.fn() }));
 
 vi.mock("@/lib/api/indexing", () => ({
   syncDriveMetadata: vi.fn(),
@@ -43,13 +46,29 @@ function job(status: "completed" | "failed", error: string | null = null): Index
 
 describe("prepareKnowledge", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.mocked(syncDriveMetadata).mockResolvedValue({ job_id: "syncDriveMetadata-id", status: "queued", message: "ok" });
     vi.mocked(ingestDriveFiles).mockResolvedValue({ job_id: "ingestDriveFiles-id", status: "queued", message: "ok" });
     vi.mocked(chunkDocuments).mockResolvedValue({ job_id: "chunkDocuments-id", status: "queued", message: "ok" });
     vi.mocked(buildVectorIndex).mockResolvedValue({ job_id: "buildVectorIndex-id", status: "queued", message: "ok" });
     vi.mocked(pollUntilJobDone).mockResolvedValue(job("completed"));
     vi.mocked(getPendingCounts).mockResolvedValue(PENDING);
+  });
+
+  it("rejects revoked-session pending reads after ingestion instead of reporting readiness", async () => {
+    const error = new ApiError(401, "Session revoked");
+    const progress: number[] = [];
+    vi.mocked(getPendingCounts)
+      .mockResolvedValueOnce({ to_ingest: 1, to_chunk: 0, to_build: 0, any_pending: true })
+      .mockRejectedValueOnce(error);
+
+    await expect(prepareKnowledge({
+      onProgress: (state) => progress.push(state.progressPercent),
+    })).rejects.toBe(error);
+    expect(ingestDriveFiles).toHaveBeenCalledTimes(1);
+    expect(chunkDocuments).not.toHaveBeenCalled();
+    expect(buildVectorIndex).not.toHaveBeenCalled();
+    expect(progress).not.toContain(100);
   });
 
   it("runs the unchanged all-success sequence without a warning", async () => {
@@ -143,7 +162,7 @@ describe("prepareKnowledge", () => {
     expect(buildVectorIndex).not.toHaveBeenCalled();
   });
 
-  it("preserves the ingestion error when its pending refresh fails", async () => {
+  it("preserves the pending API error when a failed ingestion refresh fails", async () => {
     const ingestionError = "15 files failed during ingestion";
     vi.mocked(pollUntilJobDone)
       .mockResolvedValueOnce(job("completed"))
@@ -152,7 +171,7 @@ describe("prepareKnowledge", () => {
       .mockResolvedValueOnce(PENDING)
       .mockRejectedValueOnce(new ApiError(503, "pending unavailable"));
 
-    await expect(prepareKnowledge()).rejects.toMatchObject({ detail: ingestionError });
+    await expect(prepareKnowledge()).rejects.toMatchObject({ status: 503, detail: "pending unavailable" });
     expect(chunkDocuments).not.toHaveBeenCalled();
     expect(buildVectorIndex).not.toHaveBeenCalled();
   });
@@ -199,4 +218,56 @@ describe("prepareKnowledge", () => {
     expect(chunkDocuments).not.toHaveBeenCalled();
     expect(buildVectorIndex).not.toHaveBeenCalled();
   });
+  it.each([401, 403, 500, 503, "network"])(
+    "stops and reports a %s pending-read failure at each decision boundary",
+    async (failure) => {
+      for (const boundary of ["scan", "ingest", "chunk"] as const) {
+        vi.mocked(getPendingCounts).mockReset();
+        vi.mocked(chunkDocuments).mockClear();
+        vi.mocked(buildVectorIndex).mockClear();
+        vi.mocked(ingestDriveFiles).mockClear();
+        const error = typeof failure === "number"
+          ? new ApiError(failure, "Pending read failed") : new TypeError("Network unavailable");
+        const progress: { progressPercent: number; error: string | null }[] = [];
+        if (boundary !== "scan") vi.mocked(getPendingCounts).mockResolvedValueOnce(PENDING);
+        if (boundary === "chunk") vi.mocked(getPendingCounts).mockResolvedValueOnce(PENDING);
+        vi.mocked(getPendingCounts).mockRejectedValueOnce(error);
+        await expect(prepareKnowledge({ onProgress: (state) => progress.push(state) }))
+          .rejects.toBe(error);
+        expect(progress.some((state) => state.progressPercent === 100)).toBe(false);
+        expect(progress.at(-1)?.error).toBe(error.message);
+        expect(buildVectorIndex).not.toHaveBeenCalled();
+        if (boundary !== "chunk") expect(chunkDocuments).not.toHaveBeenCalled();
+        if (boundary === "scan") expect(ingestDriveFiles).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("uses fresh downstream counts after initially zero chunk/build counts", async () => {
+    vi.mocked(getPendingCounts)
+      .mockResolvedValueOnce({ to_ingest: 1, to_chunk: 0, to_build: 0, any_pending: true })
+      .mockResolvedValueOnce({ to_ingest: 0, to_chunk: 1, to_build: 0, any_pending: true })
+      .mockResolvedValueOnce({ to_ingest: 0, to_chunk: 0, to_build: 1, any_pending: true });
+    await expect(prepareKnowledge()).resolves.toEqual({ warning: null });
+    expect(chunkDocuments).toHaveBeenCalledTimes(1);
+    expect(buildVectorIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, null, {}, { to_ingest: 0, to_chunk: 0, to_build: 0 }])(
+    "cannot report readiness after a malformed pending response %j",
+    async (response) => {
+      const actual = await vi.importActual<typeof import("@/lib/api/indexing")>("@/lib/api/indexing");
+      vi.mocked(getPendingCounts).mockImplementation(actual.getPendingCounts);
+      vi.mocked(apiFetch)
+        .mockResolvedValueOnce({ to_ingest: 1, to_chunk: 0, to_build: 0, any_pending: true })
+        .mockResolvedValueOnce(response);
+      const progress: number[] = [];
+      await expect(prepareKnowledge({ onProgress: (state) => progress.push(state.progressPercent) }))
+        .rejects.toMatchObject({ status: 503 });
+      expect(chunkDocuments).not.toHaveBeenCalled();
+      expect(buildVectorIndex).not.toHaveBeenCalled();
+      expect(progress).not.toContain(100);
+    },
+  );
+
 });

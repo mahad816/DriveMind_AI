@@ -62,19 +62,20 @@ export async function prepareKnowledge(
     });
   };
 
-  const runStep = async (
+  const runStep = async <T>(
     stepId: PrepareStepId,
     startPercent: number,
     endPercent: number,
-    action: () => Promise<unknown>,
+    action: () => Promise<T>,
   ) => {
     steps = updateStep(steps, stepId, "active");
     emit({ progressPercent: startPercent, currentStepId: stepId });
 
     try {
-      await action();
+      const result = await action();
       steps = updateStep(steps, stepId, "complete");
       emit({ progressPercent: endPercent, currentStepId: stepId });
+      return result;
     } catch (error) {
       steps = updateStep(steps, stepId, "error");
       const message = toErrorMessage(error);
@@ -86,21 +87,16 @@ export async function prepareKnowledge(
   emit({ progressPercent: 0, currentStepId: "scan" });
 
   // Step 1: sync Drive metadata (always runs — discovers new/changed files).
-  await runStep("scan", 10, 30, async () => {
+  let pending = await runStep("scan", 10, 30, async () => {
     const accepted = await syncDriveMetadata(fullScan);
     await pollUntilJobDone(accepted.job_id, { timeoutMs: 180_000 });
+    // Fresh state is required before deciding which stages can be skipped.
+    return getPendingCounts();
   });
 
   // Check what still needs work after the sync.
   // If nothing is pending we skip the remaining heavy steps entirely — this
   // makes "add one file → Set up" near-instant when everything else is Ready.
-  let pending = await getPendingCounts().catch(() => ({
-    to_ingest: 1,
-    to_chunk: 1,
-    to_build: 1,
-    any_pending: true,
-  }));
-
   if (!pending.any_pending) {
     // All files are already indexed — mark remaining steps complete and exit.
     steps = updateStep(steps, "read", "complete");
@@ -121,18 +117,13 @@ export async function prepareKnowledge(
 
       if (job.status === "failed") {
         const originalError = job.error ?? "Job failed";
-        try {
-          pending = await getPendingCounts();
-        } catch {
-          throw new ApiError(500, originalError);
-        }
+        pending = await getPendingCounts();
         if (pending.to_chunk === 0 && pending.to_build === 0) {
           throw new ApiError(500, originalError);
         }
         ingestionWarning = originalError;
       } else {
-        // Preserve the existing best-effort refresh after successful ingestion.
-        pending = await getPendingCounts().catch(() => pending);
+        pending = await getPendingCounts();
       }
     });
   } else {

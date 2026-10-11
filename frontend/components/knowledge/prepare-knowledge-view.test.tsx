@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrepareKnowledgeView } from "@/components/knowledge/prepare-knowledge-view";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { prepareKnowledge } from "@/lib/knowledge/prepare";
+import { ApiError } from "@/lib/api/errors";
+import { setLastPreparedAt } from "@/lib/knowledge/storage";
 
 vi.mock("@/lib/knowledge/prepare", () => ({ prepareKnowledge: vi.fn() }));
 vi.mock("@/lib/knowledge/storage", () => ({ setLastPreparedAt: vi.fn() }));
@@ -118,5 +120,22 @@ describe("PrepareKnowledgeView", () => {
 
     expect(await screen.findByText("15 of 60 files failed during ingestion.")).toBeInTheDocument();
     expect(screen.queryByText(/files ready/)).not.toBeInTheDocument();
+  });
+
+  it("shows pending-read failure without recording preparation success", async () => {
+    const onComplete = vi.fn();
+    vi.mocked(prepareKnowledge).mockImplementation(async (options) => {
+      options?.onProgress?.({
+        steps: [{ id: "read", phase: "error" }], progressPercent: 35,
+        currentStepId: "read", error: "Session revoked",
+      });
+      throw new ApiError(401, "Session revoked");
+    });
+    render(<PrepareKnowledgeView onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Prepare knowledge" }));
+    expect(await screen.findByText("Preparation failed: Session revoked")).toBeInTheDocument();
+    expect(setLastPreparedAt).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(screen.queryByText("100% complete")).not.toBeInTheDocument();
   });
 });
