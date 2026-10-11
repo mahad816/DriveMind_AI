@@ -25,6 +25,7 @@ from app.demo.service import DemoCorpusError, DemoCorpusService
 from app.ingestion.chunking import chunk_text
 from app.main import create_app
 from app.services.drive_sync_service import DriveSyncService
+from app.services.google_credential_service import GoogleRefreshLifecycle
 
 DEMO_ID = UUID("731b8717-6b2f-4a15-9c21-5f9950ac7d91")
 
@@ -265,6 +266,7 @@ async def test_app_instances_own_distinct_clients_and_shutdown(
     monkeypatch.setattr("app.main.get_settings", lambda: settings)
     engine = AsyncMock()
     monkeypatch.setattr("app.main.engine", engine)
+    monkeypatch.setattr("app.main.google_refresh_lifecycle", GoogleRefreshLifecycle())
     first, second = create_app(), create_app()
     async with first.router.lifespan_context(first), second.router.lifespan_context(second):
         assert await first.state.demo_readiness_client.get(settings) is clients[0]
@@ -272,7 +274,9 @@ async def test_app_instances_own_distinct_clients_and_shutdown(
     assert factory.call_count == 2
     for client in clients:
         client.close.assert_awaited_once()
-    assert engine.dispose.await_count == 2
+    # Both applications share this engine/lifecycle: its pool is disposed once.
+    assert first.state.google_refresh_lifecycle is second.state.google_refresh_lifecycle
+    engine.dispose.assert_awaited_once()
 
 
 async def test_configuration_and_event_loop_changes_rejected(
@@ -408,6 +412,7 @@ async def test_shutdown_still_disposes_database_if_client_close_fails(
     monkeypatch.setattr("app.main.get_settings", lambda: settings)
     engine = AsyncMock()
     monkeypatch.setattr("app.main.engine", engine)
+    monkeypatch.setattr("app.main.google_refresh_lifecycle", GoogleRefreshLifecycle())
     application = create_app()
     with pytest.raises(TimeoutError):
         async with application.router.lifespan_context(application):

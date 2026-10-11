@@ -1,8 +1,9 @@
 """Managed Google refresh, with independent short DB transactions and no silent retry."""
 
 import asyncio
+import logging
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from concurrent.futures import CancelledError as FutureCancelled
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -34,6 +35,7 @@ from app.services.google_credential_repository import (
 )
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 def utc(value: datetime | None) -> datetime | None:
@@ -103,6 +105,7 @@ class GoogleRefreshLifecycle:
         self._workers: set[Future[Any]] = set()
         self._callbacks: set[_DatabaseCallback] = set()
         self._shutdown_lock = asyncio.Lock()
+        self._disposal_task: asyncio.Task[None] | None = None
 
     def bind(self, loop: asyncio.AbstractEventLoop) -> None:
         with self._lock:
@@ -273,6 +276,55 @@ class GoogleRefreshLifecycle:
                     if pending:
                         raise DriveClientError("Google refresh shutdown cleanup is incomplete.")
             # Queued wrappers can run later, but their sealed admission check forbids SQL.
+
+    async def shutdown_and_dispose(self, dispose: Callable[[], Awaitable[None]]) -> None:
+        """Own final disposal even if bounded shutdown reports incomplete cleanup.
+
+        One strongly retained task waits asynchronously for admitted SQL cleanup.
+        It cannot guarantee disposal if its event loop is forcibly terminated.
+        Failure/cancellation is observed and logged without exception details.
+        """
+        try:
+            await self.shutdown()
+        finally:
+            with self._lock:
+                sealed = not self._database_open
+                tasks = [ticket.task for ticket in self._callbacks if ticket.task is not None]
+            # No await between testing/storing the task: concurrent finalizers on
+            # this application loop cannot create a second disposal attempt.
+            if sealed and self._disposal_task is None:
+
+                async def finish() -> None:
+                    if tasks:
+                        await asyncio.wait(tasks)  # Never cancel SQL cleanup a second time.
+                        if any(
+                            not task.cancelled() and task.exception() is not None for task in tasks
+                        ):
+                            logger.error(
+                                "Google credential SQL callback failed during final cleanup."
+                            )
+                    failed = False
+                    try:
+                        await dispose()
+                    except Exception:
+                        failed = True
+                    if failed:
+                        raise DriveClientError("Google credential database disposal failed.")
+
+                def observed(task: asyncio.Task[None]) -> None:
+                    if task.cancelled():
+                        logger.error("Google credential final disposal was cancelled.")
+                    elif task.exception() is not None:
+                        logger.error("Google credential final disposal failed.")
+
+                self._disposal_task = asyncio.create_task(
+                    finish(), name="google-credential-disposal"
+                )
+                self._disposal_task.add_done_callback(observed)
+        # Reached only if bounded shutdown succeeded. A failure still propagates,
+        # while its owned task finishes teardown when cleanup eventually returns.
+        assert self._disposal_task is not None
+        await asyncio.shield(self._disposal_task)
 
 
 class GoogleCredentialService:

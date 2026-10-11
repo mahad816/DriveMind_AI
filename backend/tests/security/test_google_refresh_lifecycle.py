@@ -360,7 +360,10 @@ async def test_event_loop_thread_cannot_deadlock_itself():
 
 
 @pytest.mark.asyncio
-async def test_incomplete_sql_cleanup_prevents_engine_disposal(runtime):
+@pytest.mark.parametrize("cleanup_failure", [False, True])
+async def test_late_sql_cleanup_automatically_disposes_original_pool(
+    runtime, cleanup_failure, caplog
+):
     await grant(runtime.factory, runtime.settings)
     entered, cleanup, finish_cleanup = asyncio.Event(), asyncio.Event(), asyncio.Event()
     original = GoogleCredentialRepository._claimed
@@ -373,6 +376,8 @@ async def test_incomplete_sql_cleanup_prevents_engine_disposal(runtime):
         except asyncio.CancelledError:
             cleanup.set()
             await finish_cleanup.wait()
+            if cleanup_failure:
+                raise RuntimeError("synthetic-secret-cleanup") from None
             raise
         return row
 
@@ -386,9 +391,11 @@ async def test_incomplete_sql_cleanup_prevents_engine_disposal(runtime):
             return await original_complete(claim, credentials)
 
     disposed = []
+    original_pool = runtime.engine.pool
     original_dispose = AsyncEngine.dispose
 
     async def tracked_dispose(engine, *args, **kwargs):
+        assert engine.pool.checkedout() == 0
         disposed.append(engine)
         await original_dispose(engine, *args, **kwargs)
 
@@ -409,11 +416,34 @@ async def test_incomplete_sql_cleanup_prevents_engine_disposal(runtime):
             assert runtime.engine not in disposed
             assert runtime.lifecycle.active_callbacks == 1
         finally:
+            callbacks = [
+                ticket.task for ticket in runtime.lifecycle._callbacks if ticket.task is not None
+            ]
             finish_cleanup.set()
-            await runtime.lifecycle.shutdown()
+            if callbacks:
+                await asyncio.wait(callbacks)
+        # Observe automatic finalization; never invoke a second shutdown to start it.
+        finalizer = runtime.lifecycle._disposal_task
+        assert finalizer is not None
+        await asyncio.wait_for(asyncio.shield(finalizer), 3)
+        assert disposed == [runtime.engine]
+        assert original_pool.checkedin() == 0
+        assert original_pool.checkedout() == 0
         with pytest.raises(DriveClientError):
             await asyncio.wait_for(task, 3)
-    assert runtime.lifecycle.active_callbacks == 0
+        assert runtime.lifecycle.active_callbacks == 0
+        # No callback may reopen SQL after automatic final disposal.
+        with pytest.raises(DriveClientError):
+            await asyncio.to_thread(service._on_loop, service.load(USER_A))
+        await runtime.lifecycle.shutdown_and_dispose(runtime.engine.dispose)
+        await runtime.lifecycle.shutdown_and_dispose(runtime.engine.dispose)
+        assert disposed == [runtime.engine]
+        assert "synthetic-secret-cleanup" not in caplog.text
+        if cleanup_failure:
+            assert "SQL callback failed during final cleanup" in caplog.text
+    async with runtime.observer_factory() as db:
+        record = await GoogleCredentialRepository(db, runtime.settings).load_record(USER_A)
+        assert record.credential_revision == 1 and record.refresh_claim_state == "SUBMITTED"
 
 
 @pytest.mark.asyncio
@@ -623,3 +653,73 @@ async def test_submitted_refresh_cannot_resurrect_disconnected_row(runtime):
                     assert await db.scalar(text("SELECT count(*) FROM google_oauth_tokens")) == 0
             finally:
                 network.release.set()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_finalization_disposes_once_after_normal_lifespan(runtime):
+    original_pool = runtime.engine.pool
+    disposed = []
+    original = AsyncEngine.dispose
+
+    async def dispose(engine, *args, **kwargs):
+        assert engine.pool.checkedout() == 0
+        disposed.append(engine)
+        await original(engine, *args, **kwargs)
+
+    with patch.object(AsyncEngine, "dispose", dispose):
+        async with runtime.app.router.lifespan_context(runtime.app):
+            async with runtime.factory() as db:
+                await db.execute(text("SELECT 1"))
+        await asyncio.gather(
+            runtime.lifecycle.shutdown_and_dispose(runtime.engine.dispose),
+            runtime.lifecycle.shutdown_and_dispose(runtime.engine.dispose),
+        )
+        assert disposed == [runtime.engine]
+        assert original_pool.checkedin() == original_pool.checkedout() == 0
+
+
+@pytest.mark.asyncio
+async def test_disposal_failure_is_observed_and_not_retried(runtime, caplog):
+    attempts = []
+
+    async def failing_dispose():
+        attempts.append(1)
+        raise RuntimeError("synthetic-secret-disposal")
+
+    for _ in range(2):
+        with pytest.raises(DriveClientError, match="database disposal failed") as caught:
+            await runtime.lifecycle.shutdown_and_dispose(failing_dispose)
+        assert "synthetic-secret-disposal" not in str(caught.value)
+        assert caught.value.__context__ is None
+    assert attempts == [1]
+    assert "final disposal failed" in caplog.text
+    assert "synthetic-secret-disposal" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_cancelled_finalization_waiter_does_not_cancel_owned_disposal(runtime):
+    entered, release = asyncio.Event(), asyncio.Event()
+    original_pool = runtime.engine.pool
+    attempts = []
+    async with runtime.factory() as db:
+        await db.execute(text("SELECT 1"))
+
+    async def dispose():
+        attempts.append(1)
+        entered.set()
+        await release.wait()
+        assert runtime.engine.pool.checkedout() == 0
+        await runtime.engine.dispose()
+
+    waiter = asyncio.create_task(runtime.lifecycle.shutdown_and_dispose(dispose))
+    await asyncio.wait_for(entered.wait(), 3)
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    finalizer = runtime.lifecycle._disposal_task
+    assert finalizer is not None and not finalizer.done()
+    release.set()
+    await asyncio.wait_for(asyncio.shield(finalizer), 3)
+    await runtime.lifecycle.shutdown_and_dispose(dispose)
+    assert attempts == [1]
+    assert original_pool.checkedin() == original_pool.checkedout() == 0

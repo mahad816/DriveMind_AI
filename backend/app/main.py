@@ -59,18 +59,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await _cleanup_stuck_jobs()
         yield
     finally:
-        database_safe = False
         try:
             # Reject refresh admission before closing any other application resource.
-            await app.state.google_refresh_lifecycle.shutdown()
-            database_safe = True
+            await app.state.google_refresh_lifecycle.shutdown_and_dispose(engine.dispose)
         finally:
-            try:
-                await app.state.demo_readiness_client.close()
-            finally:
-                # Failed cleanup deliberately prevents disposal under live DB callbacks.
-                if database_safe:
-                    await engine.dispose()
+            await app.state.demo_readiness_client.close()
 
 
 def create_app() -> FastAPI:
