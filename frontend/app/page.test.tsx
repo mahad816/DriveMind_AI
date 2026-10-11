@@ -1,20 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import HomePage from "@/app/page";
+import { DemoHomeRedirect } from "@/components/onboarding/demo-home-redirect";
 const mode = vi.hoisted(() => ({ demo: false }));
-const redirect = vi.hoisted(() => vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`); }));
+const router = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("@/lib/demo", () => ({ get DEMO_MODE() { return mode.demo; } }));
-vi.mock("next/navigation", () => ({ redirect }));
-vi.mock("@/components/onboarding/onboarding-gate", () => ({ OnboardingAwareHomeRedirect: () => null }));
-afterEach(() => { mode.demo = false; vi.clearAllMocks(); });
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("@/components/onboarding/onboarding-gate", () => ({ OnboardingAwareHomeRedirect: () => <div>Normal onboarding</div> }));
+afterEach(() => { mode.demo = false; vi.clearAllMocks(); window.history.replaceState({}, "", "/"); });
 describe("homepage entry", () => {
-  it("redirects demo entry on the server without mounting a client status gate", async () => {
-    mode.demo = true; await expect(HomePage({})).rejects.toThrow("REDIRECT:/chat");
-  });
-  it("preserves ask and repeated query parameters on demo entry", async () => {
+  it("keeps the demo root statically renderable and mounts its redirect", () => {
     mode.demo = true;
-    await expect(HomePage({ searchParams: Promise.resolve({ ask: "Explain notes", tag: ["a", "b"] }) })).rejects.toThrow("REDIRECT:/chat?ask=Explain+notes&tag=a&tag=b");
+    expect(HomePage().type).toBe(DemoHomeRedirect);
   });
-  it("retains normal-mode knowledge/onboarding routing", async () => {
-    const page = await HomePage({}); expect(page.type).toBeDefined(); expect(redirect).not.toHaveBeenCalled();
+  it("redirects to chat while preserving query parameters", async () => {
+    mode.demo = true;
+    window.history.replaceState({}, "", "/?ask=Explain%20notes&tag=a&tag=b");
+    render(<DemoHomeRedirect />);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/chat?ask=Explain%20notes&tag=a&tag=b"));
+  });
+  it("redirects a plain demo root to chat", async () => {
+    mode.demo = true;
+    render(<DemoHomeRedirect />);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith("/chat"));
+  });
+  it("retains normal-mode knowledge/onboarding routing", () => {
+    render(HomePage());
+    expect(screen.getByText("Normal onboarding")).toBeInTheDocument();
   });
 });
