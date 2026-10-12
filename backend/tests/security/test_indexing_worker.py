@@ -300,6 +300,7 @@ async def test_sql_flush_failure_rolls_back_and_uses_fresh_finalization(world, m
         if (
             isinstance(statement, Update)
             and getattr(statement.table, "name", None) == "indexing_jobs"
+            and any(getattr(key, "key", key) == "status" for key in (statement._values or {}))
         ):
             finishing_sessions.append(session)
         return await original_execute(session, statement, *args, **kwargs)

@@ -73,10 +73,12 @@ class QdrantVectorStore:
         client: AsyncQdrantClient | None = None,
         upsert_batch_size: int | None = None,
         verify_writes: bool = False,
+        before_mutation: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self._client = client
         self.verify_writes = verify_writes
+        self.before_mutation = before_mutation
         self.upsert_batch_size = (
             upsert_batch_size
             if upsert_batch_size is not None
@@ -92,12 +94,19 @@ class QdrantVectorStore:
             return self._client
         return create_qdrant_client(self.settings)
 
+    async def _authorize_mutation(self) -> None:
+        # Offline/demo callers retain their explicit execution path. Managed
+        # workers install a live-claim hook for EVERY independently issued write.
+        if self.before_mutation is not None:
+            await self.before_mutation()
+
     async def ensure_collection(self, *, vector_size: int) -> None:
         """Create missing vector storage and reconcile indexes used by payload filters."""
         client = self._get_client()
         try:
             if not await client.collection_exists(self.collection_name):
                 try:
+                    await self._authorize_mutation()
                     await client.create_collection(
                         collection_name=self.collection_name,
                         vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
@@ -147,6 +156,7 @@ class QdrantVectorStore:
                         f"Qdrant payload index '{field}' must have keyword or UUID schema "
                         f"in collection '{self.collection_name}'"
                     )
+                await self._authorize_mutation()
                 await client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name=field,
@@ -207,6 +217,7 @@ class QdrantVectorStore:
                         point_id = _parse_point_id(record.id)
                         if point_id is not None and record.payload is not None:
                             existing_payloads[point_id] = record.payload
+                await self._authorize_mutation()
                 result = await client.upsert(
                     collection_name=self.collection_name,
                     points=[
@@ -241,6 +252,7 @@ class QdrantVectorStore:
 
         client = self._get_client()
         try:
+            await self._authorize_mutation()
             result = await client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=[str(chunk_id) for chunk_id in chunk_ids]),
@@ -372,6 +384,7 @@ class QdrantVectorStore:
                         or payload.get("extracted_text_hash") != expected_hashes[chunk_id]
                     ):
                         raise VectorStoreError("Unchanged vector linkage could not be verified")
+                await self._authorize_mutation()
                 result = await client.set_payload(
                     collection_name=self.collection_name,
                     payload={"user_id": owner},

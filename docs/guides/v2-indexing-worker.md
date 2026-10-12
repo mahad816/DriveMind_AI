@@ -1,4 +1,4 @@
-# Managed indexing worker: inactive 4E2 boundary
+# Managed indexing worker: inactive 4E3A boundary
 
 `IndexingWorker` consumes committed managed jobs using PostgreSQL
 `FOR UPDATE SKIP LOCKED`. It is **not constructed or started by production
@@ -56,7 +56,8 @@ The isolated demo retains its ownerless payload format and explicit demo owner.
 
 ## Required 4E3 work before activation
 
-- Lease/heartbeat renewal, expiry classification and safe multi-process recovery.
+- Expiry classification and safe multi-process recovery. Leases alone do not
+  establish remote-write quiescence or permit takeover.
 - Recovery of stranded QUEUED/RUNNING work; no current automatic takeover.
 - Reconciliation of interrupted BUILD and cross-store partial outcomes.
 - Full stale-sync snapshot ordering and protection from competing legacy/operator
@@ -75,3 +76,45 @@ The existing Google refresh lifecycle still owns credential refresh callbacks.
 No migration, deployment, real-store indexing or recovery operation is authorized
 by this implementation. Existing offline demo loading retains its legacy explicit
 owner adapter and does not use the normal managed executor.
+
+## Database-time ownership (4E3A)
+
+Explicit executors default to a 60-second lease and renew every 10 seconds.
+Constructor-only settings are bounded and support short disposable test leases;
+there is no production activation flag. Claim, renewal and completion timestamps
+come from PostgreSQL, not application clocks. Sessions must use READ COMMITTED.
+Job lock waits are bounded (2 seconds by default); statements are bounded at
+15 seconds. Renewal also has a wall-time budget of at most 15 seconds (or
+one third of the lease), so connection/transport stalls cannot hide heartbeat
+failure. A failed heartbeat stops its owned attempt rather than retrying an
+expired claim.
+
+Every SQL publication locks the exact RUNNING job/owner/operation/target/options/
+claim/worker first, then reads fresh database time in a separate statement. An
+expiry predicate in the original locking query is insufficient: PostgreSQL may
+evaluate it before waiting on an unchanged row. Publication is authorized only
+if the lease is live at the post-lock check. The job lock remains held until
+commit or rollback; this does not promise that the physical commit packet arrives
+before the lease deadline. Authorization disables ORM autoflush and does not
+refresh dirty progress or recovery fields. Failed authorization rolls back stage
+changes.
+
+Each attempt owns one stage task and one heartbeat task with independent SQL
+sessions. Heartbeat changes only heartbeat/lease fields. Unexpected heartbeat
+exit poisons the attempt and cancels stage work; poisoned stage guards refuse
+further publication or mutation even if a transport swallows cancellation. Stage
+sessions close before heartbeat is stopped and joined, and terminal publication
+then uses a fresh session and the same post-lock check. Missing SQL authority or
+unavailable storage leaves the durable job unresolved for later classification.
+
+Managed BUILD installs a live-claim/snapshot hook before each independently issued
+collection/index creation, point deletion, owner payload repair and upsert batch.
+The hook releases SQL locks before network I/O. Embedding completes before the
+subsequent mutation hook authorizes its writes. An already-issued Qdrant request
+cannot be retracted by claim loss or cancellation. Its prior durable
+`recovery_required` marker is retained; no remote rollback or exactly-once result
+is claimed. Explicit offline/demo callers retain their existing no-hook adapter.
+
+No expiry classifier, attempt manifest, takeover, operator reconciliation or
+FastAPI worker startup is implemented here. Production admission remains closed
+until the complete lifecycle and recovery cutover receive independent acceptance.

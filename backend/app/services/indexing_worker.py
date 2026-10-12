@@ -13,9 +13,9 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
@@ -112,6 +112,9 @@ class IndexingWorker:
         *,
         embedding_service: EmbeddingService | None = None,
         poll_seconds: float = 1.0,
+        lease_seconds: float = 60.0,
+        heartbeat_seconds: float = 10.0,
+        lock_timeout_seconds: float = 2.0,
     ) -> None:
         if settings.demo_mode:
             raise ValueError("Normal indexing workers are unavailable in demo mode")
@@ -119,6 +122,18 @@ class IndexingWorker:
             raise ValueError("Indexing polling must be bounded")
         if sessions.kw.get("expire_on_commit", True):
             raise ValueError("Indexing sessions must preserve captured snapshots after commit")
+        if (
+            not all(
+                math.isfinite(v) for v in (lease_seconds, heartbeat_seconds, lock_timeout_seconds)
+            )
+            or not 0.1 <= lease_seconds <= 300
+            or not 0.01 <= heartbeat_seconds < lease_seconds / 3
+            or not 0.01 <= lock_timeout_seconds <= 10
+        ):
+            raise ValueError("Indexing lease and heartbeat settings must be bounded")
+        self.lease_seconds = lease_seconds
+        self.heartbeat_seconds = heartbeat_seconds
+        self.lock_timeout_seconds = lock_timeout_seconds
         self.sessions = sessions
         self.settings = settings
         self.embedding_service = embedding_service
@@ -128,6 +143,7 @@ class IndexingWorker:
 
     async def claim_next(self) -> IndexingClaim | None:
         async with self.sessions() as db, db.begin():
+            await self._transaction_limits(db)
             job = await db.scalar(
                 select(IndexingJob)
                 .join(User, User.id == IndexingJob.user_id)
@@ -150,7 +166,9 @@ class IndexingWorker:
             claim_id = uuid.uuid4()
             job.claim_id = claim_id
             job.worker_id = self.worker_id
-            job.started_at = job.heartbeat_at = datetime.now(UTC)
+            now = await self._database_time(db)
+            job.started_at = job.heartbeat_at = now
+            job.lease_expires_at = now + timedelta(seconds=self.lease_seconds)
             job.completed_at = None
             job.error = None
             return IndexingClaim(
@@ -163,36 +181,111 @@ class IndexingWorker:
                 self.worker_id,
             )
 
-    async def _guard(self, db: AsyncSession, claim: IndexingClaim) -> IndexingJob:
-        job = await db.scalar(
-            select(IndexingJob)
-            .join(User, User.id == IndexingJob.user_id)
-            .where(
-                IndexingJob.id == claim.job_id,
-                IndexingJob.user_id == claim.user_id,
-                IndexingJob.claim_id == claim.claim_id,
-                IndexingJob.worker_id == claim.worker_id,
-                IndexingJob.status == IndexingJobStatus.RUNNING,
-                IndexingJob.operation == claim.operation,
-                User.id != self.demo_user_id,
-                ~User.google_id.startswith("demo:"),
-                IndexingJob.full_sync == claim.full_sync,
-                IndexingJob.file_id.is_(None)
-                if claim.file_id is None
-                else IndexingJob.file_id == claim.file_id,
-            )
-            .with_for_update(of=IndexingJob)
-            .execution_options(populate_existing=True)
+    async def _transaction_limits(self, db: AsyncSession) -> None:
+        # Explicit READ COMMITTED is necessary for a fresh post-lock statement.
+        # These settings affect this transaction only, not shared application sessions.
+        connection = await db.connection()
+        if await connection.get_isolation_level() != "READ COMMITTED":
+            raise ValueError("Indexing requires READ COMMITTED transactions")
+        await db.execute(
+            select(
+                func.set_config("lock_timeout", f"{int(self.lock_timeout_seconds * 1000)}ms", True)
+            ),
+            execution_options={"autoflush": False},
         )
-        if job is None:
+        await db.execute(
+            text("SET LOCAL statement_timeout = '15s'"),
+            execution_options={"autoflush": False},
+        )
+
+    async def _database_time(self, db: AsyncSession) -> datetime:
+        now = await db.scalar(
+            select(func.clock_timestamp()), execution_options={"autoflush": False}
+        )
+        assert isinstance(now, datetime)
+        return now
+
+    async def _guard(self, db: AsyncSession, claim: IndexingClaim) -> IndexingJob:
+        # Never flush dirty stage objects or refresh a dirty job to authorize it.
+        # PostgreSQL can evaluate a WHERE expiry check BEFORE waiting for a lock.
+        # Lock identity first, then obtain a fresh clock in a separate statement.
+        poisoned = db.info.get("indexing_attempt_poisoned")
+        if isinstance(poisoned, asyncio.Event) and poisoned.is_set():
             raise IndexingClaimLost()
-        return job
+        await self._transaction_limits(db)
+        with db.no_autoflush:
+            row = (
+                await db.execute(
+                    select(IndexingJob.id, IndexingJob.lease_expires_at)
+                    .join(User, User.id == IndexingJob.user_id)
+                    .where(
+                        IndexingJob.id == claim.job_id,
+                        IndexingJob.user_id == claim.user_id,
+                        IndexingJob.claim_id == claim.claim_id,
+                        IndexingJob.worker_id == claim.worker_id,
+                        IndexingJob.status == IndexingJobStatus.RUNNING,
+                        IndexingJob.operation == claim.operation,
+                        User.id != self.demo_user_id,
+                        ~User.google_id.startswith("demo:"),
+                        IndexingJob.full_sync == claim.full_sync,
+                        IndexingJob.file_id.is_(None)
+                        if claim.file_id is None
+                        else IndexingJob.file_id == claim.file_id,
+                    )
+                    .with_for_update(of=IndexingJob)
+                )
+            ).one_or_none()
+            if row is None or row.lease_expires_at is None:
+                raise IndexingClaimLost()
+            if row.lease_expires_at <= await self._database_time(db):
+                raise IndexingClaimLost()
+            if isinstance(poisoned, asyncio.Event) and poisoned.is_set():
+                raise IndexingClaimLost()
+            job = await db.get(IndexingJob, claim.job_id)
+            assert job is not None
+            return job
+
+    async def _commit(self, db: AsyncSession, claim: IndexingClaim) -> None:
+        try:
+            await self._guard(db, claim)
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+    async def renew_lease(self, claim: IndexingClaim) -> None:
+        async with self.sessions() as db, db.begin():
+            job = await self._guard(db, claim)
+            now = await self._database_time(db)
+            if job.lease_expires_at is None or job.lease_expires_at <= now:
+                raise IndexingClaimLost()
+            await db.execute(
+                update(IndexingJob)
+                .where(IndexingJob.id == claim.job_id)
+                .values(
+                    heartbeat_at=now, lease_expires_at=now + timedelta(seconds=self.lease_seconds)
+                )
+            )
+
+    async def _heartbeat(self, claim: IndexingClaim, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=self.heartbeat_seconds)
+            except TimeoutError:
+                # Bound connection acquisition/transport stalls too, not just
+                # PostgreSQL lock waits. Timeout poisons the owned attempt.
+                async with asyncio.timeout(min(15.0, self.lease_seconds / 3)):
+                    await self.renew_lease(claim)
 
     async def finalize(
         self, claim: IndexingClaim, progress: StageProgress, *, error: str | None = None
     ) -> bool:
         # Always a fresh session: stage SQL failure may have poisoned its session.
         async with self.sessions() as db, db.begin():
+            try:
+                await self._guard(db, claim)
+            except IndexingClaimLost:
+                return False
             result = await db.execute(
                 update(IndexingJob)
                 .where(
@@ -216,7 +309,7 @@ class IndexingWorker:
                 .values(
                     status=IndexingJobStatus.FAILED if error else IndexingJobStatus.COMPLETED,
                     error=error,
-                    completed_at=datetime.now(UTC),
+                    completed_at=func.clock_timestamp(),
                     total=progress.total,
                     processed=progress.processed,
                     succeeded=progress.succeeded,
@@ -247,25 +340,93 @@ class IndexingWorker:
 
     async def execute(self, claim: IndexingClaim) -> None:
         progress = StageProgress()
+        stop = asyncio.Event()
+        # Initial renewal must succeed before the stage can start. No orphaned
+        # heartbeat exists if authorization or initialization fails.
         try:
-            async with self.sessions() as db:
-                await self._guard(db, claim)
-                await db.commit()
-                if claim.operation == IndexingOperation.SYNC:
-                    await self._sync(db, claim, progress)
-                else:
-                    await self._files(db, claim, progress)
-            error = (
-                f"{progress.failed} of {progress.total} files failed during {_STAGE_NAMES[claim.operation]}."
-                if progress.failed
-                else None
-            )
+            await self.renew_lease(claim)
+        except IndexingClaimLost:
+            return
+        poisoned = asyncio.Event()
+
+        async def supervise_heartbeat() -> None:
+            try:
+                await self._heartbeat(claim, stop)
+            finally:
+                if not stop.is_set():
+                    # Poison before the supervisor is rescheduled; stage guards
+                    # cannot authorize another batch while cancellation is pending.
+                    poisoned.set()
+
+        heartbeat = asyncio.create_task(supervise_heartbeat(), name="indexing-heartbeat")
+        stage = asyncio.create_task(
+            self._execute_stage(claim, progress, poisoned), name="indexing-stage"
+        )
+        error: str | None = None
+        interrupted = False
+
+        async def join_owned(task: asyncio.Task[None]) -> tuple[None | BaseException, ...]:
+            nonlocal interrupted
+            joined = asyncio.gather(task, return_exceptions=True)
+            while True:
+                try:
+                    return tuple(await asyncio.shield(joined))
+                except asyncio.CancelledError:
+                    # Repeated caller cancellation must not detach cleanup or
+                    # send a second cancellation into an issued remote request.
+                    interrupted = True
+                    poisoned.set()
+
+        try:
+            done, _ = await asyncio.wait({stage, heartbeat}, return_when=asyncio.FIRST_COMPLETED)
+            if heartbeat in done:
+                # An unsolicited heartbeat termination is always fatal to this
+                # attempt, even if the stage happens to finish at the same time.
+                stage.cancel()
+                await join_owned(stage)
+                error = "Indexing heartbeat failed."
+                # Retrieve the exception without exposing database/provider detail.
+                await join_owned(heartbeat)
+            else:
+                await asyncio.shield(stage)
+                if progress.failed:
+                    error = (
+                        f"{progress.failed} of {progress.total} files failed "
+                        f"during {_STAGE_NAMES[claim.operation]}."
+                    )
         except asyncio.CancelledError:
-            await self.finalize(claim, progress, error="Indexing execution interrupted.")
-            raise
+            interrupted = True
+            poisoned.set()
+            stage.cancel()
+            await join_owned(stage)
+            error = "Indexing execution interrupted."
         except Exception as exc:
             error = safe_failure(exc, _STAGE_NAMES[claim.operation])
-        await self.finalize(claim, progress, error=error)
+        finally:
+            # Stage sessions are closed before joining heartbeat. Never wait for
+            # renewal while holding the row lock it needs. Join before finalizing.
+            stop.set()
+            heartbeat_result = await join_owned(heartbeat)
+            if isinstance(heartbeat_result[0], BaseException) and error is None:
+                error = "Indexing heartbeat failed."
+        if interrupted:
+            error = "Indexing execution interrupted."
+        if not await self.finalize(claim, progress, error=error):
+            logger.warning("Indexing attempt no longer authorized for terminal publication")
+        if interrupted:
+            raise asyncio.CancelledError
+
+    async def _execute_stage(
+        self, claim: IndexingClaim, progress: StageProgress, poisoned: asyncio.Event
+    ) -> None:
+        async with self.sessions() as db:
+            # Attempt-local cancellation signal, never an authorization identity.
+            db.info["indexing_attempt_poisoned"] = poisoned
+            await self._commit(db, claim)
+            if claim.operation == IndexingOperation.SYNC:
+                await self._sync(db, claim, progress)
+            else:
+                await self._files(db, claim, progress)
 
     async def _sync(self, db: AsyncSession, claim: IndexingClaim, progress: StageProgress) -> None:
         service = DriveSyncService(db, self.settings)
@@ -273,7 +434,7 @@ class IndexingWorker:
         snapshot = await service._load_oauth_token(claim.user_id)
         state = await service._get_sync_state(claim.user_id)
         client = service._build_drive_client(snapshot)
-        await db.commit()
+        await self._commit(db, claim)
 
         async def validate() -> None:
             await self._guard(db, claim)
@@ -296,7 +457,7 @@ class IndexingWorker:
         else:
             result = await service._run_incremental_sync(user, client, state, before_apply=validate)
         await self._guard(db, claim)
-        await db.commit()
+        await self._commit(db, claim)
         progress.total = progress.processed = progress.succeeded = sum(result[:4])
 
     async def _files(self, db: AsyncSession, claim: IndexingClaim, progress: StageProgress) -> None:
@@ -319,7 +480,7 @@ class IndexingWorker:
                 query = query.where(DriveFile.status == DriveFileStatus.INDEXING)
             ids = list((await db.scalars(query.order_by(DriveFile.id))).all())
         progress.total = len(ids)
-        await db.commit()
+        await self._commit(db, claim)
         for file_id in ids:
             await self._file(db, claim, file_id, progress)
 
@@ -419,7 +580,7 @@ class IndexingWorker:
             if claim.operation == IndexingOperation.BUILD:
                 job = await self._guard(db, claim)
                 job.recovery_required = True
-            await db.commit()
+            await self._commit(db, claim)
 
         if claim.operation == IndexingOperation.INGEST:
             service = IngestionService(db, self.settings)
@@ -434,7 +595,7 @@ class IndexingWorker:
         else:
             chunker = ChunkingService(db, self.settings)
             text_snapshot = document.extracted_text
-            await db.commit()
+            await self._commit(db, claim)
             prepared = await asyncio.to_thread(
                 chunk_text,
                 text_snapshot,
@@ -442,9 +603,10 @@ class IndexingWorker:
             )
             await validate()
             outcome = await chunker._replace_chunks(document, prepared_chunks=prepared)
+            await self._guard(db, claim)
             await db.flush()
             await self._guard(db, claim)
-            await db.commit()
+            await self._commit(db, claim)
             if claim.operation == IndexingOperation.BUILD:
                 if outcome == "skipped":
                     # Zero chunks retain the established SKIPPED outcome.
@@ -475,7 +637,17 @@ class IndexingWorker:
                 client = create_qdrant_client(self.settings)
                 try:
                     embeddings = self.embedding_service or get_embedding_service(self.settings)
-                    store = QdrantVectorStore(self.settings, client=client, verify_writes=True)
+
+                    async def authorize_mutation() -> None:
+                        await validate()
+                        await release()
+
+                    store = QdrantVectorStore(
+                        self.settings,
+                        client=client,
+                        verify_writes=True,
+                        before_mutation=authorize_mutation,
+                    )
                     await store.ensure_collection(vector_size=embeddings.embedding_dimension)
                     indexer = IndexingService(
                         db,
@@ -521,8 +693,7 @@ class IndexingWorker:
             committed.failed,
             committed.skipped,
         )
-        job.heartbeat_at = datetime.now(UTC)
-        await db.commit()
+        await self._commit(db, claim)
         progress.processed = committed.processed
         progress.succeeded, progress.failed, progress.skipped = (
             committed.succeeded,
