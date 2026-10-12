@@ -1,4 +1,4 @@
-# Managed indexing worker: inactive 4E3A boundary
+# Managed indexing worker: inactive 4E3C boundary
 
 `IndexingWorker` consumes committed managed jobs using PostgreSQL
 `FOR UPDATE SKIP LOCKED`. It is **not constructed or started by production
@@ -56,7 +56,7 @@ The isolated demo retains its ownerless payload format and explicit demo owner.
 
 ## Required 4E3 work before activation
 
-- Expiry classification and safe multi-process recovery. Leases alone do not
+- Lifecycle wiring for expiry classification and safe multi-process recovery. Leases alone do not
   establish remote-write quiescence or permit takeover.
 - Recovery of stranded QUEUED/RUNNING work; no current automatic takeover.
 - Reconciliation of interrupted BUILD and cross-store partial outcomes.
@@ -66,8 +66,9 @@ The isolated demo retains its ownerless payload format and explicit demo owner.
   and recovery readiness. Startup cleanup now affects only historical unmanaged
   jobs; it cannot fail another process's managed RUNNING claim.
 
-Cancellation finalizes a matching claim as failed when the event loop and database
-remain available. A process crash or database failure can still leave RUNNING
+Cancellation finalizes a live matching claim as failed when the event loop and
+database remain available. Expired claims remain unresolved until explicit
+classification. A process crash or database failure can still leave RUNNING
 work. A failed terminal commit propagates to the awaited executor's owner.
 Ordinary Python threads are not forcibly stopped; cancelled Google calls may
 finish provider I/O, but do not resume the cancelled stage's SQL continuation.
@@ -118,3 +119,55 @@ is claimed. Explicit offline/demo callers retain their existing no-hook adapter.
 No expiry classifier, attempt manifest, takeover, operator reconciliation or
 FastAPI worker startup is implemented here. Production admission remains closed
 until the complete lifecycle and recovery cutover receive independent acceptance.
+
+## Durable attempt evidence and explicit classification (4E3C)
+
+The additive `20261013_1200` revision adds nullable JSONB `attempt_manifest`.
+Historical rows remain NULL. Downgrade refuses to discard any populated manifest.
+The existing unresolved-owner partial unique index is unchanged: managed QUEUED,
+RUNNING, and recovery-required rows block admission, including FAILED recovery rows.
+
+A version-1 BUILD manifest records the complete owner-scoped selection before any
+file processing, job/claim/worker identity, target collection and prior uncertainty.
+Each file retains its document/hash/chunk-identity digest and count, phase, SQL
+publication status and ordered mutation records. Prepared chunks and snapshot
+metadata commit together. Each collection/index, delete, repair or upsert request
+has a committed UNKNOWN intent before issue. Verified acknowledgements then commit
+separately, with database timestamps and Qdrant operation IDs when available.
+A confirmed concurrent-creation rejection is recorded as REJECTED, not a successful
+write. Receipts never imply that subsequent SQL publication succeeded. Final BUILD
+completion rechecks SQL owner, status, document hash and chunk identity evidence.
+
+Manifests contain no document bodies, credentials or embedding values. Request and
+chunk digests are SHA-256 over canonical JSON. Point IDs are retained for batches
+of at most 100; larger batches retain their sorted-identity digest and count.
+Selections are capped at 2,000 files, attempts at 4,096 mutation records, and JSON
+at 2 MiB (also enforced by PostgreSQL). Exceeding a bound fails without truncating
+or sending an unrecorded mutation. Each receipt rewrites the bounded JSON document;
+this simple design intentionally favors recoverability over high-volume throughput.
+Heartbeat updates do not rewrite manifest contents. A larger corpus needs a
+separately reviewed evidence-storage design, not relaxed bounds.
+
+`IndexingClassifier(worker).classify(job_uuid)` is an explicitly invoked internal
+service, not an API or startup hook. It locks the job and reads fresh database time
+AFTER obtaining the lock. QUEUED, historical and terminal rows remain unchanged;
+live attempts are untouched. Null lease/claim/worker metadata requires review.
+Expired SQL-only attempts become FAILED, retaining prior recovery requirements.
+No automatic replay or resubmission occurs. Expired BUILD is non-recovery only
+when a valid matching manifest proves complete selection, no mutation intents and
+no uncertainty predating that selection. Missing, malformed or unsupported evidence,
+any possible remote request (even acknowledged), or prior uncertainty retains
+`recovery_required` and owner exclusion. The old claim is retained as audit identity
+but cannot renew, publish or finalize once status is FAILED.
+
+Lease expiry does NOT prove Qdrant quiescence. A request can finish after the sender
+stops. FAILED recovery rows cannot be cleared by this classifier; 4E3D must establish
+operational quiescence and reconcile complete evidence before release. Production
+admission remains closed and no executor or classifier starts in FastAPI. 4E3B
+still owns lifecycle/health/shutdown integration.
+
+Normal INGEST now carries the downloaded content's nonsecret credential-row UUID
+and grant epoch through its independent content adapter. Persistence locks and
+checks that same owner's ACTIVE grant before publishing extracted text; reconnect
+or disconnect invalidates stale downloads. The public content-response contract
+and explicitly offline demo content remain unchanged.

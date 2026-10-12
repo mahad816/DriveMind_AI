@@ -14,7 +14,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -95,6 +95,10 @@ class IndexingJob(TimestampMixin, Base):
     recovery_required: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), nullable=False
     )
+    attempt_manifest: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
     total: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     processed: Mapped[int] = mapped_column(
         Integer, default=0, server_default=text("0"), nullable=False

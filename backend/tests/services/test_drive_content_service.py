@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Generator
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -55,7 +56,7 @@ def service(mock_db: AsyncMock) -> Generator[DriveContentService, None, None]:
         row = await mock_db.scalar(None)
         if row is None:
             raise DriveClientError("No Google Drive connection found. Complete OAuth first.")
-        return row
+        return SimpleNamespace(record=row)
 
     # Metadata orchestration unit tests mock encrypted credential I/O. The real
     # repository/coordinator is exercised against isolated PostgreSQL separately.
@@ -80,6 +81,7 @@ async def test_fetch_file_content_returns_bytes(
     assert result.mime_type == PDF_MIME
     assert result.filename == "resume.pdf"
     assert result.drive_file_id == "gdrive-file-1"
+    assert result.grant_id == TOKEN_ROW.id and result.grant_epoch == TOKEN_ROW.grant_epoch
     mock_client.get_file_content.assert_called_once_with("gdrive-file-1", PDF_MIME)
     # Reads must not commit writes accumulated by the caller (managed ingestion
     # additionally supplies an independent download session).

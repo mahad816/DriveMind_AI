@@ -42,7 +42,7 @@ def settings() -> Settings:
 def mock_client() -> AsyncMock:
     client = AsyncMock()
     client.collection_exists = AsyncMock(return_value=False)
-    client.create_collection = AsyncMock()
+    client.create_collection = AsyncMock(return_value=True)
     client.get_collection = AsyncMock(return_value=collection_info())
     client.create_payload_index = AsyncMock()
     client.upsert = AsyncMock()

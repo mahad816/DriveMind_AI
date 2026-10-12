@@ -14,6 +14,7 @@ import math
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from typing import Literal
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -35,6 +36,7 @@ from app.embeddings.vector_store import (
     CollectionCompatibilityError,
     QdrantVectorStore,
     VectorStoreError,
+    VectorMutation,
 )
 from app.ingestion.chunking import chunk_text
 from app.services.chunking_service import ChunkingService
@@ -42,6 +44,16 @@ from app.services.drive_content_service import DriveContentService, DriveFileCon
 from app.services.drive_sync_service import DriveSyncService
 from app.services.ingestion_service import IngestionService
 from app.services.indexing_service import IndexingService
+from app.services.indexing_attempt import (
+    AttemptEvidenceError,
+    BuildAttempt,
+    FileEvidence,
+    MutationEvidence,
+    MAX_FILES,
+    MAX_MUTATIONS,
+    digest,
+    read_attempt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +98,7 @@ class _IndependentContent:
 
     def __init__(self, worker: IndexingWorker) -> None:
         self.worker = worker
+        self.grant_evidence: tuple[uuid.UUID, int] | None = None
 
     async def fetch_file_content(
         self, file_id: uuid.UUID, user_id: uuid.UUID | None = None
@@ -93,9 +106,13 @@ class _IndependentContent:
         if not isinstance(user_id, uuid.UUID):
             raise ValueError("Explicit content owner is required")
         async with self.worker.sessions() as db:
-            return await DriveContentService(db, self.worker.settings).fetch_file_content(
+            content = await DriveContentService(db, self.worker.settings).fetch_file_content(
                 file_id, user_id=user_id
             )
+            if content.grant_id is None or content.grant_epoch is None:
+                raise IndexingSnapshotChanged()
+            self.grant_evidence = (content.grant_id, content.grant_epoch)
+            return content
 
 
 class IndexingWorker:
@@ -283,8 +300,23 @@ class IndexingWorker:
         # Always a fresh session: stage SQL failure may have poisoned its session.
         async with self.sessions() as db, db.begin():
             try:
+                job = await self._guard(db, claim)
+            except IndexingClaimLost:
+                await db.rollback()
+                return False
+            if claim.operation == IndexingOperation.BUILD and error is None:
+                try:
+                    attempt = read_attempt(job, self.settings.qdrant_collection)
+                    if not attempt.completed():
+                        raise AttemptEvidenceError("BUILD evidence is incomplete")
+                    await self._verify_build_sql(db, claim, attempt)
+                except AttemptEvidenceError:
+                    error = "BUILD completion evidence is incomplete."
+                    job.recovery_required = True
+            try:
                 await self._guard(db, claim)
             except IndexingClaimLost:
+                await db.rollback()
                 return False
             result = await db.execute(
                 update(IndexingJob)
@@ -320,6 +352,80 @@ class IndexingWorker:
                 .returning(IndexingJob.id)
             )
             return result.scalar_one_or_none() is not None
+
+    async def _verify_build_sql(
+        self, db: AsyncSession, claim: IndexingClaim, attempt: BuildAttempt
+    ) -> None:
+        ids = [f.file_id for f in attempt.files]
+        files: dict[uuid.UUID, DriveFileStatus] = {
+            row.id: row.status
+            for row in (
+                await db.execute(
+                    select(DriveFile.id, DriveFile.status)
+                    .where(
+                        DriveFile.id.in_(ids),
+                        DriveFile.user_id == claim.user_id,
+                    )
+                    .order_by(DriveFile.id)
+                    .with_for_update(of=DriveFile)
+                )
+            ).all()
+        }
+        document_ids = [f.document_id for f in attempt.files if f.document_id]
+        docs = (
+            {
+                row.id: row
+                for row in (
+                    await db.execute(
+                        select(
+                            Document.id,
+                            Document.drive_file_id,
+                            Document.extracted_text_hash,
+                        )
+                        .join(DriveFile, DriveFile.id == Document.drive_file_id)
+                        .where(
+                            Document.id.in_(document_ids),
+                            DriveFile.user_id == claim.user_id,
+                        )
+                        .order_by(Document.id)
+                        .with_for_update(of=Document)
+                    )
+                ).all()
+            }
+            if document_ids
+            else {}
+        )
+        chunk_ids: dict[uuid.UUID, list[str]] = {}
+        for row in (
+            (
+                await db.execute(
+                    select(Chunk.id, Chunk.document_id)
+                    .where(
+                        Chunk.document_id.in_(list(docs)),
+                    )
+                    .order_by(Chunk.id)
+                    .with_for_update(of=Chunk)
+                )
+            ).all()
+            if docs
+            else []
+        ):
+            chunk_ids.setdefault(row.document_id, []).append(str(row.id))
+        for evidence in attempt.files:
+            if files.get(evidence.file_id) != evidence.published_status:
+                raise AttemptEvidenceError("BUILD publication state changed")
+            if evidence.phase == "INDEXED" and files[evidence.file_id] != DriveFileStatus.INDEXED:
+                raise AttemptEvidenceError("BUILD file is not indexed")
+            if evidence.document_id is not None:
+                doc = docs.get(evidence.document_id)
+                if (
+                    doc is None
+                    or doc.drive_file_id != evidence.file_id
+                    or doc.extracted_text_hash != evidence.content_hash
+                    or len(chunk_ids.get(doc.id, [])) != evidence.chunk_count
+                    or digest(sorted(chunk_ids.get(doc.id, []))) != evidence.chunk_digest
+                ):
+                    raise AttemptEvidenceError("BUILD SQL lineage changed after publication")
 
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
@@ -478,8 +584,91 @@ class IndexingWorker:
                 )
             else:
                 query = query.where(DriveFile.status == DriveFileStatus.INDEXING)
+            if claim.operation == IndexingOperation.BUILD:
+                query = query.limit(MAX_FILES + 1)
             ids = list((await db.scalars(query.order_by(DriveFile.id))).all())
         progress.total = len(ids)
+        if claim.operation == IndexingOperation.BUILD:
+            if len(ids) > MAX_FILES:
+                raise AttemptEvidenceError("BUILD selection exceeds evidence capacity")
+            if (
+                claim.file_id is not None
+                and await db.scalar(
+                    select(DriveFile.id).where(
+                        DriveFile.id == claim.file_id, DriveFile.user_id == claim.user_id
+                    )
+                )
+                is None
+            ):
+                raise IndexingSnapshotChanged()
+            job = await self._guard(db, claim)
+            if job.attempt_manifest is not None:
+                # A queued row carrying earlier evidence is not a fresh attempt.
+                # Quarantine it rather than releasing unknown prior effects.
+                job.recovery_required = True
+                await self._commit(db, claim)
+                raise AttemptEvidenceError("An attempt manifest cannot be overwritten")
+            selected_files = dict(
+                (row.id, row.status)
+                for row in (
+                    await db.execute(
+                        select(DriveFile.id, DriveFile.status).where(
+                            DriveFile.id.in_(ids), DriveFile.user_id == claim.user_id
+                        )
+                    )
+                ).all()
+            )
+            if len(selected_files) != len(ids):
+                raise IndexingSnapshotChanged()
+            eligible_ids = [i for i in ids if selected_files[i] == DriveFileStatus.INDEXING]
+            selected_documents = (
+                {
+                    row.drive_file_id: row
+                    for row in (
+                        await db.execute(
+                            select(
+                                Document.id, Document.drive_file_id, Document.extracted_text_hash
+                            )
+                            .join(DriveFile, DriveFile.id == Document.drive_file_id)
+                            .where(
+                                Document.drive_file_id.in_(eligible_ids),
+                                DriveFile.user_id == claim.user_id,
+                            )
+                            .distinct(Document.drive_file_id)
+                            .order_by(
+                                Document.drive_file_id, Document.updated_at.desc(), Document.id
+                            )
+                        )
+                    ).all()
+                }
+                if eligible_ids
+                else {}
+            )
+            job.attempt_manifest = BuildAttempt(
+                job_id=claim.job_id,
+                claim_id=claim.claim_id,
+                worker_id=claim.worker_id,
+                user_id=claim.user_id,
+                target_file_id=claim.file_id,
+                collection=self.settings.qdrant_collection,
+                prior_recovery_required=bool(
+                    await db.scalar(
+                        select(IndexingJob.recovery_required).where(IndexingJob.id == claim.job_id)
+                    )
+                ),
+                selected_at=await self._database_time(db),
+                files=[
+                    FileEvidence(
+                        file_id=i,
+                        selected_status=selected_files[i],
+                        document_id=selected_documents[i].id if i in selected_documents else None,
+                        content_hash=selected_documents[i].extracted_text_hash
+                        if i in selected_documents
+                        else None,
+                    )
+                    for i in ids
+                ],
+            ).dump()
         await self._commit(db, claim)
         for file_id in ids:
             await self._file(db, claim, file_id, progress)
@@ -511,6 +700,14 @@ class IndexingWorker:
                 .order_by(Document.updated_at.desc(), Document.id)
                 .limit(1)
             )
+        if claim.operation == IndexingOperation.BUILD:
+            selected = read_attempt(active_job, self.settings.qdrant_collection).file(file_id)
+            if (
+                selected.selected_status != file.status
+                or selected.document_id != (document.id if document else None)
+                or selected.content_hash != (document.extracted_text_hash if document else None)
+            ):
+                raise IndexingSnapshotChanged()
         frame = (
             file.modified_at,
             file.status,
@@ -522,9 +719,26 @@ class IndexingWorker:
             document.extracted_text if document else None,
         )
         chunk_frame: dict[uuid.UUID, tuple[str, object, int]] | None = None
+        content_reader = _IndependentContent(self)
 
         async def validate() -> None:
             await self._guard(db, claim)
+            if content_reader.grant_evidence is not None:
+                grant_id, epoch = content_reader.grant_evidence
+                if (
+                    await db.scalar(
+                        select(GoogleOAuthToken.id)
+                        .where(
+                            GoogleOAuthToken.id == grant_id,
+                            GoogleOAuthToken.user_id == claim.user_id,
+                            GoogleOAuthToken.grant_epoch == epoch,
+                            GoogleOAuthToken.grant_status == "ACTIVE",
+                        )
+                        .with_for_update()
+                    )
+                    is None
+                ):
+                    raise IndexingSnapshotChanged()
             current_file = await db.scalar(
                 select(DriveFile)
                 .where(
@@ -584,7 +798,7 @@ class IndexingWorker:
 
         if claim.operation == IndexingOperation.INGEST:
             service = IngestionService(db, self.settings)
-            service.content_service = _IndependentContent(self)
+            service.content_service = content_reader
             outcome = await service._ingest_single_file(
                 file,
                 before_external=release,
@@ -605,7 +819,28 @@ class IndexingWorker:
             outcome = await chunker._replace_chunks(document, prepared_chunks=prepared)
             await self._guard(db, claim)
             await db.flush()
-            await self._guard(db, claim)
+            job = await self._guard(db, claim)
+            if claim.operation == IndexingOperation.BUILD:
+                prepared_chunks = list(
+                    (await db.scalars(select(Chunk).where(Chunk.document_id == document.id))).all()
+                )
+                chunk_frame = {
+                    c.id: (c.text, c.metadata_json.get("extracted_text_hash"), c.chunk_index)
+                    for c in prepared_chunks
+                }
+                if (
+                    not isinstance(document.extracted_text_hash, str)
+                    or not document.extracted_text_hash
+                ):
+                    raise AttemptEvidenceError("BUILD content provenance is invalid")
+                attempt = read_attempt(job, self.settings.qdrant_collection)
+                evidence = attempt.file(file_id)
+                evidence.document_id = document.id
+                evidence.content_hash = document.extracted_text_hash
+                evidence.chunk_count = len(prepared_chunks)
+                evidence.chunk_digest = digest(sorted(str(c.id) for c in prepared_chunks))
+                evidence.phase = "PREPARED"
+                job.attempt_manifest = attempt.dump()
             await self._commit(db, claim)
             if claim.operation == IndexingOperation.BUILD:
                 if outcome == "skipped":
@@ -629,10 +864,11 @@ class IndexingWorker:
                         )
                     ).all()
                 )
-                chunk_frame = {
+                if chunk_frame != {
                     c.id: (c.text, c.metadata_json.get("extracted_text_hash"), c.chunk_index)
                     for c in chunks
-                }
+                }:
+                    raise IndexingSnapshotChanged()
                 await release()
                 client = create_qdrant_client(self.settings)
                 try:
@@ -642,11 +878,61 @@ class IndexingWorker:
                         await validate()
                         await release()
 
+                    async def intent(mutation: VectorMutation) -> int:
+                        job = await self._guard(db, claim)
+                        attempt = read_attempt(job, self.settings.qdrant_collection)
+                        evidence = attempt.file(file_id)
+                        if (
+                            evidence.phase != "PREPARED"
+                            or mutation.collection != attempt.collection
+                        ):
+                            raise AttemptEvidenceError("Vector mutation has no prepared evidence")
+                        sequence = sum(len(f.mutations) for f in attempt.files)
+                        if sequence >= MAX_MUTATIONS:
+                            raise AttemptEvidenceError("Mutation evidence capacity exceeded")
+                        ids = sorted(mutation.point_ids)
+                        evidence.mutations.append(
+                            MutationEvidence(
+                                sequence=sequence,
+                                operation=mutation.operation,
+                                collection=mutation.collection,
+                                request_digest=mutation.request_digest,
+                                point_count=len(ids),
+                                point_digest=digest([str(i) for i in ids]),
+                                point_ids=ids if len(ids) <= 100 else [],
+                                intended_at=await self._database_time(db),
+                            )
+                        )
+                        job.attempt_manifest = attempt.dump()
+                        job.recovery_required = True
+                        await self._commit(db, claim)
+                        return sequence
+
+                    async def receipt(
+                        sequence: int,
+                        outcome: Literal["ACKNOWLEDGED", "REJECTED"],
+                        operation_id: int | None,
+                    ) -> None:
+                        job = await self._guard(db, claim)
+                        attempt = read_attempt(job, self.settings.qdrant_collection)
+                        matches = [
+                            m for m in attempt.file(file_id).mutations if m.sequence == sequence
+                        ]
+                        if len(matches) != 1 or matches[0].outcome != "UNKNOWN":
+                            raise AttemptEvidenceError("Mutation receipt is absent or duplicated")
+                        matches[0].outcome = outcome
+                        matches[0].operation_id = operation_id
+                        matches[0].acknowledged_at = await self._database_time(db)
+                        job.attempt_manifest = attempt.dump()
+                        await self._commit(db, claim)
+
                     store = QdrantVectorStore(
                         self.settings,
                         client=client,
                         verify_writes=True,
                         before_mutation=authorize_mutation,
+                        before_write=intent,
+                        after_write=receipt,
                     )
                     await store.ensure_collection(vector_size=embeddings.embedding_dimension)
                     indexer = IndexingService(
@@ -687,6 +973,19 @@ class IndexingWorker:
         else:
             committed.succeeded += 1
         job = await self._guard(db, claim)
+        if claim.operation == IndexingOperation.BUILD:
+            attempt = read_attempt(job, self.settings.qdrant_collection)
+            evidence = attempt.file(file_id)
+            evidence.phase = (
+                "FAILED"
+                if outcome == "failed"
+                else "SKIPPED"
+                if outcome == "skipped"
+                else "INDEXED"
+            )
+            evidence.sql_published = True
+            evidence.published_status = file.status
+            job.attempt_manifest = attempt.dump()
         job.total, job.processed = committed.total, committed.processed
         job.succeeded, job.failed, job.skipped = (
             committed.succeeded,

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
@@ -47,6 +49,16 @@ class CollectionCompatibilityError(VectorStoreError):
 
 
 @dataclass(frozen=True)
+class VectorMutation:
+    operation: Literal[
+        "create_collection", "create_payload_index", "delete", "set_payload", "upsert"
+    ]
+    collection: str
+    point_ids: tuple[uuid.UUID, ...]
+    request_digest: str
+
+
+@dataclass(frozen=True)
 class VectorPoint:
     """A chunk vector and retrieval payload for Qdrant."""
 
@@ -74,11 +86,20 @@ class QdrantVectorStore:
         upsert_batch_size: int | None = None,
         verify_writes: bool = False,
         before_mutation: Callable[[], Awaitable[None]] | None = None,
+        before_write: Callable[[VectorMutation], Awaitable[int]] | None = None,
+        after_write: Callable[
+            [int, Literal["ACKNOWLEDGED", "REJECTED"], int | None], Awaitable[None]
+        ]
+        | None = None,
     ) -> None:
         self.settings = settings or get_settings()
         self._client = client
         self.verify_writes = verify_writes
+        if (before_write is None) != (after_write is None):
+            raise ValueError("Vector write evidence requires both intent and receipt hooks")
         self.before_mutation = before_mutation
+        self.before_write = before_write
+        self.after_write = after_write
         self.upsert_batch_size = (
             upsert_batch_size
             if upsert_batch_size is not None
@@ -100,17 +121,51 @@ class QdrantVectorStore:
         if self.before_mutation is not None:
             await self.before_mutation()
 
+    async def _intent(
+        self,
+        operation: Literal[
+            "create_collection", "create_payload_index", "delete", "set_payload", "upsert"
+        ],
+        point_ids: tuple[uuid.UUID, ...],
+        request: object,
+    ) -> int | None:
+        await self._authorize_mutation()
+        if self.before_write is None:
+            return None
+        request_digest = hashlib.sha256(
+            json.dumps(request, sort_keys=True, separators=(",", ":"), default=str).encode()
+        ).hexdigest()
+        return await self.before_write(
+            VectorMutation(operation, self.collection_name, point_ids, request_digest)
+        )
+
+    async def _receipt(self, token: int | None, result: object, *, rejected: bool = False) -> None:
+        if token is None or self.after_write is None:
+            return
+        operation_id = getattr(result, "operation_id", None)
+        await self.after_write(
+            token,
+            "REJECTED" if rejected else "ACKNOWLEDGED",
+            operation_id if isinstance(operation_id, int) else None,
+        )
+
     async def ensure_collection(self, *, vector_size: int) -> None:
         """Create missing vector storage and reconcile indexes used by payload filters."""
         client = self._get_client()
         try:
             if not await client.collection_exists(self.collection_name):
+                token: int | None = None
                 try:
-                    await self._authorize_mutation()
-                    await client.create_collection(
+                    token = await self._intent(
+                        "create_collection", (), {"size": vector_size, "distance": "Cosine"}
+                    )
+                    created = await client.create_collection(
                         collection_name=self.collection_name,
                         vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
                     )
+                    if not created:
+                        raise VectorStoreError("Collection creation was not acknowledged")
+                    await self._receipt(token, created)
                 except UnexpectedResponse as exc:
                     # Independent owners can discover the same absent collection.
                     # Accept only a now-existing, compatible collection; never
@@ -119,6 +174,7 @@ class QdrantVectorStore:
                         self.collection_name
                     ):
                         raise
+                    await self._receipt(token, exc, rejected=True)
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(
                 f"Failed to ensure Qdrant collection '{self.collection_name}': {exc}"
@@ -156,13 +212,17 @@ class QdrantVectorStore:
                         f"Qdrant payload index '{field}' must have keyword or UUID schema "
                         f"in collection '{self.collection_name}'"
                     )
-                await self._authorize_mutation()
-                await client.create_payload_index(
+                token = await self._intent(
+                    "create_payload_index", (), {"field": field, "schema": "keyword"}
+                )
+                result = await client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name=field,
                     field_schema=PayloadSchemaType.KEYWORD,
                     wait=True,
                 )
+                self._check_write(getattr(result, "status", None))
+                await self._receipt(token, result)
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(
                 f"Failed to ensure Qdrant payload index '{field}' "
@@ -217,7 +277,19 @@ class QdrantVectorStore:
                         point_id = _parse_point_id(record.id)
                         if point_id is not None and record.payload is not None:
                             existing_payloads[point_id] = record.payload
-                await self._authorize_mutation()
+                token = await self._intent(
+                    "upsert",
+                    tuple(p.chunk_id for p in batch),
+                    [
+                        {
+                            "id": str(p.chunk_id),
+                            "vector": p.vector,
+                            "payload": existing_payloads.get(p.chunk_id, {})
+                            | _serialize_payload(p.payload),
+                        }
+                        for p in batch
+                    ],
+                )
                 result = await client.upsert(
                     collection_name=self.collection_name,
                     points=[
@@ -234,6 +306,7 @@ class QdrantVectorStore:
                     wait=True,
                 )
                 self._check_write(getattr(result, "status", None))
+                await self._receipt(token, result)
             except UnexpectedResponse as exc:
                 raise VectorStoreError(
                     f"Qdrant rejected vector upsert (HTTP {exc.status_code}): {exc.content}"
@@ -252,13 +325,16 @@ class QdrantVectorStore:
 
         client = self._get_client()
         try:
-            await self._authorize_mutation()
+            token = await self._intent(
+                "delete", tuple(chunk_ids), sorted(str(i) for i in chunk_ids)
+            )
             result = await client.delete(
                 collection_name=self.collection_name,
                 points_selector=PointIdsList(points=[str(chunk_id) for chunk_id in chunk_ids]),
                 wait=True,
             )
             self._check_write(getattr(result, "status", None))
+            await self._receipt(token, result)
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(f"Failed to delete vectors from Qdrant: {exc}") from exc
 
@@ -384,7 +460,11 @@ class QdrantVectorStore:
                         or payload.get("extracted_text_hash") != expected_hashes[chunk_id]
                     ):
                         raise VectorStoreError("Unchanged vector linkage could not be verified")
-                await self._authorize_mutation()
+                token = await self._intent(
+                    "set_payload",
+                    tuple(batch),
+                    {"ids": sorted(str(i) for i in batch), "user_id": owner},
+                )
                 result = await client.set_payload(
                     collection_name=self.collection_name,
                     payload={"user_id": owner},
@@ -392,6 +472,7 @@ class QdrantVectorStore:
                     wait=True,
                 )
                 self._check_write(getattr(result, "status", None))
+                await self._receipt(token, result)
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError("Failed to update unchanged vector ownership") from exc
 

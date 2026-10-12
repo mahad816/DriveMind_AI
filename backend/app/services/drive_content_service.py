@@ -32,6 +32,8 @@ class DriveFileContent:
     mime_type: str
     filename: str
     drive_file_id: str
+    grant_id: uuid.UUID | None = None
+    grant_epoch: int | None = None
 
 
 class DriveContentService:
@@ -116,4 +118,6 @@ class DriveContentService:
             mime_type=output_content_mime_type(drive_file.mime_type),
             filename=drive_file.name,
             drive_file_id=drive_file.drive_file_id,
+            grant_id=token_row.record.id,
+            grant_epoch=token_row.record.grant_epoch,
         )

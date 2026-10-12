@@ -543,7 +543,8 @@ async def test_stalled_heartbeat_transport_has_bounded_supervised_failure(world)
         w.factory,
         w.settings,
         embedding_service=Blocking(),
-        lease_seconds=1.2,
+        # Allow manifest setup before the intended external-I/O fault.
+        lease_seconds=3.0,
         heartbeat_seconds=0.05,
     )
     original = worker.renew_lease

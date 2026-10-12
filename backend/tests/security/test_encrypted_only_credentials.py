@@ -25,7 +25,9 @@ from app.services.google_credential_repository import (
     CredentialStoreUnavailable,
 )
 from app.services.google_credential_service import GoogleCredentialService
-from .conftest import USER_A, USER_B, apply_revision
+from .conftest import USER_A, USER_B, apply_revision, pg_engine, settings
+
+__all__ = ["pg_engine", "settings"]
 
 OLD = "20261010_1200"
 NEW = "20261011_1200"
@@ -40,6 +42,7 @@ async def final_engine(pg_engine: AsyncEngine):
         # Job-model columns used by all current services. This additive revision
         # is independent of the Drive constraint under test in owner_engine.
         await connection.run_sync(apply_revision, "20261012_1200")
+        await connection.run_sync(apply_revision, "20261013_1200")
     return pg_engine
 
 
