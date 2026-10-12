@@ -1,6 +1,7 @@
 """Owner-scoped indexing admission and reads. No dispatch or worker execution."""
 
 from uuid import UUID
+from collections.abc import Callable
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,10 @@ from app.db.enums import IndexingJobStatus, IndexingOperation
 from app.db.models.drive_file import DriveFile
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
+
+
+class IndexingAdmissionUnavailable(Exception):
+    """Lifecycle closure or a bounded admission deadline rejected publication."""
 
 
 class IndexingAdmissionConflict(Exception):
@@ -31,6 +36,7 @@ class IndexingJobService:
         user_id: UUID,
         operation: IndexingOperation,
         *,
+        authorize: Callable[[], None],
         file_id: UUID | None = None,
         full_sync: bool = False,
     ) -> IndexingJob:
@@ -77,10 +83,14 @@ class IndexingJobService:
                 full_sync=full_sync,
                 status=IndexingJobStatus.QUEUED,
             )
+            # No await between the synchronous lifecycle permit transition and
+            # starting publication. All owner/target/uniqueness waits precede it.
+            # A subsequent closure cannot revoke an already-granted commit.
+            authorize()
             self.db.add(job)
             await self.db.commit()
             return job
-        except (IndexingAdmissionConflict, IndexingTargetNotFound):
+        except (IndexingAdmissionConflict, IndexingTargetNotFound, IndexingAdmissionUnavailable):
             await self.db.rollback()
             raise
         except IntegrityError as exc:

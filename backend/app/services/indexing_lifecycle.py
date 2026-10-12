@@ -6,16 +6,19 @@ import asyncio
 import logging
 import math
 from dataclasses import dataclass
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from typing import Literal
 
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.db.enums import IndexingJobStatus
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
 from app.services.google_credential_service import GoogleRefreshLifecycle
 from app.services.indexing_classifier import IndexingClassifier
+from app.services.indexing_job_service import IndexingAdmissionUnavailable
 from app.services.indexing_worker import IndexingWorker, StageProgress
 
 logger = logging.getLogger(__name__)
@@ -89,6 +92,31 @@ class DisposableIndexingRuntime:
         return engine
 
 
+class AdmissionPermit:
+    """One request-owned grant, atomically ordered with local lifecycle closure."""
+
+    def __init__(self, supervisor: IndexingSupervisor, task: asyncio.Task[object]) -> None:
+        self.supervisor = supervisor
+        self.task = task
+        self.authorized = False
+        self.cleanup: asyncio.Task[None] | None = None
+        self.cancel_requested = False
+
+    def authorize(self) -> None:
+        # These synchronous operations contain no await: failure/shutdown and
+        # permit authorization are totally ordered on the application event loop.
+        # Task.done observes death even before its supervision callback runs.
+        if (
+            self not in self.supervisor._admissions
+            or asyncio.current_task() is not self.task
+            or self.task.cancelling()
+            or self.authorized
+            or not self.supervisor.healthy
+        ):
+            raise IndexingAdmissionUnavailable()
+        self.authorized = True
+
+
 class IndexingSupervisor:
     def __init__(self, runtime: DisposableIndexingRuntime) -> None:
         self.runtime = runtime
@@ -101,6 +129,9 @@ class IndexingSupervisor:
         self._worker_ready = asyncio.Event()
         self._classifier_ready = asyncio.Event()
         self._shutdown_task: asyncio.Task[None] | None = None
+        self._admissions: set[AdmissionPermit] = set()
+        self._admissions_idle = asyncio.Event()
+        self._admissions_idle.set()
 
     @property
     def healthy(self) -> bool:
@@ -130,8 +161,15 @@ class IndexingSupervisor:
         if not self.stop.is_set():
             self._fail()
 
-    async def _probe(self, *, schema: bool = False) -> None:
+    async def _probe(self, *, schema: bool = False, db: AsyncSession | None = None) -> None:
         async with asyncio.timeout(self.runtime.database_timeout):
+            if db is not None:
+                if schema:
+                    raise ValueError("Startup schema checks require their own session")
+                # HTTP probes share the permit-owned session. Repeated request
+                # cancellation cannot detach a second untracked session-close task.
+                await db.execute(select(IndexingJob.id).limit(1))
+                return
             async with self.worker.sessions() as db:
                 if schema:
                     # Explicitly select every accepted job field. A missing column
@@ -203,15 +241,72 @@ class IndexingSupervisor:
             self.begin_shutdown()
             raise
 
-    async def authorize_admission(self) -> bool:
+    async def authorize_admission(self, db: AsyncSession | None = None) -> bool:
         if not self.healthy:
             return False
         try:
-            await self._probe()
+            await self._probe(db=db)
         except Exception:
             self._fail()
             return False
         return self.healthy
+
+    @property
+    def admission_count(self) -> int:
+        return len(self._admissions)
+
+    @asynccontextmanager
+    async def admission(self, db: AsyncSession) -> AsyncIterator[AdmissionPermit]:
+        """Own request SQL cleanup even after timeout or repeated cancellation.
+
+        Registration precedes preliminary SQL/probe waits. The permit is only
+        granted by the service after its final SQL wait, before publication.
+        No process-local lock is held across database work.
+        """
+        task = asyncio.current_task()
+        if task is None or task.cancelling() or not self.healthy:
+            raise IndexingAdmissionUnavailable()
+        permit = AdmissionPermit(self, task)
+        self._admissions.add(permit)
+        self._admissions_idle.clear()
+        try:
+            async with asyncio.timeout(self.runtime.database_timeout):
+                yield permit
+        except TimeoutError:
+            raise IndexingAdmissionUnavailable() from None
+        finally:
+
+            async def cleanup() -> None:
+                try:
+                    if db.in_transaction():
+                        await db.rollback()
+                finally:
+                    # Close before unregistering: FastAPI dependency teardown may
+                    # run later, but this owned session can no longer require SQL.
+                    await db.close()
+
+            permit.cleanup = asyncio.create_task(cleanup(), name="indexing-admission-cleanup")
+            interrupted = False
+            try:
+                while True:
+                    try:
+                        await asyncio.shield(permit.cleanup)
+                        break
+                    except asyncio.CancelledError:
+                        if permit.cleanup.cancelled():
+                            raise
+                        interrupted = True
+            except BaseException:
+                # Cleanup cannot be proven complete. Retain the registration and
+                # fail closed; never dispose the engine through an unsafe shortcut.
+                self._fail()
+                logger.error("Indexing admission SQL cleanup is incomplete; disposal is blocked.")
+                raise
+            self._admissions.remove(permit)
+            if not self._admissions:
+                self._admissions_idle.set()
+            if interrupted:
+                raise asyncio.CancelledError
 
     async def _pause(self, seconds: float) -> None:
         try:
@@ -286,15 +381,34 @@ class IndexingSupervisor:
 
         async def finish() -> None:
             tasks = list(self.tasks.values())
-            if tasks:
-                _, pending = await asyncio.wait(tasks, timeout=self.runtime.drain_seconds)
-                for task in pending:
-                    if not task.cancelling():
+            admissions = asyncio.create_task(
+                self._admissions_idle.wait(), name="indexing-admission-drain"
+            )
+            try:
+                _, pending = await asyncio.wait(
+                    [admissions, *tasks], timeout=self.runtime.drain_seconds
+                )
+                for permit in tuple(self._admissions):
+                    if (
+                        permit.cleanup is None
+                        and not permit.task.done()
+                        and not permit.task.cancelling()
+                        and not permit.cancel_requested
+                    ):
+                        permit.cancel_requested = True
+                        permit.task.cancel()
+                for task in tasks:
+                    if task in pending and not task.cancelling():
                         task.cancel()
-                # Never cancel again or abandon SQL session cleanup. The lifespan
-                # may return while this retained task continues before disposal.
+                # Retained cleanup can exceed bounded lifespan grace. Never send
+                # a second cancellation into a rollback or dispose while it runs.
                 await asyncio.gather(*tasks, return_exceptions=True)
-            self.state = "STOPPED"
+                await admissions
+                self.state = "STOPPED"
+            finally:
+                if not admissions.done():
+                    admissions.cancel()
+                await asyncio.gather(admissions, return_exceptions=True)
 
         self._shutdown_task = asyncio.create_task(finish(), name="indexing-shutdown")
         self._shutdown_task.add_done_callback(self._observe_shutdown)

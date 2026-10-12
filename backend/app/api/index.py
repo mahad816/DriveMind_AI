@@ -23,6 +23,7 @@ from app.services.drive_sync_service import DriveSyncService
 from app.services.indexing_job_service import (
     IndexingJobService,
     IndexingAdmissionConflict,
+    IndexingAdmissionUnavailable,
     IndexingTargetNotFound,
     IndexingStoreUnavailable,
 )
@@ -80,27 +81,35 @@ async def _accept(
     full: bool = False,
 ) -> IndexingJobAccepted:
     supervisor = getattr(request.app.state, "indexing_supervisor", None)
+    unavailable = (
+        "Indexing execution is unavailable until its worker and recovery support are ready."
+    )
     if (
         getattr(request.app.state, "indexing_admission_ready", False) is not True
         or supervisor is None
-        or not await supervisor.authorize_admission()
     ):
-        raise HTTPException(
-            503,
-            "Indexing execution is unavailable until its worker and recovery support are ready.",
-        )
+        raise HTTPException(503, unavailable)
     try:
-        if file_id is not None:
-            target = await jobs.db.scalar(
-                select(DriveFile.id).where(DriveFile.id == file_id, DriveFile.user_id == owner)
+        async with supervisor.admission(jobs.db) as permit:
+            if not await supervisor.authorize_admission(jobs.db):
+                raise IndexingAdmissionUnavailable()
+            if file_id is not None:
+                target = await jobs.db.scalar(
+                    select(DriveFile.id).where(DriveFile.id == file_id, DriveFile.user_id == owner)
+                )
+                if target is None:
+                    raise IndexingTargetNotFound()
+            if operation in (IndexingOperation.SYNC, IndexingOperation.INGEST):
+                if not await DriveSyncService(jobs.db, settings).is_connected(user_id=owner):
+                    raise HTTPException(
+                        503, "No Google Drive connection found. Complete OAuth first."
+                    )
+            job = await jobs.admit(
+                owner, operation, authorize=permit.authorize, file_id=file_id, full_sync=full
             )
-            if target is None:
-                raise IndexingTargetNotFound()
-        if operation in (IndexingOperation.SYNC, IndexingOperation.INGEST):
-            if not await DriveSyncService(jobs.db, settings).is_connected(user_id=owner):
-                raise HTTPException(503, "No Google Drive connection found. Complete OAuth first.")
-        job = await jobs.admit(owner, operation, file_id=file_id, full_sync=full)
-        return IndexingJobAccepted(job_id=job.id)
+            return IndexingJobAccepted(job_id=job.id)
+    except IndexingAdmissionUnavailable:
+        raise HTTPException(503, unavailable) from None
     except (
         IndexingAdmissionConflict,
         IndexingTargetNotFound,

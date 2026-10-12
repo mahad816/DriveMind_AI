@@ -48,8 +48,17 @@ async def admission(owner_engine, keys):
     app.state.indexing_admission_ready = True
     # Admission-only tests do not dispatch jobs. Full real lifecycle supervision
     # and actual polling are exercised in test_indexing_lifecycle.py.
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def admission_scope(db):
+        try:
+            yield SimpleNamespace(authorize=lambda: None)
+        finally:
+            await db.close()
+
     app.state.indexing_supervisor = SimpleNamespace(
-        authorize_admission=AsyncMock(return_value=True)
+        admission=admission_scope, authorize_admission=AsyncMock(return_value=True)
     )
     sessions, headers, files = {}, {}, {}
     async with factory() as db:
@@ -362,7 +371,9 @@ async def test_migration_preserves_unknown_jobs_and_refuses_loss(owner_engine):
     factory = async_sessionmaker(owner_engine, expire_on_commit=False)
     async with factory() as db:
         with pytest.raises(IndexingAdmissionConflict):
-            await IndexingJobService(db).admit(USER_A, IndexingOperation.CHUNK)
+            await IndexingJobService(db).admit(
+                USER_A, IndexingOperation.CHUNK, authorize=lambda: None
+            )
     async with factory() as db:
         db.add(
             IndexingJob(
@@ -428,7 +439,9 @@ async def test_only_admission_unique_violation_is_conflict(admission, monkeypatc
 
         monkeypatch.setattr(db, "scalar", hide_existing)
         with pytest.raises(IndexingAdmissionConflict):
-            await IndexingJobService(db).admit(USER_A, IndexingOperation.BUILD)
+            await IndexingJobService(db).admit(
+                USER_A, IndexingOperation.BUILD, authorize=lambda: None
+            )
     # An unrelated FK violation must be operational failure, not a false 409.
     async with r.factory() as db:
         original = db.scalar
@@ -442,7 +455,9 @@ async def test_only_admission_unique_violation_is_conflict(admission, monkeypatc
 
         monkeypatch.setattr(db, "scalar", pretend_owner)
         with pytest.raises(IndexingStoreUnavailable):
-            await IndexingJobService(db).admit(missing_owner, IndexingOperation.CHUNK)
+            await IndexingJobService(db).admit(
+                missing_owner, IndexingOperation.CHUNK, authorize=lambda: None
+            )
 
 
 async def test_deleted_accepted_target_remains_explicit(admission):
@@ -466,7 +481,7 @@ async def test_service_target_authorization_is_independent_of_api(admission):
     async with r.factory() as db:
         with pytest.raises(IndexingTargetNotFound):
             await IndexingJobService(db).admit(
-                USER_A, IndexingOperation.CHUNK, file_id=r.files[USER_B]
+                USER_A, IndexingOperation.CHUNK, authorize=lambda: None, file_id=r.files[USER_B]
             )
     response = await r.client.post(
         "/api/v1/index/chunk", params={"file_id": str(r.files[USER_B])}, headers=r.headers[USER_B]

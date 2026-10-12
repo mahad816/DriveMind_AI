@@ -229,3 +229,46 @@ engine disposal through a shortcut. Forced process termination/event-loop shutdo
 cannot guarantee cleanup or remote-write quiescence; manifests and owner exclusion
 remain the recovery authority. 4E3D must reconcile uncertain remote effects before
 release, and complete production authorization. No release tool is added here.
+
+
+## Admission authorization and shutdown ordering (4E3B-R)
+
+A preliminary health check is not an admission grant. The HTTP route registers
+an in-flight permit with its local supervisor **before** preliminary storage work
+and owner/target-row waits. `IndexingJobService.admit` requires an explicit synchronous
+`authorize` callback. All production HTTP admissions pass that request's permit;
+trusted synthetic service-only fixtures supply their own explicit adapter.
+There is no default no-op authorization in the service signature.
+
+After owner/file locks and unresolved-job checks, the service calls the permit
+immediately before adding and committing the job. That synchronous transition is
+the authorization point. It checks current task identity, cancellation, registration,
+single use, and real supervisor health (including already-dead tasks). Permit grant
+and fatal-health/shutdown closure contain no await and are ordered on the same
+application event loop. No local mutex spans a database wait; PostgreSQL retains
+cross-instance owner serialization and uniqueness.
+
+If closure wins first, final authorization raises a safe 503 and the transaction
+rolls back without inserting a job. If the permit is granted first, subsequent local
+failure does not revoke the granted publication; a successfully committed job may
+truthfully return 202 and remain QUEUED for a future healthy executor. Physical COMMIT
+completion need not precede closure. A cancelled or timed-out commit may have an
+unknown acknowledgement: no 202 is claimed, and any committed row remains durable.
+This mechanism neither deletes accepted jobs nor retries ambiguous commits.
+
+Admission database work has the configured database deadline. The preliminary
+HTTP health probe uses the same permit-owned SQL session, so cancellation cannot
+leave a separate probe session cleaning up after registration is released. Each registration
+owns a shielded rollback/session-close task; cancellation and errors cannot unregister
+it before SQL cleanup finishes. The session is closed before later FastAPI dependency
+teardown. Repeated caller cancellation cannot cancel cleanup a second time. If cleanup
+fails and safe resource release cannot be established, admission fails closed and the
+registration is retained; engine disposal is blocked rather than guessed safe.
+
+Shutdown closes new permits synchronously, drains worker tasks **and admissions**,
+then requests cancellation once for still-executing requests after the drain deadline.
+Requests already performing owned SQL cleanup are not cancelled again. Deferred
+shutdown waits for every registration to close before credential cleanup and engine
+disposal. The lifespan deadline remains bounded while retained cleanup may continue.
+A forced kill cannot guarantee SQL acknowledgement or remote-write quiescence.
+Production admission remains CLOSED; this correction adds no 4E3D release or cutover.

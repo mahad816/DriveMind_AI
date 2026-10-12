@@ -127,6 +127,7 @@ async def enqueue(w, operation, owner=USER_A, file_id=None, full=False):
         job = await IndexingJobService(db).admit(
             owner,
             operation,
+            authorize=lambda: None,
             file_id=file_id,
             full_sync=full,
         )

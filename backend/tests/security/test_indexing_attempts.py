@@ -207,7 +207,9 @@ async def test_process_loss_classification_respects_durable_remote_boundary(
     if boundary != "selection":
         async with w.factory() as db:
             with pytest.raises(IndexingAdmissionConflict):
-                await IndexingJobService(db).admit(USER_A, IndexingOperation.CHUNK)
+                await IndexingJobService(db).admit(
+                    USER_A, IndexingOperation.CHUNK, authorize=lambda: None
+                )
     assert await enqueue(w, IndexingOperation.CHUNK, USER_B)
 
 
@@ -437,7 +439,9 @@ async def test_classifier_failed_transaction_retains_exclusion(world):
     assert (await job(w, jid)).status == IndexingJobStatus.RUNNING
     async with w.factory() as db:
         with pytest.raises(IndexingAdmissionConflict):
-            await IndexingJobService(db).admit(USER_A, IndexingOperation.CHUNK)
+            await IndexingJobService(db).admit(
+                USER_A, IndexingOperation.CHUNK, authorize=lambda: None
+            )
     assert await IndexingClassifier(w.worker).classify(jid) == "FAILED"
 
 
@@ -667,4 +671,6 @@ async def test_queued_row_with_preexisting_unknown_evidence_is_quarantined(world
     assert not await w.client.collection_exists(w.settings.qdrant_collection)
     async with w.factory() as db:
         with pytest.raises(IndexingAdmissionConflict):
-            await IndexingJobService(db).admit(USER_A, IndexingOperation.CHUNK)
+            await IndexingJobService(db).admit(
+                USER_A, IndexingOperation.CHUNK, authorize=lambda: None
+            )
