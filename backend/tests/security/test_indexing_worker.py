@@ -704,15 +704,26 @@ async def test_skipped_target_stops_before_loading_preserved_text(world, operati
     assert not await w.client.collection_exists(w.settings.qdrant_collection)
 
 
-async def test_real_qdrant_write_rejection_cannot_complete_build(world):
+async def test_real_qdrant_write_rejection_cannot_complete_build(world, monkeypatch):
     w = world
     await document(w)
     from qdrant_client.models import Distance, VectorParams
+    from qdrant_client import AsyncQdrantClient
 
-    # Existing incompatible vector dimensions cause a genuine server-side 400.
+    # Keep collection preflight valid, then provoke a genuine server-side 400
+    # at the write boundary. Configuration rejection is tested separately.
     await w.client.create_collection(
-        w.settings.qdrant_collection, vectors_config=VectorParams(size=4, distance=Distance.COSINE)
+        w.settings.qdrant_collection, vectors_config=VectorParams(size=3, distance=Distance.COSINE)
     )
+    original = AsyncQdrantClient.upsert
+
+    async def rejected(client, **kwargs):
+        kwargs["points"] = [
+            point.model_copy(update={"vector": [1.0, 0.0, 0.0, 0.0]}) for point in kwargs["points"]
+        ]
+        return await original(client, **kwargs)
+
+    monkeypatch.setattr(AsyncQdrantClient, "upsert", rejected)
     jid = await enqueue(w, IndexingOperation.BUILD)
     await w.worker.run_once()
     result = await job(w, jid)

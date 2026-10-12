@@ -31,9 +31,28 @@ document and chunk snapshots before publishing INDEXED status.
 
 SQL and Qdrant are not atomic. BUILD sets `recovery_required` **before** remote
 work; failed, interrupted or uncertain outcomes keep it set and block further
-owner admission. Only confirmed successful stage finalization clears it. The
+owner admission. Confirmed successful stage finalization clears it. The
 executor never blindly retries ambiguous vector writes. Earlier successful file
 commits can remain after a later failure; progress reports committed outcomes.
+
+BUILD checks the collection's unnamed COSINE vector configuration and dimension
+before point deletion, payload repair or upsert, including unchanged-vector builds
+and concurrent collection creation. A deterministic configuration rejection before
+this job has attempted point mutations fails the file/job without requiring remote
+recovery. It never clears uncertainty from an earlier file in the same job, and it
+never recreates an incompatible collection. Operator logs identify the required
+vector configuration without including provider error bodies or private content.
+
+Normal stale-vector reconciliation requires both the authoritative owner and
+internal file UUID. Deletion IDs come from actual Qdrant record IDs. Inconsistent
+record/payload IDs, file linkage or provenance stop reconciliation before deletion;
+surviving SQL chunks must also belong to that owner/file. Malformed records are
+left untouched for investigation, not silently repaired or deleted. Coherent stale
+points whose SQL chunks have been replaced can still be removed. Ownerless or
+foreign-owner stale points are excluded, not implicitly adopted; this per-file
+operation is not exhaustive collection migration. Current unchanged points can
+still receive owner-only repair when their SQL identity, file and hash agree.
+The isolated demo retains its ownerless payload format and explicit demo owner.
 
 ## Required 4E3 work before activation
 

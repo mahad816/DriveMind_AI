@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TypedDict
@@ -39,6 +40,10 @@ class _SearchFilterArguments(TypedDict, total=False):
 
 class VectorStoreError(Exception):
     """Base error raised when vector store operations fail."""
+
+
+class CollectionCompatibilityError(VectorStoreError):
+    """Collection configuration was rejected before any point mutation."""
 
 
 @dataclass(frozen=True)
@@ -105,23 +110,15 @@ class QdrantVectorStore:
                         self.collection_name
                     ):
                         raise
-                    info = await client.get_collection(self.collection_name)
-                    vectors = info.config.params.vectors
-                    if (
-                        not isinstance(vectors, VectorParams)
-                        or vectors.size != vector_size
-                        or vectors.distance != Distance.COSINE
-                    ):
-                        raise VectorStoreError(
-                            "Concurrent Qdrant collection is incompatible"
-                        ) from None
         except (UnexpectedResponse, ResponseHandlingException) as exc:
             raise VectorStoreError(
                 f"Failed to ensure Qdrant collection '{self.collection_name}': {exc}"
             ) from exc
-        await self._ensure_required_payload_indexes(client)
+        await self._ensure_required_payload_indexes(client, vector_size=vector_size)
 
-    async def _ensure_required_payload_indexes(self, client: AsyncQdrantClient) -> None:
+    async def _ensure_required_payload_indexes(
+        self, client: AsyncQdrantClient, *, vector_size: int
+    ) -> None:
         """Reconcile filter indexes; never silently replace an incompatible schema."""
         fields = ["drive_file_id"]
         if not self.settings.demo_mode:
@@ -129,6 +126,18 @@ class QdrantVectorStore:
         field = "drive_file_id"
         try:
             info = await client.get_collection(self.collection_name)
+            # The same authoritative check covers existing, newly created and
+            # concurrently created collections, before even payload-index writes.
+            vectors = info.config.params.vectors
+            if (
+                not isinstance(vectors, VectorParams)
+                or vectors.size != vector_size
+                or vectors.distance != Distance.COSINE
+            ):
+                raise CollectionCompatibilityError(
+                    "Qdrant collection requires unnamed COSINE vectors "
+                    f"with dimension {vector_size}; inspect its configuration."
+                )
             for field in fields:
                 existing = info.payload_schema.get(field)
                 if existing is not None:
@@ -246,32 +255,43 @@ class QdrantVectorStore:
         *,
         drive_file_id: uuid.UUID,
         keep_chunk_ids: set[uuid.UUID],
+        user_id: uuid.UUID,
+        validate_stale_ids: Callable[[list[uuid.UUID]], Awaitable[None]],
     ) -> int:
         """Delete stale vectors for one Drive file, keeping only current chunk IDs."""
+        owner = self._validate_owner(user_id)
         client = self._get_client()
         stale_ids: list[uuid.UUID] = []
         offset = None
+        conditions: list[Condition] = [
+            FieldCondition(key="drive_file_id", match=MatchValue(value=str(drive_file_id)))
+        ]
+        if not self.settings.demo_mode:
+            conditions.append(FieldCondition(key="user_id", match=MatchValue(value=owner)))
 
         try:
             while True:
                 records, offset = await client.scroll(
                     collection_name=self.collection_name,
-                    scroll_filter=Filter(
-                        must=[
-                            FieldCondition(
-                                key="drive_file_id",
-                                match=MatchValue(value=str(drive_file_id)),
-                            )
-                        ]
-                    ),
+                    scroll_filter=Filter(must=conditions),
                     limit=100,
                     offset=offset,
                     with_vectors=False,
                 )
                 for record in records:
-                    chunk_id = _parse_chunk_id(record.payload)
-                    if chunk_id is not None and chunk_id not in keep_chunk_ids:
-                        stale_ids.append(chunk_id)
+                    point_id = _parse_point_id(record.id)
+                    payload = record.payload or {}
+                    if (
+                        point_id is None
+                        or payload.get("chunk_id") != str(point_id)
+                        or payload.get("drive_file_id") != str(drive_file_id)
+                        or (not self.settings.demo_mode and payload.get("user_id") != owner)
+                        or not isinstance(payload.get("extracted_text_hash"), str)
+                        or not payload["extracted_text_hash"]
+                    ):
+                        raise VectorStoreError("Stale vector provenance could not be verified")
+                    if point_id not in keep_chunk_ids:
+                        stale_ids.append(point_id)
                 if offset is None:
                     break
         except (UnexpectedResponse, ResponseHandlingException) as exc:
@@ -279,7 +299,11 @@ class QdrantVectorStore:
                 f"Failed to scan Qdrant vectors for drive file {drive_file_id}: {exc}"
             ) from exc
 
-        await self.delete_points(stale_ids)
+        # Validate the complete scan before any deletion. Surviving SQL chunks
+        # must belong to this file/owner; replaced chunks may no longer exist.
+        if stale_ids:
+            await validate_stale_ids(stale_ids)
+            await self.delete_points(stale_ids)
         return len(stale_ids)
 
     async def get_stored_hashes(self, chunk_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -304,7 +328,9 @@ class QdrantVectorStore:
                 ) from exc
 
             for record in records:
-                chunk_id = _parse_chunk_id(record.payload)
+                chunk_id = _parse_point_id(record.id)
+                if chunk_id not in batch_ids or _parse_chunk_id(record.payload) != chunk_id:
+                    raise VectorStoreError("Stored vector identity could not be verified")
                 text_hash = record.payload.get("extracted_text_hash") if record.payload else None
                 if chunk_id is not None and isinstance(text_hash, str):
                     stored[chunk_id] = text_hash

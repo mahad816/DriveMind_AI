@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from qdrant_client.models import PayloadSchemaType
+from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 
 from app.core.config import Settings
 from app.embeddings.vector_store import (
@@ -21,6 +21,12 @@ from app.embeddings.vector_store import (
 CHUNK_ID = uuid.uuid4()
 DRIVE_FILE_ID = uuid.uuid4()
 USER_ID = uuid.uuid4()
+
+
+def collection_info(*, payload_schema=None, vector_size=1536):
+    info = MagicMock(payload_schema=payload_schema or {})
+    info.config.params.vectors = VectorParams(size=vector_size, distance=Distance.COSINE)
+    return info
 
 
 @pytest.fixture
@@ -37,7 +43,7 @@ def mock_client() -> AsyncMock:
     client = AsyncMock()
     client.collection_exists = AsyncMock(return_value=False)
     client.create_collection = AsyncMock()
-    client.get_collection = AsyncMock(return_value=MagicMock(payload_schema={}))
+    client.get_collection = AsyncMock(return_value=collection_info())
     client.create_payload_index = AsyncMock()
     client.upsert = AsyncMock()
     client.delete = AsyncMock()
@@ -97,7 +103,7 @@ async def test_repeated_ensure_preserves_compatible_payload_index(
     store: QdrantVectorStore, mock_client: AsyncMock
 ) -> None:
     mock_client.collection_exists.return_value = True
-    info = MagicMock(payload_schema={})
+    info = collection_info()
     mock_client.get_collection.return_value = info
 
     async def create_index(**kwargs: object) -> None:
@@ -117,7 +123,7 @@ async def test_existing_compatible_payload_index_is_not_replaced(
     store: QdrantVectorStore, mock_client: AsyncMock, schema: PayloadSchemaType
 ) -> None:
     mock_client.collection_exists.return_value = True
-    mock_client.get_collection.return_value = MagicMock(
+    mock_client.get_collection.return_value = collection_info(
         payload_schema={
             "drive_file_id": MagicMock(data_type=schema),
             "user_id": MagicMock(data_type=schema),
@@ -134,7 +140,7 @@ async def test_ensure_rejects_incompatible_existing_payload_index(
     store: QdrantVectorStore, mock_client: AsyncMock
 ) -> None:
     mock_client.collection_exists.return_value = True
-    mock_client.get_collection.return_value = MagicMock(
+    mock_client.get_collection.return_value = collection_info(
         payload_schema={"drive_file_id": MagicMock(data_type=PayloadSchemaType.INTEGER)}
     )
     with pytest.raises(VectorStoreError, match="keyword or UUID"):
@@ -266,10 +272,11 @@ async def test_get_stored_hashes_returns_payload_hashes(
     mock_client.retrieve = AsyncMock(
         return_value=[
             MagicMock(
+                id=str(CHUNK_ID),
                 payload={
                     "chunk_id": str(CHUNK_ID),
                     "extracted_text_hash": "hash-1",
-                }
+                },
             )
         ],
     )
@@ -288,8 +295,16 @@ async def test_delete_points_for_drive_file_except_removes_stale_vectors(
     mock_client.scroll = AsyncMock(
         return_value=(
             [
-                MagicMock(payload={"chunk_id": str(stale_id)}),
-                MagicMock(payload={"chunk_id": str(CHUNK_ID)}),
+                MagicMock(
+                    id=str(point_id),
+                    payload={
+                        "chunk_id": str(point_id),
+                        "drive_file_id": str(DRIVE_FILE_ID),
+                        "user_id": str(USER_ID),
+                        "extracted_text_hash": "hash-1",
+                    },
+                )
+                for point_id in [stale_id, CHUNK_ID]
             ],
             None,
         ),
@@ -298,6 +313,8 @@ async def test_delete_points_for_drive_file_except_removes_stale_vectors(
     removed = await store.delete_points_for_drive_file_except(
         drive_file_id=DRIVE_FILE_ID,
         keep_chunk_ids={CHUNK_ID},
+        user_id=USER_ID,
+        validate_stale_ids=AsyncMock(),
     )
 
     assert removed == 1
@@ -437,8 +454,9 @@ async def test_filter_failure_never_retries_unfiltered(store, mock_client):
 
 @pytest.mark.asyncio
 async def test_normal_tenant_index_is_created_without_replacing_file_index(store, mock_client):
-    mock_client.get_collection.return_value = MagicMock(
-        payload_schema={"drive_file_id": MagicMock(data_type=PayloadSchemaType.KEYWORD)}
+    mock_client.get_collection.return_value = collection_info(
+        payload_schema={"drive_file_id": MagicMock(data_type=PayloadSchemaType.KEYWORD)},
+        vector_size=3,
     )
     await store.ensure_collection(vector_size=3)
     mock_client.create_payload_index.assert_awaited_once_with(

@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -156,11 +156,31 @@ class IndexingService:
             raise VectorStoreError("Indexed document is no longer eligible for indexing")
 
         keep_chunk_ids = {chunk.id for chunk in chunks}
+
+        async def validate_stale_ids(ids: list[uuid.UUID]) -> None:
+            # An old vector may outlive its replaced SQL chunk. If SQL lineage
+            # still exists, payload claims cannot authorize another file's point.
+            for start in range(0, len(ids), 100):
+                foreign = await self.db.scalar(
+                    select(Chunk.id)
+                    .join(Document, Chunk.document_id == Document.id)
+                    .join(DriveFile, Document.drive_file_id == DriveFile.id)
+                    .where(
+                        Chunk.id.in_(ids[start : start + 100]),
+                        or_(DriveFile.id != drive_file.id, DriveFile.user_id != drive_file.user_id),
+                    )
+                    .limit(1)
+                )
+                if foreign is not None:
+                    raise VectorStoreError("Stale vector SQL lineage could not be verified")
+
         if before_external is not None:
             await before_external()
         removed = await self.vector_store.delete_points_for_drive_file_except(
             drive_file_id=drive_file.id,
             keep_chunk_ids=keep_chunk_ids,
+            user_id=drive_file.user_id,
+            validate_stale_ids=validate_stale_ids,
         )
 
         if not chunks:

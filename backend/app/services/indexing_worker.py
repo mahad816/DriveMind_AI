@@ -9,6 +9,7 @@ process crash leaves RUNNING work for the separately gated 4E3 recovery policy.
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import uuid
 from dataclasses import dataclass, replace
@@ -30,13 +31,19 @@ from app.db.models.user import User
 from app.embeddings.base import EmbeddingError, EmbeddingService
 from app.embeddings.factory import get_embedding_service
 from app.embeddings.qdrant_connection import create_qdrant_client
-from app.embeddings.vector_store import QdrantVectorStore, VectorStoreError
+from app.embeddings.vector_store import (
+    CollectionCompatibilityError,
+    QdrantVectorStore,
+    VectorStoreError,
+)
 from app.ingestion.chunking import chunk_text
 from app.services.chunking_service import ChunkingService
 from app.services.drive_content_service import DriveContentService, DriveFileContent
 from app.services.drive_sync_service import DriveSyncService
 from app.services.ingestion_service import IngestionService
 from app.services.indexing_service import IndexingService
+
+logger = logging.getLogger(__name__)
 
 _STAGE_NAMES = {
     IndexingOperation.SYNC: "drive sync",
@@ -323,7 +330,8 @@ class IndexingWorker:
         file_id: uuid.UUID,
         progress: StageProgress,
     ) -> None:
-        await self._guard(db, claim)
+        active_job = await self._guard(db, claim)
+        recovery_before = active_job.recovery_required
         file = await db.scalar(
             select(DriveFile).where(
                 DriveFile.id == file_id,
@@ -484,8 +492,17 @@ class IndexingWorker:
                         before_persist=validate,
                     )
                     outcome = "skipped" if not chunks else "indexed"
-                except (EmbeddingError, VectorStoreError):
+                except (EmbeddingError, VectorStoreError) as exc:
                     await validate()
+                    if isinstance(exc, CollectionCompatibilityError):
+                        logger.warning(
+                            "Index build requires a Qdrant collection with unnamed COSINE "
+                            "vectors matching the configured embedding dimension; "
+                            "inspect the collection configuration."
+                        )
+                        if not recovery_before:
+                            # Do not clear uncertainty from an earlier file.
+                            active_job.recovery_required = False
                     file.status = DriveFileStatus.FAILED
                     outcome = "failed"
                 finally:
