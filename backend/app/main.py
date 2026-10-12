@@ -1,5 +1,6 @@
 """FastAPI application entrypoint."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -9,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.router import router as api_router
 from app.core.config import get_settings
@@ -21,6 +23,8 @@ from app.core.public_safety import (
     DemoChatLimits,
     PUBLIC_ERROR,
 )
+
+from app.services.indexing_lifecycle import DisposableIndexingRuntime, IndexingSupervisor
 
 logger = logging.getLogger(__name__)
 
@@ -52,24 +56,68 @@ async def _cleanup_stuck_jobs() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize application-level resources during startup."""
-    settings = get_settings()
+    runtime: DisposableIndexingRuntime | None = app.state.indexing_test_runtime
+    if runtime is not None:
+        if app.state.indexing_lifecycle_started:
+            raise RuntimeError("Indexing application lifecycle cannot start twice")
+        app.state.indexing_lifecycle_started = True
+    settings = runtime.worker.settings if runtime else get_settings()
+    app.state.indexing_admission_ready = False
+    supervisor = None
     configure_logging(settings.log_level)
     try:
         # Demo indexing is offline; public runtime startup must not mutate index jobs.
         if not settings.demo_mode:
-            await _cleanup_stuck_jobs()
+            if runtime is None:
+                await _cleanup_stuck_jobs()
+            else:
+                supervisor = IndexingSupervisor(runtime)
+                app.state.indexing_supervisor = supervisor
+                await supervisor.start()
+                app.state.indexing_admission_ready = True
         yield
     finally:
+        app.state.indexing_admission_ready = False
         try:
-            # Reject refresh admission before closing any other application resource.
-            await app.state.google_refresh_lifecycle.shutdown_and_dispose(engine.dispose)
+            if runtime is None:
+                await app.state.google_refresh_lifecycle.shutdown_and_dispose(engine.dispose)
+            else:
+                if supervisor is not None:
+                    supervisor.begin_shutdown()
+
+                async def finish() -> None:
+                    if supervisor is not None:
+                        await supervisor.wait_closed()
+                    await app.state.google_refresh_lifecycle.shutdown_and_dispose(
+                        runtime.engine.dispose
+                    )
+
+                # Strong application ownership survives cancellation or the bounded
+                # lifespan deadline. SQL cleanup must finish before engine disposal.
+                task = asyncio.create_task(finish(), name="indexing-resource-disposal")
+                app.state.indexing_disposal_task = task
+
+                def observed(done: asyncio.Task[None]) -> None:
+                    if done.cancelled() or done.exception() is not None:
+                        logger.error("Indexing resource cleanup is incomplete.")
+
+                task.add_done_callback(observed)
+                done, _ = await asyncio.wait(
+                    [task], timeout=runtime.drain_seconds + runtime.cleanup_seconds
+                )
+                if task in done:
+                    await asyncio.shield(task)
+                else:
+                    logger.warning("Indexing cleanup is deferred; database remains available.")
         finally:
             await app.state.demo_readiness_client.close()
 
 
-def create_app() -> FastAPI:
+def create_app(*, indexing_test_runtime: DisposableIndexingRuntime | None = None) -> FastAPI:
     """Application factory for uvicorn and tests."""
     settings = get_settings()
+    if indexing_test_runtime is not None and settings.demo_mode:
+        raise ValueError("Demo applications cannot activate a normal indexing lifecycle")
     app = FastAPI(
         title=settings.app_name,
         debug=False,  # Starlette debug tracebacks can contain credentials.
@@ -78,9 +126,24 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix=settings.api_prefix)
     app.state.demo_chat_limits = DemoChatLimits()
     app.state.demo_readiness_client = DemoReadinessClient()
-    app.state.google_refresh_lifecycle = google_refresh_lifecycle
-    # The managed executor is intentionally not started in 4E2. Only the future
-    # recovery-ready worker lifespan may open this server-owned boundary.
+    app.state.google_refresh_lifecycle = (
+        indexing_test_runtime.refresh if indexing_test_runtime else google_refresh_lifecycle
+    )
+    app.state.indexing_test_runtime = indexing_test_runtime
+    app.state.indexing_lifecycle_started = False
+    app.state.indexing_supervisor = None
+    app.state.indexing_disposal_task = None
+    if indexing_test_runtime is not None:
+        from app.db.session import get_db
+
+        async def indexing_database() -> AsyncIterator[AsyncSession]:
+            async with indexing_test_runtime.worker.sessions() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = indexing_database
+        app.dependency_overrides[get_settings] = lambda: indexing_test_runtime.worker.settings
+    # Production cutover is unavailable until 4E3D acceptance. Only the explicit
+    # disposable runtime above can run supervised loops in this phase.
     app.state.indexing_admission_ready = False
     app.add_middleware(DemoChatBodyLimit)
 

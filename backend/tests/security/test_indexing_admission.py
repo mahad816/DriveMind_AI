@@ -46,6 +46,11 @@ async def admission(owner_engine, keys):
     app.dependency_overrides[get_settings] = lambda: keys
     # Synthetic integration harness ONLY; production create_app never opens it.
     app.state.indexing_admission_ready = True
+    # Admission-only tests do not dispatch jobs. Full real lifecycle supervision
+    # and actual polling are exercised in test_indexing_lifecycle.py.
+    app.state.indexing_supervisor = SimpleNamespace(
+        authorize_admission=AsyncMock(return_value=True)
+    )
     sessions, headers, files = {}, {}, {}
     async with factory() as db:
         for uid, subject in ((USER_A, "verified-subject-a"), (USER_B, "verified-subject-b")):

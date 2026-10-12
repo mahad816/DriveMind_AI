@@ -79,7 +79,12 @@ async def _accept(
     file_id: uuid.UUID | None = None,
     full: bool = False,
 ) -> IndexingJobAccepted:
-    if getattr(request.app.state, "indexing_admission_ready", False) is not True:
+    supervisor = getattr(request.app.state, "indexing_supervisor", None)
+    if (
+        getattr(request.app.state, "indexing_admission_ready", False) is not True
+        or supervisor is None
+        or not await supervisor.authorize_admission()
+    ):
         raise HTTPException(
             503,
             "Indexing execution is unavailable until its worker and recovery support are ready.",

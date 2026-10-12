@@ -1,6 +1,6 @@
 """Health check endpoints."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from app.db.session import check_db_connection
 
@@ -23,3 +23,17 @@ async def readiness_check() -> dict[str, str]:
             detail="Database not reachable",
         )
     return {"status": "ok", "database": "connected"}
+
+
+@router.get("/indexing", summary="Indexing executor diagnostic state")
+async def indexing_health(request: Request) -> dict[str, str]:
+    """Separate from chat/general readiness; no job, claim or worker identifiers."""
+    supervisor = getattr(request.app.state, "indexing_supervisor", None)
+    return {
+        "status": supervisor.health.lower() if supervisor is not None else "inactive",
+        "admission": "available"
+        if supervisor is not None
+        and supervisor.healthy
+        and getattr(request.app.state, "indexing_admission_ready", False) is True
+        else "closed",
+    }

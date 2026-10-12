@@ -1,4 +1,4 @@
-# Managed indexing worker: inactive 4E3C boundary
+# Managed indexing worker: inactive production / supervised disposable 4E3B boundary
 
 `IndexingWorker` consumes committed managed jobs using PostgreSQL
 `FOR UPDATE SKIP LOCKED`. It is **not constructed or started by production
@@ -116,8 +116,8 @@ cannot be retracted by claim loss or cancellation. Its prior durable
 `recovery_required` marker is retained; no remote rollback or exactly-once result
 is claimed. Explicit offline/demo callers retain their existing no-hook adapter.
 
-No expiry classifier, attempt manifest, takeover, operator reconciliation or
-FastAPI worker startup is implemented here. Production admission remains closed
+The 4E3A section above does not establish takeover, operator reconciliation or
+production FastAPI worker activation. Production admission remains closed
 until the complete lifecycle and recovery cutover receive independent acceptance.
 
 ## Durable attempt evidence and explicit classification (4E3C)
@@ -171,3 +171,61 @@ and grant epoch through its independent content adapter. Persistence locks and
 checks that same owner's ACTIVE grant before publishing extracted text; reconnect
 or disconnect invalidates stale downloads. The public content-response contract
 and explicitly offline demo content remain unchanged.
+
+
+## Supervised lifecycle (4E3B), production still CLOSED
+
+`create_app()` still starts no normal worker or classifier and cannot admit new
+indexing requests. No environment setting or HTTP argument can activate them.
+4E3D implementation and independent cutover acceptance remain prerequisites.
+
+Synthetic integration tests may explicitly inject
+`create_app(indexing_test_runtime=DisposableIndexingRuntime(worker, refresh, ...))`.
+This internal Python interface requires a loopback `postgresql+asyncpg` database
+named `drivemind_session_test*`, explicit port and no routing query parameters;
+a loopback HTTP Qdrant server on a non-default test port; a `drivemind_4e*`
+collection; normal mode; and sessions bound to the same owned refresh lifecycle.
+It is deliberately unavailable to anonymous demo startup. It is an accidental
+real-store safeguard, not a substitute for operator authorization or test isolation.
+Use only newly created disposable storage. Production activation is not supported.
+
+The application owns one `IndexingSupervisor`, one polling task and one classifier
+task. The accepted worker owns each active stage and heartbeat. Startup verifies
+job columns, valid unique owner exclusion and the manifest-size constraint, then
+requires successful database polling and classification handshakes. Claims start
+only after both handshakes. Duplicate startup on one application is refused.
+Intervals, database deadlines and classifier batch size are bounded; defaults are
+1-second polling, 5-second classification, 50 candidates and a 10-second database
+round-trip deadline. Classification uses the accepted post-lock database clock.
+It never retries uncertain BUILD, resets recovery flags or invents legacy leases.
+
+Indexing admission checks task liveness and a fresh database round trip, as well
+as the server-owned gate. A stale boolean cannot authorize admission. Idle claim
+connection stalls are bounded; active attempts retain their own heartbeat rather
+than an overall stage deadline. Unexpected loop failure, cancellation, return or
+DB failure makes the local executor unhealthy and stops further claims/rounds.
+No automatic loop restart is performed: use a new healthy instance after diagnosis.
+A claim already committed during failure is guardedly failed before stage execution.
+Ordinary stage/provider failures stay visible on their job and need not kill a
+healthy executor; failure to persist a terminal result does kill the local loop.
+Another instance's live jobs are never failed by this lifecycle.
+
+`GET /api/v1/health/indexing` reports only executor state and whether local admission
+is available. It exposes no worker, job, claim, credential or document identifiers.
+Existing liveness and database readiness responses remain unchanged: intentionally
+inactive indexing does not make the read-only/chat API unhealthy. A 202 still means
+committed durable acceptance, not guaranteed immediate execution after process death.
+
+Shutdown closes admission and stops new rounds, drains active work with heartbeats
+still active, then requests cancellation once after the configured drain deadline
+(default 20 seconds). Worker rollback, session closure and guarded terminal handling
+are joined before credential refresh is sealed/drained and the SQL engine disposed.
+The lifespan waits at most drain plus cleanup grace (default another 5 seconds).
+Longer SQL cleanup retains strongly owned shutdown/disposal tasks on application
+state; engine disposal remains deferred until indexing cleanup joins. Existing
+credential-refresh deferred-disposal ownership remains intact. Repeated shutdown
+cannot cancel SQL cleanup a second time. Cancelled or failed cleanup never authorizes
+engine disposal through a shortcut. Forced process termination/event-loop shutdown
+cannot guarantee cleanup or remote-write quiescence; manifests and owner exclusion
+remain the recovery authority. 4E3D must reconcile uncertain remote effects before
+release, and complete production authorization. No release tool is added here.
