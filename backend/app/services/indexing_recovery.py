@@ -245,6 +245,14 @@ class IndexingRecovery:
                 DriveFileStatus.SKIPPED,
             }:
                 raise RecoveryBlocked("Selected file needs fresh ingestion before recovery")
+            skipped = (
+                evidence.selected_status == DriveFileStatus.SKIPPED or evidence.phase == "SKIPPED"
+            )
+            if file.status == DriveFileStatus.SKIPPED and not skipped:
+                # Empty ingestion may preserve the old document/chunks. Matching
+                # hashes do not authorize republishing that deliberately excluded content.
+                # Authority repeats this check under file locks before writes and release.
+                raise RecoveryBlocked("Current SKIPPED file contradicts the BUILD recovery outcome")
             doc_query = (
                 select(Document)
                 .where(Document.drive_file_id == file.id)
@@ -252,9 +260,6 @@ class IndexingRecovery:
                 .limit(1)
             )
             doc = await db.scalar(doc_query.with_for_update() if lock else doc_query)
-            skipped = (
-                evidence.selected_status == DriveFileStatus.SKIPPED or evidence.phase == "SKIPPED"
-            )
             if skipped and evidence.document_id is None:
                 result.append(RecoveryFile(file, None, [], True))
                 continue

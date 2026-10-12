@@ -747,3 +747,192 @@ async def test_text_drift_without_hash_change_cannot_release_owner(world, monkey
         await service(w).apply(USER_A, jid, ATTEST)
     assert (await job(w, jid)).recovery_required and (await job(w, jid)).recovery_manifest is None
     assert await points(w) == before
+
+
+async def test_empty_ingest_skipped_content_cannot_be_republished(world, monkeypatch):
+    from datetime import timedelta
+    from sqlalchemy import select
+    from app.db.models.chunk import Chunk
+    from app.db.models.document import Document
+    from app.embeddings.vector_store import QdrantVectorStore
+    from app.retrieval.vector import VectorRetriever
+    from app.routing.intent_frame.execution import RetrievalRequest
+    from app.routing.intent_frame.scope import EligibleCollectionScope
+    from app.services.ingestion_service import IngestionService
+    from app.services.indexing_job_service import IndexingAdmissionConflict
+
+    w = world
+    jid = await failed_build(w, monkeypatch)
+    original = (await job(w, jid)).attempt_manifest
+    before = await points(w)
+    async with w.factory() as db:
+        file = await db.get(DriveFile, w.files[USER_A])
+        doc = await db.scalar(select(Document).where(Document.drive_file_id == file.id))
+        # Make a download due without changing the captured content or file metadata.
+        doc.updated_at = file.modified_at - timedelta(days=1)
+        preserved_text, preserved_hash = doc.extracted_text, doc.extracted_text_hash
+        preserved_chunks = [
+            (c.id, c.text, c.metadata_json)
+            for c in (await db.scalars(select(Chunk).where(Chunk.document_id == doc.id))).all()
+        ]
+        await db.commit()
+
+    monkeypatch.setattr(w.google, "get_file_content", lambda *args: b"   \n\t")
+    async with w.factory() as db:
+        result = await IngestionService(db, w.settings).ingest_files(
+            USER_A, file_id=w.files[USER_A]
+        )
+        assert result.skipped == 1 and result.failed == 0
+    for _ in range(2):
+        with pytest.raises(RecoveryBlocked, match="SKIPPED"):
+            await service(w).apply(USER_A, jid, ATTEST)
+        row = await job(w, jid)
+        assert row.status == IndexingJobStatus.FAILED and row.recovery_required
+        assert row.attempt_manifest == original and row.recovery_manifest is None
+        with pytest.raises(IndexingAdmissionConflict):
+            await enqueue(w, IndexingOperation.BUILD)
+        assert await points(w) == before  # Both owners' vectors are untouched.
+        async with w.factory() as db:
+            file = await db.get(DriveFile, w.files[USER_A])
+            assert file.status == DriveFileStatus.SKIPPED
+            doc = await db.scalar(select(Document).where(Document.drive_file_id == file.id))
+            assert (doc.extracted_text, doc.extracted_text_hash) == (
+                preserved_text,
+                preserved_hash,
+            )
+            assert [
+                (c.id, c.text, c.metadata_json)
+                for c in (await db.scalars(select(Chunk).where(Chunk.document_id == doc.id))).all()
+            ] == preserved_chunks
+            retriever = VectorRetriever(
+                db,
+                w.settings,
+                embedding_service=w.worker.embedding_service,
+                vector_store=QdrantVectorStore(w.settings, client=w.client),
+            )
+            assert (
+                await retriever.retrieve(
+                    RetrievalRequest(
+                        user_id=USER_A,
+                        query="Synthetic searchable chunk text.",
+                        scope=EligibleCollectionScope(),
+                        candidate_limit=10,
+                    )
+                )
+                == []
+            )
+
+
+@pytest.mark.parametrize("boundary", ["mutation", "publication", "release"])
+async def test_late_skipped_status_blocks_recovery_authority(world, monkeypatch, boundary):
+    import app.services.indexing_recovery as module
+
+    w = world
+    jid = await failed_build(w, monkeypatch)
+    original = (await job(w, jid)).attempt_manifest
+    transitioned = False
+
+    async def mark_skipped():
+        nonlocal transitioned
+        async with w.factory() as db:
+            await db.execute(
+                update(DriveFile)
+                .where(DriveFile.id == w.files[USER_A])
+                .values(status=DriveFileStatus.SKIPPED)
+            )
+            await db.commit()
+        transitioned = True
+
+    if boundary == "mutation":
+        a = next(p for p in (await points(w)).values() if p["payload"]["user_id"] == str(USER_A))
+        await w.client.delete(
+            w.settings.qdrant_collection, PointIdsList(points=[a["id"]]), wait=True
+        )
+        native_embedding = w.worker.embedding_service.embed_texts
+
+        async def changed_during_embedding(texts):
+            vectors = await native_embedding(texts)
+            await mark_skipped()
+            return vectors
+
+        monkeypatch.setattr(w.worker.embedding_service, "embed_texts", changed_during_embedding)
+    elif boundary == "publication":
+        native_count = AsyncQdrantClient.count
+        calls = 0
+
+        async def changed_after_scan(client, *args, **kwargs):
+            nonlocal calls
+            result = await native_count(client, *args, **kwargs)
+            calls += 1
+            if calls == 2:  # End-of-scan count; initial scope locks have been released.
+                await mark_skipped()
+            return result
+
+        monkeypatch.setattr(AsyncQdrantClient, "count", changed_after_scan)
+    else:
+        native_inventory = module.inventory
+
+        async def changed_after_inventory(*args, **kwargs):
+            report = await native_inventory(*args, **kwargs)
+            assert report.as_dict()["clean"]
+            await mark_skipped()
+            return report
+
+        monkeypatch.setattr(module, "inventory", changed_after_inventory)
+
+    before = await points(w)
+    with pytest.raises(RecoveryBlocked, match="SKIPPED"):
+        await service(w).apply(USER_A, jid, ATTEST)
+    assert transitioned
+    row = await job(w, jid)
+    assert row.status == IndexingJobStatus.FAILED and row.recovery_required
+    assert row.attempt_manifest == original
+    assert row.recovery_manifest["operations"] == []
+    assert await points(w) == before
+    async with w.factory() as db:
+        assert (await db.get(DriveFile, w.files[USER_A])).status == DriveFileStatus.SKIPPED
+
+
+async def test_consistent_skipped_build_outcome_remains_skipped_during_recovery(world):
+    from app.services.indexing_attempt import read_attempt
+
+    w = world
+    await document(w, USER_B)
+    await enqueue(w, IndexingOperation.BUILD, owner=USER_B)
+    await w.worker.run_once()
+    async with w.factory() as db:
+        file = await db.get(DriveFile, w.files[USER_A])
+        file.status = DriveFileStatus.SKIPPED
+        await db.execute(delete(User).where(User.id == DEMO_USER))
+        await db.commit()
+    jid = await enqueue(w, IndexingOperation.BUILD, file_id=w.files[USER_A])
+
+    # Interrupt only terminal persistence, after the real worker publishes SKIPPED.
+    async def interrupted_finalize(*args, **kwargs):
+        raise TimeoutError("synthetic interruption before terminal publication")
+
+    from unittest.mock import patch
+
+    with patch.object(w.worker, "finalize", interrupted_finalize):
+        with pytest.raises(TimeoutError):
+            await w.worker.run_once()
+    row = await job(w, jid)
+    evidence = read_attempt(row).file(w.files[USER_A])
+    assert evidence.selected_status == DriveFileStatus.SKIPPED and evidence.phase == "SKIPPED"
+    original = row.attempt_manifest
+    async with w.factory() as db:
+        # Conservative blocked state; never invent or change original attempt evidence.
+        await db.execute(
+            update(IndexingJob)
+            .where(IndexingJob.id == jid)
+            .values(status=IndexingJobStatus.FAILED, recovery_required=True)
+        )
+        await db.commit()
+    before = await points(w)
+    assert (await service(w).apply(USER_A, jid, ATTEST))["released"]
+    row = await job(w, jid)
+    assert row.status == IndexingJobStatus.FAILED and not row.recovery_required
+    assert row.attempt_manifest == original and row.recovery_manifest["operations"] == []
+    assert await points(w) == before
+    async with w.factory() as db:
+        assert (await db.get(DriveFile, w.files[USER_A])).status == DriveFileStatus.SKIPPED
