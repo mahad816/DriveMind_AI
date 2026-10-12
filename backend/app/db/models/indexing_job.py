@@ -98,6 +98,9 @@ class IndexingJob(TimestampMixin, Base):
     attempt_manifest: Mapped[dict[str, object] | None] = mapped_column(
         JSONB(none_as_null=True), nullable=True
     )
+    recovery_manifest: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     total: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"), nullable=False)
     processed: Mapped[int] = mapped_column(

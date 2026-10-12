@@ -43,6 +43,7 @@ async def final_engine(pg_engine: AsyncEngine):
         # is independent of the Drive constraint under test in owner_engine.
         await connection.run_sync(apply_revision, "20261012_1200")
         await connection.run_sync(apply_revision, "20261013_1200")
+        await connection.run_sync(apply_revision, "20261014_1200")
     return pg_engine
 
 

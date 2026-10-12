@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.db.enums import DriveFileStatus, IndexingOperation
 from app.db.models.indexing_job import IndexingJob
+from app.db.models.drive_file import DriveFile
+from app.db.models.chunk import Chunk
 
 MAX_FILES = 2000
 MAX_BYTES = 2 * 1024 * 1024
@@ -43,6 +45,9 @@ class FileEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     file_id: UUID
     selected_status: DriveFileStatus
+    metadata_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    document_text_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    chunk_lineage_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     document_id: UUID | None = None
     content_hash: str | None = Field(default=None, min_length=1)
     chunk_count: int | None = Field(default=None, ge=0)
@@ -62,6 +67,8 @@ class BuildAttempt(BaseModel):
     user_id: UUID
     target_file_id: UUID | None
     collection: str = Field(min_length=1, max_length=255)
+    embedding_model: str | None = Field(default=None, min_length=1, max_length=256)
+    vector_dimension: int | None = Field(default=None, gt=0)
     selected_at: datetime
     prior_recovery_required: bool
     selection_complete: Literal[True] = True
@@ -100,6 +107,29 @@ def digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
     ).hexdigest()
+
+
+def file_metadata_digest(file: DriveFile) -> str:
+    return digest(
+        [
+            str(file.id),
+            str(file.user_id),
+            file.drive_file_id,
+            file.name,
+            file.mime_type,
+            file.modified_at.isoformat(),
+            file.folder_path,
+        ]
+    )
+
+
+def chunk_lineage_digest(chunks: list[Chunk]) -> str:
+    return digest(
+        [
+            [str(c.id), c.chunk_index, digest(c.text), c.metadata_json.get("extracted_text_hash")]
+            for c in sorted(chunks, key=lambda c: c.id)
+        ]
+    )
 
 
 def read_attempt(job: IndexingJob, collection: str | None = None) -> BuildAttempt:

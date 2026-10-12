@@ -9,6 +9,7 @@ from app.db.enums import IndexingJobStatus, IndexingOperation
 from app.db.models.drive_file import DriveFile
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
+from app.services.indexing_maintenance import writer_available
 
 
 class IndexingAdmissionUnavailable(Exception):
@@ -47,6 +48,8 @@ class IndexingJobService:
         ):
             raise ValueError("Invalid indexing operation inputs")
         try:
+            if not await writer_available(self.db):
+                raise IndexingAdmissionUnavailable()
             # Serialize admission for this owner, including targets and legacy blockers.
             owner = await self.db.scalar(
                 select(User.id).where(User.id == user_id).with_for_update()

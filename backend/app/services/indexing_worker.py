@@ -44,6 +44,7 @@ from app.services.drive_content_service import DriveContentService, DriveFileCon
 from app.services.drive_sync_service import DriveSyncService
 from app.services.ingestion_service import IngestionService
 from app.services.indexing_service import IndexingService
+from app.services.indexing_maintenance import writer_available
 from app.services.indexing_attempt import (
     AttemptEvidenceError,
     BuildAttempt,
@@ -53,6 +54,8 @@ from app.services.indexing_attempt import (
     MAX_MUTATIONS,
     digest,
     read_attempt,
+    file_metadata_digest,
+    chunk_lineage_digest,
 )
 
 logger = logging.getLogger(__name__)
@@ -161,6 +164,8 @@ class IndexingWorker:
     async def claim_next(self) -> IndexingClaim | None:
         async with self.sessions() as db, db.begin():
             await self._transaction_limits(db)
+            if not await writer_available(db):
+                return None
             job = await db.scalar(
                 select(IndexingJob)
                 .join(User, User.id == IndexingJob.user_id)
@@ -230,6 +235,8 @@ class IndexingWorker:
         if isinstance(poisoned, asyncio.Event) and poisoned.is_set():
             raise IndexingClaimLost()
         await self._transaction_limits(db)
+        if not await writer_available(db, wait=True):
+            raise IndexingClaimLost()
         with db.no_autoflush:
             row = (
                 await db.execute(
@@ -644,6 +651,17 @@ class IndexingWorker:
                 if eligible_ids
                 else {}
             )
+            selected_metadata = {
+                f.id: file_metadata_digest(f)
+                for f in (
+                    await db.scalars(
+                        select(DriveFile).where(
+                            DriveFile.id.in_(ids), DriveFile.user_id == claim.user_id
+                        )
+                    )
+                ).all()
+            }
+            embeddings = self.embedding_service or get_embedding_service(self.settings)
             job.attempt_manifest = BuildAttempt(
                 job_id=claim.job_id,
                 claim_id=claim.claim_id,
@@ -651,6 +669,8 @@ class IndexingWorker:
                 user_id=claim.user_id,
                 target_file_id=claim.file_id,
                 collection=self.settings.qdrant_collection,
+                embedding_model=embeddings.model_name,
+                vector_dimension=embeddings.embedding_dimension,
                 prior_recovery_required=bool(
                     await db.scalar(
                         select(IndexingJob.recovery_required).where(IndexingJob.id == claim.job_id)
@@ -661,6 +681,7 @@ class IndexingWorker:
                     FileEvidence(
                         file_id=i,
                         selected_status=selected_files[i],
+                        metadata_digest=selected_metadata[i],
                         document_id=selected_documents[i].id if i in selected_documents else None,
                         content_hash=selected_documents[i].extracted_text_hash
                         if i in selected_documents
@@ -704,6 +725,10 @@ class IndexingWorker:
             selected = read_attempt(active_job, self.settings.qdrant_collection).file(file_id)
             if (
                 selected.selected_status != file.status
+                or (
+                    selected.metadata_digest is not None
+                    and selected.metadata_digest != file_metadata_digest(file)
+                )
                 or selected.document_id != (document.id if document else None)
                 or selected.content_hash != (document.extracted_text_hash if document else None)
             ):
@@ -839,6 +864,8 @@ class IndexingWorker:
                 evidence.content_hash = document.extracted_text_hash
                 evidence.chunk_count = len(prepared_chunks)
                 evidence.chunk_digest = digest(sorted(str(c.id) for c in prepared_chunks))
+                evidence.document_text_digest = digest(document.extracted_text)
+                evidence.chunk_lineage_digest = chunk_lineage_digest(prepared_chunks)
                 evidence.phase = "PREPARED"
                 job.attempt_manifest = attempt.dump()
             await self._commit(db, claim)
