@@ -477,6 +477,124 @@ class ConversationRepository:
             ).all()
         return [(row[0], row[1]) for row in reversed(rows)]
 
+    async def turn_with_result(
+        self,
+        owner: UUID,
+        conversation_id: UUID,
+        turn_id: UUID,
+    ) -> tuple[ConversationTurn, QueryHistory | None]:
+        await self.get(owner, conversation_id)
+        with self.db.no_autoflush:
+            row = (
+                await self.db.execute(
+                    select(ConversationTurn, QueryHistory)
+                    .join(Conversation, Conversation.id == ConversationTurn.conversation_id)
+                    .outerjoin(
+                        QueryHistory,
+                        (QueryHistory.id == ConversationTurn.query_history_id)
+                        & (QueryHistory.user_id == owner),
+                    )
+                    .where(
+                        ConversationTurn.id == turn_id,
+                        ConversationTurn.owner_id == owner,
+                        ConversationTurn.conversation_id == conversation_id,
+                        Conversation.owner_id == owner,
+                        Conversation.deleted_at.is_(None),
+                    )
+                    .execution_options(populate_existing=True)
+                )
+            ).one_or_none()
+        if row is None:
+            raise ConversationNotFound()
+        return row[0], row[1]
+
+    async def completed_context(
+        self,
+        owner: UUID,
+        conversation_id: UUID,
+        boundary: int,
+    ) -> tuple[list[tuple[ConversationTurn, QueryHistory]], bool]:
+        await self.get(owner, conversation_id)
+        with self.db.no_autoflush:
+            rows = (
+                await self.db.execute(
+                    select(ConversationTurn, QueryHistory)
+                    .join(Conversation, Conversation.id == ConversationTurn.conversation_id)
+                    .join(
+                        QueryHistory,
+                        (QueryHistory.id == ConversationTurn.query_history_id)
+                        & (QueryHistory.user_id == owner),
+                    )
+                    .where(
+                        ConversationTurn.owner_id == owner,
+                        ConversationTurn.conversation_id == conversation_id,
+                        Conversation.owner_id == owner,
+                        Conversation.deleted_at.is_(None),
+                        ConversationTurn.status == TurnStatus.COMPLETED,
+                        ConversationTurn.sequence <= boundary,
+                    )
+                    .order_by(ConversationTurn.sequence.desc())
+                    .limit(5)
+                )
+            ).all()
+            omitted = await self.db.scalar(
+                select(ConversationTurn.id)
+                .where(
+                    ConversationTurn.owner_id == owner,
+                    ConversationTurn.conversation_id == conversation_id,
+                    ConversationTurn.sequence <= boundary,
+                    ConversationTurn.status != TurnStatus.COMPLETED,
+                )
+                .limit(1)
+            )
+        return [(r[0], r[1]) for r in rows], omitted is not None
+
+    async def interrupt_attempt(
+        self,
+        owner: UUID,
+        conversation_id: UUID,
+        turn_id: UUID,
+        *,
+        execution_id: UUID,
+        error_code: str,
+        expired_only: bool = False,
+    ) -> bool:
+        """Fence an exact attempt; expiry classification checks time AFTER locks.
+
+        Only server-owned cancellation/failure handling may interrupt a live attempt.
+        HTTP recovery must pass expired_only=True. No successful result is altered.
+        """
+        if re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", error_code) is None:
+            raise ValueError("Only nonsecret error categories may be stored")
+        conversation = await self._lock(owner, conversation_id)
+        with self.db.no_autoflush:
+            turn = await self.db.scalar(
+                select(ConversationTurn)
+                .where(
+                    ConversationTurn.id == turn_id,
+                    ConversationTurn.owner_id == owner,
+                    ConversationTurn.conversation_id == conversation_id,
+                )
+                .with_for_update(of=ConversationTurn)
+                .execution_options(populate_existing=True)
+            )
+            now = await self._database_now()
+        if turn is None:
+            raise ConversationNotFound()
+        if turn.execution_id != execution_id:
+            raise ConversationExecutionLost()
+        if turn.status != TurnStatus.RUNNING:
+            return False
+        if expired_only and turn.execution_deadline > now:
+            raise ConversationBusy()
+        turn.status = TurnStatus.INTERRUPTED
+        turn.error_code = error_code
+        turn.finished_at = now
+        conversation.content_version += 1
+        conversation.last_activity_at = now
+        await self.db.flush()
+        return True
+
     async def _execution(
         self, owner: UUID, conversation_id: UUID, turn_id: UUID, execution_id: UUID
     ) -> tuple[Conversation, ConversationTurn, datetime]:

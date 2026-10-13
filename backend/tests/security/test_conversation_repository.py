@@ -685,12 +685,12 @@ async def test_actual_alembic_populated_upgrade_and_downgrade(pg_engine):
         await admin.dispose()
 
 
-def test_no_turn_http_or_activation_changes():
+def test_turn_http_present_without_indexing_activation():
     from app.main import create_app
     from app.core.config import Settings
 
     paths = create_app().openapi()["paths"]
-    assert not any("turns" in path for path in paths)
+    assert "/api/v1/conversations/{conversation_id}/turns" in paths
     assert "indexing_runtime_enabled" not in Settings.model_fields
 
 

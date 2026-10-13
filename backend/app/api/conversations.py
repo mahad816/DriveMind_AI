@@ -1,4 +1,4 @@
-"""Private PostgreSQL conversation metadata/read APIs, without turn generation."""
+"""Private PostgreSQL conversation metadata, durable turns and request-owned generation."""
 
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -18,6 +18,8 @@ from app.api.session_dependencies import (
 )
 from app.db.session import get_db
 from app.core.public_safety import public_error_detail
+from app.core.config import Settings, get_settings
+from app.services.conversation_chat_service import ConversationChatService
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationRead,
@@ -25,6 +27,10 @@ from app.schemas.conversation import (
     ConversationDetail,
     ConversationRename,
     ConversationDelete,
+    ConversationSubmit,
+    ConversationSubmission,
+    ConversationTurnStatus,
+    ConversationInterrupt,
 )
 from app.security.principal import ApplicationPrincipal
 from app.services.application_session_service import ApplicationSessionService
@@ -146,7 +152,7 @@ async def list_conversations(
 async def conversation_detail(
     conversation_id: UUID,
     limit: int = Query(default=50, ge=1, le=100),
-    before_sequence: int | None = Query(default=None, ge=1),
+    before_sequence: int | None = Query(default=None, ge=1, le=9223372036854775807),
     principal: ApplicationPrincipal = Depends(require_application_principal),
     service: ConversationService = Depends(get_conversation_service),
 ) -> ConversationDetail:
@@ -174,3 +180,52 @@ async def delete_conversation(
 ) -> Response:
     await service.delete(principal, conversation_id, body.expected_metadata_version)
     return Response(status_code=204)
+
+
+def get_conversation_chat_service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> ConversationChatService:
+    return ConversationChatService(db, settings)
+
+
+@router.post(
+    "/{conversation_id}/turns",
+    response_model=ConversationSubmission,
+    responses={202: {"model": ConversationSubmission}, 503: {"model": ConversationSubmission}},
+)
+async def submit_conversation_turn(
+    conversation_id: UUID,
+    body: ConversationSubmit,
+    response: Response,
+    principal: ApplicationPrincipal = Depends(require_conversation_mutation),
+    service: ConversationChatService = Depends(get_conversation_chat_service),
+) -> ConversationSubmission:
+    result, status = await service.submit(principal, conversation_id, body)
+    response.status_code = status
+    if status == 202:
+        response.headers["Location"] = (
+            f"{service.settings.api_prefix}/conversations/{conversation_id}/turns/{result.turn.id}"
+        )
+    return result
+
+
+@router.get("/{conversation_id}/turns/{turn_id}", response_model=ConversationTurnStatus)
+async def conversation_turn_status(
+    conversation_id: UUID,
+    turn_id: UUID,
+    principal: ApplicationPrincipal = Depends(require_application_principal),
+    service: ConversationChatService = Depends(get_conversation_chat_service),
+) -> ConversationTurnStatus:
+    return await service.status(principal, conversation_id, turn_id)
+
+
+@router.post("/{conversation_id}/turns/{turn_id}/interrupt", response_model=ConversationTurnStatus)
+async def interrupt_expired_conversation_turn(
+    conversation_id: UUID,
+    turn_id: UUID,
+    body: ConversationInterrupt,
+    principal: ApplicationPrincipal = Depends(require_conversation_mutation),
+    service: ConversationChatService = Depends(get_conversation_chat_service),
+) -> ConversationTurnStatus:
+    return await service.interrupt_expired(principal, conversation_id, turn_id)

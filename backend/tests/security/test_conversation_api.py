@@ -481,7 +481,7 @@ async def test_demo_routes_closed_and_existing_routes_preserved(api):
         "/api/v1/chat",
     ):
         assert path in paths
-    assert not any("turns" in path for path in paths)
+    assert "/api/v1/conversations/{conversation_id}/turns" in paths
     assert not api.app.state.indexing_admission_ready and api.app.state.indexing_supervisor is None
     assert (await api.client.get("/api/v1/files", headers=api.headers[USER_A])).status_code == 200
     assert (
@@ -501,6 +501,15 @@ async def test_demo_routes_closed_and_existing_routes_preserved(api):
         response = await request(
             api, method, uuid4() if detail else None, body=payload(method), headers={}
         )
+        assert response.status_code == 403
+        private(response)
+    cid, tid = uuid4(), uuid4()
+    for method, path, value in (
+        ("POST", f"{BASE}/{cid}/turns", {}),
+        ("GET", f"{BASE}/{cid}/turns/{tid}", None),
+        ("POST", f"{BASE}/{cid}/turns/{tid}/interrupt", {}),
+    ):
+        response = await api.client.request(method, path, json=value)
         assert response.status_code == 403
         private(response)
     async with api.world.sessions() as db:

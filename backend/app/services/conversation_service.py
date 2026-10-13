@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ApplicationSessionKind
 from app.db.models.application_session import ApplicationSession
-from app.db.models.conversation_turn import TurnOperation, TurnStatus
+from app.db.models.conversation_turn import ConversationTurn, TurnOperation, TurnStatus
+from app.db.models.query_history import QueryHistory
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationRead,
@@ -142,36 +143,7 @@ class ConversationService:
             rows = await self.repository.turns_with_results(
                 principal.corpus_user_id, cid, limit=limit, before_sequence=before_sequence
             )
-            turns = []
-            for turn, history in rows:
-                complete = turn.status == TurnStatus.COMPLETED
-                if complete != (history is not None):
-                    raise ValueError("Stored conversation result is inconsistent")
-                turns.append(
-                    ConversationTurnRead(
-                        id=turn.id,
-                        client_request_id=turn.client_request_id,
-                        sequence=turn.sequence,
-                        question=turn.original_question,
-                        operation=TurnOperation(turn.operation),
-                        source_turn_id=turn.source_turn_id,
-                        status=TurnStatus(turn.status),
-                        created_at=turn.created_at,
-                        updated_at=turn.updated_at,
-                        finished_at=turn.finished_at,
-                        error_code="TURN_FAILED"
-                        if turn.status == TurnStatus.FAILED
-                        else "TURN_INTERRUPTED"
-                        if turn.status == TurnStatus.INTERRUPTED
-                        else None,
-                        query_id=history.id if history else None,
-                        answer=history.answer if history else None,
-                        citations=[SavedCitation.model_validate(c) for c in history.citations_json]
-                        if history
-                        else [],
-                        retrieval_count=turn.retrieval_count,
-                    )
-                )
+            turns = [serialize_turn(turn, history) for turn, history in rows]
             result = ConversationDetail(
                 conversation=metadata,
                 turns=turns,
@@ -200,3 +172,31 @@ class ConversationService:
     async def delete(self, principal: ApplicationPrincipal, cid: UUID, version: int) -> None:
         async with self.transaction(principal, write=True):
             await self.repository.delete(principal.corpus_user_id, cid, expected_version=version)
+
+
+def serialize_turn(turn: ConversationTurn, history: QueryHistory | None) -> ConversationTurnRead:
+    if (turn.status == TurnStatus.COMPLETED) != (history is not None):
+        raise ValueError("Stored conversation result is inconsistent")
+    return ConversationTurnRead(
+        id=turn.id,
+        client_request_id=turn.client_request_id,
+        sequence=turn.sequence,
+        question=turn.original_question,
+        operation=TurnOperation(turn.operation),
+        source_turn_id=turn.source_turn_id,
+        status=TurnStatus(turn.status),
+        created_at=turn.created_at,
+        updated_at=turn.updated_at,
+        finished_at=turn.finished_at,
+        error_code="TURN_FAILED"
+        if turn.status == TurnStatus.FAILED
+        else "TURN_INTERRUPTED"
+        if turn.status == TurnStatus.INTERRUPTED
+        else None,
+        query_id=history.id if history else None,
+        answer=history.answer if history else None,
+        citations=[SavedCitation.model_validate(c) for c in history.citations_json]
+        if history
+        else [],
+        retrieval_count=turn.retrieval_count,
+    )

@@ -1,4 +1,4 @@
-"""Bounded private conversation metadata/read contracts; no chat submission."""
+"""Bounded private conversation metadata, submission and durable status contracts."""
 
 from datetime import datetime
 from uuid import UUID
@@ -82,3 +82,31 @@ class ConversationDetail(SchemaBase):
     conversation: ConversationRead
     turns: list[ConversationTurnRead] = Field(max_length=100)
     next_before_sequence: int | None = None
+
+
+class ConversationSubmit(SchemaBase):
+    model_config = ConfigDict(extra="forbid")
+    client_request_id: UUID
+    question: str = Field(min_length=1, max_length=4000)
+    expected_content_version: int = Field(strict=True, ge=0, le=9223372036854775807)
+
+    @field_validator("question")
+    @classmethod
+    def valid_question(cls, value: str) -> str:
+        question = value.strip()
+        if not question:
+            raise ValueError("Question must not be blank")
+        return question
+
+
+class ConversationTurnStatus(ConversationTurnRead):
+    execution_expired: bool = False
+
+
+class ConversationSubmission(SchemaBase):
+    turn: ConversationTurnStatus
+    replayed: bool
+
+
+class ConversationInterrupt(SchemaBase):
+    model_config = ConfigDict(extra="forbid")

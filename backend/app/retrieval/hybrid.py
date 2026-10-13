@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from time import perf_counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +13,7 @@ from app.retrieval.keyword import KeywordRetriever
 from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.metadata import MetadataRetriever
 from app.retrieval.rerank import weighted_fusion_rerank
+from app.retrieval.owned import gather_owned
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.scope import require_request
 from app.routing.intent_frame.execution import RetrievalRequest
@@ -60,7 +60,7 @@ class HybridRetriever:
             )
 
         if trace is None:
-            vector_chunks, keyword_chunks, metadata_chunks = await asyncio.gather(
+            vector_chunks, keyword_chunks, metadata_chunks = await gather_owned(
                 self.vector_retriever.retrieve(retrieval_input),
                 self.keyword_retriever.retrieve(retrieval_input),
                 self.metadata_retriever.retrieve(retrieval_input),
@@ -86,7 +86,7 @@ class HybridRetriever:
                 return chunks, elapsed_ms(started_at)
 
             try:
-                vector_result, keyword_result, metadata_result = await asyncio.gather(
+                vector_result, keyword_result, metadata_result = await gather_owned(
                     timed_retrieve("vector", self.vector_retriever),
                     timed_retrieve("keyword", self.keyword_retriever),
                     timed_retrieve("metadata", self.metadata_retriever),

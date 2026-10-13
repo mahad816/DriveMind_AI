@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from time import perf_counter
@@ -25,6 +24,7 @@ from app.routing.intent_frame.execution import RetrievalRequest
 from app.retrieval.grade import grade_evidence as grade_retrieval_evidence
 from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.rerank import weighted_fusion_rerank
+from app.retrieval.owned import gather_owned
 from app.retrieval.types import RetrievedChunk, RetrievalSource
 from app.schemas.query import CitationItem
 
@@ -155,7 +155,7 @@ def make_retrieve_node(
             source_order.append(name)
 
         try:
-            results = await asyncio.gather(*tasks)
+            results = await gather_owned(*tasks)
         except Exception:
             if trace is not None:
                 trace.finish_attempt(attempt_number)
