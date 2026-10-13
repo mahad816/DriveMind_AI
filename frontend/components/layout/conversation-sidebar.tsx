@@ -27,16 +27,14 @@ type ConversationSidebarProps = {
 export function ConversationSidebar({ className, onNavigate, collapsible = false }: ConversationSidebarProps) {
   const router = useRouter();
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
-  const { groups, isLoading, startNewConversation, renameConversation, removeConversation } =
+  const { storageError, groups, isLoading, startNewConversation, renameConversation, removeConversation } =
     useConversations();
   const [chatQuery, setChatQuery] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const compact = collapsible && collapsed;
 
   const handleNewChat = () => {
-    const created = startNewConversation();
-    onNavigate?.();
-    router.push(`/chat/${created.id}`);
+    try { const created = startNewConversation(); onNavigate?.(); router.push(`/chat/${created.id}`); } catch { return; }
   };
 
   const filteredGroups = useMemo(() => {
@@ -112,6 +110,7 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
 
       {!compact ? <Separator /> : null}
 
+      {storageError ? <p role="alert" className="p-3 text-sm">{storageError}</p> : null}
       {/* Chat history */}
       {!compact ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="space-y-2 px-3 pt-3 pb-2">

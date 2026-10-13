@@ -1,3 +1,4 @@
+import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +27,7 @@ vi.mock("@/components/chat/empty-state-hero", () => ({
 vi.mock("@/components/chat/source-panel", () => ({ SourcePanel: () => null }));
 
 beforeEach(() => {
+    invalidateSessionRequests(); setSessionOwner("00000000-0000-0000-0000-000000000065");
   const store: Record<string, string> = {};
   Object.defineProperty(window, "localStorage", {
     configurable: true,

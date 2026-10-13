@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { captureConversationScope, ConversationStorageError } from "@/lib/conversations/scope";
 import { CONVERSATIONS_CHANGED_EVENT } from "@/lib/conversations/events";
 import {
   deleteConversation,
@@ -15,6 +16,7 @@ import {
 import type { ConversationGroup, ConversationRecord } from "@/lib/conversations/types";
 
 type UseConversationsResult = {
+  storageError: string | null;
   conversations: ConversationRecord[];
   groups: ConversationGroup[];
   isLoading: boolean;
@@ -26,60 +28,62 @@ type UseConversationsResult = {
 };
 
 export function useConversations(): UseConversationsResult {
+  const [scope] = useState(captureConversationScope);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(() => {
-    setConversations(listConversations());
+    setConversations(listConversations(scope));
     setIsLoading(false);
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
-    pruneEmptyDraftConversationsOnce();
+    try { pruneEmptyDraftConversationsOnce(scope); } catch { /* Preserve existing records if storage is unavailable. */ }
     refresh();
-  }, [refresh]);
+  }, [refresh, scope]);
 
   useEffect(() => {
     const onChanged = () => refresh();
     window.addEventListener(CONVERSATIONS_CHANGED_EVENT, onChanged);
-    return () => window.removeEventListener(CONVERSATIONS_CHANGED_EVENT, onChanged);
-  }, [refresh]);
+    window.addEventListener("storage", onChanged);
+    return () => { window.removeEventListener(CONVERSATIONS_CHANGED_EVENT, onChanged); window.removeEventListener("storage", onChanged); };
+  }, [refresh, scope]);
 
   const groups = useMemo(() => groupConversationsByDate(conversations), [conversations]);
 
   const startNewConversation = useCallback(() => {
     // Reuse an existing empty "New chat" so repeated clicks don't stack drafts.
-    const created = getOrCreateDraftConversation();
-    refresh();
-    return created;
-  }, [refresh]);
+    try { const created = getOrCreateDraftConversation(scope); refresh(); return created; }
+    catch { setStorageError(new ConversationStorageError().message); throw new ConversationStorageError(); }
+  }, [refresh, scope]);
 
   const renameConversation = useCallback(
     (id: string, title: string) => {
-      const updated = updateConversationTitle(id, title);
-      refresh();
-      return updated;
+      try { const updated = updateConversationTitle(id, title, scope); refresh(); return updated; }
+      catch { setStorageError(new ConversationStorageError().message); return null; }
     },
-    [refresh],
+    [refresh, scope],
   );
 
   const removeConversation = useCallback(
     (id: string) => {
-      deleteConversation(id);
+      try { deleteConversation(id, scope); } catch { setStorageError(new ConversationStorageError().message); }
       refresh();
     },
-    [refresh],
+    [refresh, scope],
   );
 
   const bumpConversation = useCallback(
     (id: string) => {
-      touchConversation(id);
+      try { touchConversation(id, scope); } catch { setStorageError(new ConversationStorageError().message); }
       refresh();
     },
-    [refresh],
+    [refresh, scope],
   );
 
   return {
+    storageError,
     conversations,
     groups,
     isLoading,

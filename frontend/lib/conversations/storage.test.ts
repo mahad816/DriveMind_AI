@@ -1,3 +1,4 @@
+import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
 import { saveConversationMessages } from "@/lib/conversations/messages";
@@ -13,6 +14,7 @@ import {
 
 describe("conversation storage", () => {
   beforeEach(() => {
+    invalidateSessionRequests(); setSessionOwner("00000000-0000-0000-0000-000000000065");
     const store: Record<string, string> = {};
     const localStorage = {
       getItem(key: string) {

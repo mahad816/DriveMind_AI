@@ -1,3 +1,4 @@
+import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 
 import {
@@ -49,6 +50,7 @@ function storedMessage(
 
 describe("conversation messages storage", () => {
   beforeEach(() => {
+    invalidateSessionRequests(); setSessionOwner("00000000-0000-0000-0000-000000000065");
     const store: Record<string, string> = {};
     const localStorage = {
       getItem(key: string) {
@@ -106,6 +108,7 @@ describe("conversation messages storage", () => {
 
 describe("EXP-03 bounded current-conversation request", () => {
   beforeEach(() => {
+    invalidateSessionRequests(); setSessionOwner("00000000-0000-0000-0000-000000000065");
     const store: Record<string, string> = {};
     vi.stubGlobal("window", {
       localStorage: {
@@ -172,7 +175,7 @@ describe("EXP-03 bounded current-conversation request", () => {
 
   it("ignores loading placeholders that are not completed conversation turns", async () => {
     window.localStorage.setItem(
-      "drivemind:conversation-messages:chat-pending",
+      "drivemind:v1:normal:00000000-0000-0000-0000-000000000065:conversation-messages:chat-pending",
       JSON.stringify([
         storedMessage("m1", "Find the museum hours", "Open until 18:00."),
         { id: "m2", question: "A pending question", status: "loading" },

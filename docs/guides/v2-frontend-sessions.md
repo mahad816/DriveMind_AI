@@ -23,16 +23,44 @@ Polling and preparation stop at known session changes rather than continuing
 under the next account. A 404/503 session endpoint fails closed without legacy
 OAuth fallback. Authentication requests have a 15-second transport deadline.
 
-## Temporary history boundary
+## Owner-scoped history (4F2)
 
-Normal AppShell routes use a memory-only chat and navigation without the legacy
-conversation list. Even `/chat/<old-id>` does not mount the saved-history client.
-Requests contain the question, not legacy conversation IDs or stored history.
-Messages and citations disappear on logout, expiry or account remount. Existing
-localStorage records are neither read/adopted nor deleted. Normal saved-history,
-history follow-ups and durable conversation reopening await 4F2 ownership and
-migration policy. Anonymous demo keeps its existing isolated history path and
-never bootstraps a normal application session.
+Normal chat now uses the existing conversation sidebar, metadata/message helpers
+and `/chat/<id>` pages. Verified session UUIDs select versioned browser-local
+keys: `drivemind:v1:normal:<user_uuid>:conversations` and
+`drivemind:v1:normal:<user_uuid>:conversation-messages:<conversation_id>`.
+Anonymous demo retains `drivemind:demo:...`. Legacy unowned normal keys remain
+intact, quarantined, and are never read, imported or assigned to a new account.
+
+Each mounted account and async request captures owner, session generation and
+an invalidation notice stamp. Reads and writes reject stale scopes; generation
+changes remount private UI and request cancellation. Even cancellation-resistant
+responses cannot settle another account's turns. Normal chat inspects the
+server session again before supplying saved history and checks response ownership.
+The existing bounded history window and citation identities are preserved.
+
+Cross-tab storage notices and BroadcastChannel carry only random invalidation
+nonces, not identity or credentials. Receivers immediately hide private UI and
+inspect the server before choosing any owner. Logout signals both before its
+network request and after revocation completes. Focus/visibility checks also
+hide state during verification. Channels, listeners and request registrations
+are cleaned up by their owners; received expiry notices do not echo indefinitely.
+
+The key prefix defines schema version 1; records retain existing IDs and shapes.
+Reads validate metadata, message and citation shapes. Each JSON value is bounded
+to 2,000,000 UTF-16 code units; oversized/quota/disabled writes fail with safe UI
+feedback before submitting a new chat request. Draft text and selected citations
+remain in memory, and are discarded on account/generation changes. Stored pending
+turns become retryable interrupted turns after a new account runtime loads.
+
+This is browser-local persistence, not a server history API or authorization
+boundary. Other browsers/devices are not synchronized. Same-owner simultaneous
+editing uses localStorage's existing last-writer semantics, not transactional
+merge. Cross-tab notification depends on browser storage events/BroadcastChannel;
+focus, periodic checks and fresh pre-send inspection provide further fencing.
+It cannot atomically bind browser-supplied history to a server cookie change that
+occurs between inspection and dispatch; backend identity remains authoritative.
+No cookies, tokens or OAuth state are stored by this feature.
 
 ## Configuration and remaining work
 
@@ -57,8 +85,6 @@ origin and set the existing `GOOGLE_SESSION_REDIRECT_URI` accordingly. The legac
 uses the session redirect URI. No provider registration or runtime flag is
 changed by this retirement.
 
-4F2 must establish owner-scoped
-conversation storage before restoring normal saved-history access. Subsequent
-integration work covers durable preparation resumption and separating local-index
+Subsequent integration work covers durable preparation resumption and separating local-index
 readiness from Drive connectivity. This phase does not enable session-login or
 indexing deployment configuration, start workers, or authorize production cutover.

@@ -1,3 +1,5 @@
+vi.mock("@/lib/api/auth", () => ({ inspectApplicationSession: vi.fn(async () => ({ user_id: "00000000-0000-0000-0000-000000000065" })) }));
+import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -101,7 +103,7 @@ function deferred<T>() {
 function answer(text: string): ChatResponse {
   return {
     query_id: "result-id",
-    user_id: "user-id",
+    user_id: "00000000-0000-0000-0000-000000000065",
     answer: text,
     citations: [],
     retrieval_count: 0,
@@ -118,6 +120,7 @@ function send(question: string) {
 
 describe("in-flight conversation ownership", () => {
   beforeEach(() => {
+    invalidateSessionRequests(); setSessionOwner("00000000-0000-0000-0000-000000000065");
     const store: Record<string, string> = {};
     Object.defineProperty(window, "localStorage", {
       configurable: true,

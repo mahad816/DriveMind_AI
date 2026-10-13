@@ -22,12 +22,16 @@ import {
   buildChatRequestForConversation,
   getConversationMessages,
   recoverInterruptedConversationMessages,
+  releasePendingConversationMessage,
   type StoredChatMessage,
   updateConversationMessageById,
 } from "@/lib/conversations/messages";
 import { getConversation, isDefaultConversationTitle } from "@/lib/conversations/storage";
 import { conversationTitleFromQuestion } from "@/lib/conversations/title";
 import { chatErrorMessage } from "@/lib/api/errors";
+import { captureConversationScope, conversationScopeIsLive, ConversationStorageError } from "@/lib/conversations/scope";
+import { inspectApplicationSession } from "@/lib/api/auth";
+import { notifySessionInvalid, SESSION_REQUESTS_INVALIDATED_EVENT } from "@/lib/api/session-events";
 import { askQuestion } from "@/lib/api/chat";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
@@ -96,6 +100,8 @@ type ChatInterfaceProps = {
 
 export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const router = useRouter();
+  const [scope] = useState(captureConversationScope);
+  const [storageError, setStorageError] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const { data: connection, isLoading: connectionLoading, error: connectionError, refetch } = useConnectionStatus({
     pollIntervalMs: 30_000,
@@ -128,29 +134,32 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   useEffect(() => {
     if (!conversationId) return;
 
-    const record = getConversation(conversationId);
+    const record = getConversation(conversationId, scope);
     if (!record) {
       router.replace("/chat");
       return;
     }
 
-    const stored = recoverInterruptedConversationMessages(conversationId);
+    let stored: StoredChatMessage[];
+    try { stored = recoverInterruptedConversationMessages(conversationId, scope); }
+    catch { stored = getConversationMessages(conversationId, scope); setStorageError(new ConversationStorageError().message); }
     setMessages(stored.map(fromStoredMessage));
     titledRef.current = !isDefaultConversationTitle(record.title) || stored.length > 0;
     setLoadedConversationId(conversationId);
     askHandledRef.current = false;
-  }, [conversationId, router]);
+  }, [conversationId, router, scope]);
 
   useEffect(() => {
     if (!conversationId || !messagesLoaded) return;
     const onMessagesChanged = (event: Event) => {
       if ((event as CustomEvent<string>).detail !== conversationId) return;
-      setMessages(getConversationMessages(conversationId).map(fromStoredMessage));
+      setMessages(getConversationMessages(conversationId, scope).map(fromStoredMessage));
     };
+    const storageChanged = () => { if (conversationScopeIsLive(scope)) setMessages(getConversationMessages(conversationId, scope).map(fromStoredMessage)); };
+    window.addEventListener("storage", storageChanged);
     window.addEventListener(CONVERSATION_MESSAGES_CHANGED_EVENT, onMessagesChanged);
-    return () =>
-      window.removeEventListener(CONVERSATION_MESSAGES_CHANGED_EVENT, onMessagesChanged);
-  }, [conversationId, messagesLoaded]);
+    return () => { window.removeEventListener("storage", storageChanged); window.removeEventListener(CONVERSATION_MESSAGES_CHANGED_EVENT, onMessagesChanged); };
+  }, [conversationId, messagesLoaded, scope]);
 
   useEffect(() => {
     const scrollRegion = conversationScrollRef.current;
@@ -170,19 +179,24 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const submitQuestion = useCallback(
     async (normalized: string, options?: { messageId?: string; replace?: boolean }) => {
+      if (!conversationScopeIsLive(scope)) return;
       if (!canAsk || needsPrepare || isSending || normalized.length === 0) return;
       if (DEMO_MODE && questionCharacters(normalized) > DEMO_QUESTION_LIMIT) return;
 
       // Empty /chat canvas: create one history entry, then continue on that route.
       if (!conversationId) {
-        const created = startNewConversation();
-        renameConversation(created.id, conversationTitleFromQuestion(normalized));
-        router.replace(`/chat/${created.id}?ask=${encodeURIComponent(normalized)}`);
+        try {
+          const created = startNewConversation();
+          renameConversation(created.id, conversationTitleFromQuestion(normalized));
+          router.replace(`/chat/${created.id}?ask=${encodeURIComponent(normalized)}`);
+        } catch { setStorageError(new ConversationStorageError().message); }
         return;
       }
       if (!messagesLoaded) return;
-      if (!getConversation(conversationId)) return;
-      if (getConversationMessages(conversationId).some((message) => message.status === "pending")) {
+      if (!getConversation(conversationId, scope)) return;
+      if (getConversationMessages(conversationId, scope).some(message =>
+        message.status === "pending" && !(options?.replace && options.messageId === message.id &&
+          messages.some(turn => turn.id === message.id && turn.status === "error")))) {
         return;
       }
 
@@ -192,6 +206,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         conversationId,
         normalized,
         replace ? { beforeMessageId: id } : undefined,
+        scope,
       );
       const pending: StoredChatMessage = {
         id,
@@ -202,10 +217,14 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         retrievalCount: 0,
         error: null,
       };
-      const stored = replace
-        ? updateConversationMessageById(conversationId, id, () => pending)
-        : appendConversationMessage(conversationId, pending);
+      let stored: boolean;
+      try {
+        stored = replace
+          ? updateConversationMessageById(conversationId, id, () => pending, scope)
+          : appendConversationMessage(conversationId, pending, scope);
+      } catch { setStorageError(new ConversationStorageError().message); return; }
       if (!stored) return;
+      setStorageError(null);
 
       if (!titledRef.current && !replace) {
         renameConversation(conversationId, conversationTitleFromQuestion(normalized));
@@ -215,8 +234,19 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       if (!replace) {
         setQuestion("");
       }
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      window.addEventListener(SESSION_REQUESTS_INVALIDATED_EVENT, abort);
       try {
-        const response = await askQuestion(request);
+        // Persisted history must not be sent using a different browser cookie owner.
+        if (!DEMO_MODE) {
+          const verified = await inspectApplicationSession();
+          if (!conversationScopeIsLive(scope)) return;
+          if (verified.user_id !== scope.owner) { notifySessionInvalid(); return; }
+        }
+        const response = await askQuestion(request, controller.signal);
+        if (!conversationScopeIsLive(scope)) return;
+        if (!DEMO_MODE && response.user_id !== scope.owner) { notifySessionInvalid(); return; }
         const settled = updateConversationMessageById(conversationId, id, (current) => ({
           ...current,
           status: "done",
@@ -224,28 +254,41 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
           citations: response.citations,
           retrievalCount: response.retrieval_count,
           error: null,
-        }));
+        }), scope);
         if (settled) {
           bumpConversation(conversationId);
         }
       } catch (err) {
+        if (!conversationScopeIsLive(scope)) return;
         const message = chatErrorMessage(err);
-        updateConversationMessageById(conversationId, id, (current) => ({
+        try { updateConversationMessageById(conversationId, id, (current) => ({
           ...current,
           status: "error",
           answer: null,
           citations: [],
           retrievalCount: 0,
           error: message,
-        }));
+        }), scope); } catch {
+          const failure = new ConversationStorageError().message;
+          setStorageError(failure);
+          // A failed browser write must not leave the mounted composer loading forever.
+          setMessages(previous => previous.map(turn => turn.id === id
+            ? { id, question: normalized, status: "error", error: failure, response: null }
+            : turn));
+        }
+      } finally {
+        window.removeEventListener(SESSION_REQUESTS_INVALIDATED_EVENT, abort);
+        releasePendingConversationMessage(conversationId, id, scope);
       }
     },
     [
+      scope,
       bumpConversation,
       conversationId,
       canAsk,
       isSending,
       messagesLoaded,
+      messages,
       needsPrepare,
       renameConversation,
       router,
@@ -286,8 +329,10 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
     // Deep-link from Files / sources: create one chat and auto-send there.
     if (!conversationId) {
-      const created = startNewConversation();
-      router.replace(`/chat/${created.id}?ask=${encodeURIComponent(ask)}`);
+      try {
+        const created = startNewConversation();
+        router.replace(`/chat/${created.id}?ask=${encodeURIComponent(ask)}`);
+      } catch { setStorageError(new ConversationStorageError().message); }
       return;
     }
 
@@ -318,8 +363,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   ]);
 
   const handleNewChat = useCallback(() => {
-    const created = startNewConversation();
-    router.push(`/chat/${created.id}`);
+    try { const created = startNewConversation(); router.push(`/chat/${created.id}`); }
+    catch { setStorageError(new ConversationStorageError().message); }
   }, [router, startNewConversation]);
 
   useChatShortcuts({
@@ -345,6 +390,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {storageError ? <p role="alert" className="p-4">{storageError}</p> : null}
       <ChatHeader
         title={
           conversationId

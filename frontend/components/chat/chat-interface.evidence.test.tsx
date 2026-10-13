@@ -1,3 +1,5 @@
+vi.mock("@/lib/api/auth", () => ({ inspectApplicationSession: vi.fn(async () => ({ user_id: "00000000-0000-0000-0000-000000000065" })) }));
+import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,6 +96,7 @@ function openConversation(messages: StoredChatMessage[]) {
 }
 
 beforeEach(() => {
+    invalidateSessionRequests(); setSessionOwner("00000000-0000-0000-0000-000000000065");
   Element.prototype.scrollIntoView = vi.fn();
   const store: Record<string, string> = {};
   Object.defineProperty(window, "localStorage", {

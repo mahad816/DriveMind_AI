@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react";
 import { inspectApplicationSession, logoutApplicationSession, startGoogleSession } from "@/lib/api/auth";
 import { ApiError } from "@/lib/api/errors";
-import { invalidateSessionRequests, setSessionOwner, sessionRevision, SESSION_INVALID_EVENT } from "@/lib/api/session-events";
+import { invalidateSessionRequests, setSessionOwner, sessionRevision, SESSION_INVALID_EVENT, broadcastSessionTransition, SESSION_TRANSITION_KEY, SESSION_BROADCAST_EVENT } from "@/lib/api/session-events";
 import { DEMO_MODE } from "@/lib/demo";
 import { Button } from "@/components/ui/button";
 type State = {
@@ -30,8 +30,10 @@ function NormalSessionProvider({ children }: {
   const [state, setState] = useState<State>({ status: "checking", userId: null, error: null });
   const currentOwner = useRef<string | null>(null);
   const sequence = useRef(0);
+  const announcedOwner = useRef<string | null>(null);
   const logoutPending = useRef(false);
   const loginPending = useRef(false);
+  const reverifyPending = useRef(false);
   const clear = useCallback((status: State["status"], error: string | null = null) => {
     sequence.current += 1;
     currentOwner.current = null;
@@ -51,6 +53,10 @@ function NormalSessionProvider({ children }: {
         invalidateSessionRequests();
       currentOwner.current = session.user_id;
       setSessionOwner(session.user_id);
+      if (announcedOwner.current !== session.user_id) {
+        announcedOwner.current = session.user_id;
+        broadcastSessionTransition();
+      }
       setState({ status: "ready", userId: session.user_id, error: null });
       return true;
     }
@@ -62,17 +68,42 @@ function NormalSessionProvider({ children }: {
     }
   }, [clear]);
   useEffect(() => {
-    const invalid = () => clear("signed_out");
+    const invalid = () => { const hadOwner = currentOwner.current !== null; clear("signed_out"); if (hadOwner) broadcastSessionTransition(); };
     const verify = () => { void refresh(); };
+    const focus = () => { if (logoutPending.current || loginPending.current) return; clear("checking"); void refresh(); };
+    let channel: BroadcastChannel | null = null;
+    try { if (typeof BroadcastChannel !== "undefined") channel = new BroadcastChannel("drivemind:application-session:v1"); } catch { /* Storage events and focus verification remain available. */ }
+    let seen: string | null = null;
+    const receive = (nonce: unknown) => {
+      if (typeof nonce !== "string" || nonce === seen) return;
+      seen = nonce;
+      reverifyPending.current = logoutPending.current || loginPending.current;
+      clear("checking");
+      void refresh();
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.key === SESSION_TRANSITION_KEY) receive(event.newValue);
+    };
+    const broadcast = (event: Event) => channel?.postMessage((event as CustomEvent<string>).detail);
+    if (channel) channel.onmessage = event => receive(event.data);
+    window.addEventListener(SESSION_BROADCAST_EVENT, broadcast);
+    window.addEventListener("storage", storage);
     window.addEventListener(SESSION_INVALID_EVENT, invalid);
-    window.addEventListener("focus", verify);
+    window.addEventListener("focus", focus);
+    document.addEventListener("visibilitychange", focus);
     const timer = setInterval(verify, 30000);
     void refresh();
-    return () => { sequence.current += 1; setSessionOwner(null); invalidateSessionRequests(); clearInterval(timer); window.removeEventListener(SESSION_INVALID_EVENT, invalid); window.removeEventListener("focus", verify); };
+    return () => {
+      sequence.current += 1; setSessionOwner(null); invalidateSessionRequests(); clearInterval(timer);
+      window.removeEventListener(SESSION_INVALID_EVENT, invalid); window.removeEventListener("focus", focus);
+      window.removeEventListener("storage", storage); window.removeEventListener(SESSION_BROADCAST_EVENT, broadcast);
+      document.removeEventListener("visibilitychange", focus); channel?.close();
+    };
   }, [clear, refresh]);
   const login = async () => {
     loginPending.current = true;
     clear("checking");
+    broadcastSessionTransition();
     const revision = sessionRevision();
     try {
       const url = await startGoogleSession("LOGIN");
@@ -85,6 +116,7 @@ function NormalSessionProvider({ children }: {
       clear("signed_out", "Google sign-in could not be started. Please try again.");
     } finally {
       loginPending.current = false;
+      if (reverifyPending.current) { reverifyPending.current = false; void refresh(); }
     }
   };
   const connectDrive = async () => {
@@ -112,6 +144,7 @@ function NormalSessionProvider({ children }: {
     const owner = currentOwner.current;
     logoutPending.current = true;
     clear("checking"); // Unmount private state before any network wait.
+    broadcastSessionTransition();
     try {
       if (owner)
         await logoutApplicationSession(owner);
@@ -125,12 +158,14 @@ function NormalSessionProvider({ children }: {
     }
     finally {
       logoutPending.current = false;
+      broadcastSessionTransition();
+      if (reverifyPending.current) { reverifyPending.current = false; void refresh(); }
     }
   };
   return (
     <Context.Provider value={{ ...state, refresh, login, connectDrive, logout }}>
       {state.status === "ready" ? (
-        <div key={state.userId} className="contents">{children}</div>
+        <div key={`${state.userId}:${sessionRevision()}`} className="contents">{children}</div>
       ) : (
         <section className="mx-auto max-w-lg space-y-4 p-8" aria-label="Application sign-in">
           <h1>{state.status === "checking" ? "Checking application session…" : "Sign in to DriveMind"}</h1>
