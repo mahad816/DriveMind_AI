@@ -47,6 +47,11 @@ claiming real database validation. Do not use an existing real/demo datastore.
 
 ## Step 2A: inactive Google session login
 
+Historical checkpoint below: as of 4F1B, `/auth/google` and its callback are
+unmounted and return 404 in every mode. Existing grants and shared provider
+helpers remain intact. Browser login uses only the application-session flow;
+see `docs/guides/v2-frontend-sessions.md` for callback migration prerequisites.
+
 `GOOGLE_APPLICATION_SESSIONS_ENABLED=false` is the default. Existing
 `/auth/google` and its Drive callback retain their single-user behavior and do
 not issue application sessions. Existing chat/files/index/sources routes still

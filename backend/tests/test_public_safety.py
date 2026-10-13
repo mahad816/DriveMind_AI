@@ -171,7 +171,7 @@ async def test_intentional_http_errors_unchanged(demo: tuple[AsyncClient, MagicM
     response = await client.post("/api/v1/chat", json={"question": "hello"})
     assert response.status_code == 404
     assert response.json()["detail"] == "Requested item not found"
-    assert (await client.get("/api/v1/auth/google")).status_code == 403
+    assert (await client.get("/api/v1/auth/google")).status_code == 404
 
 
 @pytest.mark.asyncio

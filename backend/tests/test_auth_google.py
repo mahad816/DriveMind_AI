@@ -1,157 +1,68 @@
-"""Tests for Google OAuth routes and service (Phase 3 Milestone 2)."""
+"""Retired browser OAuth routes and retained shared provider helpers."""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from google.oauth2.credentials import Credentials
 
-from app.api.auth import get_oauth_service
-from app.main import app
+from app.core.config import Settings, get_settings
+from app.db.session import get_db
+from app.main import create_app
 from app.services.google_oauth_service import GoogleOAuthService, OAuthCallbackResult
 from app.db.models.oauth_pending_state import OAuthPendingState
 
 
 @pytest.mark.asyncio
-async def test_google_login_redirects_to_authorization_url(async_client: AsyncClient) -> None:
-    """Login endpoint should redirect to Google authorization URL."""
-    fake_service = MagicMock()
-    fake_service.create_authorization_url = AsyncMock(
-        return_value="https://accounts.google.com/o/oauth2/auth?client_id=test"
-    )
-    app.dependency_overrides[get_oauth_service] = lambda: fake_service
-
-    response = await async_client.get("/api/v1/auth/google", follow_redirects=False)
-
-    app.dependency_overrides.clear()
-    assert response.status_code == 307
-    assert response.headers["location"].startswith("https://accounts.google.com/o/oauth2/auth")
-
-
-@pytest.mark.asyncio
-async def test_google_login_returns_503_when_oauth_not_configured(
-    async_client: AsyncClient,
+@pytest.mark.parametrize("demo", [False, True])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/auth/google",
+        "/auth/google/",
+        "/auth/google/callback",
+        "/auth/google/callback?code=synthetic-code&state=synthetic-state",
+    ],
+)
+async def test_legacy_oauth_routes_unreachable(
+    demo: bool, path: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Login endpoint should fail clearly when Google credentials are missing."""
-    fake_service = MagicMock()
-    fake_service.create_authorization_url.side_effect = ValueError(
-        "Google OAuth credentials are not configured"
-    )
-    app.dependency_overrides[get_oauth_service] = lambda: fake_service
-
-    response = await async_client.get("/api/v1/auth/google", follow_redirects=False)
-
-    app.dependency_overrides.clear()
-    assert response.status_code == 503
-    assert (
-        response.json()["detail"]
-        == "The service is temporarily unavailable. Please try again later."
-    )
-
-
-@pytest.mark.asyncio
-async def test_google_callback_requires_code(async_client: AsyncClient) -> None:
-    """Callback endpoint should reject missing authorization code for JSON clients."""
-    response = await async_client.get(
-        "/api/v1/auth/google/callback",
-        headers={"Accept": "application/json"},
-    )
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Missing OAuth authorization code"
-
-
-@pytest.mark.asyncio
-async def test_google_callback_success_returns_user_payload(async_client: AsyncClient) -> None:
-    """Callback endpoint should return success payload when service succeeds."""
-    user_id = uuid.uuid4()
-    fake_service = MagicMock()
-    fake_service.handle_callback = AsyncMock(
+    application = create_app()
+    application.dependency_overrides[get_settings] = lambda: Settings(demo_mode=demo)
+    database = MagicMock(return_value=MagicMock())
+    application.dependency_overrides[get_db] = lambda: database()
+    start = AsyncMock(return_value="https://accounts.google.com/synthetic")
+    callback = AsyncMock(
         return_value=OAuthCallbackResult(
-            user_id=user_id,
-            email="user@example.com",
-            google_id="google-123",
+            user_id=uuid.UUID(int=101), email="synthetic@example.invalid", google_id="synthetic"
         )
     )
-    app.dependency_overrides[get_oauth_service] = lambda: fake_service
-
-    response = await async_client.get(
-        "/api/v1/auth/google/callback",
-        params={"code": "abc", "state": "state-1"},
-        headers={"Accept": "application/json"},
-    )
-
-    app.dependency_overrides.clear()
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "ok"
-    assert body["email"] == "user@example.com"
-    assert body["user_id"] == str(user_id)
+    monkeypatch.setattr(GoogleOAuthService, "create_authorization_url", start)
+    monkeypatch.setattr(GoogleOAuthService, "handle_callback", callback)
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url="http://testserver"
+    ) as client:
+        response = await client.get("/api/v1" + path, follow_redirects=False)
+    assert response.status_code == 404
+    assert "location" not in response.headers
+    assert "set-cookie" not in response.headers
+    database.assert_not_called()
+    start.assert_not_awaited()
+    callback.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_google_callback_success_redirects_to_frontend_settings(
-    async_client: AsyncClient,
-) -> None:
-    """Callback should redirect to the frontend settings page for browser OAuth flows."""
-    user_id = uuid.uuid4()
-    fake_service = MagicMock()
-    fake_service.handle_callback = AsyncMock(
-        return_value=OAuthCallbackResult(
-            user_id=user_id,
-            email="user@example.com",
-            google_id="google-123",
-        )
-    )
-    app.dependency_overrides[get_oauth_service] = lambda: fake_service
-
-    response = await async_client.get(
-        "/api/v1/auth/google/callback",
-        params={"code": "abc", "state": "state-1"},
-        follow_redirects=False,
-    )
-
-    app.dependency_overrides.clear()
-    assert response.status_code == 302
-    location = response.headers["location"]
-    assert location.startswith("http://localhost:3000/settings?")
-    assert "connected=true" in location
-    assert "email=user%40example.com" in location
-
-
-@pytest.mark.asyncio
-async def test_google_callback_missing_code_redirects_to_frontend_with_error(
-    async_client: AsyncClient,
-) -> None:
-    """Browser callback without code should redirect to settings with an error flag."""
-    response = await async_client.get(
-        "/api/v1/auth/google/callback",
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 302
-    assert response.headers["location"] == "http://localhost:3000/settings?error=missing_oauth_code"
-
-
-@pytest.mark.asyncio
-async def test_google_callback_invalid_state_returns_400(async_client: AsyncClient) -> None:
-    """Callback endpoint should map service validation errors to HTTP 400."""
-    fake_service = MagicMock()
-    fake_service.handle_callback = AsyncMock(side_effect=ValueError("Invalid OAuth state"))
-    app.dependency_overrides[get_oauth_service] = lambda: fake_service
-
-    response = await async_client.get(
-        "/api/v1/auth/google/callback",
-        params={"code": "abc", "state": "bad-state"},
-        headers={"Accept": "application/json"},
-    )
-
-    app.dependency_overrides.clear()
-    assert response.status_code == 400
-    assert (
-        response.json()["detail"]
-        == "The service is temporarily unavailable. Please try again later."
-    )
+def test_only_v2_session_auth_routes_are_mounted() -> None:
+    application = create_app()
+    expected = {
+        "/api/v1/auth/session",
+        "/api/v1/auth/session/google",
+        "/api/v1/auth/session/google/callback",
+        "/api/v1/auth/session/logout",
+    }
+    assert {
+        path for path in application.openapi()["paths"] if path.startswith("/api/v1/auth/")
+    } == expected
 
 
 @pytest.mark.asyncio

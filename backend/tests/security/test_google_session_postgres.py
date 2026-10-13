@@ -559,3 +559,62 @@ async def test_timeout_is_safe_and_does_not_issue_session(
         assert "transport detail" not in str(failure.value)
         assert await db.scalar(select(func.count()).select_from(ApplicationSession)) == 0
         assert await db.scalar(select(func.count()).select_from(OAuthPendingState)) == 0
+
+
+async def test_retired_routes_preserve_grants_and_legacy_state(
+    oauth_engine: AsyncEngine, login_settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    """Actual application routing cannot consume old state or write credentials."""
+    from app.main import create_app
+
+    sessions = async_sessionmaker(oauth_engine, expire_on_commit=False)
+    async with sessions() as db:
+        db.add(synthetic_oauth_row(user_id=USER_A, scopes=login_settings.google_drive_scopes))
+        db.add(
+            OAuthPendingState(
+                state="retired-legacy-state",
+                code_verifier="synthetic-pkce",
+                expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            )
+        )
+        await db.commit()
+
+    async def snapshot():
+        async with sessions() as db:
+            return (
+                (await db.execute(select(GoogleOAuthToken.__table__))).all(),
+                (await db.execute(select(OAuthPendingState.__table__))).all(),
+                (await db.execute(select(User.__table__))).all(),
+                (await db.execute(select(ApplicationSession.__table__))).all(),
+            )
+
+    before = await snapshot()
+    application = create_app()
+    application.dependency_overrides[get_settings] = lambda: login_settings
+
+    async def database():
+        async with sessions() as db:
+            yield db
+
+    application.dependency_overrides[get_db] = database
+
+    # Any accidental route remount would be caught without contacting Google.
+    def forbidden_exchange(*args, **kwargs):
+        raise AssertionError("Retired routes must not call Google")
+
+    monkeypatch.setattr(GoogleOAuthService, "_fetch_credentials", forbidden_exchange)
+    monkeypatch.setattr(GoogleOAuthService, "_build_flow", forbidden_exchange)
+    async with AsyncClient(
+        transport=ASGITransport(app=application), base_url=login_settings.frontend_url
+    ) as client:
+        for demo in (False, True):
+            login_settings.demo_mode = demo
+            for path in ("/auth/google", "/auth/google/callback"):
+                response = await client.get(
+                    "/api/v1" + path,
+                    params={"code": "synthetic-code", "state": "retired-legacy-state"},
+                    follow_redirects=False,
+                )
+                assert response.status_code == 404
+                assert "location" not in response.headers and "set-cookie" not in response.headers
+    assert await snapshot() == before

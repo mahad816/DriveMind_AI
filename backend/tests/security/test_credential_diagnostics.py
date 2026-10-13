@@ -99,23 +99,33 @@ def test_drive_refresh_errors_and_representations_are_safe(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("endpoint,status", [("oauth", 400), ("content", 502)])
+@pytest.mark.parametrize("endpoint,status", [("oauth", 503), ("content", 502)])
 async def test_credential_api_failures_are_safe(
     async_client: "AsyncClient", caplog: pytest.LogCaptureFixture, endpoint: str, status: int
 ) -> None:
     from unittest.mock import AsyncMock
     from uuid import uuid4
 
-    from app.api.auth import get_oauth_service
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.api.google_session_auth import get_google_session_service
     from app.api.files import get_drive_content_service
     from app.api.dependencies import require_resource_user
+    from app.core.config import Settings, get_settings
     from app.main import app
 
     service = MagicMock()
     if endpoint == "oauth":
-        dependency = get_oauth_service
-        service.handle_callback = AsyncMock(side_effect=ValueError(RAW))
-        url = "/api/v1/auth/google/callback?code=synthetic-code-541&state=state"
+        dependency = get_google_session_service
+        service.settings = Settings(
+            google_application_sessions_enabled=True,
+            google_client_id="synthetic-client",
+            google_client_secret="synthetic-secret",
+            google_session_redirect_uri="http://localhost:3000/api/v1/auth/session/google/callback",
+        )
+        app.dependency_overrides[get_settings] = lambda: service.settings
+        service.callback = AsyncMock(side_effect=SQLAlchemyError(RAW))
+        url = "/api/v1/auth/session/google/callback?code=synthetic-code-541&state=state"
     else:
         dependency = get_drive_content_service
         service.fetch_file_content = AsyncMock(side_effect=DriveClientError(RAW))
@@ -126,12 +136,15 @@ async def test_credential_api_failures_are_safe(
     try:
         response = await async_client.get(url, headers={"Accept": "application/json"})
         assert response.status_code == status
-        assert response.json()["detail"] == PUBLIC_ERROR
+        assert response.json()["detail"] == (
+            "Application login is temporarily unavailable." if endpoint == "oauth" else PUBLIC_ERROR
+        )
         assert_clean(response.text)
         assert_clean(caplog.text)
     finally:
         app.dependency_overrides.pop(dependency, None)
         app.dependency_overrides.pop(require_resource_user, None)
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.mark.asyncio

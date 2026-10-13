@@ -1,4 +1,8 @@
-"""Google OAuth authentication routes."""
+"""Retired legacy OAuth router, deliberately not mounted by the application.
+
+Kept for internal compatibility only. Browser authentication must use the
+owner-bound application-session router in google_session_auth.py.
+"""
 
 from urllib.parse import urlencode
 

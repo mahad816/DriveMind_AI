@@ -42,8 +42,8 @@ async def test_demo_oauth_rejected_before_service_creation(
         f"/api/v1{path}", headers={"Accept": "text/html"}, follow_redirects=False
     )
 
-    assert response.status_code == 403
-    assert response.json() == REJECTION
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not Found"}
     assert "location" not in response.headers
     factory.assert_not_called()
 
@@ -69,7 +69,7 @@ async def test_demo_index_mutations_never_reach_services_or_background_jobs(
 
 
 @pytest.mark.asyncio
-async def test_normal_oauth_still_reaches_existing_logic(
+async def test_normal_legacy_oauth_is_retired(
     async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, runtime_settings: Settings
 ) -> None:
     runtime_settings.demo_mode = False
@@ -79,8 +79,8 @@ async def test_normal_oauth_still_reaches_existing_logic(
 
     response = await async_client.get("/api/v1/auth/google", follow_redirects=False)
 
-    assert response.status_code == 307
-    service.create_authorization_url.assert_awaited_once()
+    assert response.status_code == 404
+    service.create_authorization_url.assert_not_awaited()
 
 
 @pytest.mark.asyncio

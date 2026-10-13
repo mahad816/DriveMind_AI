@@ -2,7 +2,6 @@
 
 from fastapi import APIRouter
 
-from app.api.auth import router as auth_router
 from app.api.google_session_auth import router as google_session_auth_router
 from app.api.chat import router as chat_router
 from app.api.files import router as files_router
@@ -12,7 +11,6 @@ from app.api.sources import router as sources_router
 
 router = APIRouter()
 router.include_router(health_router, tags=["health"])
-router.include_router(auth_router, tags=["auth"])
 router.include_router(google_session_auth_router, tags=["auth"])
 router.include_router(index_router, tags=["index"])
 router.include_router(files_router, tags=["files"])
