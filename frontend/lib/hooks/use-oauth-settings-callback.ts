@@ -1,54 +1,26 @@
 "use client";
-
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
 import { useToast } from "@/components/ui/toast-provider";
+import { useApplicationSession } from "@/components/providers/application-session-provider";
 import { consumeOnboardingOAuthPending } from "@/lib/onboarding/storage";
-import { clearConnectedEmail, setConnectedEmail } from "@/lib/settings/storage";
-import { settingsCopy } from "@/lib/user-language";
-
+/** Callback hints never establish identity; only backend session inspection does. */
 export function useOAuthSettingsCallback() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const params = useSearchParams();
   const { pushToast } = useToast();
-
+  const { refresh } = useApplicationSession();
   useEffect(() => {
-    const connected = searchParams.get("connected");
-    const email = searchParams.get("email");
-    const error = searchParams.get("error");
-
-    if (!connected && !error) {
-      return;
-    }
-
-    if (connected === "true") {
-      if (email) {
-        setConnectedEmail(email);
+    if (!params.has("login") && !params.has("connected") && !params.has("email") && !params.has("error")) return;
+    let live = true;
+    void refresh().then(verified => {
+      if (!live) return;
+      if (verified && params.get("login") === "success") {
+        pushToast({ title: "Application session verified", variant: "success" });
       }
-      pushToast({
-        title: settingsCopy.driveConnectedToast,
-        description: settingsCopy.driveConnectedHint,
-        variant: "success",
-      });
-    } else if (error) {
-      pushToast({
-        title: settingsCopy.driveErrorToast,
-        description: error,
-        variant: "error",
-      });
-    }
-
-    if (consumeOnboardingOAuthPending()) {
-      router.replace("/onboarding?step=prepare");
-      return;
-    }
-
-    router.replace("/settings");
-  }, [pushToast, router, searchParams]);
-}
-
-export function handleDisconnectDrive() {
-  clearConnectedEmail();
-  window.open("https://myaccount.google.com/permissions", "_blank", "noopener,noreferrer");
+      const onboarding = consumeOnboardingOAuthPending();
+      router.replace(verified && onboarding ? "/onboarding" : "/settings");
+    });
+    return () => { live = false; };
+  }, [params, pushToast, refresh, router]);
 }

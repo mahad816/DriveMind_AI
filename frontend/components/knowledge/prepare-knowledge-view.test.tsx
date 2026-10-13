@@ -1,3 +1,6 @@
+vi.mock("@/components/providers/application-session-provider", () => ({
+  useApplicationSession: () => ({ userId: "00000000-0000-0000-0000-000000000065", connectDrive: vi.fn(), logout: vi.fn(), error: null }),
+}));
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +13,6 @@ import { setLastPreparedAt } from "@/lib/knowledge/storage";
 vi.mock("@/lib/knowledge/prepare", () => ({ prepareKnowledge: vi.fn() }));
 vi.mock("@/lib/knowledge/storage", () => ({ setLastPreparedAt: vi.fn() }));
 vi.mock("@/lib/hooks/use-knowledge-status", () => ({ useKnowledgeStatus: vi.fn() }));
-vi.mock("@/lib/api/auth", () => ({ getGoogleAuthUrl: () => "/api/v1/auth/google" }));
 vi.mock("@/components/knowledge/advanced-diagnostics", () => ({
   AdvancedDiagnostics: () => <div>advanced diagnostics</div>,
 }));
@@ -45,7 +47,7 @@ describe("PrepareKnowledgeView", () => {
     render(<PrepareKnowledgeView />);
 
     expect(screen.getByText("Not connected")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Connect Google Drive" })).toHaveAttribute("href", "/api/v1/auth/google");
+    expect(screen.getByRole("button", { name: "Connect Google Drive" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Prepare knowledge" })).not.toBeInTheDocument();
   });
 

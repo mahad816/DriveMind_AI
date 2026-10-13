@@ -1,3 +1,6 @@
+vi.mock("@/components/providers/application-session-provider", () => ({
+  useApplicationSession: () => ({ userId: "00000000-0000-0000-0000-000000000065", connectDrive: vi.fn(), logout: vi.fn(), error: null }),
+}));
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -37,10 +40,10 @@ describe("Google Drive access actions", () => {
     });
     render(<SettingsDriveSection />);
 
-    expect(screen.getByText("Connection error")).toBeInTheDocument();
+    expect(screen.getByText("Drive status unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Connect Google Drive" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Retry connection check" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh Drive status" }));
     expect(refetch).toHaveBeenCalledOnce();
   });
 });

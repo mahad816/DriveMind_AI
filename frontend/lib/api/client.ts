@@ -1,3 +1,4 @@
+import { notifySessionInvalid, sessionRevision } from "@/lib/api/session-events";
 import { apiBaseUrl } from "@/lib/api/config";
 import { ApiError } from "@/lib/api/errors";
 import type { FastApiErrorBody } from "@/lib/api/types";
@@ -51,7 +52,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   const { parseJson = true, headers, ...init } = options;
   const url = joinUrl(path);
 
+  const revision = sessionRevision();
   const response = await fetch(url, {
+    credentials: "include",
     ...init,
     headers: {
       Accept: "application/json",
@@ -60,6 +63,10 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     },
   });
 
+  if (revision !== sessionRevision()) {
+    throw new ApiError(409, "Your application session changed. Please try again.");
+  }
+  if (response.status === 401) notifySessionInvalid();
   if (!response.ok) {
     throw await parseErrorResponse(response);
   }
@@ -73,7 +80,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const body = await response.json() as T;
+  if (revision !== sessionRevision()) throw new ApiError(409, "Your application session changed. Please try again.");
+  return body;
 }
 
 export function buildQueryString(

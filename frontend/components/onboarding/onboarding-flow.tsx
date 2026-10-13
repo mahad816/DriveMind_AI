@@ -8,7 +8,7 @@ import { Check, MessageSquare } from "lucide-react";
 
 import { PrepareKnowledgeView } from "@/components/knowledge/prepare-knowledge-view";
 import { Button } from "@/components/ui/button";
-import { getGoogleAuthUrl } from "@/lib/api/auth";
+import { useApplicationSession } from "@/components/providers/application-session-provider";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { markOnboardingComplete, setOnboardingOAuthPending } from "@/lib/onboarding/storage";
 
@@ -18,6 +18,7 @@ export function OnboardingFlow() {
 
 function NormalOnboardingFlow() {
   const router = useRouter();
+  const { connectDrive } = useApplicationSession();
   const { setupState, isConnected, fileStats, error, refresh } = useKnowledgeStatus({
     pollIntervalMs: 2_000,
   });
@@ -28,7 +29,7 @@ function NormalOnboardingFlow() {
 
   const handleConnect = () => {
     setOnboardingOAuthPending();
-    window.location.href = getGoogleAuthUrl();
+    void connectDrive();
   };
 
   const startChatting = () => {

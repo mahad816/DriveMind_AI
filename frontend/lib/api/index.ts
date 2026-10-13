@@ -1,4 +1,4 @@
-export { getGoogleAuthUrl } from "@/lib/api/auth";
+export { inspectApplicationSession, startGoogleSession, logoutApplicationSession } from "@/lib/api/auth";
 export { askQuestion } from "@/lib/api/chat";
 export { apiFetch, buildQueryString, formatApiErrorDetail } from "@/lib/api/client";
 export { apiBaseUrl, backendUrl, serverApiBaseUrl } from "@/lib/api/config";

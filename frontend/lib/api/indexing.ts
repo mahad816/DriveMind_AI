@@ -1,4 +1,5 @@
 import { apiFetch, buildQueryString } from "@/lib/api/client";
+import { sessionOwner, notifySessionInvalid, sessionRevision } from "@/lib/api/session-events";
 import { ApiError } from "@/lib/api/errors";
 import type {
   DriveSyncStatusResponse,
@@ -29,7 +30,12 @@ export async function getPendingCounts(): Promise<PendingCountsResponse> {
 async function submitIndexJob(path: string): Promise<JobStartedResponse> {
   // Existing same-origin session inspection supplies CSRF material. Fetch per
   // mutation: do not cache a token across logout/account changes.
-  const session = await apiFetch<{ csrf_token: string }>("/auth/session");
+  const owner = sessionOwner();
+  const session = await apiFetch<{ csrf_token: string; user_id?: string }>("/auth/session");
+  if (owner && session.user_id !== owner) {
+    notifySessionInvalid();
+    throw new ApiError(409, "Your account changed. Preparation stopped.");
+  }
   if (typeof session.csrf_token !== "string" || !session.csrf_token) {
     throw new ApiError(503, "Application session verification is unavailable.");
   }
@@ -67,9 +73,11 @@ export async function pollUntilJobDone(
 ): Promise<IndexingJobRead> {
   const { intervalMs = 2000, timeoutMs = 180_000, allowFailed = false } = options;
   const deadline = Date.now() + timeoutMs;
+  const revision = sessionRevision();
 
   while (Date.now() < deadline) {
     await sleep(intervalMs);
+    if (revision !== sessionRevision()) throw new ApiError(401, "Your session changed. Polling stopped.");
 
     let statusResp: DriveSyncStatusResponse;
     try {

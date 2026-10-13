@@ -46,3 +46,15 @@ it.each([401, 403, 503, "network"])("stops file preparation on a %s stage failur
     if (boundary === "ingest") expect(chunkDocuments).not.toHaveBeenCalled();
   }
 });
+
+it("does not submit downstream file stages after an account transition", async () => {
+  const { invalidateSessionRequests } = await import("@/lib/api/session-events");
+  vi.mocked(ingestDriveFiles).mockResolvedValue({ job_id: "ingest-a", status: "queued", message: "accepted" });
+  vi.mocked(pollUntilJobDone).mockImplementationOnce(async () => {
+    invalidateSessionRequests();
+    return { id: "ingest-a", user_id: "owner-a", status: "completed", error: null, started_at: null, completed_at: null, created_at: "synthetic", updated_at: "synthetic" };
+  });
+  await expect(prepareSingleFile("owned-file")).rejects.toMatchObject({ status: 401 });
+  expect(chunkDocuments).not.toHaveBeenCalled();
+  expect(buildVectorIndex).not.toHaveBeenCalled();
+});

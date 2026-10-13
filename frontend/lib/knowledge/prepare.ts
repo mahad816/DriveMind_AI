@@ -6,6 +6,7 @@ import {
   pollUntilJobDone,
   syncDriveMetadata,
 } from "@/lib/api/indexing";
+import { sessionRevision } from "@/lib/api/session-events";
 import { ApiError } from "@/lib/api/errors";
 import type { PrepareProgress, PrepareStepId, PrepareStepState } from "@/lib/knowledge/types";
 import { PREPARE_STEP_ORDER } from "@/lib/knowledge/types";
@@ -46,6 +47,8 @@ export async function prepareKnowledge(
   options: PrepareKnowledgeOptions = {},
 ): Promise<PrepareKnowledgeResult> {
   const { onProgress, fullScan = false } = options;
+  const revision = sessionRevision();
+  const checkSession = () => { if (revision !== sessionRevision()) throw new ApiError(401, "Your session changed. Preparation stopped."); };
   let steps = createInitialSteps();
   let ingestionWarning: string | null = null;
 
@@ -72,7 +75,9 @@ export async function prepareKnowledge(
     emit({ progressPercent: startPercent, currentStepId: stepId });
 
     try {
+      checkSession();
       const result = await action();
+      checkSession();
       steps = updateStep(steps, stepId, "complete");
       emit({ progressPercent: endPercent, currentStepId: stepId });
       return result;
@@ -91,6 +96,7 @@ export async function prepareKnowledge(
     const accepted = await syncDriveMetadata(fullScan);
     await pollUntilJobDone(accepted.job_id, { timeoutMs: 180_000 });
     // Fresh state is required before deciding which stages can be skipped.
+    checkSession();
     return getPendingCounts();
   });
 
@@ -117,12 +123,14 @@ export async function prepareKnowledge(
 
       if (job.status === "failed") {
         const originalError = job.error ?? "Job failed";
+        checkSession();
         pending = await getPendingCounts();
         if (pending.to_chunk === 0 && pending.to_build === 0) {
           throw new ApiError(500, originalError);
         }
         ingestionWarning = originalError;
       } else {
+        checkSession();
         pending = await getPendingCounts();
       }
     });
@@ -138,9 +146,11 @@ export async function prepareKnowledge(
         const accepted = await chunkDocuments();
         await pollUntilJobDone(accepted.job_id, { timeoutMs: 120_000 });
         // Chunking changes build eligibility, so use authoritative fresh counts.
+        checkSession();
         pending = await getPendingCounts();
       }
       if (pending.to_build > 0) {
+        checkSession();
         const accepted = await buildVectorIndex();
         await pollUntilJobDone(accepted.job_id, { timeoutMs: 180_000 });
       }

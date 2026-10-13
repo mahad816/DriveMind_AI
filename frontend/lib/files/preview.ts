@@ -1,3 +1,4 @@
+import { notifySessionInvalid, sessionRevision } from "@/lib/api/session-events";
 import { getDriveFileContentUrl } from "@/lib/api/files";
 import { DEMO_MODE } from "@/lib/demo";
 import { truncatePreview } from "@/lib/files/utils";
@@ -17,11 +18,15 @@ export async function fetchFileTextPreview(
   }
 
   try {
-    const response = await fetch(getDriveFileContentUrl(fileId));
+    const revision = sessionRevision();
+    const response = await fetch(getDriveFileContentUrl(fileId), { credentials: "include" });
+    if (revision !== sessionRevision()) return null;
+    if (response.status === 401) notifySessionInvalid();
     if (!response.ok) {
       return null;
     }
     const text = await response.text();
+    if (revision !== sessionRevision()) return null;
     if (DEMO_MODE) return text.trim() || null;
     const normalized = text.replace(/\s+/g, " ").trim();
     if (!normalized) {

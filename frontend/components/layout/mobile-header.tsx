@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Menu } from "lucide-react";
 
+import { DEMO_MODE } from "@/lib/demo";
+import { SessionNavigation } from "@/components/layout/session-navigation";
 import { ConversationSidebar } from "@/components/layout/conversation-sidebar";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -22,7 +24,7 @@ export function MobileHeader() {
             }
           />
           <SheetContent side="left" className="w-[280px] border-sidebar-border bg-sidebar p-0">
-            <ConversationSidebar onNavigate={() => setOpen(false)} collapsible={false} className="w-full border-0" />
+            {DEMO_MODE ? <ConversationSidebar onNavigate={() => setOpen(false)} collapsible={false} className="w-full border-0" /> : <SessionNavigation onNavigate={() => setOpen(false)} />}
           </SheetContent>
         </Sheet>
         <p className="text-sm font-semibold tracking-tight text-foreground">DriveMind AI</p>

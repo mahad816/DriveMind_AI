@@ -8,7 +8,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 
 import { AdvancedDiagnostics } from "@/components/knowledge/advanced-diagnostics";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { getGoogleAuthUrl } from "@/lib/api/auth";
+import { useApplicationSession } from "@/components/providers/application-session-provider";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { prepareKnowledge } from "@/lib/knowledge/prepare";
 import { setLastPreparedAt } from "@/lib/knowledge/storage";
@@ -22,12 +22,20 @@ type PrepareKnowledgeViewProps = {
   className?: string;
 };
 
-export function PrepareKnowledgeView({
+export function PrepareKnowledgeView(props: PrepareKnowledgeViewProps) {
+  return DEMO_MODE ? <PrepareKnowledgeContent {...props} /> : <SessionPrepare {...props} />;
+}
+function SessionPrepare(props: PrepareKnowledgeViewProps) {
+  const { connectDrive } = useApplicationSession();
+  return <PrepareKnowledgeContent {...props} connectDrive={connectDrive} />;
+}
+function PrepareKnowledgeContent({
   variant = "page",
   onComplete,
   onPreparingChange,
   className,
-}: PrepareKnowledgeViewProps) {
+  connectDrive,
+}: PrepareKnowledgeViewProps & { connectDrive?: () => Promise<void> }) {
   const { setupState, isConnected, jobError, fileStats, refresh, error } = useKnowledgeStatus({ pollIntervalMs: 0, includeInventory: DEMO_MODE });
   const [progress, setProgress] = useState<PrepareProgress | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
@@ -128,7 +136,7 @@ export function PrepareKnowledgeView({
 
       <div className="flex flex-wrap gap-2">
         {notConnected ? (
-          <a href={getGoogleAuthUrl()} className={buttonVariants()}>Connect Google Drive</a>
+          <Button onClick={() => void connectDrive?.()}>Connect Google Drive</Button>
         ) : unavailable ? (
           <Button type="button" onClick={() => void refresh()}>Retry status check</Button>
         ) : setupState === "checking" ? (

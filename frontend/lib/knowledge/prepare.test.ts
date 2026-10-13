@@ -271,3 +271,20 @@ describe("prepareKnowledge", () => {
   );
 
 });
+
+it("does not continue preparation or report readiness after a known account transition", async () => {
+  const { invalidateSessionRequests } = await import("@/lib/api/session-events");
+  vi.resetAllMocks();
+  vi.mocked(syncDriveMetadata).mockResolvedValue({ job_id: "sync-a", status: "queued", message: "accepted" });
+  vi.mocked(pollUntilJobDone).mockImplementationOnce(async () => {
+    invalidateSessionRequests();
+    return job("completed");
+  });
+  const progress: number[] = [];
+  await expect(prepareKnowledge({ onProgress: value => progress.push(value.progressPercent) })).rejects.toMatchObject({ status: 401 });
+  expect(getPendingCounts).not.toHaveBeenCalled();
+  expect(ingestDriveFiles).not.toHaveBeenCalled();
+  expect(chunkDocuments).not.toHaveBeenCalled();
+  expect(buildVectorIndex).not.toHaveBeenCalled();
+  expect(progress).not.toContain(100);
+});

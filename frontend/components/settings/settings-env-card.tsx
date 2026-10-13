@@ -20,8 +20,8 @@ export function SettingsEnvCard({ embedded = false }: SettingsEnvCardProps) {
       <div className="space-y-1">
         <p className="text-xs font-medium text-foreground">OAuth flow</p>
         <p>
-          Connect triggers redirects to{" "}
-          <code className="rounded bg-muted px-1 py-0.5">/api/v1/auth/google</code>.
+          Sign-in and Drive connection start through{" "}
+          <code className="rounded bg-muted px-1 py-0.5">/api/v1/auth/session/google</code>.
         </p>
       </div>
       <div className="space-y-1">

@@ -1,5 +1,8 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+import { SessionChat } from "@/components/chat/session-chat";
+import { SessionNavigation } from "@/components/layout/session-navigation";
 import { ConversationSidebar } from "@/components/layout/conversation-sidebar";
 import { ConnectionBanner } from "@/components/layout/connection-banner";
 import { MobileHeader } from "@/components/layout/mobile-header";
@@ -27,7 +30,7 @@ function MainChrome({ children }: { children: React.ReactNode }) {
           chatRoute ? "overflow-hidden" : "overflow-y-auto",
         )}
       >
-        <OnboardingGate>{children}</OnboardingGate>
+        <OnboardingGate>{!DEMO_MODE && (pathname === "/chat" || pathname.startsWith("/chat/")) ? <SessionChat /> : children}</OnboardingGate>
       </main>
     </div>
   );
@@ -39,7 +42,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      {!onboardingRoute ? <ConversationSidebar className="hidden md:flex" /> : null}
+      {!onboardingRoute ? <div className="hidden md:flex">{DEMO_MODE ? <ConversationSidebar /> : <SessionNavigation />}</div> : null}
       <MainChrome>{children}</MainChrome>
     </div>
   );
