@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, Text
+from sqlalchemy import ForeignKey, Index, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,7 +14,10 @@ class QueryHistory(TimestampMixin, Base):
     """Stored user query, answer, and citation trace for evaluation."""
 
     __tablename__ = "query_history"
-    __table_args__ = (Index("ix_query_history_user_id_created_at", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_query_history_user_id_created_at", "user_id", "created_at"),
+        UniqueConstraint("id", "user_id", name="uq_query_history_id_owner"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

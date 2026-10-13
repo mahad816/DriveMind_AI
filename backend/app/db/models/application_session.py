@@ -23,6 +23,7 @@ from app.db.enums import ApplicationSessionKind
 class ApplicationSession(Base):
     __tablename__ = "application_sessions"
     __table_args__ = (
+        UniqueConstraint("id", "user_id", name="uq_application_sessions_id_owner"),
         CheckConstraint(
             "(kind = 'GOOGLE_ACCOUNT' AND user_id IS NOT NULL) OR "
             "(kind = 'DEMO_VISITOR' AND user_id IS NULL)",

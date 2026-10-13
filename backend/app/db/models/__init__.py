@@ -1,6 +1,8 @@
 """SQLAlchemy models package for DriveMind persistence."""
 
 from app.db.models.application_session import ApplicationSession
+from app.db.models.conversation import Conversation
+from app.db.models.conversation_turn import ConversationTurn
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -14,6 +16,8 @@ from app.db.models.user import User
 __all__ = [
     "ApplicationSession",
     "Chunk",
+    "Conversation",
+    "ConversationTurn",
     "Document",
     "DriveFile",
     "DriveSyncState",
