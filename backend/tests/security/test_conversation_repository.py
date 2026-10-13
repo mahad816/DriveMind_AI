@@ -685,12 +685,12 @@ async def test_actual_alembic_populated_upgrade_and_downgrade(pg_engine):
         await admin.dispose()
 
 
-def test_no_http_or_activation_changes():
-    # New models register without a mounted conversation router or activation setting.
-    from app.api.router import router
+def test_no_turn_http_or_activation_changes():
+    from app.main import create_app
     from app.core.config import Settings
 
-    assert not any("conversation" in getattr(route, "path", "") for route in router.routes)
+    paths = create_app().openapi()["paths"]
+    assert not any("turns" in path for path in paths)
     assert "indexing_runtime_enabled" not in Settings.model_fields
 
 
@@ -994,3 +994,30 @@ async def test_same_owner_updates_and_lifecycle_remain_valid(world):
         assert row.deleted_at is not None and row.metadata_version == 4
         saved = await db.get(ConversationTurn, turn.id)
         assert saved is not None and saved.status == TurnStatus.FAILED
+
+
+async def test_joined_turn_page_binds_owned_results(world):
+    conversations = {}
+    for owner in (USER_A, USER_B):
+        conversations[owner] = await create(world, owner)
+        turn = await reserve(world, conversations[owner].id, owner)
+        rid = await result(world, owner)
+        async with world.sessions.begin() as db:
+            await ConversationRepository(db).complete(
+                owner,
+                turn.conversation_id,
+                turn.id,
+                execution_id=turn.execution_id,
+                result_id=rid,
+                retrieval_count=1,
+            )
+    async with world.sessions.begin() as db:
+        page = await ConversationRepository(db).turns_with_results(
+            USER_A, conversations[USER_A].id, limit=1
+        )
+        assert len(page) == 1
+        turn, history = page[0]
+        assert turn.owner_id == USER_A and history is not None and history.user_id == USER_A
+    with pytest.raises(ConversationNotFound):
+        async with world.sessions.begin() as db:
+            await ConversationRepository(db).turns_with_results(USER_B, conversations[USER_A].id)

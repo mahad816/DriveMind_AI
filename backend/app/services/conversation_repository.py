@@ -97,18 +97,23 @@ class ConversationRepository:
         if found is None:
             raise ConversationNotFound()
 
-    async def get(self, owner: UUID, conversation_id: UUID) -> Conversation:
+    async def get(
+        self, owner: UUID, conversation_id: UUID, *, for_share: bool = False
+    ) -> Conversation:
         self._transaction(owner)
-        with self.db.no_autoflush:
-            row = await self.db.scalar(
-                select(Conversation)
-                .where(
-                    Conversation.id == conversation_id,
-                    Conversation.owner_id == owner,
-                    Conversation.deleted_at.is_(None),
-                )
-                .execution_options(populate_existing=True)
+        query = (
+            select(Conversation)
+            .where(
+                Conversation.id == conversation_id,
+                Conversation.owner_id == owner,
+                Conversation.deleted_at.is_(None),
             )
+            .execution_options(populate_existing=True)
+        )
+        if for_share:
+            query = query.with_for_update(read=True, of=Conversation)
+        with self.db.no_autoflush:
+            row = await self.db.scalar(query)
         if row is None:
             raise ConversationNotFound()
         return row
@@ -432,6 +437,45 @@ class ConversationRepository:
                 ).all()
             )
         return list(reversed(rows))
+
+    async def turns_with_results(
+        self,
+        owner: UUID,
+        conversation_id: UUID,
+        *,
+        before_sequence: int | None = None,
+        limit: int = 50,
+    ) -> list[tuple[ConversationTurn, QueryHistory | None]]:
+        """One bounded owner/live-conversation query binds turn state to its result."""
+        await self.get(owner, conversation_id)
+        if not 1 <= limit <= 100:
+            raise ValueError("Turn page size must be between 1 and 100")
+        query = (
+            select(ConversationTurn, QueryHistory)
+            .join(Conversation, Conversation.id == ConversationTurn.conversation_id)
+            .outerjoin(
+                QueryHistory,
+                (QueryHistory.id == ConversationTurn.query_history_id)
+                & (QueryHistory.user_id == owner),
+            )
+            .where(
+                ConversationTurn.owner_id == owner,
+                ConversationTurn.conversation_id == conversation_id,
+                Conversation.owner_id == owner,
+                Conversation.deleted_at.is_(None),
+            )
+        )
+        if before_sequence is not None:
+            query = query.where(ConversationTurn.sequence < before_sequence)
+        with self.db.no_autoflush:
+            rows = (
+                await self.db.execute(
+                    query.order_by(ConversationTurn.sequence.desc())
+                    .limit(limit)
+                    .execution_options(populate_existing=True)
+                )
+            ).all()
+        return [(row[0], row[1]) for row in reversed(rows)]
 
     async def _execution(
         self, owner: UUID, conversation_id: UUID, turn_id: UUID, execution_id: UUID
