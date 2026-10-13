@@ -6,8 +6,9 @@ export type ApplicationSession = {
   csrf_token: string;
 };
 export type GoogleAuthIntent = "LOGIN" | "CONNECT_DRIVE";
-export async function inspectApplicationSession(): Promise<ApplicationSession> {
-  const value = await apiFetch<ApplicationSession>("/auth/session", { cache: "no-store", signal: AbortSignal.timeout(15000) });
+export async function inspectApplicationSession(signal?: AbortSignal): Promise<ApplicationSession> {
+  const timeout = AbortSignal.timeout(15000);
+  const value = await apiFetch<ApplicationSession>("/auth/session", { cache: "no-store", signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (!value || value.kind !== "GOOGLE_ACCOUNT" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.user_id) ||
     typeof value.csrf_token !== "string" || !value.csrf_token) {

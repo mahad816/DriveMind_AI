@@ -48,7 +48,9 @@ async function parseErrorResponse(response: Response): Promise<ApiError> {
  *
  * Browser calls use the same-origin `/api/v1` proxy configured in `next.config.ts`.
  */
-export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+export async function apiFetchWithStatus<T>(
+  path: string, options: ApiFetchOptions = {},
+): Promise<{ status: number; data: T }> {
   const { parseJson = true, headers, ...init } = options;
   const url = joinUrl(path);
 
@@ -72,17 +74,22 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   }
 
   if (!parseJson || response.status === 204) {
-    return undefined as T;
+    return { status: response.status, data: undefined as T };
   }
 
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
-    return undefined as T;
+    return { status: response.status, data: undefined as T };
   }
 
   const body = await response.json() as T;
   if (revision !== sessionRevision()) throw new ApiError(409, "Your application session changed. Please try again.");
-  return body;
+  return { status: response.status, data: body };
+}
+
+/** Preserve the existing data-only API for all current callers. */
+export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  return (await apiFetchWithStatus<T>(path, options)).data;
 }
 
 export function buildQueryString(

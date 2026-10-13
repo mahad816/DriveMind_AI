@@ -1,0 +1,81 @@
+{
+  "metadata": {
+    "id": "00000000-0000-0000-0000-000000000101",
+    "title": "Synthetic conversation",
+    "title_is_manual": false,
+    "created_at": "2026-10-13T12:00:00Z",
+    "updated_at": "2026-10-13T12:00:00Z",
+    "last_activity_at": "2026-10-13T12:00:00Z",
+    "metadata_version": 1,
+    "content_version": 2
+  },
+  "detail": {
+    "conversation": {
+      "id": "00000000-0000-0000-0000-000000000101",
+      "title": "Synthetic conversation",
+      "title_is_manual": false,
+      "created_at": "2026-10-13T12:00:00Z",
+      "updated_at": "2026-10-13T12:00:00Z",
+      "last_activity_at": "2026-10-13T12:00:00Z",
+      "metadata_version": 1,
+      "content_version": 2
+    },
+    "turns": [
+      {
+        "id": "00000000-0000-0000-0000-000000000102",
+        "client_request_id": "00000000-0000-0000-0000-000000000103",
+        "sequence": 1,
+        "question": "Synthetic original question",
+        "operation": "ASK",
+        "source_turn_id": null,
+        "status": "COMPLETED",
+        "created_at": "2026-10-13T12:00:00Z",
+        "updated_at": "2026-10-13T12:00:00Z",
+        "finished_at": "2026-10-13T12:00:00Z",
+        "error_code": null,
+        "query_id": "00000000-0000-0000-0000-000000000104",
+        "answer": "Synthetic canonical answer.",
+        "citations": [
+          {
+            "chunk_id": "00000000-0000-0000-0000-000000000105",
+            "drive_file_id": "00000000-0000-0000-0000-000000000106",
+            "filename": "synthetic.txt",
+            "snippet": "Synthetic evidence.",
+            "score": 0.9
+          }
+        ],
+        "retrieval_count": 1
+      }
+    ],
+    "next_before_sequence": null
+  },
+  "submission": {
+    "turn": {
+      "id": "00000000-0000-0000-0000-000000000102",
+      "client_request_id": "00000000-0000-0000-0000-000000000103",
+      "sequence": 1,
+      "question": "Synthetic original question",
+      "operation": "ASK",
+      "source_turn_id": null,
+      "status": "COMPLETED",
+      "created_at": "2026-10-13T12:00:00Z",
+      "updated_at": "2026-10-13T12:00:00Z",
+      "finished_at": "2026-10-13T12:00:00Z",
+      "error_code": null,
+      "query_id": "00000000-0000-0000-0000-000000000104",
+      "answer": "Synthetic canonical answer.",
+      "citations": [
+        {
+          "chunk_id": "00000000-0000-0000-0000-000000000105",
+          "drive_file_id": "00000000-0000-0000-0000-000000000106",
+          "filename": "synthetic.txt",
+          "snippet": "Synthetic evidence.",
+          "score": 0.9
+        }
+      ],
+      "retrieval_count": 1,
+      "execution_expired": false
+    },
+    "replayed": false
+  }
+}
