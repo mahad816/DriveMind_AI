@@ -40,6 +40,19 @@ def upgrade() -> None:
         "CREATE INDEX ix_conversations_owner_activity ON conversations (owner_id, last_activity_at DESC, id DESC) WHERE deleted_at IS NULL"
     )
     op.execute("""
+        CREATE FUNCTION conversation_owner_immutable() RETURNS trigger
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            IF NEW.owner_id IS DISTINCT FROM OLD.owner_id THEN
+                RAISE EXCEPTION 'Conversation owner is immutable' USING ERRCODE = '23514';
+            END IF;
+            RETURN NEW;
+        END $$
+    """)
+    op.execute(
+        "CREATE TRIGGER trg_conversation_owner_immutable BEFORE UPDATE ON conversations FOR EACH ROW EXECUTE FUNCTION conversation_owner_immutable()"
+    )
+    op.execute("""
         CREATE TABLE conversation_turns (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             owner_id UUID NOT NULL,
@@ -124,5 +137,6 @@ def downgrade() -> None:
     op.drop_table("conversation_turns")
     op.execute("DROP FUNCTION conversation_turn_identity_immutable()")
     op.drop_table("conversations")
+    op.execute("DROP FUNCTION conversation_owner_immutable()")
     op.drop_constraint("uq_application_sessions_id_owner", "application_sessions", type_="unique")
     op.drop_constraint("uq_query_history_id_owner", "query_history", type_="unique")

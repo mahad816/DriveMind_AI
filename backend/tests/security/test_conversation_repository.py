@@ -552,7 +552,19 @@ async def test_empty_downgrade_and_populated_refusal(world):
     async with world.engine.begin() as connection:
         await connection.run_sync(apply_revision, REVISION, downgrade=True)
         assert await connection.scalar(text("SELECT to_regclass('conversations')")) is None
+        assert (
+            await connection.scalar(
+                text("SELECT to_regprocedure('conversation_owner_immutable()')")
+            )
+            is None
+        )
         await connection.run_sync(apply_revision, REVISION)
+        assert (
+            await connection.scalar(
+                text("SELECT to_regprocedure('conversation_owner_immutable()')")
+            )
+            is not None
+        )
     a = await create(world)
     with pytest.raises(RuntimeError, match="Retain conversation"):
         async with world.engine.begin() as connection:
@@ -633,6 +645,12 @@ async def test_actual_alembic_populated_upgrade_and_downgrade(pg_engine):
             }
             assert before == after
             assert await db.scalar(text("SELECT version_num FROM alembic_version")) == REVISION
+            assert await db.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='conversations'::regclass "
+                    "AND tgname='trg_conversation_owner_immutable' AND tgenabled='O' AND NOT tgisinternal)"
+                )
+            )
             constraints = set(
                 (
                     await db.execute(
@@ -896,3 +914,83 @@ async def test_tombstone_between_request_and_result_lookup(world, monkeypatch):
     finally:
         release.set()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize("with_turn", [False, True], ids=["empty", "with-turn"])
+@pytest.mark.parametrize("transport", ["sql", "orm"])
+async def test_conversation_owner_is_immutable(world, with_turn, transport):
+    conversation = await create(world)
+    if with_turn:
+        await reserve(world, conversation.id)
+    async with world.sessions() as db:
+        before = dict(
+            (
+                await db.execute(
+                    select(Conversation.__table__).where(Conversation.id == conversation.id)
+                )
+            )
+            .mappings()
+            .one()
+        )
+    with pytest.raises(IntegrityError, match="Conversation owner is immutable") as error:
+        async with world.sessions.begin() as db:
+            if transport == "sql":
+                await db.execute(
+                    text("UPDATE conversations SET owner_id=:owner WHERE id=:id"),
+                    {"owner": USER_B, "id": conversation.id},
+                )
+            else:
+                row = await db.get(Conversation, conversation.id)
+                assert row is not None
+                row.owner_id = USER_B
+                await db.flush()
+    assert error.value.orig is not None
+    assert getattr(error.value.orig, "sqlstate", None) == "23514"
+    async with world.sessions.begin() as db:
+        after = dict(
+            (
+                await db.execute(
+                    select(Conversation.__table__).where(Conversation.id == conversation.id)
+                )
+            )
+            .mappings()
+            .one()
+        )
+        assert after == before  # Includes ownership, timestamps and all versions.
+        assert (await ConversationRepository(db).get(USER_A, conversation.id)).owner_id == USER_A
+    with pytest.raises(ConversationNotFound):
+        async with world.sessions.begin() as db:
+            await ConversationRepository(db).get(USER_B, conversation.id)
+
+
+async def test_same_owner_updates_and_lifecycle_remain_valid(world):
+    conversation = await create(world)
+    async with world.sessions.begin() as db:
+        await db.execute(
+            text("""
+            UPDATE conversations SET owner_id=:owner, title='Same owner',
+                updated_at=clock_timestamp(), last_activity_at=clock_timestamp(),
+                metadata_version=metadata_version+1, content_version=content_version+1
+            WHERE id=:id
+        """),
+            {"owner": USER_A, "id": conversation.id},
+        )
+        row = await db.get(Conversation, conversation.id)
+        assert row is not None
+        row.owner_id = USER_A  # ORM no-op owner assignment is also permitted.
+        row.title = "ORM title"
+        await db.flush()
+        renamed = await ConversationRepository(db).rename(
+            USER_A, conversation.id, expected_version=2, title="Repository title"
+        )
+        assert renamed.metadata_version == 3 and renamed.content_version == 1
+    turn = await reserve(world, conversation.id)
+    await failure(world, turn)
+    async with world.sessions.begin() as db:
+        await ConversationRepository(db).delete(USER_A, conversation.id, expected_version=3)
+    async with world.sessions() as db:
+        row = await db.get(Conversation, conversation.id)
+        assert row is not None and row.owner_id == USER_A
+        assert row.deleted_at is not None and row.metadata_version == 4
+        saved = await db.get(ConversationTurn, turn.id)
+        assert saved is not None and saved.status == TurnStatus.FAILED
