@@ -5,27 +5,55 @@ Leave the existing `drivemind-demo` project untouched. Create no services until
 packaging acceptance and separate deployment approval. Use a new project and
 environment with four services, one replica each, in the same region:
 
-**Dependency deployment hold:** packaging verification on 2026-10-14 found
-pre-existing production dependency advisories in the unchanged lockfile, including
-Next.js 15.5.20 (critical image-optimization advisory
-[GHSA-2xp9-vwfh-vxw4](https://github.com/advisories/GHSA-2xp9-vwfh-vxw4), custom-server
-Server Actions SSRF [GHSA-89xv-2m56-2m9x](https://github.com/advisories/GHSA-89xv-2m56-2m9x))
-and proxy-addr/shadcn transitive packages. Audit counts do not establish that every
-advisory is reachable here; the Windows-only advisory does not apply to these
-Linux images. Nevertheless, **do not expose this beta until dependency remediation
-and focused regression acceptance**. No lockfile upgrades are hidden in packaging.
+**Security release gate:** the scoped frontend dependency remediation requires
+independent acceptance before lifting M6B's dependency deployment hold. See
+[dependency inventory and acceptance evidence](M6B_FRONTEND_SECURITY.md). Passing
+an audit alone is not security proof or deployment authorization. All live
+verification and indexing-activation gates below still apply.
 
 | Service | Source/root | Listener | Persistence / public access |
 | --- | --- | --- | --- |
-| Frontend | this branch, `/frontend`, `/frontend/railway.toml` | assigned `PORT`, dual-stack | no volume; only public HTTPS service |
-| Backend | this branch, `/backend`, `/backend/railway.toml` | `PORT=8000`, IPv4 | no volume; private only; one Uvicorn worker |
+| Frontend | this branch, `/frontend`, Dockerfile | assigned `PORT`, dual-stack | no volume; only public HTTPS service |
+| Backend | this branch, `/backend`, Dockerfile | `PORT=8000`, IPv4 | no volume; private only; one Uvicorn worker |
 | PostgreSQL | official `postgres:16.15-bookworm` image | 5432 | volume `/var/lib/postgresql/data`; no public domain/TCP proxy |
 | Qdrant | `qdrant/qdrant:v1.18.0` image | 6333 HTTP | volume `/qdrant/storage`; no public domain/TCP proxy |
 
-Select each application root and config path explicitly in Railway. Dockerfile
-paths in the configs refer to the service build root. Review the effective build
-settings before approving deployment; no monorepo-root build or automatic demo
-deployment. Disable auto-deploy initially. Application base images pin multi-arch
+Select each application root and Dockerfile explicitly in Railway's dashboard.
+**Do not rely on the TOML files for a new project.** Railway's
+[deprecation notice](https://docs.railway.com/config-as-code/reference) retains
+Config as Code only for legacy services until 2026-12-01; its
+[changelog](https://railway.com/changelog/2026-08-20-railway-anon) says new projects
+stopped applying it from August 28, 2026. The files remain historical/reference
+settings, not a new project's configuration authority. No new IaC framework is
+needed for this four-service beta.
+
+Enter these supported dashboard settings on the two **new** application services:
+
+| Setting | Frontend | Backend |
+| --- | --- | --- |
+| Source branch | `feature/v2-state-performance` | `feature/v2-state-performance` |
+| Source Root Directory / Docker build context | `/frontend` | `/backend` |
+| Builder / Dockerfile | Dockerfile; `Dockerfile` in selected root | Dockerfile; `Dockerfile` in selected root |
+| Build command | Dockerfile, no override | Dockerfile, no override |
+| Container working directory | `/app` (image WORKDIR) | `/app` (image WORKDIR) |
+| Start command | image CMD, or explicitly `node deploy/server.mjs` | image CMD, or explicitly `sh deploy/start.sh` |
+| Port | `PORT=3000`; public domain target 3000 | `PORT=8000`; private backend origin includes 8000 |
+| Healthcheck path / startup timeout | `/_deployment/health` / 120 seconds | `/api/v1/health/ready` / 120 seconds |
+| Replicas | 1 | 1; entrypoint also fixes Uvicorn workers to 1 |
+| Serverless / auto-sleep | disabled | disabled |
+| Restart policy | On Failure, maximum 3 retries | On Failure, maximum 3 retries |
+| Drain | service variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=210` | service variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=210` |
+| Overlap | service variable `RAILWAY_DEPLOYMENT_OVERLAP_SECONDS=0` | service variable `RAILWAY_DEPLOYMENT_OVERLAP_SECONDS=0` |
+| Public networking | approved HTTPS frontend domain only | no public domain or TCP proxy |
+| Pre-deploy | none | none normally; separately approved one-time migration bootstrap only |
+
+Use the dashboard's service Settings/Variables controls; do not select a TOML
+config-file override. Review staged/effective deployment settings before separate
+approval. Root/context selection, builder detection, assigned ports, healthcheck
+Host handling, no-sleep, replica/restart settings and actual SIGTERM/SIGKILL grace
+must be verified on a live authorized deployment; a variable label is not proof.
+Keep auto-deploy disabled initially and leave the existing demo untouched.
+Application base images pin multi-arch
 digests; resolve/store storage image digests in the release record too. Deliberate
 base/security updates and rebuilt releases must be rechecked. Debian OCR packages
 come from signed repositories at build time, so record each resulting image digest
@@ -48,9 +76,9 @@ originals need a persistent application volume. Database and Qdrant volumes do.
   must not query the database, vector service or other private services.
 - [Deployment teardown](https://docs.railway.com/deployments/reference): default
   SIGTERM-to-SIGKILL grace is zero. Set `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=210`
-  on both applications and review the effective value. The checked-in application
-  configs also pin `drainingSeconds=210`, `overlapSeconds=0` and
-  `sleepApplication=false`; verify effective settings, not just variable labels.
+  on both applications and review the effective value. The historical TOML files
+  record the equivalent settings but do not enforce them for new projects;
+  configure drain, overlap and no-sleep using the dashboard path above.
   Backend Uvicorn allows
   150 seconds for active HTTP requests; accepted indexing drain/cleanup follow.
   Frontend joins active connections, closes remaining waits after 185 seconds.
@@ -251,7 +279,7 @@ health, cookies/Origin/errors, collection config and shutdown. Native ARM64
 execution does not prove AMD64 execution; inspect multi-arch bases and verify
 Railway's selected architecture before approval.
 
-Live (requires separate authorization): effective root/config/image, runtime
+Live (requires separate authorization): effective dashboard root/settings/image, runtime
 private DNS, assigned PORT/domain/HTTPS, callback multi-cookie forwarding, Google
 LOGIN/CONNECT identity/CSRF/logout, a response delayed beyond 120 seconds, no edge
 private caching/log leakage, SIGTERM grace, restart with original volumes,

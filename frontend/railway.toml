@@ -1,3 +1,5 @@
+# Historical/reference settings only. New Railway projects do not apply Config
+# as Code; enter these settings in the dashboard using RAILWAY_PRIVATE_BETA.md.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
