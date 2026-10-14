@@ -1,5 +1,10 @@
 # Deployment Guide
 
+> **Normal V2 private beta:** use [Railway packaging and runbook](RAILWAY_PRIVATE_BETA.md).
+> The historical instructions below retain demo context; their legacy Google
+> callback, collection auto-creation and unauthenticated indexing commands are
+> not valid for the accepted normal V2 runtime. Do not use them for beta activation.
+
 How to deploy DriveMind AI for a portfolio demo or personal use.
 
 ---
