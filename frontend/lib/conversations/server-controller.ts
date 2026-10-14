@@ -134,6 +134,7 @@ export class ServerConversationController {
   private detailGeneration = 0;
   private pollGeneration = 0;
   private mutationGeneration = new Map<string, number>();
+  private metadataGeneration = new Map<string, number>();
   private active = false;
   private readonly invalidate = () => this.reset();
   constructor(private readonly transport: ConversationTransport = api) { }
@@ -160,6 +161,7 @@ export class ServerConversationController {
     this.requests.clear();
     this.deleted.clear();
     this.mutationGeneration.clear();
+    this.metadataGeneration.clear();
     this.listGeneration += 1;
     this.selectionGeneration += 1;
     this.detailGeneration += 1;
@@ -211,9 +213,16 @@ export class ServerConversationController {
       return;
     const old = this.state.conversations.find(value => value.id === row.id)
       ?? (this.state.conversation?.id === row.id ? this.state.conversation : undefined);
+    this.advanceMetadataGeneration(row.id);
     const canonical = metadata(old, row);
     this.update({ conversations: orderConversations([...this.state.conversations.filter(value => value.id !== row.id), canonical]),
       ...(this.state.selectedId === row.id ? { conversation: canonical } : {}) });
+  }
+  // New metadata reads and accepted canonical snapshots invalidate older metadata outcomes.
+  private advanceMetadataGeneration(cid: string): number {
+    const generation = (this.metadataGeneration.get(cid) ?? 0) + 1;
+    this.metadataGeneration.set(cid, generation);
+    return generation;
   }
   private remove(cid: string): void {
     this.deleted.add(cid);
@@ -257,8 +266,10 @@ export class ServerConversationController {
       const known = new Map(this.state.conversations.map(row => [row.id, row]));
       const rows = new Map((append ? this.state.conversations : []).map(row => [row.id, row]));
       for (const row of result.conversations)
-        if (!this.deleted.has(row.id))
+        if (!this.deleted.has(row.id)) {
+          this.advanceMetadataGeneration(row.id);
           rows.set(row.id, metadata(known.get(row.id), row));
+        }
       const selected = this.state.selectedId ? rows.get(this.state.selectedId) : undefined;
       this.update({ conversations: orderConversations([...rows.values()]), nextListCursor: result.next_cursor,
         ...(selected && this.state.conversation ? { conversation: metadata(this.state.conversation, selected) } : {}) });
@@ -288,8 +299,13 @@ export class ServerConversationController {
     if (cid !== null && !this.deleted.has(cid))
       await this.detail(scope, cid, selection, false);
   }
-  async reloadSelected(): Promise<void> { if (this.state.selectedId)
-    await this.select(this.state.selectedId); }
+  async reloadSelected(): Promise<void> {
+    const scope = this.scope(), cid = this.state.selectedId;
+    if (scope && cid && !this.deleted.has(cid)) {
+      this.update({ error: null });
+      await this.detail(scope, cid, this.selectionGeneration, false);
+    }
+  }
   async loadOlderTurns(): Promise<void> {
     const scope = this.scope(), cid = this.state.selectedId;
     if (scope && cid && this.state.nextTurnCursor !== null)
@@ -416,19 +432,24 @@ export class ServerConversationController {
       this.finish(entry);
     }
   }
-  private async refreshMetadata(scope: Scope, cid: string): Promise<void> {
-    if (!this.live(scope) || this.deleted.has(cid))
+  private async refreshMetadata(scope: Scope, cid: string, signal?: AbortSignal): Promise<void> {
+    if (!this.live(scope) || this.deleted.has(cid) || signal?.aborted)
       return;
+    const generation = this.advanceMetadataGeneration(cid);
     const entry = this.begin(scope, "metadata", cid);
+    // Bound our wait even if the transport ignores cancellation; late outcomes stay observed.
+    const cancel = () => entry.abort.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
+    const current = () => this.valid(entry) && !this.deleted.has(cid) && this.metadataGeneration.get(cid) === generation;
     if (this.state.selectedId === cid)
       this.update({ metadataLoading: true });
     try {
-      const detail = await this.transport.getConversation(cid, { limit: 1 }, entry.abort.signal);
-      if (this.valid(entry) && !this.deleted.has(cid))
+      const detail = await observe(this.transport.getConversation(cid, { limit: 1 }, entry.abort.signal), entry.abort.signal);
+      if (current())
         this.put(detail.conversation);
     }
     catch (error) {
-      if (this.valid(entry)) {
+      if (current()) {
         if (error instanceof api.ConversationApiError && error.status === 404)
           this.remove(cid);
         else if (this.state.selectedId === cid)
@@ -436,8 +457,10 @@ export class ServerConversationController {
       }
     }
     finally {
+      signal?.removeEventListener("abort", cancel);
       this.finish(entry);
-      if (this.valid(entry) && this.state.selectedId === cid)
+      // Aborted work still owns loading cleanup, but never across an account/epoch change.
+      if (this.live(scope) && this.state.selectedId === cid)
         this.update({ metadataLoading: [...this.work].some(work => work.kind === "metadata" && work.cid === cid && !work.abort.signal.aborted) });
     }
   }
@@ -607,7 +630,7 @@ export class ServerConversationController {
         this.accept(scope, cid, result);
         if (result.status !== "RUNNING" || result.execution_expired) {
           if (result.status !== "RUNNING")
-            await this.refreshMetadata(scope, cid);
+            await this.refreshMetadata(scope, cid, entry.abort.signal);
           return; // Expired work requires an explicit interruption, never replay.
         }
         if (n + 1 < maxAttempts)

@@ -556,3 +556,170 @@ it("new canonical list metadata updates a selected conversation without regressi
   await controller.refreshList();
   expect(controller.getSnapshot().conversation?.content_version).toBe(4);
 });
+
+it("correction: transient reload preserves confirmed content and cursors", async () => {
+  const { rpc, controller } = await ready();
+  rpc.getConversation.mockResolvedValueOnce({ ...detail(X, [turn()]), next_before_sequence: 1 });
+  await controller.select(X);
+  const confirmed = controller.getSnapshot();
+  const late = deferred<api.ConversationDetail>();
+  rpc.getConversation.mockReturnValueOnce(late.promise);
+  const pending = controller.reloadSelected();
+  expect(controller.getSnapshot().detailLoading).toBe(true);
+  late.reject(new api.ConversationApiError(503, "unavailable"));
+  await pending;
+  expect(controller.getSnapshot().conversation).toEqual(confirmed.conversation);
+  expect(controller.getSnapshot().turns).toEqual(confirmed.turns);
+  expect(controller.getSnapshot().nextTurnCursor).toBe(1);
+  expect(controller.getSnapshot().error?.category).toBe("unavailable");
+  expect(controller.getSnapshot().detailLoading).toBe(false);
+});
+
+it("correction: stale metadata 404 cannot remove newer confirmed detail", async () => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const late = deferred<api.ConversationDetail>(), started = deferred<void>();
+  rpc.renameConversation.mockRejectedValueOnce(new api.ConversationApiError(409, "metadata_version_conflict"));
+  rpc.getConversation.mockImplementationOnce(() => { started.resolve(); return late.promise; });
+  const pending = controller.rename(X, "rename");
+  await started.promise;
+  rpc.getConversation.mockResolvedValueOnce({ ...detail(), conversation: { ...meta(), metadata_version: 3, title: "Canonical" } });
+  await controller.reloadSelected();
+  late.reject(new api.ConversationApiError(404, "not_found"));
+  await pending;
+  expect(controller.getSnapshot().selectedId).toBe(X);
+  expect(controller.getSnapshot().conversation?.metadata_version).toBe(3);
+  expect(controller.getSnapshot().conversations.some(row => row.id === X)).toBe(true);
+});
+
+it("correction: terminal metadata wait settles within polling budget", async () => {
+  vi.useFakeTimers();
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const late = deferred<api.ConversationDetail>(), started = deferred<void>();
+  rpc.getConversation.mockImplementationOnce(() => { started.resolve(); return late.promise; });
+  let settled = false;
+  const pending = controller.pollTurn(turn().id, { maxAttempts: 1, intervalMs: 100 }).then(() => { settled = true; });
+  await started.promise;
+  await vi.advanceTimersByTimeAsync(5000);
+  const bounded = settled;
+  const state = controller.getSnapshot();
+  late.resolve({ ...detail(), conversation: { ...meta(), title: "Abandoned" } });
+  await pending;
+  expect(bounded).toBe(true);
+  expect(state.polling).toBe(false);
+  expect(state.metadataLoading).toBe(false);
+  expect(state.turns[0].status).toBe("COMPLETED");
+  expect(controller.getSnapshot().conversation?.title).not.toBe("Abandoned");
+});
+
+it("correction: delayed refresh retains citations until canonical replacement", async () => {
+  const { rpc, controller } = await ready();
+  rpc.getConversation.mockResolvedValueOnce(detail(X, [turn()]));
+  await controller.select(X);
+  const confirmed = controller.getSnapshot();
+  const late = deferred<api.ConversationDetail>();
+  rpc.getConversation.mockReturnValueOnce(late.promise);
+  const pending = controller.reloadSelected();
+  expect(controller.getSnapshot().conversation).toEqual(confirmed.conversation);
+  expect(controller.getSnapshot().turns).toEqual(confirmed.turns);
+  late.resolve({ ...detail(X, [turn("COMPLETED", { answer: "Canonical answer" })]), conversation: { ...meta(), metadata_version: 3 } });
+  await pending;
+  expect(controller.getSnapshot().turns[0].answer).toBe("Canonical answer");
+  expect(controller.getSnapshot().conversation?.metadata_version).toBe(3);
+  expect(controller.getSnapshot().detailLoading).toBe(false);
+});
+it("correction: navigation isolates an abandoned refresh and current detail 404 removes", async () => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const late = deferred<api.ConversationDetail>();
+  rpc.getConversation.mockReturnValueOnce(late.promise);
+  const pending = controller.reloadSelected();
+  await controller.select(Y);
+  late.resolve(detail(X, [turn()]));
+  await pending;
+  expect(controller.getSnapshot().selectedId).toBe(Y);
+  expect(controller.getSnapshot().turns).toEqual([]);
+  rpc.getConversation.mockRejectedValueOnce(new api.ConversationApiError(404, "not_found"));
+  await controller.reloadSelected();
+  expect(controller.getSnapshot().selectedId).toBeNull();
+  expect(controller.getSnapshot().conversations.some(row => row.id === Y)).toBe(false);
+});
+it.each(["stale success", "current 404", "deleted", "owner"])("correction: metadata freshness handles %s", async (scenario) => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const late = deferred<api.ConversationDetail>(), started = deferred<void>();
+  rpc.renameConversation.mockRejectedValueOnce(new api.ConversationApiError(409, "metadata_version_conflict"));
+  rpc.getConversation.mockImplementationOnce(() => { started.resolve(); return late.promise; });
+  const pending = controller.rename(X, "rename");
+  await started.promise;
+  if (scenario === "stale success") {
+    rpc.getConversation.mockResolvedValueOnce({ ...detail(), conversation: { ...meta(), metadata_version: 3, title: "New canonical" } });
+    await controller.reloadSelected();
+    late.resolve({ ...detail(), conversation: { ...meta(), metadata_version: 4, title: "Obsolete response" } });
+  }
+  else if (scenario === "current 404")
+    late.reject(new api.ConversationApiError(404, "not_found"));
+  else if (scenario === "deleted") {
+    await controller.delete(X);
+    late.resolve(detail());
+  }
+  else {
+    switchOwner(B);
+    await controller.initialize();
+    await controller.select(Y);
+    late.resolve(detail());
+  }
+  await pending;
+  expect(controller.getSnapshot().metadataLoading).toBe(false);
+  if (scenario === "stale success") {
+    expect(controller.getSnapshot().conversation?.title).toBe("New canonical");
+    expect(controller.getSnapshot().conversation?.metadata_version).toBe(3);
+  }
+  else if (scenario === "owner") {
+    expect(controller.getSnapshot().ownerId).toBe(B);
+    expect(controller.getSnapshot().selectedId).toBe(Y);
+  }
+  else {
+    expect(controller.getSnapshot().selectedId).toBeNull();
+    expect(controller.getSnapshot().conversations.some(row => row.id === X)).toBe(false);
+  }
+});
+it.each(["dispose", "late rejection", "timely"])("correction: terminal metadata cleanup handles %s", async (scenario) => {
+  vi.useFakeTimers();
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const late = deferred<api.ConversationDetail>(), started = deferred<void>();
+  rpc.getConversation.mockImplementationOnce(() => { started.resolve(); return late.promise; });
+  let settled = false;
+  const pending = controller.pollTurn(turn().id, { maxAttempts: 1, intervalMs: 100 }).then(() => { settled = true; });
+  await started.promise;
+  const signal = rpc.getConversation.mock.calls.at(-1)![2]!;
+  if (scenario === "dispose") {
+    controller.dispose();
+    await pending;
+    expect(settled).toBe(true);
+    late.resolve({ ...detail(), conversation: { ...meta(), title: "Abandoned" } });
+  }
+  else if (scenario === "late rejection") {
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(settled).toBe(true);
+    expect(signal.aborted).toBe(true);
+    expect(controller.getSnapshot().turns[0].status).toBe("COMPLETED");
+    late.reject(new Error("Late transport rejection"));
+  }
+  else {
+    late.resolve({ ...detail(), conversation: { ...meta(), content_version: 3 } });
+    await pending;
+    expect(signal.aborted).toBe(false);
+    expect(controller.getSnapshot().conversation?.content_version).toBe(3);
+  }
+  await Promise.resolve();
+  expect(controller.getSnapshot().polling).toBe(false);
+  expect(controller.getSnapshot().metadataLoading).toBe(false);
+  expect(vi.getTimerCount()).toBe(0);
+  if (scenario === "dispose")
+    expect(controller.getSnapshot().ownerId).toBeNull();
+  else
+    expect(controller.getSnapshot().error).toBeNull();
+});

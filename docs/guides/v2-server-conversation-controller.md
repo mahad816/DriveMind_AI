@@ -20,12 +20,16 @@ S3C operations:
   Initialization discards local bookkeeping and reloads verified server state.
 - `select(id|null)`, `reloadSelected`, `loadOlderTurns`: bounded 50-turn sequence
   pages. IDs are canonical server UUIDs. `nextTurnCursor` means older history exists.
+  Reload keeps confirmed metadata, turns, citations and cursors during the wait and
+  transient failures; navigation isolates the old selection. A current 404 removes it.
 - `create(title?)`, `retryCreate`: preserve one creation UUID on lost acknowledgments.
   The returned server ID becomes selection only if selection has not since changed.
 - `rename(id,title)`, `delete(id)`: use observed metadata version, await server
   confirmation and reconcile 409 with canonical metadata. Confirmed tombstones
-  prevent late snapshots from resurrecting a resource. A turn-specific 404 does
-  not prove the entire conversation was deleted.
+  prevent late snapshots from resurrecting a resource. Per-conversation metadata
+  generations fence obsolete success and error responses after newer confirmations,
+  including stale 404s. A turn-specific 404 does not prove the entire conversation
+  was deleted.
 - `submitQuestion(question)`: freezes a new UUID, question, conversation and observed
   content version before async work. Temporary `submitting` is not durable RUNNING.
   No caller/browser history is sent. Canonical turn IDs replace no client message IDs.
@@ -33,8 +37,9 @@ S3C operations:
   submission replay otherwise. No automatic new UUID or model retry is introduced.
 - `refreshTurn(id)`, `pollTurn(id,options)`, `stopPolling`: explicit, bounded polling
   (default 30 attempts/2 seconds; cap 60 attempts and 180-second elapsed budget).
-  The elapsed budget includes status HTTP waits, with a five-second minimum for short
-  explicit polls. Cancellation-resistant late responses are observed and discarded.
+  The elapsed budget includes status HTTP waits and terminal metadata reconciliation,
+  with a five-second minimum for short explicit polls. Cancellation-resistant late
+  responses are observed and discarded.
   API calls use the supplied abort signal. Selection/account change and
   disposal abort both waits and timers. A polling limit leaves RUNNING truthful.
 - `interruptExpiredTurn(id)`: explicit user intent only. Observed expiry is exposed
