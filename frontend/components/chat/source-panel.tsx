@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useEffect, useState } from "react";
 
 import {
@@ -96,8 +98,7 @@ export function SourcePanel({
   }, [citation, open]);
 
   const filename = citation?.filename ?? "Document";
-  const driveFileId = citation?.drive_file_id;
-  const askHref = `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}`;
+  const askHref = DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}` : "/chat";
   const currentDetail = citation && detail?.chunkId === citation.chunk_id ? detail : null;
   const answerCitations = citations ?? (citation ? [citation] : []);
 
@@ -128,7 +129,7 @@ export function SourcePanel({
           <SourceTrustPanel
             filename={filename}
             excerpt={currentDetail?.excerpt ?? citation?.snippet ?? ""}
-            driveFileId={driveFileId}
+            sourceHref={citation ? `/sources/${encodeURIComponent(citation.chunk_id)}` : undefined}
             modifiedAt={currentDetail?.modifiedAt ?? null}
             askHref={askHref}
             isLoading={Boolean(open && citation && (!currentDetail || currentDetail.isLoading))}

@@ -36,7 +36,7 @@ type MessageThreadProps = {
   messages: ChatTurn[];
   onSourceSelect: (citation: CitationItem, citations: CitationItem[]) => void;
   onRetry: (messageId: string, question: string) => void;
-  onRegenerate: (messageId: string, question: string) => void;
+  onRegenerate?: (messageId: string, question: string) => void;
   onFollowUp: (question: string) => void;
   isSending: boolean;
 };
@@ -88,7 +88,7 @@ export function MessageThread({
                   response={message.response}
                   onSourceSelect={onSourceSelect}
                   onRegenerate={
-                    isLatest ? () => onRegenerate(message.id, message.question) : undefined
+                    isLatest && onRegenerate ? () => onRegenerate(message.id, message.question) : undefined
                   }
                   onFollowUp={isLatest ? onFollowUp : undefined}
                   followUpSuggestions={

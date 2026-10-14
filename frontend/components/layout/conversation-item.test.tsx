@@ -103,7 +103,7 @@ describe("ConversationItem", () => {
     fireEvent.click(screen.getByRole("button", { name: "Conversation options" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /delete/i }));
     expect(onDelete).toHaveBeenCalledWith("abc-123");
-    expect(navigation.replace).toHaveBeenCalledWith("/chat");
+    expect(navigation.replace).not.toHaveBeenCalled(); // Parent navigates only after confirmed deletion.
     expect(onNavigate).not.toHaveBeenCalled();
     vi.mocked(window.confirm).mockRestore();
   });

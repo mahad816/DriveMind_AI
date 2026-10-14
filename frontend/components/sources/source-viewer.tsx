@@ -1,5 +1,7 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
+
 import { useEffect, useState } from "react";
 
 import { SourceTrustPanel } from "@/components/sources/source-trust-panel";
@@ -59,13 +61,12 @@ export function SourceViewer({ chunkId }: SourceViewerProps) {
   }, [chunkId]);
 
   const filename = data?.filename ?? "Document";
-  const askHref = `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}`;
+  const askHref = DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}` : "/chat";
 
   return (
     <SourceTrustPanel
       filename={filename}
       excerpt={data?.text?.trim() ?? ""}
-      driveFileId={data?.drive_file_id}
       modifiedAt={data?.modified_at ?? null}
       askHref={askHref}
       isLoading={isLoading}

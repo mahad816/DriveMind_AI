@@ -1,3 +1,4 @@
+vi.mock("@/lib/demo", async (original) => ({ ...await original<typeof import("@/lib/demo")>(), DEMO_MODE: true, knowledgeAvailable: (status: { demo_ready?: boolean } | null) => status?.demo_ready === true }));
 vi.mock("@/lib/api/auth", () => ({ inspectApplicationSession: vi.fn(async () => ({ user_id: "00000000-0000-0000-0000-000000000065" })) }));
 import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -24,8 +25,8 @@ vi.mock("next/navigation", () => {
 });
 vi.mock("@/lib/api/chat", () => ({ askQuestion: vi.fn() }));
 vi.mock("@/lib/hooks/use-connection-status", () => {
-  const value = { data: { connected: true }, error: null, refetch: vi.fn() };
-  return { useConnectionStatus: () => ({ ...value, data: { connected: readiness.connected }, error: readiness.error }) };
+  const value = { data: { connected: false, demo_mode: true, demo_ready: true }, error: null, refetch: vi.fn() };
+  return { useConnectionStatus: () => ({ ...value, data: { connected: false, demo_mode: true, demo_ready: readiness.connected }, error: readiness.error }) };
 });
 vi.mock("@/lib/hooks/use-knowledge-status", () => ({
   useKnowledgeStatus: () => ({ needsConnect: false, needsPrepare: false }),
@@ -245,7 +246,7 @@ describe("in-flight conversation ownership", () => {
     await act(async () => pending.reject(new Error("Request failed")));
 
     expect(getConversationMessages(chatA.id)).toMatchObject([
-      { question: "Open the meeting agenda", status: "error", error: "Request failed" },
+      { question: "Open the meeting agenda", status: "error", error: "Something went wrong while answering. Please try again." },
     ]);
     expect(getConversationMessages(chatB.id)).toEqual([]);
   });
@@ -326,7 +327,7 @@ describe("in-flight conversation ownership", () => {
     expect(screen.getByLabelText("Question")).toHaveValue("My draft");
     fireEvent.click(screen.getByText("Send")); await waitFor(() => expect(askQuestion).toHaveBeenCalledOnce());
   });
-  it("blocks stale normal-mode readiness after a status failure", async () => {
+  it("blocks stale demo readiness after a status failure", async () => {
     readiness.connected = true; readiness.error = "Offline";
     const conversation = createConversation(); render(<ChatInterface conversationId={conversation.id} />);
     fireEvent.change(screen.getByLabelText("Question"), { target: { value: "Draft" } });

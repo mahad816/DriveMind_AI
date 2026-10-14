@@ -16,6 +16,8 @@ import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { isUtilityNavActive, utilityNavItems } from "@/lib/navigation";
 import { chatCopy, knowledgeStatusLabel } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
+import { useServerConversations } from "@/components/providers/server-conversations-provider";
+import type { ConversationGroup } from "@/lib/conversations/types";
 import { DEMO_MODE } from "@/lib/demo";
 
 type ConversationSidebarProps = {
@@ -24,18 +26,57 @@ type ConversationSidebarProps = {
   collapsible?: boolean;
 };
 
-export function ConversationSidebar({ className, onNavigate, collapsible = false }: ConversationSidebarProps) {
+export function ConversationSidebar(props: ConversationSidebarProps) {
+  return DEMO_MODE ? <DemoSidebar {...props} /> : <ServerSidebar {...props} />;
+}
+
+function DemoSidebar(props: ConversationSidebarProps) {
   const router = useRouter();
+  const local = useConversations();
+  const pathname = usePathname();
+  return <SidebarView {...props} groups={local.groups} isLoading={local.isLoading}
+    error={local.storageError} onNew={async () => {
+      try { const created = local.startNewConversation(); props.onNavigate?.(); router.push(`/chat/${created.id}`); } catch { /* Hook exposes safe error. */ }
+    }} onRename={local.renameConversation} onDelete={(id) => {
+      local.removeConversation(id);
+      if (pathname === `/chat/${id}`) {
+        const next = local.conversations.find(row => row.id !== id);
+        router.replace(next ? `/chat/${next.id}` : "/chat");
+      }
+    }} />;
+}
+
+function ServerSidebar(props: ConversationSidebarProps) {
+  const { state, controller } = useServerConversations();
+  const router = useRouter();
+  const groups: ConversationGroup[] = [{ label: "Recent", conversations: state.conversations.map(row => ({
+    id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.last_activity_at,
+  })) }];
+  return <SidebarView {...props} key={`${state.ownerId}:${state.sessionRevision}`} groups={groups}
+    isLoading={state.listLoading} error={state.error?.message ?? null} disabled={!state.ownerId || !!state.creation}
+    onNew={async () => { const row = await controller.create(); if (row && controller.getSnapshot().selectedId === row.id) { props.onNavigate?.(); router.push(`/chat/${row.id}`); } }}
+    onRename={(id, title) => { void controller.rename(id, title); }}
+    onDelete={(id) => { void controller.delete(id).then(confirmed => {
+      if (confirmed && controller.getSnapshot().ownerId === state.ownerId && controller.getSnapshot().sessionRevision === state.sessionRevision && controller.getSnapshot().selectedId === null)
+        router.replace("/chat");
+    }); }}
+    onRefresh={() => { void controller.refreshList(); }}
+    onMore={state.nextListCursor ? () => { void controller.loadMoreConversations(); } : undefined}
+    onReconcileCreation={state.creation?.uncertain ? () => { void controller.retryCreate().then(row => { if (row && controller.getSnapshot().selectedId === row.id) router.push(`/chat/${row.id}`); }); } : undefined}
+  />;
+}
+
+function SidebarView({ className, onNavigate, collapsible = false, groups, isLoading, error,
+  onNew, onRename, onDelete, onRefresh, onMore, onReconcileCreation, disabled = false,
+}: ConversationSidebarProps & {
+  groups: ConversationGroup[]; isLoading: boolean; error: string | null;
+  onNew: () => Promise<void>; onRename: (id: string, title: string) => unknown; onDelete: (id: string) => void;
+  onRefresh?: () => void; onMore?: () => void; onReconcileCreation?: () => void; disabled?: boolean;
+}) {
   const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
-  const { storageError, groups, isLoading, startNewConversation, renameConversation, removeConversation } =
-    useConversations();
   const [chatQuery, setChatQuery] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const compact = collapsible && collapsed;
-
-  const handleNewChat = () => {
-    try { const created = startNewConversation(); onNavigate?.(); router.push(`/chat/${created.id}`); } catch { return; }
-  };
 
   const filteredGroups = useMemo(() => {
     const q = chatQuery.trim().toLowerCase();
@@ -95,7 +136,8 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
       <div className={cn("flex shrink-0 flex-col gap-2 pb-3", compact ? "px-2" : "px-3")}>
         <button
           type="button"
-          onClick={handleNewChat}
+          onClick={() => void onNew()}
+          disabled={disabled || isLoading}
           aria-label="New Chat"
           title={compact ? "New Chat" : undefined}
           className={cn(
@@ -110,7 +152,9 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
 
       {!compact ? <Separator /> : null}
 
-      {storageError ? <p role="alert" className="p-3 text-sm">{storageError}</p> : null}
+      {error ? <p role="alert" className="p-3 text-sm">{error}</p> : null}
+      {onRefresh ? <button type="button" onClick={onRefresh} disabled={isLoading} className="px-3 text-xs">Refresh conversations</button> : null}
+      {onReconcileCreation ? <button type="button" onClick={onReconcileCreation}>Reconcile creation</button> : null}
       {/* Chat history */}
       {!compact ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="space-y-2 px-3 pt-3 pb-2">
@@ -166,8 +210,8 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
                       key={conversation.id}
                       conversation={conversation}
                       onNavigate={onNavigate}
-                      onRename={(id, title) => renameConversation(id, title)}
-                      onDelete={removeConversation}
+                      onRename={(id, title) => onRename(id, title)}
+                      onDelete={onDelete}
                     />
                   ))}
                 </div>
@@ -178,6 +222,7 @@ export function ConversationSidebar({ className, onNavigate, collapsible = false
           ) : (
             <p className="px-3 py-2 text-xs text-muted-foreground">{chatCopy.noChatsYet}</p>
           )}
+          {onMore ? <Button variant="ghost" disabled={isLoading} onClick={onMore}>Load more conversations</Button> : null}
         </nav>
       </div> : <div className="min-h-0 flex-1" />}
 

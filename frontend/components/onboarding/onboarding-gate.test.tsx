@@ -81,22 +81,30 @@ describe("setup-aware entry routing", () => {
   });
 
   it("does not let a stale browser-local completion flag bypass confirmed not-ready state", async () => {
-    pathname = "/chat";
+    pathname = "/files";
     vi.mocked(useKnowledgeStatus).mockReturnValue(status("not_connected"));
     render(<OnboardingGate><p>Chat</p></OnboardingGate>);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/onboarding"));
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
   });
 
-  it("does not briefly show chat while readiness is being checked", () => {
-    pathname = "/chat";
+  it("does not briefly show Drive files while readiness is being checked", () => {
+    pathname = "/files";
     render(<OnboardingGate><p>Chat</p></OnboardingGate>);
     expect(screen.getByText("Checking your Drive knowledge…")).toBeInTheDocument();
     expect(screen.queryByText("Chat")).not.toBeInTheDocument();
   });
 
+  it("keeps server conversations accessible when Drive is disconnected", () => {
+    pathname = "/chat/00000000-0000-0000-0000-000000000101";
+    vi.mocked(useKnowledgeStatus).mockReturnValue(status("not_connected"));
+    render(<OnboardingGate><p>Saved server history</p></OnboardingGate>);
+    expect(screen.getByText("Saved server history")).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("does not treat a failed status request as confirmed disconnection", () => {
-    pathname = "/chat";
+    pathname = "/files";
     vi.mocked(useKnowledgeStatus).mockReturnValue(status("error"));
     render(<OnboardingGate><p>Chat</p></OnboardingGate>);
     expect(replace).not.toHaveBeenCalled();

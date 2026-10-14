@@ -1,3 +1,4 @@
+vi.mock("@/lib/demo", async (original) => ({ ...await original<typeof import("@/lib/demo")>(), DEMO_MODE: true }));
 import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +13,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 vi.mock("@/lib/hooks/use-connection-status", () => ({
-  useConnectionStatus: () => ({ data: { connected: true }, error: null, refetch: vi.fn() }),
+  useConnectionStatus: () => ({ data: { connected: false, demo_mode: true, demo_ready: true }, error: null, refetch: vi.fn() }),
 }));
 vi.mock("@/lib/hooks/use-knowledge-status", () => ({
   useKnowledgeStatus: () => ({ needsConnect: false, needsPrepare: false }),

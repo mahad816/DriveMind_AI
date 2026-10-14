@@ -15,7 +15,7 @@ function ChatLoadingFallback() {
 
 /**
  * Empty chat canvas — does not create a history entry until the user clicks
- * New Chat or sends the first message / ask deep-link.
+ * New Chat or sends the first message.
  */
 export default function ChatPage() {
   return (

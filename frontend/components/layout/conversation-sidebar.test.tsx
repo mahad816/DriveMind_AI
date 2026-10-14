@@ -1,3 +1,4 @@
+vi.mock("@/lib/demo", async (original) => ({ ...await original<typeof import("@/lib/demo")>(), DEMO_MODE: true }));
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

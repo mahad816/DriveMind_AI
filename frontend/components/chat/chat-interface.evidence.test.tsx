@@ -1,3 +1,4 @@
+vi.mock("@/lib/demo", async (original) => ({ ...await original<typeof import("@/lib/demo")>(), DEMO_MODE: true }));
 vi.mock("@/lib/api/auth", () => ({ inspectApplicationSession: vi.fn(async () => ({ user_id: "00000000-0000-0000-0000-000000000065" })) }));
 import { setSessionOwner, invalidateSessionRequests } from "@/lib/api/session-events";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
@@ -21,7 +22,7 @@ vi.mock("next/navigation", () => ({
   })(),
 }));
 vi.mock("@/lib/hooks/use-connection-status", () => {
-  const value = { data: { connected: true }, error: null, refetch: vi.fn() };
+  const value = { data: { connected: false, demo_mode: true, demo_ready: true }, error: null, refetch: vi.fn() };
   return { useConnectionStatus: () => value };
 });
 vi.mock("@/lib/hooks/use-knowledge-status", () => ({

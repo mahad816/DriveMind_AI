@@ -22,6 +22,7 @@ type SourceTrustPanelProps = {
   filename: string;
   excerpt: string;
   driveFileId?: string;
+  sourceHref?: string;
   modifiedAt?: string | null;
   askHref: string;
   isLoading?: boolean;
@@ -37,6 +38,7 @@ export function SourceTrustPanel({
   filename,
   excerpt,
   driveFileId,
+  sourceHref,
   modifiedAt,
   askHref,
   isLoading = false,
@@ -103,6 +105,7 @@ export function SourceTrustPanel({
       ) : null}
 
       <div className="flex flex-col gap-2">
+        {!DEMO_MODE && sourceHref ? <Link href={sourceHref} className={buttonVariants({ variant: "outline" })}>Open source</Link> : null}
         {!DEMO_MODE && driveFileId ? (
           <a
             href={driveFileUrl(driveFileId)}

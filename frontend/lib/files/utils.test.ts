@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { buildAskAboutFileHref, truncatePreview } from "@/lib/files/utils";
 
 describe("file utils", () => {
-  it("builds ask-about href with encoded file name", () => {
+  it("normal navigation never includes private file names", () => {
     expect(buildAskAboutFileHref({ name: "Resume 2025.pdf" })).toBe(
-      "/chat?ask=Tell%20me%20about%20%22Resume%202025.pdf%22",
+      "/chat",
     );
   });
 

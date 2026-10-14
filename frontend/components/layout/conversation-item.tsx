@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isConversationActive } from "@/lib/navigation";
 import type { ConversationRecord } from "@/lib/conversations/types";
-import { listConversations } from "@/lib/conversations/storage";
 import { formatRelativeTime } from "@/lib/time/relative";
 import { cn } from "@/lib/utils";
 
@@ -28,7 +27,6 @@ export function ConversationItem({
   onDelete,
 }: ConversationItemProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const active = isConversationActive(pathname, conversation.id);
   const href = `/chat/${conversation.id}`;
   const relativeTime = formatRelativeTime(conversation.updatedAt);
@@ -62,15 +60,7 @@ export function ConversationItem({
     const confirmed = window.confirm(`Delete "${conversation.title}"? This cannot be undone.`);
     if (!confirmed) return;
 
-    const wasActive = active;
     onDelete(conversation.id);
-
-    if (!wasActive) return;
-
-    // Stay on history — open the next remaining chat, or an empty canvas.
-    // Do not auto-create a replacement "New chat" entry.
-    const next = listConversations()[0];
-    router.replace(next ? `/chat/${next.id}` : "/chat");
   };
 
   if (isEditing) {

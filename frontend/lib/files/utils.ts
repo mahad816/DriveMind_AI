@@ -1,3 +1,4 @@
+import { DEMO_MODE } from "@/lib/demo";
 import type { DriveFileRead } from "@/lib/api/types";
 import { FileImage, FileSpreadsheet, FileText, FileType } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -36,7 +37,7 @@ export function fileTypeIcon(mimeType: string): LucideIcon {
 }
 
 export function buildAskAboutFileHref(file: Pick<DriveFileRead, "name">): string {
-  return `/chat?ask=${encodeURIComponent(`Tell me about "${file.name}"`)}`;
+  return DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me about "${file.name}"`)}` : "/chat";
 }
 
 export function truncatePreview(text: string, maxChars = 480): string {

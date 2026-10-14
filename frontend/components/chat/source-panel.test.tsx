@@ -53,9 +53,9 @@ describe("citation source detail", () => {
     expect(screen.queryByText("Unable to load source")).not.toBeInTheDocument();
     pending.resolve(detail("chunk-a1"));
     expect(await screen.findByText(/Full text chunk-a1/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /open in (google )?drive/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /open source/i })).toHaveAttribute(
       "href",
-      expect.stringContaining("file-a"),
+      "/sources/chunk-a1",
     );
 
     await user.click(screen.getByRole("button", { name: "Close" }));

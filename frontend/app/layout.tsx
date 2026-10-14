@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { ApplicationSessionProvider } from "@/components/providers/application-session-provider";
+import { ServerConversationsProvider } from "@/components/providers/server-conversations-provider";
 import { ConnectionStatusProvider } from "@/components/providers/connection-status-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { ThemeProvider } from "@/components/providers/theme-provider";
@@ -43,7 +44,9 @@ export default function RootLayout({
             <TooltipProvider>
               <ApplicationSessionProvider>
                 <ConnectionStatusProvider>
-                  <AppShell>{children}</AppShell>
+                  <ServerConversationsProvider>
+                    <AppShell>{children}</AppShell>
+                  </ServerConversationsProvider>
                 </ConnectionStatusProvider>
               </ApplicationSessionProvider>
             </TooltipProvider>
