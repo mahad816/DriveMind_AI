@@ -15,8 +15,74 @@ verification and indexing-activation gates below still apply.
 | --- | --- | --- | --- |
 | Frontend | this branch, `/frontend`, Dockerfile | assigned `PORT`, dual-stack | no volume; only public HTTPS service |
 | Backend | this branch, `/backend`, Dockerfile | `PORT=8000`, IPv4 | no volume; private only; one Uvicorn worker |
-| PostgreSQL | official `postgres:16.15-bookworm` image | 5432 | volume `/var/lib/postgresql/data`; no public domain/TCP proxy |
+| PostgreSQL | Railway built-in PostgreSQL service, fresh PostgreSQL 18 database | template-generated private `PGPORT` | template-managed persistent volume; no public domain/TCP proxy |
 | Qdrant | `qdrant/qdrant:v1.18.0` image | 6333 HTTP | volume `/qdrant/storage`; no public domain/TCP proxy |
+
+### PostgreSQL compatibility evidence (M6C)
+
+Fresh-database verification passed locally on **PostgreSQL 18.6**
+(`postgres:18.6-bookworm`, digest
+`sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c`)
+and **PostgreSQL 16.15** (`postgres:16`, digest
+`sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d`).
+`SHOW server_version` confirmed each server. The accepted packaged backend used
+unchanged locked **SQLAlchemy 2.0.51, asyncpg 0.31.0 and Alembic 1.18.5**; no
+psycopg driver, pgvector or separately installed PostgreSQL extension is required.
+[asyncpg 0.31.0 documents PostgreSQL 18 support](https://github.com/MagicStack/asyncpg/blob/v0.31.0/README.rst).
+No application code, dependency or migration adaptation was necessary.
+
+Both empty databases completed all 15 Alembic revisions through
+`20261015_1200`. Catalog inspection verified matching 13 tables, 44 indexes,
+71 existing constraint definitions and both immutable-identity triggers.
+PostgreSQL 18 additionally exposes 97 `NOT NULL` constraints in `pg_constraint`,
+as described in its [release notes](https://www.postgresql.org/docs/18/release-18.html);
+this is a catalog representation change, not lost or weakened constraints.
+
+The same **66 focused tests passed on each server**: application-session
+PostgreSQL tests, conversation repository tests, selected durable chat
+publication/replay/restart tests and indexing owner-concurrency, recovery-exclusion
+and commit-rollback tests. Additional database-only probes passed for pooled
+async connections, JSONB, timezone-aware timestamps, full-text search, two-worker
+claims, lease renewal/expiry, stale-claim fencing, conservative unknown BUILD
+classification and row-lock `SKIP LOCKED` behavior. Tests used synthetic owners
+and fake generation; no Google, paid model or Qdrant call was required.
+PostgreSQL 16 remains supported locally; existing development Compose is unchanged.
+This evidence is not a hosted deployment test or indexing activation approval.
+
+### Fresh PostgreSQL 18 database and private connection
+
+Use Railway's **built-in PostgreSQL service** in the new isolated project. This
+procedure is for an empty database, not a PostgreSQL 16-to-18 upgrade. Verify
+`SHOW server_version` on the hosted service before proceeding; the template's
+actual image/version and volume configuration remain a hosted verification step.
+Do not reuse a development/demo volume or manually downgrade the template.
+
+Railway supplies connection variables described in its
+[PostgreSQL documentation](https://docs.railway.com/databases/postgresql).
+Reference the database service's private variables in backend Variables. The
+backend and Alembic require the explicit SQLAlchemy **asyncpg** dialect; they do
+not normalize a plain `postgresql://` URL. Do not reference `DATABASE_PUBLIC_URL`.
+For a service named `Postgres`, the backend value has this shape:
+
+```text
+postgresql+asyncpg://${{Postgres.PGUSER}}:<URL-encoded generated password>@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}
+```
+
+Replace the password placeholder privately with the percent-encoded generated
+`PGPASSWORD`, never with a committed sample. A direct `${{Postgres.PGPASSWORD}}`
+reference is suitable only when the generated value contains no URL-reserved
+characters. Confirm `PGHOST` resolves to the private service address. Keep the
+complete URL in backend Variables, never in frontend/public variables, logs or
+shell history. Preserve the template's TLS configuration; verify the private
+connection from the packaged backend without weakening certificate requirements.
+
+Preserve Railway's generated volume mount and `PGDATA` together. Do not apply
+PostgreSQL 16's `/var/lib/postgresql/data/pgdata` setting to the new service.
+The [official PostgreSQL image](https://hub.docker.com/_/postgres) uses
+`/var/lib/postgresql/18/docker` under a `/var/lib/postgresql` volume for version
+18; Railway's SSL-enabled template may configure its own layout, so inspect the
+actual template rather than replacing its mount by guesswork. Keep the migration,
+backup/restore and default-off indexing procedures below unchanged.
 
 Select each application root and Dockerfile explicitly in Railway's dashboard.
 **Do not rely on the TOML files for a new project.** Railway's
@@ -117,7 +183,7 @@ service variables/approved secret storage, never Docker build arguments.
 | Backend vectors | `QDRANT_URL`, `QDRANT_COLLECTION`, `QDRANT_API_KEY` |
 | Backend models | `OPENAI_API_KEY`, `EMBEDDING_MODEL`, `CHAT_MODEL`, `QDRANT_UPSERT_BATCH_SIZE` |
 | Backend executor | `INDEXING_ENABLED`, `INDEXING_ACTIVATION_TARGET`, `INDEXING_POLL_SECONDS`, `INDEXING_CLASSIFIER_SECONDS`, `INDEXING_DEPENDENCY_SECONDS`, `INDEXING_DEPENDENCY_TIMEOUT`, `INDEXING_STARTUP_TIMEOUT`, `INDEXING_DRAIN_SECONDS`, `INDEXING_CLEANUP_SECONDS` |
-| PostgreSQL | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `PGDATA=/var/lib/postgresql/data/pgdata`, `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`; generated private credentials, not committed samples |
+| PostgreSQL | built-in service generates `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `DATABASE_URL`; preserve its volume/`PGDATA` configuration and strong generated credentials; no public TCP proxy |
 | Qdrant | `QDRANT__SERVICE__HOST=0.0.0.0`, `QDRANT__LOG_LEVEL=WARN`, `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`; fixed image port 6333 |
 
 The encryption keyring is a JSON object mapping approved key IDs to canonical
@@ -274,7 +340,7 @@ data just to stop compute billing. Never stop the existing demo project.
 
 Local: build both images; verify non-root users/Tesseract/no secret contexts;
 run `node --test frontend/deploy/api-proxy.test.mjs`; test actual frontend server
-against fresh migrated PostgreSQL 16/Qdrant 1.18 and default-off backend; inspect
+against fresh migrated PostgreSQL 18/Qdrant 1.18 and default-off backend; inspect
 health, cookies/Origin/errors, collection config and shutdown. Native ARM64
 execution does not prove AMD64 execution; inspect multi-arch bases and verify
 Railway's selected architecture before approval.
