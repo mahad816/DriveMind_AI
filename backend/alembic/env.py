@@ -15,7 +15,9 @@ from app.db import models  # noqa: F401
 
 config = context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# ConfigParser consumes %% as a literal %. Preserve URL encoding for the driver
+# and avoid interpolation errors that would include the credential-bearing URL.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
