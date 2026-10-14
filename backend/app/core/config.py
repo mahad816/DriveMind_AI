@@ -27,6 +27,18 @@ class Settings(BaseSettings):
     demo_chat_rate_limit: int = Field(default=20, ge=1, le=10000)
     demo_chat_rate_window_seconds: int = Field(default=60, ge=1)
 
+    # Backend-only explicit authorization plus an offline nonsecret target fingerprint.
+    indexing_enabled: bool = False
+    indexing_activation_target: str = ""
+    indexing_database_schema: str = "public"
+    indexing_poll_seconds: float = Field(default=1.0, ge=0.05, le=30, allow_inf_nan=False)
+    indexing_classifier_seconds: float = Field(default=5.0, ge=0.05, le=60, allow_inf_nan=False)
+    indexing_dependency_seconds: float = Field(default=5.0, ge=0.05, le=60, allow_inf_nan=False)
+    indexing_dependency_timeout: float = Field(default=5.0, ge=0.05, le=30, allow_inf_nan=False)
+    indexing_startup_timeout: float = Field(default=30.0, ge=0.05, le=60, allow_inf_nan=False)
+    indexing_drain_seconds: float = Field(default=20.0, ge=0.01, le=60, allow_inf_nan=False)
+    indexing_cleanup_seconds: float = Field(default=5.0, ge=0.01, le=60, allow_inf_nan=False)
+
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     api_prefix: str = "/api/v1"

@@ -1,4 +1,4 @@
-"""Owned indexing loops. Production cutover is deliberately unavailable in 4E3B."""
+"""Owned indexing loops for disposable tests and explicitly bound normal runtimes."""
 
 from __future__ import annotations
 
@@ -19,6 +19,11 @@ from app.db.models.user import User
 from app.services.google_credential_service import GoogleRefreshLifecycle
 from app.services.indexing_classifier import IndexingClassifier
 from app.services.indexing_job_service import IndexingAdmissionUnavailable
+from app.services.indexing_runtime import (
+    NormalIndexingRuntime,
+    IndexingActivationError,
+    check_collection,
+)
 from app.services.indexing_worker import IndexingWorker, StageProgress
 
 logger = logging.getLogger(__name__)
@@ -118,11 +123,12 @@ class AdmissionPermit:
 
 
 class IndexingSupervisor:
-    def __init__(self, runtime: DisposableIndexingRuntime) -> None:
+    def __init__(self, runtime: DisposableIndexingRuntime | NormalIndexingRuntime) -> None:
         self.runtime = runtime
         self.worker = runtime.worker
         self.classifier = IndexingClassifier(self.worker)
         self.state: Health = "INACTIVE"
+        self.failure_reason: str | None = None
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.stop = asyncio.Event()
         self._go = asyncio.Event()
@@ -140,7 +146,7 @@ class IndexingSupervisor:
         return (
             self.state == "READY"
             and not self.stop.is_set()
-            and len(self.tasks) == 2
+            and len(self.tasks) == (3 if isinstance(self.runtime, NormalIndexingRuntime) else 2)
             and all(not task.done() for task in self.tasks.values())
         )
 
@@ -157,7 +163,9 @@ class IndexingSupervisor:
 
     def _observed(self, task: asyncio.Task[None]) -> None:
         if not task.cancelled():
-            task.exception()  # Observe without logging sensitive exception details.
+            error = task.exception()  # Observe without logging sensitive exception details.
+            if isinstance(error, IndexingActivationError):
+                self.failure_reason = error.code
         if not self.stop.is_set():
             self._fail()
 
@@ -215,6 +223,10 @@ class IndexingSupervisor:
                         self._classify(), name="indexing-classification"
                     ),
                 }
+                if isinstance(self.runtime, NormalIndexingRuntime):
+                    self.tasks["dependencies"] = asyncio.create_task(
+                        self._dependencies(), name="indexing-dependencies"
+                    )
                 for task in self.tasks.values():
                     task.add_done_callback(self._observed)
 
@@ -246,7 +258,12 @@ class IndexingSupervisor:
             return False
         try:
             await self._probe(db=db)
-        except Exception:
+            if isinstance(self.runtime, NormalIndexingRuntime):
+                await check_collection(self.worker.settings)
+        except Exception as exc:
+            self.failure_reason = (
+                exc.code if isinstance(exc, IndexingActivationError) else "DATABASE_UNAVAILABLE"
+            )
             self._fail()
             return False
         return self.healthy
@@ -319,12 +336,17 @@ class IndexingSupervisor:
         self._worker_ready.set()
         await self._go.wait()
         while not self.stop.is_set():
+            if not self.healthy:
+                self._fail()
+                break
             # Bound idle connection/claim stalls without putting a deadline around
             # a legitimate long stage (its independent heartbeat supervises it).
             async with asyncio.timeout(self.runtime.database_timeout):
                 claim = await self.worker.claim_next()
             if claim is not None:
-                if self.stop.is_set():
+                if self.stop.is_set() or not self.healthy:
+                    if not self.stop.is_set():
+                        self._fail()
                     # A claim transaction may already have committed while a
                     # sibling failed. Do not begin a new stage after known loss
                     # of local executor health; no remote work was issued here.
@@ -334,6 +356,39 @@ class IndexingSupervisor:
                 else:
                     await self.worker.execute(claim)
             await self._pause(self.runtime.poll_seconds)
+
+    async def _dependencies(self) -> None:
+        assert isinstance(self.runtime, NormalIndexingRuntime)
+        await self._go.wait()
+        while not self.stop.is_set():
+            await self._pause(self.worker.settings.indexing_dependency_seconds)
+            if self.stop.is_set():
+                break
+            probe = asyncio.create_task(
+                self.runtime.check_dependencies(), name="indexing-dependency-round"
+            )
+            try:
+                done, _ = await asyncio.wait([probe], timeout=2 * self.runtime.database_timeout)
+                if not done:
+                    # Close health before awaiting cancellation-resistant SQL cleanup.
+                    self.failure_reason = "DEPENDENCY_CHECK_TIMEOUT"
+                    self._fail()
+                    probe.cancel()
+                await asyncio.shield(probe)
+            finally:
+                if not probe.done() and not probe.cancelling():
+                    probe.cancel()
+                # Own the round/its cleanup through repeated caller cancellation.
+                while not probe.done():
+                    try:
+                        await asyncio.shield(probe)
+                    except asyncio.CancelledError:
+                        if probe.cancelled():
+                            break
+                    except Exception:
+                        break
+                if not probe.cancelled():
+                    probe.exception()
 
     async def _classification_round(self) -> None:
         async with asyncio.timeout(self.runtime.database_timeout):

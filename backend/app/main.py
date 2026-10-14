@@ -10,10 +10,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.router import router as api_router
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal, engine, google_refresh_lifecycle
 from app.demo.readiness_client import DemoReadinessClient
@@ -25,6 +25,11 @@ from app.core.public_safety import (
 )
 
 from app.services.indexing_lifecycle import DisposableIndexingRuntime, IndexingSupervisor
+from app.services.indexing_runtime import (
+    NormalIndexingRuntime,
+    create_normal_runtime,
+    IndexingActivationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +59,39 @@ async def _cleanup_stuck_jobs() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(
+    app: FastAPI,
+    *,
+    runtime: DisposableIndexingRuntime | NormalIndexingRuntime | None = None,
+    configuration: Settings | None = None,
+    sessions: async_sessionmaker[AsyncSession] | None = None,
+) -> AsyncIterator[None]:
     """Initialize application-level resources during startup."""
-    runtime: DisposableIndexingRuntime | None = app.state.indexing_test_runtime
-    if runtime is not None:
+    if runtime is not None and not isinstance(runtime, DisposableIndexingRuntime):
+        raise ValueError("Only validated disposable runtimes may be injected")
+    settings = runtime.worker.settings if runtime else configuration or get_settings()
+    if runtime is not None or settings.indexing_enabled:
         if app.state.indexing_lifecycle_started:
             raise RuntimeError("Indexing application lifecycle cannot start twice")
         app.state.indexing_lifecycle_started = True
-    settings = runtime.worker.settings if runtime else get_settings()
     app.state.indexing_admission_ready = False
     supervisor = None
     configure_logging(settings.log_level)
     try:
+        if settings.indexing_enabled and runtime is None:
+            try:
+                async with asyncio.timeout(settings.indexing_startup_timeout):
+                    runtime = await create_normal_runtime(
+                        sessions if sessions is not None else SessionLocal,
+                        app.state.google_refresh_lifecycle,
+                        settings,
+                    )
+            except IndexingActivationError as exc:
+                app.state.indexing_activation_error = exc.code
+                raise
+            except TimeoutError:
+                app.state.indexing_activation_error = "STARTUP_VALIDATION_TIMEOUT"
+                raise IndexingActivationError("STARTUP_VALIDATION_TIMEOUT") from None
         # Demo indexing is offline; public runtime startup must not mutate index jobs.
         if not settings.demo_mode:
             if runtime is None:
@@ -115,13 +141,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app(*, indexing_test_runtime: DisposableIndexingRuntime | None = None) -> FastAPI:
     """Application factory for uvicorn and tests."""
+    if indexing_test_runtime is not None and not isinstance(
+        indexing_test_runtime, DisposableIndexingRuntime
+    ):
+        raise ValueError("Only validated disposable runtimes may be injected")
     settings = get_settings()
-    if indexing_test_runtime is not None and settings.demo_mode:
+    if (indexing_test_runtime is not None or settings.indexing_enabled) and settings.demo_mode:
         raise ValueError("Demo applications cannot activate a normal indexing lifecycle")
+    # Runtime authority is captured by code/configuration, never read from app.state.
+    normal_sessions = SessionLocal
+
+    @asynccontextmanager
+    async def owned_lifespan(application: FastAPI) -> AsyncIterator[None]:
+        async with lifespan(
+            application,
+            runtime=indexing_test_runtime,
+            configuration=settings,
+            sessions=normal_sessions,
+        ):
+            yield
+
     app = FastAPI(
         title=settings.app_name,
         debug=False,  # Starlette debug tracebacks can contain credentials.
-        lifespan=lifespan,
+        lifespan=owned_lifespan,
     )
     app.include_router(api_router, prefix=settings.api_prefix)
     app.state.demo_chat_limits = DemoChatLimits()
@@ -129,7 +172,10 @@ def create_app(*, indexing_test_runtime: DisposableIndexingRuntime | None = None
     app.state.google_refresh_lifecycle = (
         indexing_test_runtime.refresh if indexing_test_runtime else google_refresh_lifecycle
     )
-    app.state.indexing_test_runtime = indexing_test_runtime
+    app.state.indexing_test_runtime = (
+        indexing_test_runtime  # Diagnostic only; not activation authority.
+    )
+    app.state.indexing_activation_error = None
     app.state.indexing_lifecycle_started = False
     app.state.indexing_supervisor = None
     app.state.indexing_disposal_task = None
@@ -142,8 +188,8 @@ def create_app(*, indexing_test_runtime: DisposableIndexingRuntime | None = None
 
         app.dependency_overrides[get_db] = indexing_database
         app.dependency_overrides[get_settings] = lambda: indexing_test_runtime.worker.settings
-    # Production cutover is unavailable until 4E3D acceptance. Only the explicit
-    # disposable runtime above can run supervised loops in this phase.
+    # Default closed. Explicit normal target validation and both executor
+    # handshakes must finish before this becomes true.
     app.state.indexing_admission_ready = False
     app.add_middleware(DemoChatBodyLimit)
 

@@ -29,7 +29,7 @@ async def readiness_check() -> dict[str, str]:
 async def indexing_health(request: Request) -> dict[str, str]:
     """Separate from chat/general readiness; no job, claim or worker identifiers."""
     supervisor = getattr(request.app.state, "indexing_supervisor", None)
-    return {
+    result = {
         "status": supervisor.health.lower() if supervisor is not None else "inactive",
         "admission": "available"
         if supervisor is not None
@@ -37,3 +37,11 @@ async def indexing_health(request: Request) -> dict[str, str]:
         and getattr(request.app.state, "indexing_admission_ready", False) is True
         else "closed",
     }
+    reason = (
+        supervisor.failure_reason
+        if supervisor is not None
+        else getattr(request.app.state, "indexing_activation_error", None)
+    )
+    if reason is not None:
+        result["reason"] = reason
+    return result
