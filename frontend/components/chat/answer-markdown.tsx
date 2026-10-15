@@ -7,6 +7,7 @@ import type { CitationItem } from "@/lib/api/types";
 import { splitCitationText } from "@/lib/chat/citations";
 
 type AnswerMarkdownProps = {
+  conversationId?: string;
   content: string;
   citations?: CitationItem[];
   onSourceSelect?: (citation: CitationItem, citations: CitationItem[]) => void;
@@ -47,7 +48,7 @@ function addCitationLinks(node: MarkdownNode, citationCount: number): void {
   for (const child of node.children) addCitationLinks(child, citationCount);
 }
 
-export function AnswerMarkdown({ content, citations = [], onSourceSelect }: AnswerMarkdownProps) {
+export function AnswerMarkdown({ content, citations = [], onSourceSelect, conversationId }: AnswerMarkdownProps) {
   return (
     <div className="text-body-lg leading-relaxed text-foreground">
       <ReactMarkdown
@@ -63,6 +64,7 @@ export function AnswerMarkdown({ content, citations = [], onSourceSelect }: Answ
             if (citation && href === `#drivemind-citation-${number}`) {
               return (
                 <CitationPreview
+                  conversationId={conversationId}
                   citation={citation}
                   number={number}
                   onOpenEvidence={

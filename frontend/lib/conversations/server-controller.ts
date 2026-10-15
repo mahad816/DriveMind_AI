@@ -1,8 +1,9 @@
 /** Normal-mode memory only. The shared provider in S3C owns one instance. */
 import * as api from "@/lib/api/conversations";
-import { DEMO_MODE, questionCharacters } from "@/lib/demo";
+import { DEMO_MODE } from "@/lib/demo";
 import { sessionOwner, sessionRevision, SESSION_REQUESTS_INVALIDATED_EVENT } from "@/lib/api/session-events";
 import type { ConversationMetadata, StoredTurn, TurnStatus, SubmitTurnRequest } from "@/lib/api/conversations";
+import { validQuestion, QUESTION_ERROR } from "@/lib/chat/question";
 export type ConversationTransport = Pick<typeof api, "listConversations" | "getConversation" | "createConversation" | "renameConversation" | "deleteConversation" | "submitTurn" | "getTurnStatus" | "interruptExpiredTurn">;
 export type ControllerError = {
   category: string;
@@ -346,9 +347,9 @@ export class ServerConversationController {
     this.update({ creation: Object.freeze({ requestId: crypto.randomUUID(), title, uncertain: false }) });
     return await this.retryCreate();
   }
-  async retryCreate(): Promise<ConversationMetadata | null> {
+  async retryCreate(options: { requestId?: string; select?: boolean } = {}): Promise<ConversationMetadata | null> {
     const scope = this.scope(), pending = this.state.creation;
-    if (!scope || !pending)
+    if (!scope || !pending || (options.requestId !== undefined && options.requestId !== pending.requestId))
       return null;
     const selection = this.selectionGeneration;
     const entry = this.begin(scope, "create");
@@ -360,7 +361,7 @@ export class ServerConversationController {
       this.stop("list");
       this.put(result.conversation);
       this.update({ creation: null, listLoading: false, error: null });
-      if (selection === this.selectionGeneration)
+      if (options.select !== false && selection === this.selectionGeneration)
         await this.select(result.conversation.id);
       return this.live(scope) ? result.conversation : null;
     }
@@ -475,8 +476,8 @@ export class ServerConversationController {
       this.update({ error: { category: "pending_submission", message: "Reconcile the existing submission before starting another." } });
       return;
     }
-    if (!question.trim() || questionCharacters(question) > 4000) {
-      this.update({ error: { category: "invalid_request", message: "Enter a question of at most 4,000 characters." } });
+    if (!validQuestion(question)) {
+      this.update({ error: { category: "invalid_request", message: QUESTION_ERROR } });
       return;
     }
     const request: LogicalSubmission = Object.freeze({ conversationId: row.id,

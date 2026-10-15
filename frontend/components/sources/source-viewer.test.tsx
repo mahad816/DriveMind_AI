@@ -45,3 +45,21 @@ it("discards a late source result after unmount", async () => {
   resolve(source);
   await waitFor(() => expect(screen.queryByText(/Authorized sample excerpt/)).not.toBeInTheDocument());
 });
+
+it.each([undefined, "https://evil.example", "../settings", "not-a-uuid"])("absent or invalid origin %s stays on generic Chat", async conversationId => {
+  vi.mocked(getSourceChunk).mockResolvedValue(source);
+  const { container } = render(<SourceViewer chunkId={source.chunk_id} conversationId={conversationId} />);
+  await screen.findByText(/Authorized sample excerpt/);
+  expect([...container.querySelectorAll("a")].map(link => link.getAttribute("href"))).toEqual(["/chat", "/chat"]);
+  expect(screen.queryByText("Ask about this document")).toBeNull();
+  expect(screen.queryByText("Back to conversation")).toBeNull();
+});
+it("validated origin provides a constrained return route without changing source authorization", async () => {
+  const origin = "00000000-0000-0000-0000-000000000444";
+  vi.mocked(getSourceChunk).mockResolvedValue(source);
+  render(<SourceViewer chunkId={source.chunk_id} conversationId={origin} />);
+  await screen.findByText(/Authorized sample excerpt/);
+  expect(screen.getByRole("link", { name: "Back to conversation" })).toHaveAttribute("href", `/chat/${origin}`);
+  expect(getSourceChunk).toHaveBeenCalledWith(source.chunk_id);
+  expect(screen.getByRole("link", { name: "Open chat" })).toHaveAttribute("href", `/chat/${origin}`);
+});

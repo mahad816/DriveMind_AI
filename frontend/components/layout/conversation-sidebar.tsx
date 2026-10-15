@@ -47,7 +47,7 @@ function DemoSidebar(props: ConversationSidebarProps) {
 }
 
 function ServerSidebar(props: ConversationSidebarProps) {
-  const { state, controller } = useServerConversations();
+  const { state, controller, creationDraft } = useServerConversations();
   const router = useRouter();
   const groups: ConversationGroup[] = [{ label: "Recent", conversations: state.conversations.map(row => ({
     id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.last_activity_at,
@@ -62,7 +62,15 @@ function ServerSidebar(props: ConversationSidebarProps) {
     }); }}
     onRefresh={() => { void controller.refreshList(); }}
     onMore={state.nextListCursor ? () => { void controller.loadMoreConversations(); } : undefined}
-    onReconcileCreation={state.creation?.uncertain ? () => { void controller.retryCreate().then(row => { if (row && controller.getSnapshot().selectedId === row.id) router.push(`/chat/${row.id}`); }); } : undefined}
+    onReconcileCreation={state.creation?.uncertain ? () => {
+      // Registration delegates recovery, not ownership of the creation's draft.
+      if (creationDraft.reconcile()) return;
+      const pending = controller.getSnapshot().creation;
+      if (!pending) return;
+      // With no originating composer, recover history without changing selection
+      // or navigating away from the user's intentional destination.
+      void controller.retryCreate({ requestId: pending.requestId, select: false });
+    } : undefined}
   />;
 }
 

@@ -723,3 +723,30 @@ it.each(["dispose", "late rejection", "timely"])("correction: terminal metadata 
   else
     expect(controller.getSnapshot().error).toBeNull();
 });
+it("recovery with select false retains the current conversation and exact creation key", async () => {
+  const { rpc, controller } = await ready();
+  rpc.createConversation.mockRejectedValueOnce(new TypeError("Lost acknowledgement"));
+  await controller.create();
+  const requestId = controller.getSnapshot().creation!.requestId;
+  await controller.select(Y);
+  const current = controller.getSnapshot().conversation;
+  await controller.retryCreate({ requestId, select: false });
+  expect(controller.getSnapshot().selectedId).toBe(Y);
+  expect(controller.getSnapshot().conversation).toBe(current);
+  expect(controller.getSnapshot().creation).toBeNull();
+  expect(rpc.createConversation.mock.calls.map(([body]) => body.create_request_id)).toEqual([requestId, requestId]);
+  expect(rpc.submitTurn).not.toHaveBeenCalled();
+});
+it("a stale creation identity cannot reconcile a replacement pending creation", async () => {
+  const { rpc, controller } = await ready();
+  rpc.createConversation.mockRejectedValueOnce(new TypeError("First lost acknowledgement"));
+  await controller.create(); const oldId = controller.getSnapshot().creation!.requestId;
+  await controller.retryCreate({ requestId: oldId, select: false });
+  rpc.createConversation.mockRejectedValueOnce(new TypeError("Second lost acknowledgement"));
+  await controller.create(); const newer = controller.getSnapshot().creation;
+  const calls = rpc.createConversation.mock.calls.length;
+  expect(newer!.requestId).not.toBe(oldId);
+  expect(await controller.retryCreate({ requestId: oldId, select: false })).toBeNull();
+  expect(rpc.createConversation).toHaveBeenCalledTimes(calls);
+  expect(controller.getSnapshot().creation).toBe(newer); expect(rpc.submitTurn).not.toHaveBeenCalled();
+});

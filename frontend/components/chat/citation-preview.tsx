@@ -5,15 +5,17 @@ import { DEMO_MODE } from "@/lib/demo";
 import { Popover } from "@base-ui/react/popover";
 
 import type { CitationItem } from "@/lib/api/types";
-import { driveFileUrl } from "@/lib/files/utils";
+import Link from "next/link";
+import { sourceHref } from "@/lib/chat/source-navigation";
 
 type CitationPreviewProps = {
+  conversationId?: string;
   citation: CitationItem;
   number: number;
   onOpenEvidence?: (citation: CitationItem) => void;
 };
 
-export function CitationPreview({ citation, number, onOpenEvidence }: CitationPreviewProps) {
+export function CitationPreview({ citation, number, onOpenEvidence, conversationId }: CitationPreviewProps) {
   return (
     <Popover.Root>
       <Popover.Trigger
@@ -32,15 +34,13 @@ export function CitationPreview({ citation, number, onOpenEvidence }: CitationPr
               {citation.snippet}
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-              {!DEMO_MODE && citation.drive_file_id ? (
-                <a
-                  href={driveFileUrl(citation.drive_file_id)}
-                  target="_blank"
-                  rel="noreferrer"
+              {!DEMO_MODE ? (
+                <Link
+                  href={sourceHref(citation.chunk_id, conversationId)}
                   className="font-medium text-primary underline underline-offset-2"
                 >
-                  Open in Google Drive
-                </a>
+                  Open source
+                </Link>
               ) : null}
               {onOpenEvidence ? (
                 <button

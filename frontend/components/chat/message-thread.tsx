@@ -33,6 +33,7 @@ export type ChatTurn =
     };
 
 type MessageThreadProps = {
+  conversationId?: string;
   messages: ChatTurn[];
   onSourceSelect: (citation: CitationItem, citations: CitationItem[]) => void;
   onRetry: (messageId: string, question: string) => void;
@@ -48,6 +49,7 @@ export function MessageThread({
   onRegenerate,
   onFollowUp,
   isSending,
+  conversationId,
 }: MessageThreadProps) {
   const lastMessageId = messages.at(-1)?.id;
 
@@ -85,6 +87,7 @@ export function MessageThread({
             {message.status === "done" ? (
               <>
                 <AssistantMessage
+                  conversationId={conversationId}
                   response={message.response}
                   onSourceSelect={onSourceSelect}
                   onRegenerate={

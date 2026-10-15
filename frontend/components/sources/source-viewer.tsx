@@ -10,11 +10,14 @@ import { getSourceChunk } from "@/lib/api/sources";
 import type { SourceChunkRead } from "@/lib/api/types";
 import { sourceCopy } from "@/lib/user-language";
 
+import { conversationHref } from "@/lib/chat/source-navigation";
+
 type SourceViewerProps = {
   chunkId: string;
+  conversationId?: string;
 };
 
-export function SourceViewer({ chunkId }: SourceViewerProps) {
+export function SourceViewer({ chunkId, conversationId }: SourceViewerProps) {
   const [data, setData] = useState<SourceChunkRead | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +64,7 @@ export function SourceViewer({ chunkId }: SourceViewerProps) {
   }, [chunkId]);
 
   const filename = data?.filename ?? "Document";
-  const askHref = DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}` : "/chat";
+  const askHref = DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}` : conversationHref(conversationId);
 
   return (
     <SourceTrustPanel
@@ -71,6 +74,7 @@ export function SourceViewer({ chunkId }: SourceViewerProps) {
       askHref={askHref}
       isLoading={isLoading}
       error={error}
+      backHref={DEMO_MODE ? "/chat" : conversationHref(conversationId)}
       showBackLink
       details={
         data

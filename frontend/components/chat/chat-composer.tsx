@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { DEMO_MODE, DEMO_QUESTION_LIMIT, questionCharacters } from "@/lib/demo";
 
+import { QUESTION_LIMIT, QUESTION_ERROR, validQuestion } from "@/lib/chat/question";
+
 export type ChatComposerHandle = {
   focus: () => void;
 };
@@ -45,10 +47,10 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
     const isComposingRef = useRef(false);
     const helperId = useId();
     const readinessId = useId();
-    const count = DEMO_MODE ? questionCharacters(value) : 0;
-    const overLimit = DEMO_MODE && count > DEMO_QUESTION_LIMIT;
+    const count = questionCharacters(value);
+    const overLimit = count > (DEMO_MODE ? DEMO_QUESTION_LIMIT : QUESTION_LIMIT);
     const nearLimit = DEMO_MODE && count >= DEMO_QUESTION_LIMIT * 0.8;
-    const canSubmit = !disabled && !isLoading && !overLimit && value.trim().length > 0;
+    const canSubmit = !disabled && !isLoading && !overLimit && (DEMO_MODE ? !!value.trim() : validQuestion(value));
 
     useImperativeHandle(ref, () => ({
       focus: () => {
@@ -103,7 +105,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
               isComposingRef.current = false;
             }}
             aria-label="Message"
-            aria-describedby={[DEMO_MODE ? helperId : "", disabled ? readinessId : ""].filter(Boolean).join(" ") || undefined}
+            aria-describedby={[DEMO_MODE || overLimit ? helperId : "", disabled ? readinessId : ""].filter(Boolean).join(" ") || undefined}
             aria-invalid={overLimit || undefined}
           />
 
@@ -119,6 +121,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(
           </Button>
         </div>
         {disabled ? <p id={readinessId} role="status" className="px-2 pt-2 text-xs text-muted-foreground">{submissionStatus ?? "Sending is unavailable; you can still edit your draft."}</p> : null}
+        {!DEMO_MODE && overLimit ? <p id={helperId} role="alert" className="px-2 pt-2 text-xs text-destructive">{QUESTION_ERROR} Your draft is kept so you can edit it.</p> : null}
         {DEMO_MODE ? (
           <div id={helperId} className="grid min-h-10 grid-cols-1 px-2 pt-2 text-xs leading-4 text-muted-foreground sm:min-h-6 sm:grid-cols-[1fr_auto] sm:gap-3">
             <span>Public demo · Questions up to 4,000 characters</span>

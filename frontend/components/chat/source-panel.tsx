@@ -16,7 +16,10 @@ import { isApiError } from "@/lib/api/errors";
 import { getSourceChunk } from "@/lib/api/sources";
 import type { CitationItem } from "@/lib/api/types";
 
+import { sourceHref, conversationHref } from "@/lib/chat/source-navigation";
+
 type SourcePanelProps = {
+  conversationId?: string;
   citation: CitationItem | null;
   citations?: CitationItem[];
   onCitationSelect?: (citation: CitationItem) => void;
@@ -39,6 +42,7 @@ export function SourcePanel({
   onCitationSelect,
   open,
   onOpenChange,
+  conversationId,
 }: SourcePanelProps) {
   const [detail, setDetail] = useState<SourceDetailState | null>(null);
 
@@ -98,7 +102,7 @@ export function SourcePanel({
   }, [citation, open]);
 
   const filename = citation?.filename ?? "Document";
-  const askHref = DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}` : "/chat";
+  const askHref = DEMO_MODE ? `/chat?ask=${encodeURIComponent(`Tell me more about "${filename}"`)}` : conversationHref(conversationId);
   const currentDetail = citation && detail?.chunkId === citation.chunk_id ? detail : null;
   const answerCitations = citations ?? (citation ? [citation] : []);
 
@@ -129,7 +133,7 @@ export function SourcePanel({
           <SourceTrustPanel
             filename={filename}
             excerpt={currentDetail?.excerpt ?? citation?.snippet ?? ""}
-            sourceHref={citation ? `/sources/${encodeURIComponent(citation.chunk_id)}` : undefined}
+            sourceHref={citation ? sourceHref(citation.chunk_id, conversationId) : undefined}
             modifiedAt={currentDetail?.modifiedAt ?? null}
             askHref={askHref}
             isLoading={Boolean(open && citation && (!currentDetail || currentDetail.isLoading))}

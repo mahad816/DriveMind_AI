@@ -61,7 +61,7 @@ export function SourceTrustPanel({
           className={buttonVariants({ variant: "link", className: "w-fit px-0" })}
         >
           <ArrowLeft className="size-4" />
-          {sourceCopy.backToChat}
+          {DEMO_MODE || backHref !== "/chat" ? sourceCopy.backToChat : "Open chat"}
         </Link>
       ) : null}
 
@@ -124,7 +124,7 @@ export function SourceTrustPanel({
           className={buttonVariants({ variant: "secondary", className: "justify-start" })}
         >
           <MessageSquareQuote className="size-4" />
-          {sourceCopy.askAboutDocument}
+          {DEMO_MODE ? sourceCopy.askAboutDocument : "Open chat"}
         </Link>
       </div>
 

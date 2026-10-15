@@ -28,7 +28,11 @@ function response(answer: string, citations: CitationItem[], retrievalCount = 8)
 
 const first = citation("file-a", "chunk-a1", "field-notes.txt", "First cited passage");
 const second = citation("file-a", "chunk-a2", "field-notes.txt", "Second cited passage");
-const third = citation("file-b", "chunk-b1", "plan.pdf", "Third cited passage");
+const sqlId = "00000000-0000-0000-0000-000000000111";
+const chunkId = "00000000-0000-0000-0000-000000000222";
+const providerId = "google-provider-file-333";
+const origin = "00000000-0000-0000-0000-000000000444";
+const third = citation(sqlId, chunkId, "plan.pdf", "Third cited passage");
 
 describe("answer citation interaction", () => {
   it("maps keyboard-accessible inline markers to the backend citation array order", async () => {
@@ -50,9 +54,10 @@ describe("answer citation interaction", () => {
     expect(screen.getByText("First cited passage")).toBeInTheDocument();
   });
 
-  it("shows cited evidence and a real Drive action without retrieval internals", () => {
+  it("shows cited evidence and an authorized source destination without retrieval internals", () => {
     render(
       <AssistantMessage
+        conversationId={origin}
         response={response("The plan says this [1].", [third])}
         onSourceSelect={vi.fn()}
       />,
@@ -62,8 +67,11 @@ describe("answer citation interaction", () => {
     fireEvent.click(screen.getByRole("button", { name: /view citation 1/i }));
     expect(screen.getAllByText("plan.pdf").length).toBeGreaterThan(filenamesBeforePreview);
     expect(screen.getByText("Third cited passage")).toBeInTheDocument();
-    const driveLink = screen.getByRole("link", { name: /open in (google )?drive/i });
-    expect(driveLink).toHaveAttribute("href", expect.stringContaining("file-b"));
+    const source = screen.getByRole("link", { name: "Open source" });
+    expect(source).toHaveAttribute("href", `/sources/${chunkId}?conversation=${origin}`);
+    expect(source.getAttribute("href")).not.toContain(sqlId);
+    expect(source.getAttribute("href")).not.toContain(providerId);
+    expect(screen.queryByRole("link", { name: /Google Drive/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/chunk-b1|0\.99|BM25|RRF|rerank|evidence grade|route name/i))
       .not.toBeInTheDocument();
   });

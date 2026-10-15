@@ -6,6 +6,7 @@ import { MessageActionBar } from "@/components/chat/message-action-bar";
 import type { ChatResponse, CitationItem } from "@/lib/api/types";
 
 type AssistantMessageProps = {
+  conversationId?: string;
   response: ChatResponse;
   onSourceSelect: (citation: CitationItem, citations: CitationItem[]) => void;
   onRegenerate?: () => void;
@@ -23,10 +24,12 @@ export function AssistantMessage({
   followUpSuggestions = [],
   isLatest = false,
   isLoading = false,
+  conversationId,
 }: AssistantMessageProps) {
   return (
     <article className="group/answer space-y-4" aria-label="Assistant answer">
       <AnswerMarkdown
+        conversationId={conversationId}
         content={response.answer}
         citations={response.citations}
         onSourceSelect={onSourceSelect}
