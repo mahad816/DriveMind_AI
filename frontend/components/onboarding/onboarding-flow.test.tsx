@@ -69,3 +69,14 @@ describe("OnboardingFlow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry status check" })); expect(current.refresh).toHaveBeenCalledOnce();
   });
 });
+
+it("describes reviewed selection of up to five without automatic processing", () => {
+  vi.mocked(useKnowledgeStatus).mockReturnValue(status("connected_not_ready")); render(<OnboardingFlow />);
+  expect(screen.getByText(/Choose up to five documents, review, then prepare one at a time/)).toBeInTheDocument();
+  expect(screen.getByText(/Discovering files is separate/)).toBeInTheDocument();
+});
+it("keeps prepared knowledge available while reconnecting Drive", () => {
+  vi.mocked(useKnowledgeStatus).mockReturnValue({ ...status("ready"), isConnected: false, fileStats: { total: 2, indexed: 1, failed: 0, skipped: 0 } });
+  render(<OnboardingFlow />); expect(screen.getByRole("link", { name: "Start chatting" })).toHaveAttribute("href", "/chat");
+  expect(screen.getByRole("button", { name: "Connect Google Drive" })).toBeInTheDocument();
+});

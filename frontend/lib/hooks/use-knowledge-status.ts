@@ -8,6 +8,9 @@ import { formatLastPreparedAt, getLastPreparedAt } from "@/lib/knowledge/storage
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 import { DEMO_MODE, knowledgeAvailable } from "@/lib/demo";
 
+import { useIndexedKnowledge } from "@/lib/hooks/use-indexed-knowledge";
+import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
+
 export type SetupState =
   | "checking"
   | "not_connected"
@@ -59,7 +62,7 @@ function countFiles(files: Awaited<ReturnType<typeof listDriveFiles>>["files"]):
   return { total: files.length, indexed, failed, skipped };
 }
 
-export function useKnowledgeStatus(
+function useDemoKnowledgeStatus(
   options: { pollIntervalMs?: number; includeInventory?: boolean } = {},
 ): UseKnowledgeStatusResult {
   const { pollIntervalMs = 30_000, includeInventory = false } = options;
@@ -168,4 +171,27 @@ export function useKnowledgeStatus(
     lastPreparedLabel: formatLastPreparedAt(lastPreparedAt),
     refresh,
   };
+}
+
+/** Normal knowledge readiness comes from the same authorized inventory as chat. */
+function useNormalKnowledgeStatus(options: { pollIntervalMs?: number } = {}): UseKnowledgeStatusResult {
+  const connection = useConnectionStatus({ pollIntervalMs: options.pollIntervalMs ?? 30_000 });
+  const inventory = useIndexedKnowledge(sessionOwner(), sessionRevision());
+  const isReady = inventory.status === "ready";
+  const isConnected = !connection.error && connection.data?.connected === true;
+  const error = inventory.status === "unavailable" ? "Prepared knowledge is temporarily unavailable." : isReady ? null : connection.error;
+  const job = connection.data?.job;
+  const setupState: SetupState = error ? "error" : inventory.status === "checking" ? "checking" : isReady ? "ready"
+    : !connection.data ? "checking" : !isConnected ? "not_connected"
+      : job?.status === "queued" || job?.status === "running" ? "preparing" : "connected_not_ready";
+  const refreshConnection = connection.refetch, refreshInventory = inventory.refresh;
+  const refresh = useCallback(async () => { await Promise.all([refreshConnection(), refreshInventory()]); }, [refreshConnection, refreshInventory]);
+  return { setupState, isReady, isConnected, error, isLoading: setupState === "checking",
+    needsConnect: setupState === "not_connected", needsPrepare: inventory.status === "empty" && isConnected,
+    fileStats: inventory.counts, jobError: job?.status === "failed" ? job.error : null,
+    lastPreparedAt: null, lastPreparedLabel: null, refresh };
+}
+const useRuntimeKnowledgeStatus = DEMO_MODE ? useDemoKnowledgeStatus : useNormalKnowledgeStatus;
+export function useKnowledgeStatus(options: { pollIntervalMs?: number; includeInventory?: boolean } = {}): UseKnowledgeStatusResult {
+  return useRuntimeKnowledgeStatus(options);
 }

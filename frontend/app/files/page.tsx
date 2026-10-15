@@ -11,9 +11,9 @@ export default function FilesPage() {
   return (
     <PageShell
       size="xl"
-      className="px-5 py-10 sm:px-8 md:h-full md:min-h-0 md:overflow-hidden md:py-14"
+      className={DEMO_MODE ? "px-5 py-10 sm:px-8 md:h-full md:min-h-0 md:overflow-hidden md:py-14" : "gap-3 px-4 py-4 sm:px-6 md:h-full md:min-h-0 md:overflow-hidden md:py-6"}
       title={filesCopy.pageTitle}
-      description={DEMO_MODE ? "Browse seven fictional HarborDesk sample documents and inspect their text." : filesCopy.pageDescription}
+      description={DEMO_MODE ? "Browse seven fictional HarborDesk sample documents and inspect their text." : "Choose up to five documents to prepare for chat."}
     >
       <KnowledgeLibrary />
     </PageShell>

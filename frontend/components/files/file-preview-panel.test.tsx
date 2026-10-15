@@ -48,7 +48,7 @@ describe("selected-file inspector", () => {
     const inspector = screen.getByRole("region", { name: "File inspector" });
     expect(inspector).toHaveAttribute("tabindex", "0");
     expect(within(inspector).getByRole("link", { name: "Open in Google Drive" })).toBeInTheDocument();
-    const preview = screen.getByRole("region", { name: "File preview" });
+    const preview = screen.getByRole("region", { name: "Document information" });
     expect(preview).toHaveTextContent("Browsing shows metadata only");
     expect(fetchFileTextPreview).not.toHaveBeenCalled();
     expect(preview.querySelector("blockquote")).toBeNull();

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setSessionOwner } from "@/lib/api/session-events";
 import { KnowledgeLibrary } from "@/components/files/knowledge-library";
 import { listDriveFiles } from "@/lib/api/files";
 import type { DriveFileListResponse, DriveFileRead } from "@/lib/api/types";
@@ -44,9 +45,9 @@ function connection(connected: boolean, error: string | null = null) {
 }
 
 describe("Files browser", () => {
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); setSessionOwner(null); });
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks(); setSessionOwner("user-id");
     connection(true);
   });
 
@@ -113,9 +114,22 @@ describe("Files browser", () => {
     expect(await screen.findByText("Project Atlas.pdf")).toBeInTheDocument();
   });
 
-  it("offers the existing settings route only for confirmed disconnection", () => {
+  it("offers reconnect guidance while keeping stored metadata browsable", async () => {
     connection(false);
     render(<KnowledgeLibrary />);
-    expect(screen.getByRole("link", { name: "Connect in Settings" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "Connect Google Drive" })).toHaveAttribute("href", "/onboarding");
   });
+});
+
+it("does not reserve space for an empty preparation workflow and retains rows during reload", async () => {
+  Object.defineProperty(window, "localStorage", { configurable: true, value: { getItem: () => null } });
+  setSessionOwner("user-id"); connection(true); vi.mocked(listDriveFiles).mockResolvedValue({ files: [atlas], total: 1 });
+  render(<KnowledgeLibrary />); await screen.findByText("Project Atlas.pdf");
+  expect(screen.queryByRole("link", { name: "View preparation progress" })).toBeNull();
+  let resolve!: (value: DriveFileListResponse) => void;
+  vi.mocked(listDriveFiles).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  fireEvent.click(screen.getByRole("button", { name: "Reload file list" }));
+  expect(screen.getByText("Project Atlas.pdf")).toBeInTheDocument();
+  resolve({ files: [atlas, roadmap], total: 2 }); await screen.findByText("Roadmap.docx");
+  cleanup(); setSessionOwner(null);
 });

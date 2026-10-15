@@ -30,8 +30,9 @@ function NormalOnboardingFlow() {
       <li>1. Sign in with Google · Complete</li>
       <li aria-current={!isConnected ? "step" : undefined}>2. Connect Google Drive{isConnected ? " · Complete" : ""}</li>
       <li aria-current={isConnected ? "step" : undefined}>3. Discover documents</li>
-      <li className="text-muted-foreground">4. Choose one document, review it, then prepare it for chat</li>
+      <li className="text-muted-foreground">4. Choose up to five documents, review, then prepare one at a time</li>
     </ol>
+    {fileStats.indexed > 0 && !isConnected ? <div className="space-y-2"><p className="text-sm">Your prepared knowledge is available. Reconnect Drive to discover or prepare more documents.</p><Link href="/chat" className={buttonVariants()}>Start chatting</Link></div> : null}
     {sessionError ? <p role="alert">{sessionError}</p> : null}
     {setupState === "checking" ? <p role="status">Checking your Drive connection…</p> : setupState === "error" ? <div className="space-y-3">
       <p role="alert">We couldn’t check your Drive connection or files.</p>

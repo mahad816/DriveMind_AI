@@ -1,11 +1,12 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
 import { useState } from "react";
 import { Menu } from "lucide-react";
 
 import { ConversationSidebar } from "@/components/layout/conversation-sidebar";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 export function MobileHeader() {
   const [open, setOpen] = useState(false);
@@ -22,6 +23,7 @@ export function MobileHeader() {
             }
           />
           <SheetContent side="left" className="w-[280px] border-sidebar-border bg-sidebar p-0">
+            {!DEMO_MODE ? <SheetHeader className="sr-only"><SheetTitle>Navigation</SheetTitle><SheetDescription>Conversations, files and settings.</SheetDescription></SheetHeader> : null}
             <ConversationSidebar onNavigate={() => setOpen(false)} collapsible={false} className="w-full border-0" />
           </SheetContent>
         </Sheet>

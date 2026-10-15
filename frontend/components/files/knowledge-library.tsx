@@ -2,7 +2,7 @@
 
 import { DEMO_MODE } from "@/lib/demo";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { RefreshCcw, FolderOpen } from "lucide-react";
 
 import { DriveDiscovery } from "@/components/files/drive-discovery";
@@ -58,9 +58,9 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     pollIntervalMs: 30_000,
   });
 
-  const canBrowse = DEMO_MODE ? !connectionError && connection?.demo_mode === true : connection?.connected ?? false;
+  const canBrowse = DEMO_MODE ? !connectionError && connection?.demo_mode === true : Boolean(sessionOwner());
   const isDisconnected = !DEMO_MODE && connection?.connected === false && !connectionError;
-  const connectionUnavailable = Boolean(connectionError) && !canBrowse;
+  const connectionUnavailable = Boolean(connectionError) && (!DEMO_MODE || !canBrowse);
 
   const [filesState, setFilesState] = useState<FilesLoadState>({
     data: null,
@@ -93,19 +93,22 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     return () => { clearInterval(timer); window.removeEventListener("storage", checkGate); window.removeEventListener(SESSION_REQUESTS_INVALIDATED_EVENT, clearDraft); };
   }, [live, scope]);
 
+  const filesRequest = useRef(0);
   const refreshFiles = useCallback(async () => {
     if (!canBrowse) return;
-    setFilesState({ data: null, isLoading: true, error: null });
+    const request = ++filesRequest.current;
+    setFilesState(before => ({ data: DEMO_MODE ? null : before.data, isLoading: true, error: null }));
 
     try {
       const list = await listDriveFiles();
-      if (!live()) return;
+      if (!live() || request !== filesRequest.current) return;
+      if (!DEMO_MODE && list.files.some(file => file.user_id !== scope.owner)) throw new Error("File ownership could not be verified.");
       setFilesState({ data: list, isLoading: false, error: null });
     } catch (err) {
-      if (!live()) return;
+      if (!live() || request !== filesRequest.current) return;
       setFilesState({ data: null, isLoading: false, error: apiErrorToMessage(err) });
     }
-  }, [canBrowse, live]);
+  }, [canBrowse, live, scope.owner]);
 
   useEffect(() => {
     void refreshFiles();
@@ -185,7 +188,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     return !current || current.user_id !== scope.owner || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
   });
   const togglePreparation = (file: DriveFileRead) => {
-    if (!live() || !scope.owner || gate !== "empty") return;
+    if (!live() || !scope.owner || gate !== "empty" || !connection?.connected || connectionError) return;
     setDraft(before => before.some(f => f.id === file.id) ? before.filter(f => f.id !== file.id) :
       before.length < 5 && file.user_id === scope.owner && preparationEligibility(file) === null ? [...before, { ...file }] : before);
   };
@@ -194,16 +197,17 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   </div>;
 
   return (
-    <div className={cn("flex flex-col gap-6 md:min-h-0 md:flex-1", !DEMO_MODE && "md:overflow-y-auto", className)}>
-      {!DEMO_MODE ? <DriveDiscovery onComplete={() => { void refreshFiles(); void refreshConnection(); }} /> : null}
-      {!DEMO_MODE ? <div className="space-y-1">
+    <div className={cn("flex flex-col md:min-h-0 md:flex-1", DEMO_MODE ? "gap-6" : "gap-2 md:overflow-y-auto", className)}>
+      {!DEMO_MODE ? <DriveDiscovery compact onComplete={() => { void refreshFiles(); void refreshConnection(); }} /> : null}
+      {!DEMO_MODE && ["queue", "legacy", "blocked"].includes(gate) ? <div className="space-y-1">
         <Link href="/prepare" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">{gate === "queue" || gate === "legacy" ? "Review existing preparation" : "View preparation progress"}</Link>
         {gate !== "empty" && gate !== "checking" ? <p className="text-sm text-muted-foreground">{gate === "blocked" ? "Saved preparation could not be verified. Review progress before starting new work." : "Resolve or close existing preparation before preparing another selection."}</p> : null}
       </div> : null}
-      {!DEMO_MODE && scope.owner ? <section aria-label="Preparation selection" className="space-y-2 border-y border-border py-3">
-        <p role="status" className="text-sm">{draft.length} of 5 documents selected</p>
+      {!DEMO_MODE && scope.owner ? <section aria-label="Preparation selection" className="space-y-1 border-y border-border py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2"><p role="status" className="text-sm">{draft.length ? `${draft.length} of 5 documents selected` : "Select up to five documents. Open a filename for details."}</p>
+        {draft.length ? <Button disabled={gate !== "empty" || !connection?.connected || filesState.isLoading || !!filesState.error || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}</Button> : null}</div>
         {draft.length === 5 ? <p className="text-sm text-muted-foreground">Five-document limit reached. Remove one to choose another.</p> : null}
-        {draft.length ? <ol aria-label="Selected documents" className="space-y-1">
+        {draft.length ? <ol aria-label="Selected documents" className="max-h-40 space-y-1 overflow-y-auto">
           {draft.map((selected, index) => {
             const current = files.find(f => f.id === selected.id);
             const changed = !current || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
@@ -212,11 +216,10 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
               <Button variant="ghost" className="min-h-11 shrink-0" aria-label={`Remove ${selected.name} from selection`} onClick={() => setDraft(before => before.filter(f => f.id !== selected.id))}>Remove</Button>
             </li>;
           })}
-        </ol> : <p className="text-sm text-muted-foreground">Choose up to five eligible documents using the checkboxes. Click a filename to preview it.</p>}
+        </ol> : null}
         {draftNeedsAttention && draft.length && !filesState.isLoading ? <p role="alert" className="text-sm">A selected document changed or is no longer eligible. Remove it and review your selection.</p> : null}
-        {draft.length ? <Button disabled={gate !== "empty" || !canBrowse || filesState.isLoading || !!filesState.error || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}</Button> : null}
       </section> : null}
-      <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div className={cn("flex flex-col sm:flex-row sm:justify-between", DEMO_MODE ? "gap-3 border-b border-border pb-5 sm:items-end" : "gap-2 py-1 sm:items-center")}>
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
             connectionLoading || (canBrowse && filesState.isLoading) ? "Loading files…" : DEMO_MODE ? "Browse sample files" : "Browse Drive files"}
@@ -243,7 +246,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-border pb-4" role="group" aria-label="Filter files by status">
+      <div className={cn("flex flex-wrap gap-1 border-b border-border", DEMO_MODE ? "pb-4" : "pb-1")} role="group" aria-label="Filter files by status">
         {filterPills.map((pill) => {
           const active = status === pill.value;
           return (
@@ -279,24 +282,16 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </Alert>
       ) : null}
 
-      {canBrowse && connectionError ? (
+      {DEMO_MODE && canBrowse && connectionError ? (
         <Alert variant="destructive">
           <AlertTitle>Connection status unavailable</AlertTitle>
           <AlertDescription>{connectionError}</AlertDescription>
         </Alert>
       ) : null}
 
-      {isDisconnected ? (
-        <EmptyState
-          title={filesCopy.notConnectedTitle}
-          description={filesCopy.notConnectedBody}
-          actionLabel="Connect in Settings"
-          actionHref="/settings"
-          icon={FolderOpen}
-        />
-      ) : null}
+      {isDisconnected ? <p className="text-sm leading-6 text-muted-foreground">Reconnect Drive to discover or prepare more documents. Stored file details and prepared knowledge remain available. <Link href="/onboarding" className="underline underline-offset-4">Connect Google Drive</Link>{statusCounts.indexed > 0 ? <> · <Link href="/chat" className="underline underline-offset-4">Open chat</Link></> : null}</p> : null}
 
-      {!connection && connectionLoading && !connectionError ? (
+      {!connection && connectionLoading && !connectionError && !canBrowse ? (
         <p className="py-8 text-sm text-muted-foreground" role="status">{DEMO_MODE ? "Checking sample index…" : "Checking your Drive connection…"}</p>
       ) : null}
 
@@ -312,7 +307,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         </Alert>
       ) : null}
 
-      {canBrowse && filesState.isLoading ? (
+      {canBrowse && filesState.isLoading && !filesState.data ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, index) => (
             <Skeleton key={index} className="h-14 w-full rounded-md" />
@@ -334,23 +329,24 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         <EmptyState title={filesCopy.noResults} />
       ) : null}
 
-      {canBrowse && !filesState.isLoading && filteredFiles.length > 0 ? (
+      {canBrowse && (!DEMO_MODE || !filesState.isLoading) && filteredFiles.length > 0 ? (
         <div className="grid min-w-0 grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-5 md:gap-6">
-          <div className="min-w-0 md:col-span-2 md:min-h-0 md:overflow-y-auto md:overscroll-contain">
+          <div className={cn("min-w-0 md:min-h-0 md:overflow-y-auto md:overscroll-contain", DEMO_MODE ? "md:col-span-2" : "md:col-span-3")}>
             <FileList
               files={filteredFiles}
               selectedId={selectedId}
               onSelect={handleSelect}
-              preparation={DEMO_MODE ? undefined : { selected: draft.map(f => f.id), disabled: gate !== "empty" || !live(), onToggle: togglePreparation }}
+              preparation={DEMO_MODE ? undefined : { selected: draft.map(f => f.id), disabled: gate !== "empty" || !live() || !connection?.connected || !!connectionError, disabledReason: !connection?.connected || connectionError ? "Check Drive access before selecting documents for preparation." : undefined, onToggle: togglePreparation }}
             />
           </div>
-          <div className="hidden md:col-span-3 md:block md:min-h-0">
-            <FilePreviewPanel file={selectedFile} className="md:min-h-0" />
+          <div className={cn("hidden md:block md:min-h-0", DEMO_MODE ? "md:col-span-3" : "md:col-span-2")}>
+            <FilePreviewPanel file={selectedFile} canPrepare={connection?.connected === true && !connectionError} className="md:min-h-0" />
           </div>
         </div>
       ) : null}
 
       <FilePreviewSheet
+        canPrepare={connection?.connected === true && !connectionError}
         file={selectedFile}
         open={mobilePreviewOpen}
         onOpenChange={setMobilePreviewOpen}

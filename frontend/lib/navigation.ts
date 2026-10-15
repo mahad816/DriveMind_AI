@@ -1,3 +1,4 @@
+import { DEMO_MODE } from "@/lib/demo";
 import { Files, Settings, Wand2, type LucideIcon } from "lucide-react";
 
 export type UtilityNavItem = {
@@ -9,7 +10,7 @@ export type UtilityNavItem = {
 /** Secondary navigation — files, knowledge, and settings. */
 export const utilityNavItems: UtilityNavItem[] = [
   { href: "/files", label: "Files", icon: Files },
-  { href: "/index", label: "Knowledge", icon: Wand2 },
+  ...(DEMO_MODE ? [{ href: "/index", label: "Knowledge", icon: Wand2 }] : []),
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -23,7 +24,7 @@ export function isOnboardingRoute(pathname: string): boolean {
 
 export function isUtilityNavActive(pathname: string, href: string): boolean {
   if (href === "/files") {
-    return pathname === "/files" || pathname.startsWith("/files/");
+    return pathname === "/files" || pathname.startsWith("/files/") || (!DEMO_MODE && (pathname === "/prepare" || pathname === "/index"));
   }
   if (href === "/index") {
     return pathname === "/index";

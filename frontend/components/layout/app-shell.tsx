@@ -1,5 +1,6 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
 import { ConversationSidebar } from "@/components/layout/conversation-sidebar";
 import { ConnectionBanner } from "@/components/layout/connection-banner";
 import { MobileHeader } from "@/components/layout/mobile-header";
@@ -20,7 +21,7 @@ function MainChrome({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {!onboardingRoute ? <MobileHeader /> : null}
-      {!chatRoute && !onboardingRoute ? <ConnectionBanner /> : null}
+      {!chatRoute && !onboardingRoute && (DEMO_MODE || (pathname !== "/files" && pathname !== "/prepare")) ? <ConnectionBanner /> : null}
       <main
         className={cn(
           "flex min-h-0 flex-1 flex-col",

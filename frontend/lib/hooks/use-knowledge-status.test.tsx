@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setSessionOwner } from "@/lib/api/session-events";
 import { listDriveFiles } from "@/lib/api/files";
 import type { DriveFileRead } from "@/lib/api/types";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
@@ -42,11 +43,11 @@ function connection(connected: boolean, error: string | null = null) {
 
 describe("knowledge setup state", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks(); setSessionOwner("user-id");
     vi.mocked(listDriveFiles).mockResolvedValue({ files: [], total: 0 });
   });
 
-  afterEach(cleanup);
+  afterEach(() => { cleanup(); setSessionOwner(null); });
 
   it("does not interpret a failed connection check as confirmed disconnection", () => {
     connection(false, "Could not check Google Drive connection");
@@ -60,16 +61,16 @@ describe("knowledge setup state", () => {
     expect(result.current.needsPrepare).toBe(false);
   });
 
-  it("treats a confirmed disconnected response as disconnected", () => {
+  it("treats a confirmed disconnected response with no indexed knowledge as disconnected", async () => {
     connection(false);
 
     const { result } = renderHook(() => useKnowledgeStatus({ pollIntervalMs: 0 }));
 
-    expect(result.current.needsConnect).toBe(true);
+    await waitFor(() => expect(result.current.needsConnect).toBe(true));
     expect(result.current.setupState).toBe("not_connected");
     expect(result.current.isReady).toBe(false);
     expect(result.current.needsPrepare).toBe(false);
-    expect(listDriveFiles).not.toHaveBeenCalled();
+    expect(listDriveFiles).toHaveBeenCalledOnce();
   });
 
   it("does not call a connected Drive with zero indexed files ready", async () => {

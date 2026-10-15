@@ -6,7 +6,7 @@ import { QueuePreparationView } from "./queue-preparation-view";
 import { PreparationView } from "./preparation-view";
 import { preparationKey } from "@/lib/knowledge/single-file-preparation";
 import { PreparationQueue } from "@/lib/knowledge/preparation-queue";
-import { invalidateSessionRequests, setSessionOwner } from "@/lib/api/session-events";
+import { invalidateSessionRequests, setSessionOwner, sessionRevision } from "@/lib/api/session-events";
 import type { DriveFileRead, IndexingJobRead } from "@/lib/api/types";
 const fixture = vi.hoisted(() => ({ owner: "00000000-0000-0000-0000-000000000065", demo: false, params: new URLSearchParams() }));
 vi.mock("@/lib/demo", () => ({ get DEMO_MODE() { return fixture.demo; } }));
@@ -15,6 +15,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), useSea
 vi.mock("@/lib/hooks/use-connection-status", () => ({ useConnectionStatus: () => ({ data: { connected: true }, isLoading: false, error: null, refetch: vi.fn() }) }));
 vi.mock("@/components/files/drive-discovery", () => ({ DriveDiscovery: () => <p>Metadata discovery</p> }));
 vi.mock("@/components/files/file-preview-sheet", () => ({ FilePreviewSheet: () => null }));
+import { useIndexedKnowledge } from "@/lib/hooks/use-indexed-knowledge";
+function DisplayReadiness() { const value = useIndexedKnowledge(fixture.owner, sessionRevision()); return <p>Prepared display: {value.status}</p>; }
 const owner = fixture.owner, key = preparationKey(owner);
 let files: DriveFileRead[], values: Map<string, string>, latest: IndexingJobRead | null, jobs: Map<string, IndexingJobRead>, count: number;
 let intercept: (p: string, i: RequestInit) => Promise<Response> | undefined;
@@ -150,7 +152,7 @@ it("owner/session invalidation clears draft and fences delayed private updates",
   fireEvent.click(screen.getByRole("button", { name: "Reload file list" })); await entered.promise;
   act(() => { setSessionOwner("00000000-0000-0000-0000-000000000066"); invalidateSessionRequests(); });
   response.resolve(json({ files, total: files.length })); await act(async () => { await response.promise; });
-  expect(screen.getByText("0 of 5 documents selected")).toBeInTheDocument(); expect(screen.queryByRole("checkbox")).toBeNull(); expect(screen.queryByRole("button", { name: "Review 1 document" })).toBeNull(); expect(posts()).toEqual([]);
+  expect(screen.getByText("Select up to five documents. Open a filename for details.")).toBeInTheDocument(); expect(screen.queryByRole("checkbox")).toBeNull(); expect(screen.queryByRole("button", { name: "Review 1 document" })).toBeNull(); expect(posts()).toEqual([]);
 });
 it("prepare route preserves the legacy single-file review and fails closed on unknown saved versions", async () => {
   fixture.params = new URLSearchParams({ file: files[0].id }); const view = render(<PreparationView />);
@@ -189,4 +191,10 @@ it("accepted acknowledgement arriving after unmount persists its exact receipt f
   render(<PreparationView />); await screen.findByRole("heading", { name: "Document preparation" });
   await userEvent.click(screen.getByRole("button", { name: "Check status" })); expect(posts()).toHaveLength(1);
   expect(stored().entries[0].receipts[0].jobId).toBe(id);
+});
+
+it("authoritative queue completion refreshes mounted readiness without another processing request", async () => {
+  const start = await review(1); render(<DisplayReadiness />); await screen.findByText("Prepared display: empty");
+  await userEvent.click(start); await waitFor(() => expect(posts()).toHaveLength(1)); await finishFile();
+  await screen.findByText("Prepared display: ready"); expect(posts()).toHaveLength(3);
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  utilityNavItems,
   isChatRoute,
   isConversationActive,
   isNewChatActive,
@@ -35,4 +36,10 @@ describe("navigation helpers", () => {
     expect(isUtilityNavActive("/settings", "/settings")).toBe(true);
     expect(isUtilityNavActive("/settings/advanced", "/settings")).toBe(true);
   });
+});
+
+it("normal navigation uses Files as preparation parent without a redundant Knowledge destination", () => {
+  expect(utilityNavItems.map(item => item.href)).toEqual(["/files", "/settings"]);
+  expect(isUtilityNavActive("/prepare", "/files")).toBe(true);
+  expect(isUtilityNavActive("/index", "/files")).toBe(true);
 });

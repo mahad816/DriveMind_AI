@@ -15,6 +15,7 @@ type FileListProps = {
   preparation?: {
     selected: string[];
     disabled: boolean;
+    disabledReason?: string;
     onToggle: (file: DriveFileRead) => void;
   };
 };
@@ -45,6 +46,6 @@ function PreparationCheckbox({ file, selection }: { file: DriveFileRead; selecti
     <input type="checkbox" checked={checked} disabled={disabled} onChange={() => selection.onToggle(file)}
       aria-describedby={description}
       aria-label={`Select ${file.name} for preparation`} className="size-4 accent-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring" />
-    <span id={description} className="sr-only">{reason ?? (selection.disabled ? "Review existing preparation before making another selection." : selection.selected.length >= 5 && !checked ? "Five-document limit reached. Remove one to choose another." : "Selection does not prepare this document.")}</span>
+    <span id={description} className="sr-only">{reason ?? (selection.disabled ? selection.disabledReason ?? "Review existing preparation before making another selection." : selection.selected.length >= 5 && !checked ? "Five-document limit reached. Remove one to choose another." : "Selection does not prepare this document.")}</span>
   </label>;
 }

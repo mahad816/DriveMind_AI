@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useConversations } from "@/lib/hooks/use-conversations";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
 import { isUtilityNavActive, utilityNavItems } from "@/lib/navigation";
-import { chatCopy, knowledgeStatusLabel } from "@/lib/user-language";
+import { chatCopy } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
 import { useServerConversations } from "@/components/providers/server-conversations-provider";
 import type { ConversationGroup } from "@/lib/conversations/types";
@@ -81,7 +81,7 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
   onNew: () => Promise<void>; onRename: (id: string, title: string) => unknown; onDelete: (id: string) => void;
   onRefresh?: () => void; onMore?: () => void; onReconcileCreation?: () => void; disabled?: boolean;
 }) {
-  const { needsConnect, needsPrepare } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
+  const { needsConnect, isReady, setupState, fileStats, error: knowledgeError } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
   const [chatQuery, setChatQuery] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const compact = collapsible && collapsed;
@@ -100,7 +100,7 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
       .filter((group) => group.conversations.length > 0);
   }, [chatQuery, groups]);
 
-  const showSetupChip = !DEMO_MODE && (needsConnect || needsPrepare);
+  const showSetupChip = !DEMO_MODE;
   const hasChats = groups.some((g) => g.conversations.length > 0);
   const hasFilteredChats = filteredGroups.some((g) => g.conversations.length > 0);
   const isSearching = chatQuery.trim().length > 0;
@@ -268,16 +268,15 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
 
       {showSetupChip && !compact ? (
         <div className="shrink-0 border-t border-sidebar-border p-3">
-          <div className="border-l-2 border-warning/70 px-3 py-1 text-xs">
-            <p className="font-medium text-foreground">
-              {needsConnect ? "Connect Google Drive" : "Your assistant isn't ready yet"}
+          <div className="space-y-1 text-sm">
+            <p role="status" className="text-muted-foreground">
+              {setupState === "checking" ? "Checking prepared documents…" : knowledgeError ? "Knowledge status unavailable"
+                : isReady ? `${fileStats.indexed} ${fileStats.indexed === 1 ? "document ready" : "documents ready"}`
+                  : needsConnect ? "Connect Drive to choose documents" : "Prepare documents to start chatting"}
             </p>
-            <Link
-              href={needsConnect ? "/onboarding" : "/index"}
-              onClick={onNavigate}
-              className="mt-1 inline-block text-primary underline underline-offset-2"
-            >
-              {needsConnect ? "Get started →" : `${knowledgeStatusLabel.setup} →`}
+            <Link href={isReady ? "/chat" : needsConnect ? "/onboarding" : "/files"} onClick={onNavigate}
+              className="inline-flex min-h-11 items-center underline underline-offset-4">
+              {isReady ? "Open chat" : needsConnect ? "Connect Google Drive" : "Browse files"}
             </Link>
           </div>
         </div>

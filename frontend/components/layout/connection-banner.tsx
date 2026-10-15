@@ -39,9 +39,9 @@ export function ConnectionBanner() {
   return (
     <Alert className="rounded-none border-x-0 border-t-0 border-warning/30 bg-warning/10 text-foreground">
       <AlertCircle className="size-4 text-warning" />
-      <AlertTitle>{appCopy.connectionBannerTitle}</AlertTitle>
+      <AlertTitle>Google Drive isn’t connected</AlertTitle>
       <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span>{appCopy.connectionBannerBody}</span>
+        <span>Reconnect Drive to discover or prepare documents. Previously prepared knowledge remains available.</span>
         <Link
           href="/settings"
           className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit shrink-0")}

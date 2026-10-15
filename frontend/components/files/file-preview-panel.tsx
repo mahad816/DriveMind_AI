@@ -24,9 +24,10 @@ import { preparationEligibility } from "@/lib/knowledge/single-file-preparation"
 type FilePreviewPanelProps = {
   file: DriveFileRead | null;
   className?: string;
+  canPrepare?: boolean;
 };
 
-export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
+export function FilePreviewPanel({ file, className, canPrepare = true }: FilePreviewPanelProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
@@ -69,7 +70,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">Select a file</p>
           <p className="text-xs text-muted-foreground">
-            Pick any file on the left to preview its content and actions.
+            {DEMO_MODE ? "Pick any file on the left to preview its content and actions." : "Open a filename to inspect its details and available actions."}
           </p>
         </div>
       </div>
@@ -104,7 +105,7 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
       <div className="shrink-0 space-y-3 px-5 pb-5">
         {!DEMO_MODE && file.status !== "indexed" ? <p className="text-sm text-muted-foreground">{preparationEligibility(file) ?? "Discovered metadata only. Select this document to review what will be processed before preparing it."}</p> : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          {!DEMO_MODE && preparationEligibility(file) === null ? <Link href={`/prepare?file=${encodeURIComponent(file.id)}`} className={buttonVariants({ className: "w-full sm:w-auto" })}>Select for preparation</Link> : null}
+          {!DEMO_MODE && preparationEligibility(file) === null ? <Link href={canPrepare ? `/prepare?file=${encodeURIComponent(file.id)}` : "/onboarding"} className={buttonVariants({ className: "w-full sm:w-auto" })}>{canPrepare ? "Select for preparation" : "Check Drive access to prepare"}</Link> : null}
           {(DEMO_MODE || file.status === "indexed") ? <Link href={askHref} className={buttonVariants({ className: "w-full justify-start sm:w-auto" })}>
             <MessageSquareQuote className="size-4" />
             {DEMO_MODE ? filesCopy.askAboutFile : "Open chat"}
@@ -121,8 +122,8 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
         </div>
       </div>
 
-      <section className={cn("border-t border-border px-5 py-5", DEMO_MODE ? "min-h-0 flex-1 overflow-y-auto" : "shrink-0")} aria-label="File preview">
-        <h3 className="mb-3 text-sm font-medium text-foreground">Preview</h3>
+      <section className={cn("border-t border-border px-5 py-5", DEMO_MODE ? "min-h-0 flex-1 overflow-y-auto" : "shrink-0")} aria-label={DEMO_MODE ? "File preview" : "Document information"}>
+        <h3 className="mb-3 text-sm font-medium text-foreground">{DEMO_MODE ? "Preview" : "Document information"}</h3>
         {isLoadingPreview ? (
           <div className="space-y-2">
             <Skeleton className="h-4 w-full" />
