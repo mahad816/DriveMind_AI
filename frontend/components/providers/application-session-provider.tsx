@@ -45,6 +45,7 @@ function NormalSessionProvider({ children }: {
     if (logoutPending.current || loginPending.current)
       return false;
     const attempt = ++sequence.current;
+    const hadOwner = currentOwner.current !== null;
     try {
       const session = await inspectApplicationSession();
       if (attempt !== sequence.current)
@@ -63,12 +64,12 @@ function NormalSessionProvider({ children }: {
     catch (err) {
       if (attempt !== sequence.current)
         return false;
-      clear(err instanceof ApiError && err.status === 401 ? "signed_out" : "unavailable", err instanceof ApiError && err.status === 401 ? null : "Application sign-in is unavailable. Verify the login configuration or try again.");
+      clear(err instanceof ApiError && err.status === 401 ? "signed_out" : "unavailable", err instanceof ApiError && err.status === 401 ? (hadOwner ? "Your session expired. Sign in again to continue." : null) : "Sign-in is temporarily unavailable. Please try again.");
       return false;
     }
   }, [clear]);
   useEffect(() => {
-    const invalid = () => { const hadOwner = currentOwner.current !== null; clear("signed_out"); if (hadOwner) broadcastSessionTransition(); };
+    const invalid = () => { const hadOwner = currentOwner.current !== null; clear("signed_out", hadOwner ? "Your session expired. Sign in again to continue." : null); if (hadOwner) broadcastSessionTransition(); };
     const verify = () => { void refresh(); };
     const focus = () => { if (logoutPending.current || loginPending.current) return; clear("checking"); void refresh(); };
     let channel: BroadcastChannel | null = null;
@@ -165,18 +166,24 @@ function NormalSessionProvider({ children }: {
   return (
     <Context.Provider value={{ ...state, refresh, login, connectDrive, logout }}>
       {state.status === "ready" ? (
-        <div key={`${state.userId}:${sessionRevision()}`} className="contents">{children}</div>
+        <div key={`${state.userId}:${sessionRevision()}`} className="normal-workspace contents">{children}</div>
       ) : (
-        <section className="mx-auto max-w-lg space-y-4 p-8" aria-label="Application sign-in">
-          <h1>{state.status === "checking" ? "Checking application session…" : "Sign in to DriveMind"}</h1>
-          {state.error ? <p role="alert">{state.error}</p> : null}
-          {state.status === "signed_out" ? (
-            <Button onClick={() => void login()}>Sign in with Google</Button>
-          ) : null}
-          {state.status === "unavailable" ? (
-            <Button onClick={() => void refresh()}>Verify session again</Button>
-          ) : null}
-        </section>
+        <main className="normal-workspace flex h-dvh overflow-y-auto bg-background px-6 py-12 text-foreground sm:px-10" aria-label="Application sign-in">
+          <section className="m-auto w-full max-w-md space-y-8">
+            <p className="text-sm font-semibold tracking-tight">DriveMind</p>
+            <div className="space-y-3">
+              <h1 className="text-2xl font-semibold tracking-tight">Ask questions about your Drive documents.</h1>
+              <p className="text-sm leading-6 text-muted-foreground">Find answers in your prepared documents, with citations you can open and check.</p>
+            </div>
+            {state.status === "checking" ? <p role="status">Checking your sign-in…</p> : null}
+            {state.error ? <p role="alert" className="text-sm">{state.error}</p> : null}
+            {state.status === "signed_out" ? <div className="space-y-3">
+              <Button onClick={() => void login()}>Sign in with Google</Button>
+              <p className="text-sm leading-6 text-muted-foreground">Signing in creates your DriveMind session. You’ll connect Google Drive separately using read-only access.</p>
+            </div> : null}
+            {state.status === "unavailable" ? <Button onClick={() => void refresh()}>Verify session again</Button> : null}
+          </section>
+        </main>
       )}
     </Context.Provider>
   );

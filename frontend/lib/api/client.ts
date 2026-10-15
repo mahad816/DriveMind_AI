@@ -6,6 +6,8 @@ import type { FastApiErrorBody } from "@/lib/api/types";
 type ApiFetchOptions = RequestInit & {
   /** Skip JSON parsing for empty or non-JSON success responses. */
   parseJson?: boolean;
+  /** Durable bookkeeping only, before session fencing. Must not publish private UI. */
+  onResponseReceipt?: (response: Response) => Promise<void>;
 };
 
 function joinUrl(path: string): string {
@@ -51,7 +53,7 @@ async function parseErrorResponse(response: Response): Promise<ApiError> {
 export async function apiFetchWithStatus<T>(
   path: string, options: ApiFetchOptions = {},
 ): Promise<{ status: number; data: T }> {
-  const { parseJson = true, headers, ...init } = options;
+  const { parseJson = true, headers, onResponseReceipt, ...init } = options;
   const url = joinUrl(path);
 
   const revision = sessionRevision();
@@ -65,6 +67,17 @@ export async function apiFetchWithStatus<T>(
     },
   });
 
+  // Bookkeeping must finish before stale responses are fenced, but its failure
+  // must never bypass session fencing, 401 invalidation or normal HTTP errors.
+  let receiptFailed = false;
+  let receiptError: unknown;
+  try {
+    if (onResponseReceipt) await onResponseReceipt(response.clone());
+  } catch (error) {
+    receiptFailed = true;
+    receiptError = error;
+  }
+
   if (revision !== sessionRevision()) {
     throw new ApiError(409, "Your application session changed. Please try again.");
   }
@@ -72,6 +85,8 @@ export async function apiFetchWithStatus<T>(
   if (!response.ok) {
     throw await parseErrorResponse(response);
   }
+
+  if (receiptFailed) throw receiptError;
 
   if (!parseJson || response.status === 204) {
     return { status: response.status, data: undefined as T };

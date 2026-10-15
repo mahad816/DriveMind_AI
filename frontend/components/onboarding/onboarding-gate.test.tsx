@@ -80,19 +80,10 @@ describe("setup-aware entry routing", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("does not let a stale browser-local completion flag bypass confirmed not-ready state", async () => {
-    pathname = "/files";
-    vi.mocked(useKnowledgeStatus).mockReturnValue(status("not_connected"));
-    render(<OnboardingGate><p>Chat</p></OnboardingGate>);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/onboarding"));
-    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
-  });
-
-  it("does not briefly show Drive files while readiness is being checked", () => {
-    pathname = "/files";
-    render(<OnboardingGate><p>Chat</p></OnboardingGate>);
-    expect(screen.getByText("Checking your Drive knowledge…")).toBeInTheDocument();
-    expect(screen.queryByText("Chat")).not.toBeInTheDocument();
+  it.each(["checking", "not_connected", "connected_not_ready", "preparing", "ready", "error"] as const)("keeps Files accessible in %s state inside the session boundary", (state) => {
+    pathname = "/files"; vi.mocked(useKnowledgeStatus).mockReturnValue(status(state));
+    render(<OnboardingGate><p>File metadata</p></OnboardingGate>);
+    expect(screen.getByText("File metadata")).toBeInTheDocument(); expect(replace).not.toHaveBeenCalled();
   });
 
   it("keeps server conversations accessible when Drive is disconnected", () => {

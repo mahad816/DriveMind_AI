@@ -5,6 +5,7 @@ import { DEMO_MODE } from "@/lib/demo";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCcw, FolderOpen } from "lucide-react";
 
+import { DriveDiscovery } from "@/components/files/drive-discovery";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FileList } from "@/components/files/file-list";
 import { FilePreviewPanel } from "@/components/files/file-preview-panel";
@@ -155,6 +156,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
 
   return (
     <div className={cn("flex flex-col gap-6 md:min-h-0 md:flex-1", className)}>
+      {!DEMO_MODE ? <DriveDiscovery onComplete={() => { void refreshFiles(); void refreshConnection(); }} /> : null}
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
@@ -177,7 +179,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
             onClick={() => void refreshFiles()}
           >
             <RefreshCcw className="size-4" />
-            {filesState.isLoading ? "Refreshing…" : "Refresh"}
+            {filesState.isLoading ? "Refreshing…" : DEMO_MODE ? "Refresh" : "Reload file list"}
           </Button>
         </div>
       </div>
@@ -261,9 +263,9 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
 
       {canBrowse && !filesState.isLoading && !filesState.error && files.length === 0 ? (
         <EmptyState
-          title={DEMO_MODE ? "Sample corpus unavailable" : filesCopy.emptyTitle}
-          description={DEMO_MODE ? "The demo operator must prepare the controlled corpus offline." : filesCopy.emptyBody}
-          actionLabel={DEMO_MODE ? undefined : filesCopy.emptyCta}
+          title={DEMO_MODE ? "Sample corpus unavailable" : "No discovered files"}
+          description={DEMO_MODE ? "The demo operator must prepare the controlled corpus offline." : "Check Drive for files above. If a check has completed, no supported documents were found. Supported types include Google Docs, TXT, PDF, DOCX and images; scanned PDFs have no OCR fallback."}
+          actionLabel={undefined}
           actionHref="/index"
           icon={FolderOpen}
         />

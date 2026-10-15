@@ -6,7 +6,6 @@ import { Suspense } from "react";
 import Link from "next/link";
 
 import { SettingsAboutSection } from "@/components/settings/settings-about-section";
-import { SettingsAdvancedSection } from "@/components/settings/settings-advanced-section";
 import { SettingsAppearanceSection } from "@/components/settings/settings-appearance-section";
 import { SettingsDriveSection } from "@/components/settings/settings-drive-section";
 import { PageShell } from "@/components/layout/page-shell";
@@ -22,19 +21,19 @@ function NormalOAuthCallback() {
 function SettingsContent() {
   return (
     <div className="space-y-8">
-      <SettingsAppearanceSection />
+      {DEMO_MODE ? <SettingsAppearanceSection /> : null}
       {!DEMO_MODE ? <><NormalOAuthCallback /><SettingsDriveSection /></> : <p>Public demo · fictional HarborDesk sample corpus. No Google Drive connection required.</p>}
+      {!DEMO_MODE ? <SettingsAppearanceSection /> : null}
       <SettingsSection title={settingsCopy.knowledge}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             {DEMO_MODE ? "Browse the controlled sample knowledge used for grounded answers." : "Manage the Drive knowledge used for grounded answers."}
           </p>
-          <Link href="/index" className="shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            Open Knowledge
+          <Link href={DEMO_MODE ? "/index" : "/files"} className="shrink-0 text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {DEMO_MODE ? "Open Knowledge" : "Manage files"}
           </Link>
         </div>
       </SettingsSection>
-      {!DEMO_MODE ? <SettingsAdvancedSection /> : null}
       <SettingsAboutSection />
     </div>
   );

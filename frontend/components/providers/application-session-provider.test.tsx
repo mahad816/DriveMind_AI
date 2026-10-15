@@ -14,6 +14,7 @@ it("missing session renders sign-in, not private children", async () => {
   render(<ApplicationSessionProvider><Private /></ApplicationSessionProvider>);
   expect(await screen.findByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
   expect(screen.queryByText(/Private account/)).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Ask questions about your Drive documents." })).toBeInTheDocument();
 });
 it("verifies identity despite forged callback hints", async () => {
   window.history.replaceState({}, "", "/settings?login=success&connected=true&email=A_SECRET&user_id=forged");
@@ -55,7 +56,7 @@ it("demo bypasses normal session creation and inspection", () => {
 it("configuration failure is explicit and never opens private state", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ detail: "Not found" }, 404)));
   render(<ApplicationSessionProvider><Private /></ApplicationSessionProvider>);
-  expect(await screen.findByText(/Application sign-in is unavailable/)).toBeInTheDocument();
+  expect(await screen.findByText(/Sign-in is temporarily unavailable/)).toBeInTheDocument();
   expect(screen.queryByText(/Private account/)).not.toBeInTheDocument();
 });
 it("focus inspection cannot reopen private state while logout is pending", async () => {

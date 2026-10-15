@@ -26,6 +26,8 @@ describe("Google Drive access actions", () => {
 
     render(<SettingsDriveSection />);
 
+    expect(screen.queryByText(/00000000-0000/)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Account" })).toBeInTheDocument();
     expect(screen.getByText("Manage Google access")).toBeInTheDocument();
     expect(screen.queryByText("Disconnect")).not.toBeInTheDocument();
   });

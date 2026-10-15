@@ -13,7 +13,7 @@ afterEach(cleanup);
 describe("Settings organization", () => {
   it("links to the existing Knowledge destination without duplicating its controls", () => {
     render(<SettingsPageContent />);
-    expect(screen.getByRole("link", { name: "Open Knowledge" })).toHaveAttribute("href", "/index");
+    expect(screen.getByRole("link", { name: "Manage files" })).toHaveAttribute("href", "/files");
     expect(screen.queryByRole("button", { name: "Prepare knowledge" })).not.toBeInTheDocument();
   });
 });

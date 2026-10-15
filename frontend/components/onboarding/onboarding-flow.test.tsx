@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
 import { useKnowledgeStatus } from "@/lib/hooks/use-knowledge-status";
-import { markOnboardingComplete } from "@/lib/onboarding/storage";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -44,68 +43,29 @@ describe("OnboardingFlow", () => {
     vi.mocked(useKnowledgeStatus).mockReturnValue(status("checking"));
   });
 
-  it("shows a restrained two-step journey while checking", () => {
+  it("shows sign-in, connection, discovery and future preparation distinctly", () => {
     render(<OnboardingFlow />);
-    expect(screen.getByRole("heading", { name: "Set up your Drive knowledge" })).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")).toHaveLength(4);
     expect(screen.getByText("Checking your Drive connection…")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start chatting" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
   });
-
-  it("offers Connect when Drive is confirmed disconnected", () => {
-    vi.mocked(useKnowledgeStatus).mockReturnValue(status("not_connected"));
-    render(<OnboardingFlow />);
-    expect(screen.getByRole("button", { name: "Connect Google Drive" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Prepare knowledge" })).not.toBeInTheDocument();
+  it("offers connection only for confirmed disconnection", () => {
+    vi.mocked(useKnowledgeStatus).mockReturnValue(status("not_connected")); render(<OnboardingFlow />);
+    fireEvent.click(screen.getByRole("button", { name: "Connect Google Drive" }));
+    expect(screen.queryByRole("button", { name: "Prepare knowledge" })).toBeNull();
   });
-
-  it("offers Prepare when connected but not ready", () => {
-    vi.mocked(useKnowledgeStatus).mockReturnValue(status("connected_not_ready"));
-    render(<OnboardingFlow />);
-    expect(screen.getByRole("heading", { name: "Prepare your knowledge" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Prepare knowledge" })).toBeInTheDocument();
+  it("offers file browsing with zero indexed documents and no preparation action", () => {
+    vi.mocked(useKnowledgeStatus).mockReturnValue(status("connected_not_ready")); render(<OnboardingFlow />);
+    expect(screen.getByRole("link", { name: "Browse and discover files" })).toHaveAttribute("href", "/files");
+    expect(screen.queryByRole("button", { name: "Prepare knowledge" })).toBeNull();
   });
-
-  it("shows preparation without claiming completion or a percentage", () => {
-    vi.mocked(useKnowledgeStatus).mockReturnValue(status("preparing"));
-    render(<OnboardingFlow />);
-    expect(screen.getByRole("heading", { name: "Preparing your knowledge…" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start chatting" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/% complete/)).not.toBeInTheDocument();
+  it("preserves chat access for an indexed user", () => {
+    vi.mocked(useKnowledgeStatus).mockReturnValue({ ...status("ready"), fileStats: { total: 2, indexed: 1, failed: 0, skipped: 0 } });
+    render(<OnboardingFlow />); expect(screen.getByRole("link", { name: "Start chatting" })).toHaveAttribute("href", "/chat");
   });
-
-  it("offers Start chatting only after indexed files make knowledge ready", () => {
-    vi.mocked(useKnowledgeStatus).mockReturnValue({
-      ...status("ready"),
-      fileStats: { total: 2, indexed: 1, failed: 0, skipped: 1 },
-    });
-    render(<OnboardingFlow />);
-    expect(screen.getByText("1 file ready")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Start chatting" }));
-    expect(markOnboardingComplete).toHaveBeenCalledOnce();
-    expect(push).toHaveBeenCalledWith("/chat");
-  });
-
-  it("treats status failure as unavailable, not disconnected", () => {
-    const current = status("error");
-    vi.mocked(useKnowledgeStatus).mockReturnValue(current);
-    render(<OnboardingFlow />);
-    expect(screen.getByText("Knowledge status unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Connection check failed")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Connect Google Drive" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Retry status check" }));
-    expect(current.refresh).toHaveBeenCalledOnce();
-  });
-
-  it("retains the completed connection step when only knowledge status fails", () => {
-    vi.mocked(useKnowledgeStatus).mockReturnValue({
-      ...status("error"),
-      isConnected: true,
-      error: "Could not load file status",
-    });
-    render(<OnboardingFlow />);
-    expect(screen.getByText("Knowledge status unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Could not load file status")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Connect Google Drive" })).not.toBeInTheDocument();
+  it("does not turn an unavailable check into a disconnected state", () => {
+    const current = status("error"); vi.mocked(useKnowledgeStatus).mockReturnValue(current); render(<OnboardingFlow />);
+    expect(screen.queryByRole("button", { name: "Connect Google Drive" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry status check" })); expect(current.refresh).toHaveBeenCalledOnce();
   });
 });

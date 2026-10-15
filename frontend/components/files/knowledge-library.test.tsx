@@ -6,6 +6,7 @@ import { listDriveFiles } from "@/lib/api/files";
 import type { DriveFileListResponse, DriveFileRead } from "@/lib/api/types";
 import { useConnectionStatus } from "@/lib/hooks/use-connection-status";
 
+vi.mock("@/components/files/drive-discovery", () => ({ DriveDiscovery: () => <section>Discovery control</section> }));
 vi.mock("@/lib/api/files", () => ({ listDriveFiles: vi.fn() }));
 vi.mock("@/lib/hooks/use-connection-status", () => ({ useConnectionStatus: vi.fn() }));
 vi.mock("@/components/files/file-preview-panel", () => ({ FilePreviewPanel: () => null }));
@@ -54,7 +55,7 @@ describe("Files browser", () => {
     render(<KnowledgeLibrary />);
 
     expect(screen.getByText("Loading files…")).toBeInTheDocument();
-    expect(screen.queryByText("No Drive files found")).not.toBeInTheDocument();
+    expect(screen.queryByText("No discovered files")).not.toBeInTheDocument();
   });
 
   it("renders real file metadata and keeps search and status filters functional", async () => {
@@ -80,7 +81,7 @@ describe("Files browser", () => {
   it("distinguishes an empty Drive file list from a search with no matches", async () => {
     vi.mocked(listDriveFiles).mockResolvedValue({ files: [], total: 0 });
     const view = render(<KnowledgeLibrary />);
-    expect(await screen.findByText("No Drive files found")).toBeInTheDocument();
+    expect(await screen.findByText("No discovered files")).toBeInTheDocument();
 
     const files: DriveFileListResponse = { files: [atlas], total: 1 };
     vi.mocked(listDriveFiles).mockResolvedValue(files);
@@ -89,7 +90,7 @@ describe("Files browser", () => {
     expect(await screen.findByText("Project Atlas.pdf")).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "Search files" }), { target: { value: "nonexistent" } });
     expect(await screen.findByText("No files match your search or filter.")).toBeInTheDocument();
-    expect(screen.queryByText("No Drive files found")).not.toBeInTheDocument();
+    expect(screen.queryByText("No discovered files")).not.toBeInTheDocument();
   });
 
   it("does not present a failed connection check as confirmed disconnection", () => {

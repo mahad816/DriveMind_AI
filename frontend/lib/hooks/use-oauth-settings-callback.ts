@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/toast-provider";
 import { useApplicationSession } from "@/components/providers/application-session-provider";
-import { consumeOnboardingOAuthPending } from "@/lib/onboarding/storage";
+
 /** Callback hints never establish identity; only backend session inspection does. */
 export function useOAuthSettingsCallback() {
   const router = useRouter();
@@ -16,10 +16,10 @@ export function useOAuthSettingsCallback() {
     void refresh().then(verified => {
       if (!live) return;
       if (verified && params.get("login") === "success") {
-        pushToast({ title: "Application session verified", variant: "success" });
+        pushToast({ title: "Signed in to DriveMind", variant: "success" });
       }
-      const onboarding = consumeOnboardingOAuthPending();
-      router.replace(verified && onboarding ? "/onboarding" : "/settings");
+      // Callback parameters are navigation hints only; identity comes from inspection.
+      router.replace(verified && params.get("login") === "success" ? "/" : "/settings");
     });
     return () => { live = false; };
   }, [params, pushToast, refresh, router]);

@@ -12,7 +12,7 @@ type OnboardingGateProps = {
   children: React.ReactNode;
 };
 
-const BYPASS_PREFIXES = ["/onboarding", "/settings", "/index", "/prepare", "/sources", "/chat"];
+const BYPASS_PREFIXES = ["/files", "/onboarding", "/settings", "/index", "/prepare", "/sources", "/chat"];
 
 export function OnboardingGate({ children }: OnboardingGateProps) {
   const pathname = usePathname();

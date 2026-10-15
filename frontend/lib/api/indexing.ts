@@ -8,8 +8,9 @@ import type {
   PendingCountsResponse,
 } from "@/lib/api/types";
 
-export async function getDriveSyncStatus(jobId?: string): Promise<DriveSyncStatusResponse> {
-  return apiFetch<DriveSyncStatusResponse>(`/index/status${buildQueryString({ job_id: jobId })}`);
+export async function getDriveSyncStatus(jobId?: string, signal?: AbortSignal): Promise<DriveSyncStatusResponse> {
+  const path = `/index/status${buildQueryString({ job_id: jobId })}`;
+  return signal ? apiFetch<DriveSyncStatusResponse>(path, { signal }) : apiFetch<DriveSyncStatusResponse>(path);
 }
 
 export async function getPendingCounts(): Promise<PendingCountsResponse> {
@@ -27,26 +28,76 @@ export async function getPendingCounts(): Promise<PendingCountsResponse> {
   return pending;
 }
 
-async function submitIndexJob(path: string): Promise<JobStartedResponse> {
-  // Existing same-origin session inspection supplies CSRF material. Fetch per
-  // mutation: do not cache a token across logout/account changes.
-  const owner = sessionOwner();
-  const session = await apiFetch<{ csrf_token: string; user_id?: string }>("/auth/session");
-  if (owner && session.user_id !== owner) {
-    notifySessionInvalid();
-    throw new ApiError(409, "Your account changed. Preparation stopped.");
+export type SyncReceipt = { outcome: "accepted"; jobId: string } | { outcome: "rejected" };
+export class SyncSubmissionError extends Error {
+  constructor(readonly outcome: "not_submitted" | "rejected" | "unknown") {
+    super(outcome === "unknown" ? "Discovery acceptance could not be confirmed." : "Discovery was not accepted.");
   }
-  if (typeof session.csrf_token !== "string" || !session.csrf_token) {
-    throw new ApiError(503, "Application session verification is unavailable.");
-  }
-  return apiFetch<JobStartedResponse>(path, {
-    method: "POST",
-    headers: { "X-CSRF-Token": session.csrf_token },
-  });
 }
 
-export async function syncDriveMetadata(full = false): Promise<JobStartedResponse> {
-  return submitIndexJob(`/index/sync${buildQueryString({ full })}`);
+async function submitIndexJob(
+  path: string,
+  signal?: AbortSignal,
+  receipt?: (value: SyncReceipt) => Promise<void>,
+): Promise<JobStartedResponse> {
+  const owner = sessionOwner();
+  const revision = sessionRevision();
+  let postAttempted = false;
+  let acceptedReceipt = false;
+  const receiptState: { outcome: "rejected" | "unknown" } = { outcome: "unknown" };
+  try {
+    // Fresh same-origin proof before every mutation; never cache CSRF across owners.
+    type SessionProof = { csrf_token: string; user_id?: string };
+    const session = signal
+      ? await apiFetch<SessionProof>("/auth/session", { signal })
+      : await apiFetch<SessionProof>("/auth/session");
+    if (owner && session.user_id !== owner) {
+      notifySessionInvalid();
+      throw new ApiError(409, "Your account changed. Preparation stopped.");
+    }
+    if (typeof session.csrf_token !== "string" || !session.csrf_token.trim()) {
+      throw new ApiError(503, "Application session verification is unavailable.");
+    }
+    if (receipt && (!owner || owner !== sessionOwner() || revision !== sessionRevision() || signal?.aborted)) {
+      throw new SyncSubmissionError("not_submitted");
+    }
+    postAttempted = true;
+    const result = await apiFetch<JobStartedResponse>(path, {
+      method: "POST",
+      ...(signal ? { signal } : {}),
+      headers: { "X-CSRF-Token": session.csrf_token },
+      ...(receipt ? { onResponseReceipt: async (response: Response) => {
+        // Observe only this request's receipt. apiFetch still fences its return value.
+        // A lost/truncated body is ambiguous, including for errors.
+        const body = await response.json().catch(() => null);
+        if (response.status === 202 && body?.status === "queued" &&
+            typeof body.job_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.job_id)) {
+          await receipt({ outcome: "accepted", jobId: body.job_id });
+          acceptedReceipt = true;
+        } else if (
+          // Exact guard/admission rejections, before any new job commit:
+          // api/session_dependencies.py, security/session_helpers.py, api/index.py.
+          (response.status === 401 && body?.detail === "Your application session is invalid or expired.") ||
+          (response.status === 403 && body?.detail === "Application session request could not be verified.") ||
+          (response.status === 409 && body?.detail === "An unresolved indexing job already exists for this account.")
+        ) {
+          receiptState.outcome = "rejected";
+          await receipt({ outcome: "rejected" });
+        }
+      } } : {}),
+    });
+    if (receipt && !acceptedReceipt) throw new SyncSubmissionError("unknown");
+    return result;
+  } catch (error) {
+    if (!receipt) throw error; // Existing preparation callers keep their contract.
+    throw new SyncSubmissionError(postAttempted ? receiptState.outcome : "not_submitted");
+  }
+}
+
+export async function syncDriveMetadata(
+  full = false, signal?: AbortSignal, receipt?: (value: SyncReceipt) => Promise<void>,
+): Promise<JobStartedResponse> {
+  return submitIndexJob(`/index/sync${buildQueryString({ full })}`, signal, receipt);
 }
 
 export async function ingestDriveFiles(fileId?: string): Promise<JobStartedResponse> {

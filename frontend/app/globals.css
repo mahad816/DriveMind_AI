@@ -155,3 +155,100 @@
     @apply h-full overflow-hidden font-sans;
   }
 }
+
+/* Private workspace only; the public demo retains its original visual tokens. */
+.normal-workspace {
+  --background: #f7f7f5;
+  --surface-canvas: var(--background);
+  --secondary: var(--muted);
+  --secondary-foreground: var(--foreground);
+  --foreground: #242424;
+  --primary: #242424;
+  --primary-foreground: #fff;
+  --accent: #eaeae7;
+  --accent-foreground: #242424;
+  --ring: #555;
+  --card: #fff;
+  --card-foreground: #242424;
+  --popover: #fff;
+  --popover-foreground: #242424;
+  --muted: #eeedea;
+  --muted-foreground: #62625e;
+  --border: #deded9;
+  --input: #deded9;
+  --surface-elevated: #fff;
+  --sidebar: #f0f0ed;
+  --sidebar-foreground: #242424;
+  --sidebar-accent: #e5e5e0;
+  --sidebar-accent-foreground: #242424;
+  --sidebar-primary: #242424;
+  --sidebar-primary-foreground: #fff;
+  --sidebar-ring: #555;
+  --sidebar-border: #deded9;
+}
+.dark .normal-workspace {
+  --background: #222;
+  --foreground: #f1f1ee;
+  --primary: #f1f1ee;
+  --primary-foreground: #222;
+  --accent: #373737;
+  --accent-foreground: #f1f1ee;
+  --ring: #b8b8b3;
+  --card: #292929;
+  --card-foreground: #f1f1ee;
+  --popover: #292929;
+  --popover-foreground: #f1f1ee;
+  --muted: #333;
+  --muted-foreground: #b9b9b3;
+  --border: #484848;
+  --input: #484848;
+  --surface-elevated: #292929;
+  --sidebar: #252525;
+  --sidebar-foreground: #f1f1ee;
+  --sidebar-accent: #373737;
+  --sidebar-accent-foreground: #f1f1ee;
+  --sidebar-primary: #f1f1ee;
+  --sidebar-primary-foreground: #222;
+  --sidebar-ring: #b8b8b3;
+  --sidebar-border: #484848;
+}
+.normal-workspace [data-slot="button"] {
+  min-height: 2.75rem;
+  transition-property: background-color, color, border-color, opacity, transform;
+  transition-duration: 120ms;
+}
+.normal-workspace a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .normal-workspace, .normal-workspace::before, .normal-workspace::after,
+  .normal-workspace *, .normal-workspace *::before, .normal-workspace *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Portaled desktop close controls remain compact; touch sizing applies below. */
+@media (min-width: 768px) {
+  .normal-workspace[data-slot="sheet-content"] > button {
+    min-height: 1.75rem;
+  }
+}
+@media (max-width: 767px) {
+  .normal-workspace :is(button, [role="button"], [role="tab"], [data-slot="input"]) {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  .normal-workspace :is(nav a, a[class~="group/button"], [aria-labelledby^="settings-"] a) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  .normal-workspace [data-slot="tabs-list"] {
+    height: auto;
+    min-height: 3.125rem;
+  }
+}
