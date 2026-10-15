@@ -56,6 +56,26 @@ class GoogleLoginRejected(ValueError):
         super().__init__("Google login could not be verified. Please start again.")
 
 
+def _granted_scopes(raw_scopes: object) -> list[str]:
+    """Validate actual provider scope evidence, never the requested-scope fallback."""
+    if isinstance(raw_scopes, str):
+        granted = raw_scopes.split(" ")
+    elif isinstance(raw_scopes, list):
+        granted = raw_scopes
+    else:
+        raise GoogleLoginRejected()
+    # RFC 6749 scope tokens exclude whitespace, quotes, backslashes
+    # and non-printable/non-ASCII characters. Never stringify a list.
+    if not granted or any(
+        not isinstance(scope, str)
+        or not scope
+        or any(not "!" <= char <= "~" or char in '"\\' for char in scope)
+        for scope in granted
+    ):
+        raise GoogleLoginRejected()
+    return granted
+
+
 def validate_session_login_configuration(settings: Settings) -> None:
     """Require an explicit callback on the cookie-owning frontend origin."""
     if not settings.google_application_sessions_enabled or settings.demo_mode:
@@ -248,6 +268,27 @@ class GoogleSessionAuthService(GoogleOAuthService):
         try:
             flow = self._flow(pending.intent)
             flow.code_verifier = pending.verifier
+            if pending.intent == GoogleAuthIntent.CONNECT_DRIVE:
+                requested = set(flow.oauth2session.scope)
+
+                def incremental_scopes(response: requests.Response) -> requests.Response:
+                    payload = response.json()
+                    if not isinstance(payload, dict):
+                        raise GoogleLoginRejected()
+                    if "error" in payload:
+                        return response  # Preserve OAuthlib's OAuth error handling.
+                    granted = _granted_scopes(payload.get("scope"))
+                    if not requested.issubset(granted):
+                        raise GoogleLoginRejected()
+                    # This callback-local flow has already sent its token request.
+                    # Compare against the validated actual superset, without changing
+                    # the response, requested permissions or global OAuthlib policy.
+                    flow.oauth2session.scope = granted
+                    return response
+
+                flow.oauth2session.register_compliance_hook(
+                    "access_token_response", incremental_scopes
+                )
             flow.fetch_token(code=code, timeout=20)
             credentials = flow.credentials
             if not isinstance(credentials, Credentials) or not credentials.token:
@@ -258,22 +299,7 @@ class GoogleSessionAuthService(GoogleOAuthService):
                 raise GoogleLoginRejected()
             if pending.intent == GoogleAuthIntent.CONNECT_DRIVE:
                 # Requested scopes are not evidence that Google actually granted them.
-                raw_scopes = flow.oauth2session.token.get("scope")
-                if isinstance(raw_scopes, str):
-                    granted = raw_scopes.split(" ")
-                elif isinstance(raw_scopes, list):
-                    granted = raw_scopes
-                else:
-                    raise GoogleLoginRejected()
-                # RFC 6749 scope tokens exclude whitespace, quotes, backslashes
-                # and non-printable/non-ASCII characters. Never stringify a list.
-                if not granted or any(
-                    not isinstance(scope, str)
-                    or not scope
-                    or any(not "!" <= char <= "~" or char in '"\\' for char in scope)
-                    for scope in granted
-                ):
-                    raise GoogleLoginRejected()
+                granted = _granted_scopes(flow.oauth2session.token.get("scope"))
                 if not set(self.settings.google_drive_scopes.split()).issubset(granted):
                     raise GoogleLoginRejected()
             return credentials, identity, email

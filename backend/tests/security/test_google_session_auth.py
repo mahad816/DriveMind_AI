@@ -174,6 +174,7 @@ def install_token_response(monkeypatch, credentials, scopes):
         }
     ).encode()
     monkeypatch.setattr("requests.sessions.Session.request", lambda *args, **kwargs: response)
+    return response
 
 
 @pytest.mark.parametrize("intent", list(GoogleAuthIntent))
@@ -261,3 +262,133 @@ def test_all_configured_drive_scopes_required(oidc, settings, monkeypatch):
     pending = PendingLogin("v" * 64, "expected-nonce", GoogleAuthIntent.CONNECT_DRIVE, None, None)
     with pytest.raises(GoogleLoginRejected):
         service._exchange_and_verify("synthetic-code", pending)
+
+
+@pytest.mark.parametrize("representation", ["string", "list"])
+def test_real_parser_additional_scopes(oidc, settings, monkeypatch, representation):
+    monkeypatch.delenv("OAUTHLIB_RELAX_TOKEN_SCOPE", raising=False)
+    service = GoogleSessionAuthService(MagicMock(), settings)
+    flow = service._flow(GoogleAuthIntent.CONNECT_DRIVE)
+    requested = list(flow.oauth2session.scope)
+    granted = requested + ["https://www.googleapis.com/auth/calendar.readonly"]
+    install_token_response(
+        monkeypatch, oidc(), " ".join(granted) if representation == "string" else granted
+    )
+    monkeypatch.setattr(service, "_flow", lambda intent: flow)
+    monkeypatch.setattr(
+        service,
+        "_fetch_google_profile",
+        lambda creds: {"google_id": "verified-subject-a", "email": "a@example.invalid"},
+    )
+    pending = PendingLogin("v" * 64, "expected-nonce", GoogleAuthIntent.CONNECT_DRIVE, None, None)
+    assert (
+        service._exchange_and_verify("synthetic-code", pending)[1].subject == "verified-subject-a"
+    )
+    assert set(flow.oauth2session.token["scope"]) == set(granted)
+    assert flow.code_verifier == pending.verifier
+    import os
+
+    assert "OAUTHLIB_RELAX_TOKEN_SCOPE" not in os.environ
+
+
+def test_unmodified_oauthlib_raises_scope_warning(oidc, settings, monkeypatch):
+    monkeypatch.delenv("OAUTHLIB_RELAX_TOKEN_SCOPE", raising=False)
+    service = GoogleSessionAuthService(MagicMock(), settings)
+    flow = service._flow(GoogleAuthIntent.CONNECT_DRIVE)
+    scopes = list(flow.oauth2session.scope) + ["https://example.invalid/extra"]
+    install_token_response(monkeypatch, oidc(), " ".join(scopes))
+    flow.code_verifier = "v" * 64
+    with pytest.raises(Warning, match="Scope has changed"):
+        flow.fetch_token(code="synthetic-code", timeout=20)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing-drive",
+        "missing-scope",
+        "empty",
+        "null",
+        "dict",
+        "mixed-list",
+        "empty-item",
+        "whitespace-item",
+        "prefix",
+        "nonce",
+        "identity",
+        "oauth-error",
+        "missing-access-token",
+        "transport",
+        "unrelated-warning",
+    ],
+)
+def test_real_parser_rejects_invalid_incremental_response(oidc, settings, monkeypatch, fault):
+    import requests
+
+    service = GoogleSessionAuthService(MagicMock(), settings)
+    flow = service._flow(GoogleAuthIntent.CONNECT_DRIVE)
+    scopes = list(flow.oauth2session.scope) + ["https://example.invalid/extra"]
+    credentials = oidc(nonce="wrong-nonce") if fault == "nonce" else oidc()
+    response = install_token_response(monkeypatch, credentials, " ".join(scopes))
+    payload = json.loads(response.content)
+    if fault == "missing-drive":
+        payload["scope"] = " ".join(s for s in scopes if s != settings.google_drive_scopes)
+    elif fault == "missing-scope":
+        payload.pop("scope")
+    elif fault in {"empty", "null", "dict", "mixed-list", "empty-item", "whitespace-item"}:
+        payload["scope"] = {
+            "empty": "",
+            "null": None,
+            "dict": {"scope": True},
+            "mixed-list": scopes + [123],
+            "empty-item": scopes + [""],
+            "whitespace-item": scopes + ["bad scope"],
+        }[fault]
+    elif fault == "prefix":
+        payload["scope"] = " ".join(
+            s + ".extra" if s == settings.google_drive_scopes else s for s in scopes
+        )
+    elif fault == "oauth-error":
+        payload["error"] = "invalid_grant"
+    elif fault == "missing-access-token":
+        payload.pop("access_token")
+    response._content = json.dumps(payload).encode()
+    parser = flow.oauth2session._client.parse_request_body_response
+    parser_errors = []
+
+    def observed_parser(*args, **kwargs):
+        try:
+            return parser(*args, **kwargs)
+        except Exception as exc:
+            parser_errors.append(type(exc).__name__)
+            raise
+
+    monkeypatch.setattr(flow.oauth2session._client, "parse_request_body_response", observed_parser)
+    if fault == "transport":
+
+        def fail(*args, **kwargs):
+            raise requests.exceptions.ConnectionError("synthetic transport failure")
+
+        monkeypatch.setattr("requests.sessions.Session.request", fail)
+    if fault == "unrelated-warning":
+
+        def fail(*args, **kwargs):
+            raise Warning("synthetic unrelated warning")
+
+        monkeypatch.setattr(flow, "fetch_token", fail)
+    monkeypatch.setattr(service, "_flow", lambda intent: flow)
+    monkeypatch.setattr(
+        service,
+        "_fetch_google_profile",
+        lambda creds: {
+            "google_id": "different-subject" if fault == "identity" else "verified-subject-a",
+            "email": "a@example.invalid",
+        },
+    )
+    pending = PendingLogin("v" * 64, "expected-nonce", GoogleAuthIntent.CONNECT_DRIVE, None, None)
+    with pytest.raises(GoogleLoginRejected):
+        service._exchange_and_verify("synthetic-code", pending)
+    if fault in {"oauth-error", "missing-access-token"}:
+        assert parser_errors == [
+            "InvalidGrantError" if fault == "oauth-error" else "MissingTokenError"
+        ]

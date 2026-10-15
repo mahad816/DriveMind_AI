@@ -623,9 +623,17 @@ async def test_retired_routes_preserve_grants_and_legacy_state(
     assert await snapshot() == before
 
 
-@pytest.mark.parametrize("subject", ["verified-subject-a", "verified-subject-b"])
+@pytest.mark.parametrize(
+    "scope_shape,subject,fault",
+    [
+        (shape, subject, None)
+        for shape in ("exact", "extra-string", "extra-list")
+        for subject in ("verified-subject-a", "verified-subject-b")
+    ]
+    + [("extra-string", "verified-subject-a", fault) for fault in ("nonce", "browser", "session")],
+)
 async def test_connect_real_scope_parser_and_encrypted_owner_grant(
-    oauth_engine, login_settings, oidc, monkeypatch, subject
+    oauth_engine, login_settings, oidc, monkeypatch, subject, scope_shape, fault
 ):
     sessions = async_sessionmaker(oauth_engine, expire_on_commit=False)
     async with sessions() as db:
@@ -666,19 +674,46 @@ async def test_connect_real_scope_parser_and_encrypted_owner_grant(
         )
         assert started.status_code == 200
         query = parse_qs(urlsplit(started.json()["authorization_url"]).query)
+        returned_scopes = query["scope"][0]
+        extra = "https://www.googleapis.com/auth/calendar.readonly"
+        assert extra not in returned_scopes.split()
+        if scope_shape != "exact":
+            returned_scopes += " " + extra
+        if scope_shape == "extra-list":
+            returned_scopes = returned_scopes.split()
         install_token_response(
-            monkeypatch, oidc(sub=subject, nonce=query["nonce"][0]), query["scope"][0]
+            monkeypatch,
+            oidc(sub=subject, nonce="wrong-nonce" if fault == "nonce" else query["nonce"][0]),
+            returned_scopes,
         )
         monkeypatch.setattr(
             GoogleSessionAuthService,
             "_fetch_google_profile",
             lambda self, creds: {"google_id": subject, "email": "synthetic@example.invalid"},
         )
+        if fault == "browser":
+            client.cookies.set(
+                "__Host-drivemind-session-oauth",
+                encode_token(b"b" * 32),
+                domain=urlsplit(login_settings.frontend_url).hostname,
+            )
+        elif fault == "session":
+            async with sessions() as db:
+                different = await ApplicationSessionService(db, login_settings).issue_google(
+                    VerifiedGoogleIdentity("verified-subject-b")
+                )
+                await db.commit()
+            client.cookies.set(
+                "__Host-drivemind-session",
+                different.credential.get_secret_value(),
+                domain=urlsplit(login_settings.frontend_url).hostname,
+            )
         callback = await client.get(
             "/api/v1/auth/session/google/callback",
             params={"code": "synthetic-code", "state": query["state"][0]},
         )
-        assert callback.status_code == (303 if subject == "verified-subject-a" else 400)
+        success = subject == "verified-subject-a" and fault is None
+        assert callback.status_code == (303 if success else 400)
         assert callback.headers["cache-control"] == "no-store"
         assert "synthetic-access" not in str(callback.headers) + callback.text
         assert "synthetic-new-refresh" not in str(callback.headers) + callback.text
@@ -686,13 +721,22 @@ async def test_connect_real_scope_parser_and_encrypted_owner_grant(
             assert (
                 await db.get(GoogleOAuthToken, other.id)
             ).encrypted_credentials == previous_other_envelope
-            assert await db.scalar(select(func.count()).select_from(OAuthPendingState)) == 0
+            assert await db.scalar(select(func.count()).select_from(OAuthPendingState)) == (
+                1 if fault == "browser" else 0
+            )
             service = ApplicationSessionService(db, login_settings)
-            if subject == "verified-subject-a":
+            if success:
                 grant = await GoogleCredentialRepository(db, login_settings).load_encrypted(USER_A)
                 assert secret_value(grant.payload.access_token) == "synthetic-access"
                 assert secret_value(grant.payload.refresh_token) == "synthetic-new-refresh"
                 assert login_settings.google_drive_scopes in grant.record.scopes.split()
+                assert (extra in grant.record.scopes.split()) == (scope_shape != "exact")
+                replay = await client.get(
+                    "/api/v1/auth/session/google/callback",
+                    params={"code": "synthetic-code", "state": query["state"][0]},
+                )
+                assert replay.status_code == 400
+                assert await db.scalar(select(func.count()).select_from(GoogleOAuthToken)) == 2
                 assert (
                     await service.resolve_principal(client.cookies.get("__Host-drivemind-session"))
                 ).authenticated_user_id == USER_A
