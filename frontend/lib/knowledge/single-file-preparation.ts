@@ -10,8 +10,23 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const stages = ["INGEST", "CHUNK", "BUILD"] as const;
 type Stage = typeof stages[number];
 type Receipt = { stage: Stage; submissionId: string; jobId: string | null };
-type Record = { fileId: string; runId: string; frame: string; receipts: Receipt[] };
+export type PreparationRecord = { fileId: string; runId: string; frame: string; receipts: Receipt[] };
+type Record = PreparationRecord;
+/** Internal adapter: queue storage owns the gate; this executor owns stage semantics. */
+export type PreparationStore = {
+  read(): Record;
+  replace(expected: Record | null, next: Record | null, reserve: boolean): Promise<boolean>;
+};
 type Continuation = { runId: string; fileId: string; generation: number };
+export function validatePreparationRecord(value: unknown, allowEmpty = false): asserts value is PreparationRecord {
+  const r = value as Record;
+  if (!r || !uuid.test(r.fileId) || !uuid.test(r.runId) || typeof r.frame !== "string" ||
+      !Array.isArray(r.receipts) || r.receipts.length < (allowEmpty ? 0 : 1) || r.receipts.length > 3 ||
+      !r.receipts.every((v, i) => v && v.stage === stages[i] && uuid.test(v.submissionId) &&
+        (v.jobId === null ? i === r.receipts.length - 1 : typeof v.jobId === "string" && uuid.test(v.jobId)))) {
+    throw new Error("Invalid preparation record");
+  }
+}
 export type PreparationState = {
   phase: "checking" | "review" | "submitting" | "active" | "continue" | "ready" | "failed" | "skipped" | "ineligible" | "blocked" | "unknown";
   file: DriveFileRead | null; job: IndexingJobRead | null; stage: Stage | null; message: string;
@@ -31,7 +46,8 @@ export function preparationEligibility(file: DriveFileRead): string | null {
   if (file.status === "skipped") return "This document was skipped. It may have no searchable text or no longer be eligible. Ask the beta owner to review it.";
   return file.status === "discovered" ? null : "Document eligibility could not be established.";
 }
-const frame = (f: DriveFileRead) => JSON.stringify([f.drive_file_id, f.mime_type, f.modified_at]);
+export const preparationFrame = (f: DriveFileRead) => JSON.stringify([f.drive_file_id, f.mime_type, f.modified_at]);
+const frame = preparationFrame;
 const initial: PreparationState = { phase: "checking", file: null, job: null, stage: null, message: "Checking document and preparation status…", canRelease: false };
 
 /** A single immutable target. Remounted observers never resume mutations by themselves. */
@@ -44,7 +60,7 @@ export class SingleFilePreparation {
   private generation = 0;
   private continuation: Continuation | null = null;
   private observed: Record | null = null;
-  constructor(private owner: string, private requestedFileId: string | null) {}
+  constructor(private owner: string, private requestedFileId: string | null, private store?: PreparationStore) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   connect = () => { this.disposed = false; };
@@ -60,19 +76,16 @@ export class SingleFilePreparation {
     if (this.live()) { this.state = { ...this.state, ...value }; this.listeners.forEach(listener => listener()); }
   }
   private read(): Record | null {
+    if (this.store) return this.store.read();
     const raw = window.localStorage.getItem(preparationKey(this.owner));
     if (raw === null) return null;
-    const r = JSON.parse(raw) as Record;
-    if (!r || !uuid.test(r.fileId) || !uuid.test(r.runId) || typeof r.frame !== "string" ||
-        !Array.isArray(r.receipts) || r.receipts.length < 1 || r.receipts.length > 3 ||
-        !r.receipts.every((v, i) => v && v.stage === stages[i] && uuid.test(v.submissionId) &&
-          (v.jobId === null ? i === r.receipts.length - 1 : typeof v.jobId === "string" && uuid.test(v.jobId)))) {
-      throw new Error("Invalid preparation record");
-    }
+    const r: unknown = JSON.parse(raw);
+    validatePreparationRecord(r);
     return r;
   }
   /** Share discovery's short owner gate; never hold a Web Lock over an API call. */
   private async replace(expected: Record | null, next: Record | null, reserve = false) {
+    if (this.store) return this.store.replace(expected, next, reserve);
     if (!navigator.locks) throw new Error("Browser coordination unavailable");
     return navigator.locks.request(discoveryKey(this.owner), () => {
       if (JSON.stringify(this.read()) !== JSON.stringify(expected)) return false;
@@ -104,6 +117,7 @@ export class SingleFilePreparation {
       const fileId = record?.fileId ?? this.requestedFileId;
       const file = inventory.files.find(f => f.id === fileId) ?? null;
       if (file && file.user_id !== this.owner) throw new Error("File owner mismatch");
+      if (record && record.receipts.length === 0 && (!file || frame(file) !== record.frame)) throw new Error("Reviewed document changed");
       if (receipt?.jobId && (!exact?.job || exact.job.id !== receipt.jobId || exact.job.file_id !== record?.fileId || exact.job.operation !== receipt.stage)) throw new Error("Job target mismatch");
       const job = exact?.job;
       // Latest-owner evidence cannot stand in for this stage's lost receipt.

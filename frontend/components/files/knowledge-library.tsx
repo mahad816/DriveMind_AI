@@ -21,6 +21,10 @@ import type { DriveFileListResponse, DriveFileRead, DriveFileStatus } from "@/li
 import { fileFilterLabel, filesCopy } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { preparationEligibility, preparationFrame } from "@/lib/knowledge/single-file-preparation";
+import { readPreparationGate } from "@/lib/knowledge/preparation-queue-store";
+import { sessionOwner, sessionRevision, SESSION_REQUESTS_INVALIDATED_EVENT } from "@/lib/api/session-events";
+import { QueuePreparationView } from "@/components/knowledge/queue-preparation-view";
 
 function apiErrorToMessage(err: unknown): string {
   if (isApiError(err)) return err.detail;
@@ -69,6 +73,25 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   const [status, setStatus] = useState<DriveFileStatus | "all">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [scope] = useState(() => ({ owner: sessionOwner(), revision: sessionRevision() }));
+  const [draft, setDraft] = useState<DriveFileRead[]>([]);
+  const [reviewing, setReviewing] = useState(false);
+  const [gate, setGate] = useState("checking");
+  const live = useCallback(() => scope.owner === sessionOwner() && scope.revision === sessionRevision(), [scope]);
+  useEffect(() => {
+    if (DEMO_MODE) return;
+    const checkGate = () => {
+      if (!live()) return;
+      try { setGate(scope.owner ? readPreparationGate(scope.owner).kind : "blocked"); }
+      catch { setGate("blocked"); }
+    };
+    const clearDraft = () => { setDraft([]); setReviewing(false); setGate("blocked"); setFilesState({ data: null, isLoading: false, error: null }); };
+    checkGate();
+    const timer = window.setInterval(checkGate, 3000);
+    window.addEventListener("storage", checkGate);
+    window.addEventListener(SESSION_REQUESTS_INVALIDATED_EVENT, clearDraft);
+    return () => { clearInterval(timer); window.removeEventListener("storage", checkGate); window.removeEventListener(SESSION_REQUESTS_INVALIDATED_EVENT, clearDraft); };
+  }, [live, scope]);
 
   const refreshFiles = useCallback(async () => {
     if (!canBrowse) return;
@@ -76,11 +99,13 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
 
     try {
       const list = await listDriveFiles();
+      if (!live()) return;
       setFilesState({ data: list, isLoading: false, error: null });
     } catch (err) {
+      if (!live()) return;
       setFilesState({ data: null, isLoading: false, error: apiErrorToMessage(err) });
     }
-  }, [canBrowse]);
+  }, [canBrowse, live]);
 
   useEffect(() => {
     void refreshFiles();
@@ -155,10 +180,42 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     { value: "skipped", count: statusCounts.skipped },
   ];
 
+  const draftNeedsAttention = draft.some(selected => {
+    const current = files.find(file => file.id === selected.id);
+    return !current || current.user_id !== scope.owner || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
+  });
+  const togglePreparation = (file: DriveFileRead) => {
+    if (!live() || !scope.owner || gate !== "empty") return;
+    setDraft(before => before.some(f => f.id === file.id) ? before.filter(f => f.id !== file.id) :
+      before.length < 5 && file.user_id === scope.owner && preparationEligibility(file) === null ? [...before, { ...file }] : before);
+  };
+  if (!DEMO_MODE && reviewing && scope.owner && live()) return <div key="preparation-review" className="min-h-0 min-w-0 md:flex-1 md:overflow-y-auto">
+    <QueuePreparationView owner={scope.owner} draft={draft} onBack={reserved => { setReviewing(false); if (reserved) setDraft([]); void refreshFiles(); }} />
+  </div>;
+
   return (
-    <div className={cn("flex flex-col gap-6 md:min-h-0 md:flex-1", className)}>
+    <div className={cn("flex flex-col gap-6 md:min-h-0 md:flex-1", !DEMO_MODE && "md:overflow-y-auto", className)}>
       {!DEMO_MODE ? <DriveDiscovery onComplete={() => { void refreshFiles(); void refreshConnection(); }} /> : null}
-      {!DEMO_MODE ? <Link href="/prepare" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">View preparation progress</Link> : null}
+      {!DEMO_MODE ? <div className="space-y-1">
+        <Link href="/prepare" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">{gate === "queue" || gate === "legacy" ? "Review existing preparation" : "View preparation progress"}</Link>
+        {gate !== "empty" && gate !== "checking" ? <p className="text-sm text-muted-foreground">{gate === "blocked" ? "Saved preparation could not be verified. Review progress before starting new work." : "Resolve or close existing preparation before preparing another selection."}</p> : null}
+      </div> : null}
+      {!DEMO_MODE && scope.owner ? <section aria-label="Preparation selection" className="space-y-2 border-y border-border py-3">
+        <p role="status" className="text-sm">{draft.length} of 5 documents selected</p>
+        {draft.length === 5 ? <p className="text-sm text-muted-foreground">Five-document limit reached. Remove one to choose another.</p> : null}
+        {draft.length ? <ol aria-label="Selected documents" className="space-y-1">
+          {draft.map((selected, index) => {
+            const current = files.find(f => f.id === selected.id);
+            const changed = !current || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
+            return <li key={selected.id} className="flex min-w-0 items-center gap-2 text-sm">
+              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{index + 1}. {selected.name}{changed && !filesState.isLoading ? " · Needs attention" : ""}</span>
+              <Button variant="ghost" className="min-h-11 shrink-0" aria-label={`Remove ${selected.name} from selection`} onClick={() => setDraft(before => before.filter(f => f.id !== selected.id))}>Remove</Button>
+            </li>;
+          })}
+        </ol> : <p className="text-sm text-muted-foreground">Choose up to five eligible documents using the checkboxes. Click a filename to preview it.</p>}
+        {draftNeedsAttention && draft.length && !filesState.isLoading ? <p role="alert" className="text-sm">A selected document changed or is no longer eligible. Remove it and review your selection.</p> : null}
+        {draft.length ? <Button disabled={gate !== "empty" || !canBrowse || filesState.isLoading || !!filesState.error || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}</Button> : null}
+      </section> : null}
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
@@ -284,6 +341,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
               files={filteredFiles}
               selectedId={selectedId}
               onSelect={handleSelect}
+              preparation={DEMO_MODE ? undefined : { selected: draft.map(f => f.id), disabled: gate !== "empty" || !live(), onToggle: togglePreparation }}
             />
           </div>
           <div className="hidden md:col-span-3 md:block md:min-h-0">
