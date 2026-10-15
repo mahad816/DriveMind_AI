@@ -1,6 +1,7 @@
 import { apiFetch, buildQueryString } from "@/lib/api/client";
 import { sessionOwner, notifySessionInvalid, sessionRevision } from "@/lib/api/session-events";
 import { ApiError } from "@/lib/api/errors";
+import { DEMO_MODE } from "@/lib/demo";
 import type {
   DriveSyncStatusResponse,
   IndexingJobRead,
@@ -39,6 +40,7 @@ async function submitIndexJob(
   path: string,
   signal?: AbortSignal,
   receipt?: (value: SyncReceipt) => Promise<void>,
+  beforePost?: () => boolean,
 ): Promise<JobStartedResponse> {
   const owner = sessionOwner();
   const revision = sessionRevision();
@@ -61,6 +63,9 @@ async function submitIndexJob(
     if (receipt && (!owner || owner !== sessionOwner() || revision !== sessionRevision() || signal?.aborted)) {
       throw new SyncSubmissionError("not_submitted");
     }
+    // Last synchronous cancellation boundary, after asynchronous session/CSRF
+    // preflight. Once fetch is invoked, interruption cannot prove non-acceptance.
+    if (beforePost && !beforePost()) throw new SyncSubmissionError("not_submitted");
     postAttempted = true;
     const result = await apiFetch<JobStartedResponse>(path, {
       method: "POST",
@@ -110,6 +115,19 @@ export async function chunkDocuments(fileId?: string): Promise<JobStartedRespons
 
 export async function buildVectorIndex(fileId?: string): Promise<JobStartedResponse> {
   return submitIndexJob(`/index/build${buildQueryString({ file_id: fileId })}`);
+}
+
+/** Checkpoint B never permits an omitted target or an anonymous demo mutation. */
+export async function submitFilePreparationStage(
+  stage: "INGEST" | "CHUNK" | "BUILD", fileId: string,
+  signal: AbortSignal, receipt: (value: SyncReceipt) => Promise<void>,
+  beforePost: () => boolean = () => false,
+): Promise<JobStartedResponse> {
+  if (DEMO_MODE || !["INGEST", "CHUNK", "BUILD"].includes(stage) ||
+      typeof fileId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fileId)) {
+    throw new SyncSubmissionError("not_submitted");
+  }
+  return submitIndexJob(`/index/${stage.toLowerCase()}${buildQueryString({ file_id: fileId })}`, signal, receipt, beforePost);
 }
 
 /**

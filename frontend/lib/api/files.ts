@@ -2,8 +2,8 @@ import { apiBaseUrl } from "@/lib/api/config";
 import { apiFetch } from "@/lib/api/client";
 import type { DriveFileListResponse } from "@/lib/api/types";
 
-export async function listDriveFiles(): Promise<DriveFileListResponse> {
-  return apiFetch<DriveFileListResponse>("/files");
+export async function listDriveFiles(signal?: AbortSignal): Promise<DriveFileListResponse> {
+  return signal ? apiFetch<DriveFileListResponse>("/files", { signal }) : apiFetch<DriveFileListResponse>("/files");
 }
 
 /**

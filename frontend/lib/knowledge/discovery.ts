@@ -42,6 +42,10 @@ export class DiscoveryController {
     if (!navigator.locks) throw new Error("Safe discovery coordination is unavailable");
     return navigator.locks.request(this.key(), () => {
       if (JSON.stringify(this.read()) !== JSON.stringify(expected)) return false;
+      // Preparation shares this short owner lock. Never slip a SYNC between its stages.
+      if (expected === null && next && window.localStorage.getItem(`drivemind:preparation:v1:${this.owner}`) !== null) {
+        throw new Error("A preparation workflow needs attention");
+      }
       if (next) window.localStorage.setItem(this.key(), JSON.stringify(next));
       else window.localStorage.removeItem(this.key());
       return true;

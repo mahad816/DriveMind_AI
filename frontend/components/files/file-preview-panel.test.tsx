@@ -58,7 +58,8 @@ describe("selected-file inspector", () => {
 
   it("does not download or prepare a discovered file", () => {
     render(<FilePreviewPanel file={{ ...file, status: "discovered" }} />);
-    expect(screen.getByText(/Document selection and preparation will be available/)).toBeInTheDocument();
+    expect(screen.getByText(/Select this document to review/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Select for preparation" })).toHaveAttribute("href", `/prepare?file=${file.id}`);
     expect(screen.queryByRole("button", { name: "Prepare this file for chat" })).toBeNull();
     expect(fetchFileTextPreview).not.toHaveBeenCalled(); expect(prepareSingleFile).not.toHaveBeenCalled();
     expect(screen.queryByRole("link", { name: "Open chat" })).toBeNull();

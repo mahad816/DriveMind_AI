@@ -20,6 +20,7 @@ import { listDriveFiles } from "@/lib/api/files";
 import type { DriveFileListResponse, DriveFileRead, DriveFileStatus } from "@/lib/api/types";
 import { fileFilterLabel, filesCopy } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 function apiErrorToMessage(err: unknown): string {
   if (isApiError(err)) return err.detail;
@@ -157,6 +158,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   return (
     <div className={cn("flex flex-col gap-6 md:min-h-0 md:flex-1", className)}>
       {!DEMO_MODE ? <DriveDiscovery onComplete={() => { void refreshFiles(); void refreshConnection(); }} /> : null}
+      {!DEMO_MODE ? <Link href="/prepare" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">View preparation progress</Link> : null}
       <div className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :

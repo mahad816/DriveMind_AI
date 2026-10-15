@@ -80,3 +80,9 @@ it("does not adopt a different owner's browser discovery record", async () => {
   const c = new DiscoveryController(owner, vi.fn()); await c.check();
   expect(getDriveSyncStatus).toHaveBeenCalledWith(undefined, expect.any(AbortSignal)); expect(c.getSnapshot().phase).toBe("idle");
 });
+it("does not submit SYNC while an owner preparation marker exists", async () => {
+  values.set(`drivemind:preparation:v1:${owner}`, "saved-workflow");
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(syncDriveMetadata).not.toHaveBeenCalled(); expect(values.get(`drivemind:preparation:v1:${owner}`)).toBe("saved-workflow");
+  expect(c.getSnapshot().phase).toBe("blocked");
+});

@@ -19,6 +19,7 @@ import {
 import type { DriveFileRead } from "@/lib/api/types";
 import { filesCopy } from "@/lib/user-language";
 import { cn } from "@/lib/utils";
+import { preparationEligibility } from "@/lib/knowledge/single-file-preparation";
 
 type FilePreviewPanelProps = {
   file: DriveFileRead | null;
@@ -101,8 +102,9 @@ export function FilePreviewPanel({ file, className }: FilePreviewPanelProps) {
       </div>
 
       <div className="shrink-0 space-y-3 px-5 pb-5">
-        {!DEMO_MODE && file.status !== "indexed" ? <p className="text-sm text-muted-foreground">Discovered metadata only. Document selection and preparation will be available in a later update.</p> : null}
+        {!DEMO_MODE && file.status !== "indexed" ? <p className="text-sm text-muted-foreground">{preparationEligibility(file) ?? "Discovered metadata only. Select this document to review what will be processed before preparing it."}</p> : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          {!DEMO_MODE && preparationEligibility(file) === null ? <Link href={`/prepare?file=${encodeURIComponent(file.id)}`} className={buttonVariants({ className: "w-full sm:w-auto" })}>Select for preparation</Link> : null}
           {(DEMO_MODE || file.status === "indexed") ? <Link href={askHref} className={buttonVariants({ className: "w-full justify-start sm:w-auto" })}>
             <MessageSquareQuote className="size-4" />
             {DEMO_MODE ? filesCopy.askAboutFile : "Open chat"}

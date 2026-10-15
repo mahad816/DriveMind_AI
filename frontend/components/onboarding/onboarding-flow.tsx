@@ -30,7 +30,7 @@ function NormalOnboardingFlow() {
       <li>1. Sign in with Google · Complete</li>
       <li aria-current={!isConnected ? "step" : undefined}>2. Connect Google Drive{isConnected ? " · Complete" : ""}</li>
       <li aria-current={isConnected ? "step" : undefined}>3. Discover documents</li>
-      <li className="text-muted-foreground">4. Choose and prepare documents · Coming in a later update</li>
+      <li className="text-muted-foreground">4. Choose one document, review it, then prepare it for chat</li>
     </ol>
     {sessionError ? <p role="alert">{sessionError}</p> : null}
     {setupState === "checking" ? <p role="status">Checking your Drive connection…</p> : setupState === "error" ? <div className="space-y-3">
