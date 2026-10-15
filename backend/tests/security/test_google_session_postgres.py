@@ -35,6 +35,9 @@ from app.services.google_session_auth_service import (
     GoogleSessionAuthService,
 )
 from .conftest import USER_A, USER_B, apply_revision
+from .test_google_session_auth import install_token_response, oidc
+
+__all__ = ["oidc"]
 
 REVISION = "20261009_1300"
 
@@ -618,3 +621,83 @@ async def test_retired_routes_preserve_grants_and_legacy_state(
                 assert response.status_code == 404
                 assert "location" not in response.headers and "set-cookie" not in response.headers
     assert await snapshot() == before
+
+
+@pytest.mark.parametrize("subject", ["verified-subject-a", "verified-subject-b"])
+async def test_connect_real_scope_parser_and_encrypted_owner_grant(
+    oauth_engine, login_settings, oidc, monkeypatch, subject
+):
+    sessions = async_sessionmaker(oauth_engine, expire_on_commit=False)
+    async with sessions() as db:
+        old = await ApplicationSessionService(db, login_settings).issue_google(
+            VerifiedGoogleIdentity("verified-subject-a")
+        )
+        credential = old.credential.get_secret_value()
+        csrf = await ApplicationSessionService(db, login_settings).csrf_token(credential)
+        other = synthetic_oauth_row(user_id=USER_B, scopes=login_settings.google_drive_scopes)
+        db.add(other)
+        await db.commit()
+        previous_other_envelope = other.encrypted_credentials
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+
+    async def database():
+        async with sessions() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = database
+    app.dependency_overrides[get_settings] = lambda: login_settings
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url=login_settings.frontend_url
+    ) as client:
+        client.cookies.set(
+            "__Host-drivemind-session",
+            credential,
+            domain=urlsplit(login_settings.frontend_url).hostname,
+        )
+        started = await client.post(
+            "/api/v1/auth/session/google",
+            json={"intent": "CONNECT_DRIVE"},
+            headers={
+                "Origin": login_settings.frontend_url,
+                "X-DriveMind-Auth": "1",
+                "X-CSRF-Token": csrf.get_secret_value(),
+            },
+        )
+        assert started.status_code == 200
+        query = parse_qs(urlsplit(started.json()["authorization_url"]).query)
+        install_token_response(
+            monkeypatch, oidc(sub=subject, nonce=query["nonce"][0]), query["scope"][0]
+        )
+        monkeypatch.setattr(
+            GoogleSessionAuthService,
+            "_fetch_google_profile",
+            lambda self, creds: {"google_id": subject, "email": "synthetic@example.invalid"},
+        )
+        callback = await client.get(
+            "/api/v1/auth/session/google/callback",
+            params={"code": "synthetic-code", "state": query["state"][0]},
+        )
+        assert callback.status_code == (303 if subject == "verified-subject-a" else 400)
+        assert callback.headers["cache-control"] == "no-store"
+        assert "synthetic-access" not in str(callback.headers) + callback.text
+        assert "synthetic-new-refresh" not in str(callback.headers) + callback.text
+        async with sessions() as db:
+            assert (
+                await db.get(GoogleOAuthToken, other.id)
+            ).encrypted_credentials == previous_other_envelope
+            assert await db.scalar(select(func.count()).select_from(OAuthPendingState)) == 0
+            service = ApplicationSessionService(db, login_settings)
+            if subject == "verified-subject-a":
+                grant = await GoogleCredentialRepository(db, login_settings).load_encrypted(USER_A)
+                assert secret_value(grant.payload.access_token) == "synthetic-access"
+                assert secret_value(grant.payload.refresh_token) == "synthetic-new-refresh"
+                assert login_settings.google_drive_scopes in grant.record.scopes.split()
+                assert (
+                    await service.resolve_principal(client.cookies.get("__Host-drivemind-session"))
+                ).authenticated_user_id == USER_A
+                with pytest.raises(InvalidApplicationSession):
+                    await service.resolve_principal(credential)
+            else:
+                assert await db.scalar(select(func.count()).select_from(GoogleOAuthToken)) == 1
+                assert (await service.resolve_principal(credential)).authenticated_user_id == USER_A

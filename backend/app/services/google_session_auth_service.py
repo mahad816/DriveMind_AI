@@ -258,7 +258,22 @@ class GoogleSessionAuthService(GoogleOAuthService):
                 raise GoogleLoginRejected()
             if pending.intent == GoogleAuthIntent.CONNECT_DRIVE:
                 # Requested scopes are not evidence that Google actually granted them.
-                granted = str(flow.oauth2session.token.get("scope", "")).split()
+                raw_scopes = flow.oauth2session.token.get("scope")
+                if isinstance(raw_scopes, str):
+                    granted = raw_scopes.split(" ")
+                elif isinstance(raw_scopes, list):
+                    granted = raw_scopes
+                else:
+                    raise GoogleLoginRejected()
+                # RFC 6749 scope tokens exclude whitespace, quotes, backslashes
+                # and non-printable/non-ASCII characters. Never stringify a list.
+                if not granted or any(
+                    not isinstance(scope, str)
+                    or not scope
+                    or any(not "!" <= char <= "~" or char in '"\\' for char in scope)
+                    for scope in granted
+                ):
+                    raise GoogleLoginRejected()
                 if not set(self.settings.google_drive_scopes.split()).issubset(granted):
                     raise GoogleLoginRejected()
             return credentials, identity, email

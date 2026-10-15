@@ -154,3 +154,110 @@ def test_pkce_subject_and_granted_scopes(oidc, settings: Settings, monkeypatch: 
     flow.oauth2session.token = {"scope": "openid"}
     with pytest.raises(GoogleLoginRejected):
         service._exchange_and_verify("code", pending)
+
+
+def install_token_response(monkeypatch, credentials, scopes):
+    """Fake only HTTP; retain Flow.fetch_token and OAuthlib's actual token parser."""
+    from requests import Request, Response
+
+    response = Response()
+    response.status_code = 200
+    response.request = Request("POST", "https://oauth2.googleapis.com/token").prepare()
+    response._content = json.dumps(
+        {
+            "access_token": "synthetic-access",
+            "refresh_token": "synthetic-new-refresh",
+            "id_token": credentials.id_token,
+            "expires_in": 3600,
+            "token_type": "Bearer",
+            "scope": scopes,
+        }
+    ).encode()
+    monkeypatch.setattr("requests.sessions.Session.request", lambda *args, **kwargs: response)
+
+
+@pytest.mark.parametrize("intent", list(GoogleAuthIntent))
+def test_real_oauthlib_scope_list(oidc, settings, monkeypatch, intent):
+    service = GoogleSessionAuthService(MagicMock(), settings)
+    flow = service._flow(intent)
+    monkeypatch.setattr(service, "_flow", lambda requested_intent: flow)
+    install_token_response(monkeypatch, oidc(), " ".join(flow.oauth2session.scope))
+    monkeypatch.setattr(
+        service,
+        "_fetch_google_profile",
+        lambda creds: {"google_id": "verified-subject-a", "email": "a@example.invalid"},
+    )
+    pending = PendingLogin("v" * 64, "expected-nonce", intent, None, None)
+    assert (
+        service._exchange_and_verify("synthetic-code", pending)[1].subject == "verified-subject-a"
+    )
+    assert isinstance(flow.oauth2session.token["scope"], list)
+    assert flow.code_verifier == pending.verifier
+
+
+@pytest.mark.parametrize(
+    "scopes,accepted",
+    [
+        ("https://www.googleapis.com/auth/drive.readonly", True),
+        (["https://www.googleapis.com/auth/drive.readonly"], True),
+        (["openid", "https://www.googleapis.com/auth/drive.readonly", "unrelated.scope"], True),
+        ("openid https://www.googleapis.com/auth/drive.readonly unrelated.scope", True),
+        (Ellipsis, False),
+        (None, False),
+        ("", False),
+        ("   ", False),
+        ([], False),
+        ("openid", False),
+        (["openid"], False),
+        ("https://www.googleapis.com/auth/drive.readonly.extra", False),
+        ({"https://www.googleapis.com/auth/drive.readonly": True}, False),
+        (123, False),
+        ([None], False),
+        ([123], False),
+        ([[]], False),
+        (["https://www.googleapis.com/auth/drive.readonly", ""], False),
+        (["https://www.googleapis.com/auth/drive.readonly", "malformed scope"], False),
+        (["https://www.googleapis.com/auth/drive.readonly", "\x00"], False),
+        (["https://www.googleapis.com/auth/drive.readonly", 'bad"scope'], False),
+        (["https://www.googleapis.com/auth/drive.readonly", "bad\\scope"], False),
+        (["https://www.googleapis.com/auth/drive.readonly", "\u00e9"], False),
+    ],
+)
+def test_granted_scope_representations(oidc, settings, monkeypatch, scopes, accepted):
+    service = GoogleSessionAuthService(MagicMock(), settings)
+    flow = MagicMock()
+    # Requested scopes are not evidence that Google actually granted Drive access.
+    signed = oidc()
+    flow.credentials = Credentials(
+        token=signed.token, id_token=signed.id_token, scopes=[settings.google_drive_scopes]
+    )
+    flow.oauth2session.token = {} if scopes is Ellipsis else {"scope": scopes}
+    monkeypatch.setattr(service, "_flow", lambda intent: flow)
+    monkeypatch.setattr(
+        service,
+        "_fetch_google_profile",
+        lambda creds: {"google_id": "verified-subject-a", "email": "a@example.invalid"},
+    )
+    pending = PendingLogin("v" * 64, "expected-nonce", GoogleAuthIntent.CONNECT_DRIVE, None, None)
+    if accepted:
+        service._exchange_and_verify("synthetic-code", pending)
+    else:
+        with pytest.raises(GoogleLoginRejected):
+            service._exchange_and_verify("synthetic-code", pending)
+
+
+def test_all_configured_drive_scopes_required(oidc, settings, monkeypatch):
+    settings.google_drive_scopes += " https://example.invalid/second-required-scope"
+    service = GoogleSessionAuthService(MagicMock(), settings)
+    flow = MagicMock()
+    flow.credentials = oidc()
+    flow.oauth2session.token = {"scope": "https://www.googleapis.com/auth/drive.readonly"}
+    monkeypatch.setattr(service, "_flow", lambda intent: flow)
+    monkeypatch.setattr(
+        service,
+        "_fetch_google_profile",
+        lambda creds: {"google_id": "verified-subject-a", "email": "a@example.invalid"},
+    )
+    pending = PendingLogin("v" * 64, "expected-nonce", GoogleAuthIntent.CONNECT_DRIVE, None, None)
+    with pytest.raises(GoogleLoginRejected):
+        service._exchange_and_verify("synthetic-code", pending)
