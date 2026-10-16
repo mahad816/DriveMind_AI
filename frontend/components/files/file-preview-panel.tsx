@@ -95,7 +95,7 @@ export function FilePreviewPanel({ file, className, canPrepare = true }: FilePre
           <div className="min-w-0">
             <h2 className="break-words text-base font-semibold text-foreground">{file.name}</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {fileTypeLabel(file.mime_type)} · {filesCopy.modified} {formatFileDate(file.modified_at)}
+              {fileTypeLabel(file.mime_type)}{DEMO_MODE ? <> · {filesCopy.modified} {formatFileDate(file.modified_at)}</> : null}
             </p>
           </div>
           <FileStatusBadge status={file.status} />
@@ -103,7 +103,7 @@ export function FilePreviewPanel({ file, className, canPrepare = true }: FilePre
       </div>
 
       <div className="shrink-0 space-y-3 px-5 pb-5">
-        {!DEMO_MODE && file.status !== "indexed" ? <p className="text-sm text-muted-foreground">{preparationEligibility(file) ?? "Discovered metadata only. Select this document to review what will be processed before preparing it."}</p> : null}
+        {!DEMO_MODE && file.status !== "indexed" ? <p className="text-sm text-muted-foreground">{preparationEligibility(file) ?? "Found in Drive. Review before preparing."}</p> : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           {!DEMO_MODE && preparationEligibility(file) === null ? <Link href={canPrepare ? `/prepare?file=${encodeURIComponent(file.id)}` : "/onboarding"} className={buttonVariants({ className: "w-full sm:w-auto" })}>{canPrepare ? "Select for preparation" : "Check Drive access to prepare"}</Link> : null}
           {(DEMO_MODE || file.status === "indexed") ? <Link href={askHref} className={buttonVariants({ className: "w-full justify-start sm:w-auto" })}>
@@ -122,7 +122,7 @@ export function FilePreviewPanel({ file, className, canPrepare = true }: FilePre
         </div>
       </div>
 
-      <section className={cn("border-t border-border px-5 py-5", DEMO_MODE ? "min-h-0 flex-1 overflow-y-auto" : "shrink-0")} aria-label={DEMO_MODE ? "File preview" : "Document information"}>
+      {DEMO_MODE ? <><section className={cn("border-t border-border px-5 py-5", DEMO_MODE ? "min-h-0 flex-1 overflow-y-auto" : "shrink-0")} aria-label={DEMO_MODE ? "File preview" : "Document information"}>
         <h3 className="mb-3 text-sm font-medium text-foreground">{DEMO_MODE ? "Preview" : "Document information"}</h3>
         {isLoadingPreview ? (
           <div className="space-y-2">
@@ -143,7 +143,16 @@ export function FilePreviewPanel({ file, className, canPrepare = true }: FilePre
           <dt className="shrink-0 text-muted-foreground">{filesCopy.folder}</dt>
           <dd className="min-w-0 break-words text-foreground">{file.folder_path ?? "—"}</dd>
         </dl>
-      </section>
+      </section></> : <section className="shrink-0 space-y-3 border-t border-border px-5 py-4" aria-label="Document details">
+        <h3 className="text-sm font-medium text-foreground">Document details</h3>
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+          <dt className="text-muted-foreground">{filesCopy.folder}</dt>
+          <dd className="min-w-0 break-words [overflow-wrap:anywhere]">{file.folder_path ?? "—"}</dd>
+          <dt className="text-muted-foreground">{filesCopy.modified}</dt>
+          <dd>{formatFileDate(file.modified_at)}</dd>
+        </dl>
+        <p className="text-sm leading-6 text-muted-foreground">File details only. Open the original in Google Drive to read it.</p>
+      </section>}
     </div>
   );
 }

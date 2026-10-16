@@ -203,22 +203,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         <Link href="/prepare" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">{gate === "queue" || gate === "legacy" ? "Review existing preparation" : "View preparation progress"}</Link>
         {gate !== "empty" && gate !== "checking" ? <p className="text-sm text-muted-foreground">{gate === "blocked" ? "Saved preparation could not be verified. Review progress before starting new work." : "Resolve or close existing preparation before preparing another selection."}</p> : null}
       </div> : null}
-      {!DEMO_MODE && scope.owner ? <section aria-label="Preparation selection" className="space-y-1 border-y border-border py-2">
-        <div className="flex flex-wrap items-center justify-between gap-2"><p role="status" className="text-sm">{draft.length ? `${draft.length} of 5 documents selected` : "Select up to five documents. Open a filename for details."}</p>
-        {draft.length ? <Button disabled={gate !== "empty" || !connection?.connected || filesState.isLoading || !!filesState.error || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}</Button> : null}</div>
-        {draft.length === 5 ? <p className="text-sm text-muted-foreground">Five-document limit reached. Remove one to choose another.</p> : null}
-        {draft.length ? <ol aria-label="Selected documents" className="max-h-40 space-y-1 overflow-y-auto">
-          {draft.map((selected, index) => {
-            const current = files.find(f => f.id === selected.id);
-            const changed = !current || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
-            return <li key={selected.id} className="flex min-w-0 items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{index + 1}. {selected.name}{changed && !filesState.isLoading ? " · Needs attention" : ""}</span>
-              <Button variant="ghost" className="min-h-11 shrink-0" aria-label={`Remove ${selected.name} from selection`} onClick={() => setDraft(before => before.filter(f => f.id !== selected.id))}>Remove</Button>
-            </li>;
-          })}
-        </ol> : null}
-        {draftNeedsAttention && draft.length && !filesState.isLoading ? <p role="alert" className="text-sm">A selected document changed or is no longer eligible. Remove it and review your selection.</p> : null}
-      </section> : null}
+
       <div className={cn("flex flex-col sm:flex-row sm:justify-between", DEMO_MODE ? "gap-3 border-b border-border pb-5 sm:items-end" : "gap-2 py-1 sm:items-center")}>
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
@@ -241,7 +226,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
             onClick={() => void refreshFiles()}
           >
             <RefreshCcw className="size-4" />
-            {filesState.isLoading ? "Refreshing…" : DEMO_MODE ? "Refresh" : "Reload file list"}
+            {filesState.isLoading ? "Refreshing…" : DEMO_MODE ? "Refresh" : "Refresh list"}
           </Button>
         </div>
       </div>
@@ -269,6 +254,23 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
           );
         })}
       </div>
+
+      {!DEMO_MODE && scope.owner ? <section aria-label="Preparation selection" className="space-y-1 border-y border-border py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2"><p role="status" className="text-sm">{draft.length ? `${draft.length} of 5 documents selected` : "Select up to five documents to prepare."}</p>
+        {draft.length ? <Button disabled={gate !== "empty" || !connection?.connected || filesState.isLoading || !!filesState.error || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}</Button> : null}</div>
+        {draft.length === 5 ? <p className="text-sm text-muted-foreground">Five-document limit reached. Remove one to choose another.</p> : null}
+        {draft.length ? <ol aria-label="Selected documents" className="max-h-40 space-y-1 overflow-y-auto">
+          {draft.map((selected, index) => {
+            const current = files.find(f => f.id === selected.id);
+            const changed = !current || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
+            return <li key={selected.id} className="flex min-w-0 items-center gap-2 text-sm">
+              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{index + 1}. {selected.name}{changed && !filesState.isLoading ? " · Needs attention" : ""}</span>
+              <Button variant="ghost" className="min-h-11 shrink-0" aria-label={`Remove ${selected.name} from selection`} onClick={() => setDraft(before => before.filter(f => f.id !== selected.id))}>Remove</Button>
+            </li>;
+          })}
+        </ol> : null}
+        {draftNeedsAttention && draft.length && !filesState.isLoading ? <p role="alert" className="text-sm">A selected document changed or is no longer eligible. Remove it and review your selection.</p> : null}
+      </section> : null}
 
       {connectionUnavailable ? (
         <Alert variant="destructive">
@@ -318,7 +320,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
       {canBrowse && !filesState.isLoading && !filesState.error && files.length === 0 ? (
         <EmptyState
           title={DEMO_MODE ? "Sample corpus unavailable" : "No discovered files"}
-          description={DEMO_MODE ? "The demo operator must prepare the controlled corpus offline." : "Check Drive for files above. If a check has completed, no supported documents were found. Supported types include Google Docs, TXT, PDF, DOCX and images; scanned PDFs have no OCR fallback."}
+          description={DEMO_MODE ? "The demo operator must prepare the controlled corpus offline." : "Check for files to discover Google Docs, TXT, PDF, DOCX and images. Scanned PDFs have no OCR fallback."}
           actionLabel={undefined}
           actionHref="/index"
           icon={FolderOpen}

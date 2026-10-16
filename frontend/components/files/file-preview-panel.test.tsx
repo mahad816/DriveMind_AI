@@ -48,17 +48,20 @@ describe("selected-file inspector", () => {
     const inspector = screen.getByRole("region", { name: "File inspector" });
     expect(inspector).toHaveAttribute("tabindex", "0");
     expect(within(inspector).getByRole("link", { name: "Open in Google Drive" })).toBeInTheDocument();
-    const preview = screen.getByRole("region", { name: "Document information" });
-    expect(preview).toHaveTextContent("Browsing shows metadata only");
+    const preview = screen.getByRole("region", { name: "Document details" });
+    expect(preview).toHaveTextContent("File details only");
     expect(fetchFileTextPreview).not.toHaveBeenCalled();
     expect(preview.querySelector("blockquote")).toBeNull();
-    expect(within(screen.getByRole("region", { name: "File details" })).getByText(file.folder_path!)).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Document details" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Document information" })).toBeNull();
+    expect(within(preview).getByText("Modified")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Document details" })).getByText(file.folder_path!)).toBeInTheDocument();
     expect(screen.queryByText("Ask AI")).not.toBeInTheDocument();
   });
 
   it("does not download or prepare a discovered file", () => {
     render(<FilePreviewPanel file={{ ...file, status: "discovered" }} />);
-    expect(screen.getByText(/Select this document to review/)).toBeInTheDocument();
+    expect(screen.getByText(/Review before preparing/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Select for preparation" })).toHaveAttribute("href", `/prepare?file=${file.id}`);
     expect(screen.queryByRole("button", { name: "Prepare this file for chat" })).toBeNull();
     expect(fetchFileTextPreview).not.toHaveBeenCalled(); expect(prepareSingleFile).not.toHaveBeenCalled();

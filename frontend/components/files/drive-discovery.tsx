@@ -24,18 +24,18 @@ function OwnedDiscovery({ owner, onComplete, compact }: { owner: string; onCompl
     return () => { clearInterval(timer); controller.dispose(); };
   }, [controller]);
   const canStart = state.connected && ["idle", "complete"].includes(state.phase);
-  return <section className={compact ? "space-y-1 border-b border-border pb-2" : "space-y-3 border-b border-border pb-5"} aria-label="Drive discovery">
+  return <section className={compact ? "flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border pb-2" : "space-y-3 border-b border-border pb-5"} aria-label="Drive discovery">
     {!compact ? <div className="space-y-1">
       <h2 className="text-sm font-semibold">Discover Drive files</h2>
       <p className="max-w-2xl text-sm leading-6 text-muted-foreground">Checks names, types and folders for supported documents. Documents are prepared only after you select and review them.</p>
     </div> : null}
-    <p role="status" aria-live="polite" className="text-sm">{state.message}</p>
+    {(!compact || state.phase !== "idle" || (state.job?.operation === "SYNC" && state.job.status === "failed")) ? <p role="status" aria-live="polite" className={compact ? "w-full text-sm" : "text-sm"}>{state.message}</p> : null}
     {state.job?.operation === "SYNC" && state.job.total !== undefined && state.job.total > 0 ? <p className="text-sm tabular-nums text-muted-foreground">{state.job.processed ?? 0} of {state.job.total} metadata updates processed</p> : null}
     <div className="flex flex-wrap gap-2">
-      <Button disabled={!canStart} onClick={() => void controller.start()}>{compact ? "Check Drive" : "Check Drive for files / changes"}</Button>
-      <Button variant="outline" disabled={state.phase === "submitting"} onClick={() => void controller.check()}>{compact ? "Check status" : "Check discovery status"}</Button>
+      <Button variant={compact ? "outline" : "default"} disabled={!canStart} onClick={() => void controller.start()}>{compact ? "Check for files" : "Check Drive for files / changes"}</Button>
+      <Button variant={compact ? "ghost" : "outline"} disabled={state.phase === "submitting"} onClick={() => void controller.check()}>{compact ? "Check status" : "Check discovery status"}</Button>
       {!state.connected && state.phase !== "checking" ? <Link className="inline-flex min-h-11 items-center text-sm underline underline-offset-4" href="/onboarding">Connect or check Drive access</Link> : null}
     </div>
-    {compact ? <p className="text-sm text-muted-foreground">Metadata only. Select and review documents before preparing content.</p> : null}
+    {compact ? <p className="text-sm text-muted-foreground">File details only; no content is prepared.</p> : null}
   </section>;
 }

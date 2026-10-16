@@ -74,7 +74,7 @@ it("keeps ordered unique selection independent from preview, search, filter and 
   fireEvent.change(screen.getByRole("textbox", { name: "Search files" }), { target: { value: "" } });
   await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(7));
   await userEvent.click(screen.getByRole("button", { name: "Ready (0)" })); expect(screen.getByText("2 of 5 documents selected")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "All (7)" })); await userEvent.click(screen.getByRole("button", { name: "Reload file list" }));
+  await userEvent.click(screen.getByRole("button", { name: "All (7)" })); await userEvent.click(screen.getByRole("button", { name: "Refresh list" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Review 2 documents" })).toBeEnabled());
   await select(2); await select(4); await select(5); expect(screen.getByText(/Five-document limit/, { selector: "p" })).toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Select Document 6.txt for preparation" })).toBeDisabled();
@@ -90,7 +90,7 @@ it("review and cancel cause no processing or reservation and preserve the draft"
 it.each(["modified", "ineligible", "missing"])("%s metadata after refresh preserves draft identity and blocks review", async change => {
   render(<KnowledgeLibrary />); await select(1);
   if (change === "modified") files[0].modified_at = "2026-02-01"; else if (change === "ineligible") files[0].status = "failed"; else files.splice(0, 1);
-  await userEvent.click(screen.getByRole("button", { name: "Reload file list" }));
+  await userEvent.click(screen.getByRole("button", { name: "Refresh list" }));
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("A selected document changed"));
   expect(screen.getByRole("list", { name: "Selected documents" })).toHaveTextContent("Document 1.txt"); expect(screen.getByRole("button", { name: "Review 1 document" })).toBeDisabled(); expect(posts()).toEqual([]);
 });
@@ -149,10 +149,10 @@ it("existing unresolved work blocks new selection and is surfaced through prepar
 it("owner/session invalidation clears draft and fences delayed private updates", async () => {
   render(<KnowledgeLibrary />); await select(1); const entered = deferred<void>(), response = deferred<Response>();
   intercept = p => p === "/api/v1/files" ? (entered.resolve(), response.promise) : undefined;
-  fireEvent.click(screen.getByRole("button", { name: "Reload file list" })); await entered.promise;
+  fireEvent.click(screen.getByRole("button", { name: "Refresh list" })); await entered.promise;
   act(() => { setSessionOwner("00000000-0000-0000-0000-000000000066"); invalidateSessionRequests(); });
   response.resolve(json({ files, total: files.length })); await act(async () => { await response.promise; });
-  expect(screen.getByText("Select up to five documents. Open a filename for details.")).toBeInTheDocument(); expect(screen.queryByRole("checkbox")).toBeNull(); expect(screen.queryByRole("button", { name: "Review 1 document" })).toBeNull(); expect(posts()).toEqual([]);
+  expect(screen.getByText("Select up to five documents to prepare.")).toBeInTheDocument(); expect(screen.queryByRole("checkbox")).toBeNull(); expect(screen.queryByRole("button", { name: "Review 1 document" })).toBeNull(); expect(posts()).toEqual([]);
 });
 it("prepare route preserves the legacy single-file review and fails closed on unknown saved versions", async () => {
   fixture.params = new URLSearchParams({ file: files[0].id }); const view = render(<PreparationView />);

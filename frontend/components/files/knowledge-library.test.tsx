@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setSessionOwner } from "@/lib/api/session-events";
+import FilesPage from "@/app/files/page";
 import { KnowledgeLibrary } from "@/components/files/knowledge-library";
 import { listDriveFiles } from "@/lib/api/files";
 import type { DriveFileListResponse, DriveFileRead } from "@/lib/api/types";
@@ -128,8 +129,25 @@ it("does not reserve space for an empty preparation workflow and retains rows du
   expect(screen.queryByRole("link", { name: "View preparation progress" })).toBeNull();
   let resolve!: (value: DriveFileListResponse) => void;
   vi.mocked(listDriveFiles).mockReturnValueOnce(new Promise(done => { resolve = done; }));
-  fireEvent.click(screen.getByRole("button", { name: "Reload file list" }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh list" }));
   expect(screen.getByText("Project Atlas.pdf")).toBeInTheDocument();
   resolve({ files: [atlas, roadmap], total: 2 }); await screen.findByText("Roadmap.docx");
+  cleanup(); setSessionOwner(null);
+});
+
+it("Files has one selection instruction after search and filters, and list refresh only reloads metadata", async () => {
+  setSessionOwner("user-id"); connection(true);
+  vi.mocked(listDriveFiles).mockResolvedValue({ files: [atlas, roadmap], total: 2 });
+  render(<FilesPage />); await screen.findByText("Project Atlas.pdf");
+  expect(screen.getByRole("heading", { name: "Files", level: 1 })).toBeInTheDocument();
+  expect(screen.queryByText("Choose up to five documents to prepare for chat.")).toBeNull();
+  expect(screen.getAllByText("Select up to five documents to prepare.")).toHaveLength(1);
+  const filters = screen.getByRole("group", { name: "Filter files by status" });
+  const selection = screen.getByRole("region", { name: "Preparation selection" });
+  expect(filters.compareDocumentPosition(selection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const before = vi.mocked(listDriveFiles).mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "Refresh list" }));
+  await waitFor(() => expect(vi.mocked(listDriveFiles).mock.calls.length).toBeGreaterThan(before));
+  expect(screen.getByRole("textbox", { name: "Search files" })).toBeInTheDocument();
   cleanup(); setSessionOwner(null);
 });
