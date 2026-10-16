@@ -40,7 +40,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      {!onboardingRoute ? <div className="hidden md:flex"><ConversationSidebar /></div> : null}
+      {!onboardingRoute ? <div className="hidden md:flex"><ConversationSidebar collapsible={!DEMO_MODE} /></div> : null}
       <MainChrome>{children}</MainChrome>
     </div>
   );

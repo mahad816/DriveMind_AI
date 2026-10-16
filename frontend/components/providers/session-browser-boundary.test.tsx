@@ -1,5 +1,5 @@
 import { StrictMode, useSyncExternalStore } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ApplicationSessionProvider, useApplicationSession } from "./application-session-provider";
@@ -20,7 +20,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: nav.replace }),
 }));
 vi.mock("@/lib/hooks/use-connection-status", () => ({ useConnectionStatus: () => ({ data: { connected: false }, error: null, isLoading: false, refetch: vi.fn() }) }));
-vi.mock("@/lib/hooks/use-knowledge-status", () => ({ useKnowledgeStatus: () => ({ needsConnect: true, needsPrepare: false, setupState: "not_connected", isReady: false }) }));
+const knowledge = vi.hoisted(() => ({ ready: false }));
+vi.mock("@/lib/hooks/use-knowledge-status", () => ({ useKnowledgeStatus: () => ({ needsConnect: !knowledge.ready, needsPrepare: false, setupState: knowledge.ready ? "ready" : "not_connected", isReady: knowledge.ready, fileStats: { indexed: knowledge.ready ? 1 : 0 } }) }));
 const A = "00000000-0000-0000-0000-000000000065", B = "00000000-0000-0000-0000-000000000066";
 const X = fixture.metadata.id, Y = "00000000-0000-0000-0000-000000000201";
 type Row = { metadata: ConversationMetadata; turns: StoredTurn[] };
@@ -74,7 +75,7 @@ function mount(strict = false) { const app = (<ToastProvider><TooltipProvider><A
 function send(question = "Private follow up") { fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: question } }); fireEvent.click(screen.getByRole("button", { name: "Send message" })); }
 function requests() { return vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes("/turns") && options?.method === "POST"); }
 beforeEach(() => {
-  inventory = "indexed"; cookie = A; data = { "drivemind:conversations": "LEGACY_SECRET", [`drivemind:v1:normal:${A}:conversations`]: "QUARANTINED_SECRET" }; rows = new Map(); intercept = null; seed();
+  knowledge.ready = false; inventory = "indexed"; cookie = A; data = { "drivemind:conversations": "LEGACY_SECRET", [`drivemind:v1:normal:${A}:conversations`]: "QUARANTINED_SECRET" }; rows = new Map(); intercept = null; seed();
   setSessionOwner(null); nav.path = `/chat/${X}`; nav.query = new URLSearchParams(); nav.listeners.clear(); vi.clearAllMocks();
   nav.push.mockImplementation(go); nav.replace.mockImplementation(go);
   Object.defineProperty(window, "localStorage", { configurable: true, value: { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => { data[key] = value; }, removeItem: (key: string) => { delete data[key]; } } });
@@ -640,6 +641,7 @@ it("an unrelated list failure retains its own message and does not acquire creat
   intercept = path => path.startsWith("/conversations?") ? Promise.resolve(json({ detail: "Unavailable" }, 503)) : undefined;
   fireEvent.click(screen.getByRole("button", { name: "Refresh conversations" }));
   await screen.findAllByText("Conversation service is unavailable.");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Recover chat" })).toBeNull();
   expect(screen.queryByText(/We couldn't confirm the new chat/)).toBeNull();
   expect(screen.getByText("A saved answer")).toBeInTheDocument();
@@ -666,4 +668,123 @@ it("creation recovery retains a specific server error without claiming success",
   expect(screen.getByRole("alert")).toHaveTextContent("We couldn't confirm the new chat.");
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Unsent question");
   expect(requests()).toHaveLength(0); expect(nav.path).toBe("/chat");
+});
+
+// UX-B2: history/navigation presentation delegates all mutations to existing handlers.
+it("normal sidebar has one creation action, secondary history refresh and no ready-state chat footer", async () => {
+  knowledge.ready = true; mount(); await screen.findByText("A saved answer");
+  const sidebar = within(screen.getByRole("complementary", { name: "App navigation" }));
+  expect(sidebar.getAllByRole("button", { name: "New Chat" })).toHaveLength(1);
+  expect(sidebar.queryByRole("link", { name: "Open chat" })).toBeNull();
+  expect(sidebar.getByText("1 document ready")).toBeInTheDocument();
+  const heading = sidebar.getByRole("heading", { name: "Chats" });
+  expect(heading.parentElement).toContainElement(sidebar.getByRole("button", { name: "Refresh conversations" }));
+  expect(sidebar.getByRole("textbox", { name: "Search loaded chats" })).toHaveAttribute("placeholder", "Search loaded chats");
+  expect(sidebar.getByRole("link", { name: "Files" })).toHaveAttribute("href", "/files");
+  expect(sidebar.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
+  expect(creationRequests()).toHaveLength(0);
+});
+it("loaded-title search makes no requests and includes later pages without losing its query", async () => {
+  seed(A, Y, "Older travel chat", []);
+  intercept = path => path === "/conversations?limit=30" ? Promise.resolve(json({ conversations: [rows.get(A)!.get(X)!.metadata], next_cursor: "more" }))
+    : path.includes("cursor=more") ? Promise.resolve(json({ conversations: [rows.get(A)!.get(Y)!.metadata], next_cursor: null })) : undefined;
+  mount(); await screen.findByText("A saved answer");
+  const listRequests = () => vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("/conversations?"));
+  const before = listRequests().length;
+  const input = screen.getByRole("textbox", { name: "Search loaded chats" });
+  fireEvent.change(input, { target: { value: "TRAVEL" } });
+  expect(screen.getByText("No chats match your search.")).toBeInTheDocument();
+  expect(listRequests()).toHaveLength(before);
+  fireEvent.click(screen.getByRole("button", { name: "Load more conversations" }));
+  await screen.findByRole("link", { name: /Older travel chat/ });
+  expect(input).toHaveValue("TRAVEL");
+  expect(screen.queryByRole("link", { name: /A title/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+  expect(screen.getByRole("link", { name: /A title/ })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Older travel chat/ })).toBeInTheDocument();
+  expect(requests()).toHaveLength(0); expect(creationRequests()).toHaveLength(0);
+});
+it("keyboard refresh preserves the loaded-title query through loading", async () => {
+  mount(); await screen.findByText("A saved answer");
+  const input = screen.getByRole("textbox", { name: "Search loaded chats" });
+  fireEvent.change(input, { target: { value: "title" } });
+  const late = deferred<Response>();
+  intercept = path => path.startsWith("/conversations?") ? late.promise : undefined;
+  const refresh = screen.getByRole("button", { name: "Refresh conversations" });
+  refresh.focus(); await userEvent.keyboard("{Enter}");
+  await waitFor(() => expect(refresh).toBeDisabled());
+  expect(input).toHaveValue("title");
+  await act(async () => late.resolve(json({ conversations: [rows.get(A)!.get(X)!.metadata], next_cursor: null })));
+  await waitFor(() => expect(refresh).toBeEnabled());
+  expect(input).toHaveValue("title"); expect(screen.getByRole("link", { name: /A title/ })).toBeInTheDocument();
+});
+it("normal desktop collapse preserves search and stable navigation, then restores history", async () => {
+  mount(); await screen.findByText("A saved answer");
+  fireEvent.change(screen.getByRole("textbox", { name: "Search loaded chats" }), { target: { value: "title" } });
+  const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+  toggle.focus(); await userEvent.keyboard("{Enter}");
+  expect(toggle).toHaveFocus();
+  expect(screen.queryByRole("textbox", { name: "Search loaded chats" })).toBeNull();
+  expect(screen.getByRole("link", { name: "Files" })).toHaveAttribute("href", "/files");
+  expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByRole("button", { name: "Collapse sidebar" })).toHaveFocus();
+  expect(screen.getByRole("textbox", { name: "Search loaded chats" })).toHaveValue("title");
+  expect(screen.getByRole("link", { name: /A title/ })).toHaveAttribute("aria-current", "page");
+  expect(creationRequests()).toHaveLength(0);
+});
+it("collapsed non-chat recovery remains discoverable and expands without clearing its receipt", async () => {
+  const id = await lostCreationFromOrigin(); act(() => go("/files")); await screen.findByText("Files view");
+  fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+  const review = screen.getByRole("button", { name: "Expand sidebar to review chat status" });
+  review.focus(); await userEvent.keyboard("{Enter}");
+  expect(screen.getByRole("heading", { name: "Chats" })).toBeInTheDocument();
+  const recover = screen.getByRole("button", { name: "Recover chat" });
+  expect(recover).toBeVisible(); expect(recover).toBeEnabled(); expect(recover).toHaveFocus();
+  expect(review).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "New Chat" })).toBeDisabled();
+  expect(creationRequests()).toHaveLength(1);
+  expect(JSON.parse(String(creationRequests()[0][1]!.body)).create_request_id).toBe(id);
+  expect(requests()).toHaveLength(0); expect(nav.path).toBe("/files");
+  fireEvent.click(screen.getByRole("button", { name: "Recover chat" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Recover chat" })).toBeNull());
+  expect(creationRequests().map(([, opts]) => JSON.parse(String(opts!.body)).create_request_id)).toEqual([id,id]);
+  expect(nav.path).toBe("/files"); expect(requests()).toHaveLength(0);
+});
+
+it("Review focuses the stable collapse control when expanded feedback has no recovery action", async () => {
+  go("/files"); mount(); await screen.findByText(`Verified ${A}`);
+  await screen.findByRole("link", { name: /A title/ });
+  intercept = path => path.startsWith("/conversations?") ? Promise.resolve(json({ detail: "Unavailable" }, 503)) : undefined;
+  fireEvent.click(screen.getByRole("button", { name: "Refresh conversations" }));
+  await screen.findByText("Conversation service is unavailable.");
+  fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+  screen.getByRole("button", { name: "Expand sidebar to review chat status" }).focus();
+  const before = vi.mocked(fetch).mock.calls.length;
+  await userEvent.keyboard("{Enter}");
+  const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+  expect(toggle).toBeVisible(); expect(toggle).toBeEnabled(); expect(toggle).toHaveFocus();
+  expect(screen.queryByRole("button", { name: "Recover chat" })).toBeNull();
+  expect(vi.mocked(fetch).mock.calls).toHaveLength(before);
+  expect(creationRequests()).toHaveLength(0); expect(requests()).toHaveLength(0);
+  expect(nav.path).toBe("/files");
+});
+
+it("mobile navigation has the same history hierarchy and restores focus after Escape", async () => {
+  knowledge.ready = true; mount(); await screen.findByText("A saved answer");
+  const trigger = screen.getByRole("button", { name: "Open navigation menu" }); trigger.focus();
+  await userEvent.keyboard("{Enter}");
+  const dialog = await screen.findByRole("dialog", { name: "Navigation" });
+  const drawer = within(dialog);
+  expect(drawer.getByRole("heading", { name: "Chats" })).toBeInTheDocument();
+  expect(drawer.getAllByRole("button", { name: "New Chat" })).toHaveLength(1);
+  expect(drawer.queryByRole("link", { name: "Open chat" })).toBeNull();
+  expect(drawer.getByRole("textbox", { name: "Search loaded chats" })).toBeInTheDocument();
+  expect(drawer.queryByRole("button", { name: "Collapse sidebar" })).toBeNull();
+  expect(drawer.getByRole("link", { name: "Files" })).toHaveAttribute("href", "/files");
+  expect(drawer.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
+  await userEvent.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull());
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(creationRequests()).toHaveLength(0);
 });

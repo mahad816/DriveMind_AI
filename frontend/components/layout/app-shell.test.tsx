@@ -4,7 +4,7 @@ import { AppShell } from "./app-shell";
 const state = vi.hoisted(() => ({ demo: false, path: "/files" }));
 vi.mock("@/lib/demo", () => ({ get DEMO_MODE() { return state.demo; } }));
 vi.mock("next/navigation", () => ({ usePathname: () => state.path }));
-vi.mock("./conversation-sidebar", () => ({ ConversationSidebar: () => <nav>Sidebar</nav> }));
+vi.mock("./conversation-sidebar", () => ({ ConversationSidebar: ({ collapsible }: { collapsible: boolean }) => <nav data-collapsible={String(collapsible)}>Sidebar</nav> }));
 vi.mock("./mobile-header", () => ({ MobileHeader: () => <header>Mobile navigation</header> }));
 vi.mock("./connection-banner", () => ({ ConnectionBanner: () => <p>Connection banner</p> }));
 vi.mock("@/components/onboarding/onboarding-gate", () => ({ OnboardingGate: ({ children }: { children: React.ReactNode }) => children }));
@@ -18,4 +18,9 @@ it("preserves connection guidance elsewhere", () => {
 });
 it("keeps HarborDesk Files chrome unchanged", () => {
   state.path = "/files"; state.demo = true; render(<AppShell><p>Samples</p></AppShell>); expect(screen.getByText("Connection banner")).toBeInTheDocument();
+});
+
+it.each([false, true])("desktop collapse is enabled only for normal mode (demo=%s)", demo => {
+  state.path = "/files"; state.demo = demo; render(<AppShell><p>Page content</p></AppShell>);
+  expect(screen.getByRole("navigation")).toHaveAttribute("data-collapsible", String(!demo));
 });

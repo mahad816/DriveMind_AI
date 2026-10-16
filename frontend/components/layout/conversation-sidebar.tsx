@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Files, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 
@@ -57,7 +57,7 @@ function ServerSidebar(props: ConversationSidebarProps) {
     id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.last_activity_at,
   })) }];
   return <SidebarView {...props} key={`${state.ownerId}:${state.sessionRevision}`} groups={groups}
-    isLoading={state.listLoading} error={state.creation?.uncertain && !showRecovery ? null : state.error?.message ?? null} disabled={!state.ownerId || !!state.creation}
+    isLoading={state.listLoading} error={showRecovery ? state.error?.message ?? null : null} disabled={!state.ownerId || !!state.creation}
     creating={!!state.creation && !state.creation.uncertain}
     onNew={async () => { const row = await controller.create(); if (row && controller.getSnapshot().selectedId === row.id) { props.onNavigate?.(); router.push(`/chat/${row.id}`); } }}
     onRename={(id, title) => { void controller.rename(id, title); }}
@@ -90,6 +90,17 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
   const [chatQuery, setChatQuery] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const compact = collapsible && collapsed;
+  const focusAfterReview = useRef(false);
+  const collapseButton = useRef<HTMLButtonElement>(null);
+  const feedbackContainer = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (compact || !focusAfterReview.current) return;
+    focusAfterReview.current = false;
+    // Only Review requests this handoff, after the expanded controls mount.
+    const destination = feedbackContainer.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+      ?? collapseButton.current;
+    if (destination?.isConnected && !destination.disabled) destination.focus();
+  }, [compact]);
 
   const filteredGroups = useMemo(() => {
     const q = chatQuery.trim().toLowerCase();
@@ -109,6 +120,9 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
   const hasChats = groups.some((g) => g.conversations.length > 0);
   const hasFilteredChats = filteredGroups.some((g) => g.conversations.length > 0);
   const isSearching = chatQuery.trim().length > 0;
+  const searchLabel = DEMO_MODE ? chatCopy.searchChatsPlaceholder : "Search loaded chats";
+  const feedback = onReconcileCreation ? <ConversationCreationRecovery error={error} onRecover={onReconcileCreation} />
+    : error ? <p role="alert" className="text-sm break-words">{error}</p> : null;
 
   return (
     <aside
@@ -133,6 +147,7 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
         ) : null}
         {collapsible ? (
           <Button
+            ref={collapseButton}
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -166,15 +181,20 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
 
       {!compact ? <Separator /> : null}
 
-      {onReconcileCreation ? <div className="p-3"><ConversationCreationRecovery error={error} onRecover={onReconcileCreation} /></div>
-        : error ? <p role="alert" className="p-3 text-sm">{error}</p> : null}
-      {onRefresh ? <button type="button" onClick={onRefresh} disabled={isLoading} className="px-3 text-xs">Refresh conversations</button> : null}
+      {DEMO_MODE && feedback ? <div className="p-3">{feedback}</div> : null}
+      {!DEMO_MODE && compact && feedback ? <div className="px-1 py-2">
+        <span role="alert" className="sr-only">{onReconcileCreation ? "Recover the pending chat before starting another." : error}</span>
+        <Button variant="ghost" className="w-full px-0 text-xs" aria-label="Expand sidebar to review chat status" onClick={() => { focusAfterReview.current = true; setCollapsed(false); }}>Review</Button>
+      </div> : null}
       {/* Chat history */}
       {!compact ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="space-y-2 px-3 pt-3 pb-2">
-          <p className="text-xs font-medium text-muted-foreground">
-            {chatCopy.recentChats}
-          </p>
+        <div className="shrink-0 space-y-2 px-3 pt-3 pb-2">
+          <div className="flex items-center justify-between gap-2">
+            {DEMO_MODE ? <p className="text-xs font-medium text-muted-foreground">{chatCopy.recentChats}</p>
+              : <h2 className="text-xs font-medium text-muted-foreground">Chats</h2>}
+            {onRefresh ? <Button type="button" variant="ghost" size="sm" aria-label="Refresh conversations" disabled={isLoading}
+              className="text-xs text-muted-foreground" onClick={onRefresh}>Refresh</Button> : null}
+          </div>
 
           {hasChats ? (
             <div className="relative">
@@ -182,9 +202,9 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
               <Input
                 value={chatQuery}
                 onChange={(event) => setChatQuery(event.target.value)}
-                placeholder={chatCopy.searchChatsPlaceholder}
+                placeholder={searchLabel}
                 className="h-8 border-sidebar-border bg-card/70 pl-8 pr-8 text-xs"
-                aria-label={chatCopy.searchChatsPlaceholder}
+                aria-label={searchLabel}
               />
               {chatQuery ? (
                 <Button
@@ -202,6 +222,8 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
           ) : null}
         </div>
 
+        {!DEMO_MODE && feedback ? <div ref={feedbackContainer} className="max-h-[35vh] shrink-0 overflow-y-auto overscroll-contain px-3 pb-3">{feedback}</div> : null}
+
         <nav
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3"
           aria-label="Recent conversations"
@@ -215,9 +237,9 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
           ) : hasFilteredChats ? (
             filteredGroups.map((group) => (
               <div key={group.label} className="mb-4">
-                <p className="px-2 pb-1.5 text-[11px] font-medium text-muted-foreground">
+                {DEMO_MODE ? <p className="px-2 pb-1.5 text-[11px] font-medium text-muted-foreground">
                   {group.label}
-                </p>
+                </p> : null}
                 <div className="space-y-0.5">
                   {group.conversations.map((conversation) => (
                     <ConversationItem
@@ -280,10 +302,10 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
                 : isReady ? `${fileStats.indexed} ${fileStats.indexed === 1 ? "document ready" : "documents ready"}`
                   : needsConnect ? "Connect Drive to choose documents" : "Prepare documents to start chatting"}
             </p>
-            <Link href={isReady ? "/chat" : needsConnect ? "/onboarding" : "/files"} onClick={onNavigate}
+            {!isReady ? <Link href={needsConnect ? "/onboarding" : "/files"} onClick={onNavigate}
               className="inline-flex min-h-11 items-center underline underline-offset-4">
-              {isReady ? "Open chat" : needsConnect ? "Connect Google Drive" : "Browse files"}
-            </Link>
+              {needsConnect ? "Connect Google Drive" : "Browse files"}
+            </Link> : null}
           </div>
         </div>
       ) : null}

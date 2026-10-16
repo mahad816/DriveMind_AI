@@ -100,9 +100,9 @@ export function ConversationItem({
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         title={conversation.title}
-        className={cn("min-w-0 flex-1 rounded-md px-3 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring", active && "pl-[10px]")}
+        className={cn("min-w-0 flex-1 rounded-md px-3 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring", !DEMO_MODE && "flex! flex-col items-start!", active && "pl-[10px]")}
       >
-        <span className="block truncate text-sm font-medium">{conversation.title}</span>
+        <span className={cn("block truncate text-sm font-medium", !DEMO_MODE && "w-full")}>{conversation.title}</span>
         <span className="mt-0.5 block text-[11px] text-muted-foreground">{relativeTime}</span>
       </Link>
 
