@@ -68,6 +68,7 @@ async function server(url: string, options: RequestInit = {}): Promise<Response>
 }
 function Controls() { session = useApplicationSession(); return <span>Verified {session.userId}</span>; }
 function Route() { const path = useSyncExternalStore(callback => { nav.listeners.add(callback); return () => { nav.listeners.delete(callback); }; }, () => nav.path);
+  if (path === "/files") return <p>Files view</p>;
   return <ConversationLayout key={path}><ChatInterface conversationId={path.startsWith("/chat/") ? path.slice(6) : undefined} /></ConversationLayout>; }
 function mount(strict = false) { const app = (<ToastProvider><TooltipProvider><ApplicationSessionProvider><Controls /><ServerConversationsProvider><AppShell><Route /></AppShell></ServerConversationsProvider></ApplicationSessionProvider></TooltipProvider></ToastProvider>); return render(strict ? <StrictMode>{app}</StrictMode> : app); }
 function send(question = "Private follow up") { fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: question } }); fireEvent.click(screen.getByRole("button", { name: "Send message" })); }
@@ -390,8 +391,12 @@ it.each(["composer", "sidebar"])("lost creation acknowledgement handoff keeps th
     }
   };
   const source = screen.getByRole("textbox", { name: "Message" }); fireEvent.keyDown(source, { key: "Enter" });
-  const actions = await screen.findAllByRole("button", { name: "Reconcile creation" }); expect(requests()).toHaveLength(0);
-  fireEvent.click(control === "sidebar" ? actions[0] : actions.at(-1)!);
+  const actions = await screen.findAllByRole("button", { name: "Recover chat" }); expect(requests()).toHaveLength(0);
+  if (control === "sidebar") {
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Recover chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  } else fireEvent.click(actions.at(-1)!);
   await waitFor(() => expect(nav.path).toBe(`/chat/${Y}`));
   const destination = screen.getByRole("textbox", { name: "Message" });
   expect(destination).not.toBe(source); expect(destination).toHaveValue("Unsubmitted original question");
@@ -468,7 +473,7 @@ it("stale reconciliation cannot overwrite an already edited destination composer
     }
   };
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), { key: "Enter" });
-  const actions = await screen.findAllByRole("button", { name: "Reconcile creation" }); fireEvent.click(actions.at(-1)!);
+  const actions = await screen.findAllByRole("button", { name: "Recover chat" }); fireEvent.click(actions.at(-1)!);
   await waitFor(() => expect(creationRequests()).toHaveLength(2));
   act(() => go(`/chat/${Y}`)); await screen.findByText("Recovered", { selector: "p" });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "New destination draft" } });
@@ -516,7 +521,7 @@ async function lostCreationFromOrigin() {
     }
   };
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), { key: "Enter" });
-  await screen.findAllByRole("button", { name: "Reconcile creation" });
+  await screen.findAllByRole("button", { name: "Recover chat" });
   return JSON.parse(String(creationRequests()[0][1]!.body)).create_request_id as string;
 }
 it.each(["composer", "sidebar"])("unrelated draft stays on X when %s recovers Y with the exact original creation identity", async control => {
@@ -525,8 +530,12 @@ it.each(["composer", "sidebar"])("unrelated draft stays on X when %s recovers Y 
   act(() => go(`/chat/${X}`)); await screen.findByText("A saved answer");
   const input = screen.getByRole("textbox", { name: "Message" }); expect(input).not.toBe(origin);
   fireEvent.change(input, { target: { value: "X-specific private draft" } });
-  const actions = screen.getAllByRole("button", { name: "Reconcile creation" });
-  fireEvent.click(control === "sidebar" ? actions[0] : actions.at(-1)!);
+  const actions = screen.getAllByRole("button", { name: "Recover chat" });
+  if (control === "sidebar") {
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Recover chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  } else fireEvent.click(actions.at(-1)!);
   await screen.findByText(/Conversation recovered. It is available/);
   expect(nav.path).toBe(`/chat/${X}`); expect(input).toHaveValue("X-specific private draft");
   expect(screen.getByText("A saved answer")).toBeInTheDocument();
@@ -547,7 +556,7 @@ it("returning to the originating URL creates no ownership for a replacement comp
   await screen.findByRole("button", { name: "Find the latest meeting notes." });
   const input = screen.getByRole("textbox", { name: "Message" });
   fireEvent.change(input, { target: { value: "Replacement new-chat draft" } });
-  fireEvent.click(screen.getAllByRole("button", { name: "Reconcile creation" }).at(-1)!);
+  fireEvent.click(screen.getAllByRole("button", { name: "Recover chat" }).at(-1)!);
   await screen.findByText(/Conversation recovered. It is available/);
   expect(nav.path).toBe("/chat"); expect(input).toHaveValue("Replacement new-chat draft");
   expect(requests()).toHaveLength(0); expect(creationRequests()).toHaveLength(2);
@@ -558,8 +567,12 @@ it("duplicate composer/sidebar recovery preserves X and reuses one creation requ
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Keep on X" } });
   const late = deferred<Response>();
   intercept = (path, opts) => path === "/conversations" && opts.method === "POST" ? late.promise : undefined;
-  const actions = screen.getAllByRole("button", { name: "Reconcile creation" });
-  fireEvent.click(actions.at(-1)!); fireEvent.click(actions[0]); fireEvent.click(actions.at(-1)!);
+  const actions = screen.getAllByRole("button", { name: "Recover chat" });
+  fireEvent.click(actions.at(-1)!);
+  fireEvent.click(screen.getByRole("button", { name: "Open navigation menu" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Recover chat" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  fireEvent.click(actions.at(-1)!);
   await waitFor(() => expect(creationRequests()).toHaveLength(2));
   expect(JSON.parse(String(creationRequests()[1][1]!.body)).create_request_id).toBe(creationId);
   await act(async () => late.resolve(json(rows.get(A)!.get(Y)!.metadata, 200)));
@@ -571,7 +584,7 @@ it("late unrelated recovery cannot override intentional navigation or the next c
   await lostCreationFromOrigin(); act(() => go(`/chat/${X}`)); await screen.findByText("A saved answer");
   const late = deferred<Response>();
   intercept = (path, opts) => path === "/conversations" && opts.method === "POST" ? late.promise : undefined;
-  fireEvent.click(screen.getAllByRole("button", { name: "Reconcile creation" }).at(-1)!);
+  fireEvent.click(screen.getAllByRole("button", { name: "Recover chat" }).at(-1)!);
   await waitFor(() => expect(creationRequests()).toHaveLength(2));
   act(() => go("/chat")); await screen.findByRole("button", { name: "Find the latest meeting notes." });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Intentional destination draft" } });
@@ -582,7 +595,7 @@ it("late unrelated recovery cannot override intentional navigation or the next c
 it.each(["owner", "revision"])("old creation ownership cannot be reused during reconciliation after %s transition", async kind => {
   await lostCreationFromOrigin(); const late = deferred<Response>();
   intercept = (path, opts) => path === "/conversations" && opts.method === "POST" ? late.promise : undefined;
-  fireEvent.click(screen.getAllByRole("button", { name: "Reconcile creation" }).at(-1)!);
+  fireEvent.click(screen.getAllByRole("button", { name: "Recover chat" }).at(-1)!);
   await waitFor(() => expect(creationRequests()).toHaveLength(2));
   if (kind === "owner") { cookie = B; fireEvent(window, new Event("focus")); await screen.findByText(`Verified ${B}`); }
   else act(() => invalidateSessionRequests());
@@ -591,4 +604,66 @@ it.each(["owner", "revision"])("old creation ownership cannot be reused during r
   await act(async () => late.resolve(json(rows.get(A)!.get(Y)!.metadata, 200)));
   expect(nav.path).toBe("/chat"); expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New session draft");
   expect(requests()).toHaveLength(0); expect(nav.replace).not.toHaveBeenCalled();
+});
+
+// UX-B1: presentation uses the existing creation receipt; it grants no new permissions.
+it("sidebar creation shows pending feedback once, preserves editable text and navigates only on acknowledgement", async () => {
+  await newChatWithDraft("Keep this editable draft"); const late = holdCreation();
+  const create = screen.getByRole("button", { name: "New Chat" });
+  fireEvent.click(create); fireEvent.click(create);
+  await waitFor(() => expect(creationRequests()).toHaveLength(1));
+  expect(screen.getByRole("button", { name: "Creating chat…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Creating chat…" })).toHaveAttribute("aria-busy", "true");
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep this editable draft");
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Recover chat" })).toBeNull();
+  seed(A, Y, "Created once", []); await act(async () => late.resolve(json(rows.get(A)!.get(Y)!.metadata, 201)));
+  await waitFor(() => expect(nav.path).toBe(`/chat/${Y}`));
+  expect(creationRequests()).toHaveLength(1); expect(requests()).toHaveLength(0);
+  expect(screen.queryByText(/We couldn't confirm/)).toBeNull();
+});
+it("uncertain creation has one primary recovery, explicit sending guidance and an unchanged receipt", async () => {
+  const creationId = await lostCreationFromOrigin();
+  expect(screen.getAllByRole("button", { name: "Recover chat" })).toHaveLength(1);
+  expect(screen.getAllByText("We couldn't confirm the new chat. Recover it before starting another.")).toHaveLength(1);
+  expect(screen.getByText("Recover the pending chat before sending. Your draft remains editable.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "New Chat" })).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Y originating unsent question");
+  fireEvent.click(screen.getByRole("button", { name: "Recover chat" }));
+  await waitFor(() => expect(nav.path).toBe(`/chat/${Y}`));
+  expect(creationRequests().map(([, opts]) => JSON.parse(String(opts!.body)).create_request_id)).toEqual([creationId, creationId]);
+  expect(requests()).toHaveLength(0);
+});
+it("an unrelated list failure retains its own message and does not acquire creation recovery language", async () => {
+  mount(); await screen.findByText("A saved answer");
+  intercept = path => path.startsWith("/conversations?") ? Promise.resolve(json({ detail: "Unavailable" }, 503)) : undefined;
+  fireEvent.click(screen.getByRole("button", { name: "Refresh conversations" }));
+  await screen.findAllByText("Conversation service is unavailable.");
+  expect(screen.queryByRole("button", { name: "Recover chat" })).toBeNull();
+  expect(screen.queryByText(/We couldn't confirm the new chat/)).toBeNull();
+  expect(screen.getByText("A saved answer")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "New Chat" })).toBeEnabled();
+});
+
+it("recovery remains available outside Chat without forcing navigation or replaying a draft", async () => {
+  const creationId = await lostCreationFromOrigin();
+  act(() => go("/files")); await screen.findByText("Files view");
+  expect(screen.getAllByRole("button", { name: "Recover chat" })).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Recover chat" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Recover chat" })).toBeNull());
+  expect(nav.path).toBe("/files");
+  expect(screen.getByRole("link", { name: /Recovered Y/ })).toHaveAttribute("href", `/chat/${Y}`);
+  expect(creationRequests().map(([, opts]) => JSON.parse(String(opts!.body)).create_request_id)).toEqual([creationId, creationId]);
+  expect(requests()).toHaveLength(0);
+});
+it("creation recovery retains a specific server error without claiming success", async () => {
+  await newChatWithDraft("Unsent question");
+  intercept = (path, opts) => path === "/conversations" && opts.method === "POST" ? Promise.resolve(json({ detail: "Unavailable" }, 503)) : undefined;
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "Message" }), { key: "Enter" });
+  await screen.findByRole("button", { name: "Recover chat" });
+  expect(screen.getByRole("alert")).toHaveTextContent("Conversation service is unavailable.");
+  expect(screen.getByRole("alert")).toHaveTextContent("We couldn't confirm the new chat.");
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Unsent question");
+  expect(requests()).toHaveLength(0); expect(nav.path).toBe("/chat");
 });

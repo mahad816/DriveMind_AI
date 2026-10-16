@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useServerConversations } from "@/components/providers/server-conversations-provider";
 import type { ConversationGroup } from "@/lib/conversations/types";
 import { DEMO_MODE } from "@/lib/demo";
+import { ConversationCreationRecovery } from "@/components/chat/conversation-creation-recovery";
 
 type ConversationSidebarProps = {
   className?: string;
@@ -49,11 +50,15 @@ function DemoSidebar(props: ConversationSidebarProps) {
 function ServerSidebar(props: ConversationSidebarProps) {
   const { state, controller, creationDraft } = useServerConversations();
   const router = useRouter();
+  const pathname = usePathname();
+  // The mobile sheet is modal; otherwise Chat owns the primary recovery action.
+  const showRecovery = !!props.onNavigate || !(pathname === "/chat" || pathname.startsWith("/chat/"));
   const groups: ConversationGroup[] = [{ label: "Recent", conversations: state.conversations.map(row => ({
     id: row.id, title: row.title, createdAt: row.created_at, updatedAt: row.last_activity_at,
   })) }];
   return <SidebarView {...props} key={`${state.ownerId}:${state.sessionRevision}`} groups={groups}
-    isLoading={state.listLoading} error={state.error?.message ?? null} disabled={!state.ownerId || !!state.creation}
+    isLoading={state.listLoading} error={state.creation?.uncertain && !showRecovery ? null : state.error?.message ?? null} disabled={!state.ownerId || !!state.creation}
+    creating={!!state.creation && !state.creation.uncertain}
     onNew={async () => { const row = await controller.create(); if (row && controller.getSnapshot().selectedId === row.id) { props.onNavigate?.(); router.push(`/chat/${row.id}`); } }}
     onRename={(id, title) => { void controller.rename(id, title); }}
     onDelete={(id) => { void controller.delete(id).then(confirmed => {
@@ -62,7 +67,7 @@ function ServerSidebar(props: ConversationSidebarProps) {
     }); }}
     onRefresh={() => { void controller.refreshList(); }}
     onMore={state.nextListCursor ? () => { void controller.loadMoreConversations(); } : undefined}
-    onReconcileCreation={state.creation?.uncertain ? () => {
+    onReconcileCreation={state.creation?.uncertain && showRecovery ? () => {
       // Registration delegates recovery, not ownership of the creation's draft.
       if (creationDraft.reconcile()) return;
       const pending = controller.getSnapshot().creation;
@@ -75,11 +80,11 @@ function ServerSidebar(props: ConversationSidebarProps) {
 }
 
 function SidebarView({ className, onNavigate, collapsible = false, groups, isLoading, error,
-  onNew, onRename, onDelete, onRefresh, onMore, onReconcileCreation, disabled = false,
+  onNew, onRename, onDelete, onRefresh, onMore, onReconcileCreation, disabled = false, creating = false,
 }: ConversationSidebarProps & {
   groups: ConversationGroup[]; isLoading: boolean; error: string | null;
   onNew: () => Promise<void>; onRename: (id: string, title: string) => unknown; onDelete: (id: string) => void;
-  onRefresh?: () => void; onMore?: () => void; onReconcileCreation?: () => void; disabled?: boolean;
+  onRefresh?: () => void; onMore?: () => void; onReconcileCreation?: () => void; disabled?: boolean; creating?: boolean;
 }) {
   const { needsConnect, isReady, setupState, fileStats, error: knowledgeError } = useKnowledgeStatus({ pollIntervalMs: 30_000 });
   const [chatQuery, setChatQuery] = useState("");
@@ -146,23 +151,24 @@ function SidebarView({ className, onNavigate, collapsible = false, groups, isLoa
           type="button"
           onClick={() => void onNew()}
           disabled={disabled || isLoading}
-          aria-label="New Chat"
-          title={compact ? "New Chat" : undefined}
+          aria-label={creating ? "Creating chat…" : "New Chat"}
+          aria-busy={creating || undefined}
+          title={compact ? creating ? "Creating chat…" : "New Chat" : undefined}
           className={cn(
             "flex w-full items-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px",
             compact ? "justify-center px-2" : "px-3",
           )}
         >
           <MessageSquarePlus className="size-4 shrink-0" />
-          {!compact ? "New Chat" : null}
+          {!compact ? creating ? <span role="status">Creating chat…</span> : "New Chat" : null}
         </button>
       </div>
 
       {!compact ? <Separator /> : null}
 
-      {error ? <p role="alert" className="p-3 text-sm">{error}</p> : null}
+      {onReconcileCreation ? <div className="p-3"><ConversationCreationRecovery error={error} onRecover={onReconcileCreation} /></div>
+        : error ? <p role="alert" className="p-3 text-sm">{error}</p> : null}
       {onRefresh ? <button type="button" onClick={onRefresh} disabled={isLoading} className="px-3 text-xs">Refresh conversations</button> : null}
-      {onReconcileCreation ? <button type="button" onClick={onReconcileCreation}>Reconcile creation</button> : null}
       {/* Chat history */}
       {!compact ? <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="space-y-2 px-3 pt-3 pb-2">

@@ -1,4 +1,5 @@
 "use client";
+import { ConversationCreationRecovery } from "@/components/chat/conversation-creation-recovery";
 
 import Link from "next/link";
 import { useIndexedKnowledge } from "@/lib/hooks/use-indexed-knowledge";
@@ -190,12 +191,12 @@ function OwnedServerChat({ conversationId }: { conversationId?: string }) {
 
   return <div className="flex min-h-0 flex-1 flex-col">
     <ChatHeader title={selected ? state.conversation?.title ?? null : null} />
-    {state.error ? <p role="alert" className="px-4 py-2">{state.error.message}</p> : null}
+    {state.creation?.uncertain ? <div className="px-4 py-2"><ConversationCreationRecovery error={state.error?.message} onRecover={() => void reconcileCreation()} /></div>
+      : state.error ? <p role="alert" className="px-4 py-2">{state.error.message}</p> : null}
     {creationRecovered ? <p role="status" className="px-4 py-2 text-sm text-muted-foreground">Conversation recovered. It is available in your conversation history. Your current draft has not moved.</p> : null}
     <div className="flex flex-wrap gap-2 px-4 py-2">
       {selected ? <Button variant="ghost" disabled={state.detailLoading} onClick={() => void controller.reloadSelected()}>Refresh conversation</Button> : null}
       {state.detailLoading ? <span role="status">Refreshing conversation…</span> : null}
-      {state.creation?.uncertain ? <Button onClick={() => void reconcileCreation()}>Reconcile creation</Button> : null}
       {waiting ? <Button variant="outline" onClick={() => controller.cancelSubmission()}>Stop waiting</Button> : null}
       {uncertain ? <><p role="status">The response is unknown. Stopping the wait does not stop server generation.</p>
         <Button onClick={() => void controller.reconcileSubmission()}>Reconcile submission</Button></> : null}
@@ -230,7 +231,7 @@ function OwnedServerChat({ conversationId }: { conversationId?: string }) {
     <div className="shrink-0 px-4 pb-4 md:px-6"><div className="mx-auto w-full max-w-3xl">
       <ComposerDock ref={composer} value={draft} onChange={changeDraft} onSubmit={() => void send()}
         disabled={knowledge.status !== "ready" || !state.ownerId || (routeId !== null && !selected) || state.detailLoading || state.metadataLoading || busy}
-        isLoading={waiting || !!running} submissionStatus={uncertain ? "Reconcile the original submission before sending another question." : knowledge.status !== "ready" ? "Sending is unavailable until prepared knowledge can be verified. Your draft remains editable." : undefined} />
+        isLoading={waiting || !!running} submissionStatus={state.creation?.uncertain ? "Recover the pending chat before sending. Your draft remains editable." : state.creation ? "Creating your chat. Your draft remains editable." : uncertain ? "Reconcile the original submission before sending another question." : knowledge.status !== "ready" ? "Sending is unavailable until prepared knowledge can be verified. Your draft remains editable." : undefined} />
     </div></div>
     <SourcePanel conversationId={routeId ?? undefined} open={!!currentEvidence} citation={currentEvidence?.citations.find(citation => citation.chunk_id === currentEvidence.active) ?? null}
       citations={currentEvidence?.citations} onOpenChange={open => { if (!open) setEvidence(null); }}
