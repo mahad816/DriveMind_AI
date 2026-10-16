@@ -2,6 +2,7 @@ vi.mock("@/components/providers/application-session-provider", () => ({
   useApplicationSession: () => ({ userId: "00000000-0000-0000-0000-000000000065", connectDrive: vi.fn(), logout: vi.fn(), error: null }),
 }));
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OnboardingFlow } from "@/components/onboarding/onboarding-flow";
@@ -35,8 +36,9 @@ function status(setupState: "checking" | "not_connected" | "connected_not_ready"
   };
 }
 
+afterEach(cleanup);
+
 describe("OnboardingFlow", () => {
-  afterEach(cleanup);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,9 +51,10 @@ describe("OnboardingFlow", () => {
     expect(screen.getByText("Checking your Drive connection…")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings");
   });
-  it("offers connection only for confirmed disconnection", () => {
+  it("offers connection only for confirmed disconnection", async () => {
     vi.mocked(useKnowledgeStatus).mockReturnValue(status("not_connected")); render(<OnboardingFlow />);
-    fireEvent.click(screen.getByRole("button", { name: "Connect Google Drive" }));
+    await userEvent.click(screen.getByRole("button", { name: "Connect Google Drive" }));
+    expect(screen.getByRole("button", { name: "Connect Google Drive" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Prepare knowledge" })).toBeNull();
   });
   it("offers file browsing with zero indexed documents and no preparation action", () => {

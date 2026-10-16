@@ -322,3 +322,59 @@
     min-height: 3.125rem;
   }
 }
+
+/* Normal-mode editorial roles; shared demo components keep their original type. */
+.normal-workspace {
+  --font-editorial: Georgia, "Times New Roman", serif;
+}
+.normal-workspace .editorial-display {
+  font-family: var(--font-editorial);
+  font-size: 1.625rem;
+  line-height: 2rem;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+.normal-workspace :is(.conversation-reading-surface, .source-reading-surface) {
+  background-color: var(--card);
+}
+.normal-workspace .conversation-reading-surface { --surface-canvas: var(--card); }
+.normal-workspace .source-reading-surface { min-height: 100%; }
+.normal-workspace .answer-markdown {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.normal-workspace .answer-markdown > p,
+.normal-workspace .answer-markdown > blockquote > p {
+  font-family: var(--font-editorial);
+  font-size: 1.0625rem;
+  line-height: 1.75rem;
+}
+.normal-workspace .answer-markdown :is(code, pre) {
+  font-family: var(--font-geist-mono), monospace;
+}
+.normal-workspace .answer-markdown pre {
+  max-width: 100%;
+  overflow-wrap: normal;
+}
+.normal-workspace .answer-markdown [data-slot="citation-trigger"] {
+  font-family: var(--font-geist-sans), sans-serif;
+}
+.normal-workspace .source-passage {
+  font-family: var(--font-editorial);
+  font-size: 1.125rem;
+  line-height: 1.875rem;
+  overflow-wrap: anywhere;
+}
+.normal-workspace .source-filename { overflow-wrap: anywhere; }
+@media (min-width: 768px) {
+  .normal-workspace .editorial-display {
+    font-size: 1.75rem;
+    line-height: 2.125rem;
+  }
+  .normal-workspace .answer-markdown > p,
+  .normal-workspace .answer-markdown > blockquote > p {
+    font-size: 1.125rem;
+    line-height: 1.875rem;
+  }
+}

@@ -172,7 +172,7 @@ function NormalSessionProvider({ children }: {
           <section className="m-auto w-full max-w-md space-y-8">
             <p className="text-sm font-semibold tracking-tight">DriveMind</p>
             <div className="space-y-3">
-              <h1 className="text-2xl font-semibold tracking-tight">Ask questions about your Drive documents.</h1>
+              <h1 className="editorial-display text-2xl font-semibold tracking-tight">Ask questions about your Drive documents.</h1>
               <p className="text-sm leading-6 text-muted-foreground">Find answers in your prepared documents, with citations you can open and check.</p>
             </div>
             {state.status === "checking" ? <p role="status">Checking your sign-in…</p> : null}

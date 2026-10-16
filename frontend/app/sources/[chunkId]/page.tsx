@@ -19,7 +19,7 @@ export default async function SourcePage({ params, searchParams }: SourcePagePro
   const { chunkId } = await params;
   const origin = (await searchParams)?.conversation;
   return (
-    <PageShell size="md" title={sourceCopy.pageTitle} description={sourceCopy.pageDescription}>
+    <PageShell className="source-reading-surface" size="md" title={sourceCopy.pageTitle} description={sourceCopy.pageDescription}>
       <SourceViewer chunkId={chunkId} conversationId={typeof origin === "string" ? origin : undefined} />
     </PageShell>
   );

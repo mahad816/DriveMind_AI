@@ -13,7 +13,7 @@ export function ConversationLayout({ children, className }: ConversationLayoutPr
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 flex-col bg-surface-canvas",
+        "conversation-reading-surface flex min-h-0 flex-1 flex-col bg-surface-canvas",
         className,
       )}
     >

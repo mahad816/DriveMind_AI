@@ -50,7 +50,7 @@ function addCitationLinks(node: MarkdownNode, citationCount: number): void {
 
 export function AnswerMarkdown({ content, citations = [], onSourceSelect, conversationId }: AnswerMarkdownProps) {
   return (
-    <div className="text-body-lg leading-relaxed text-foreground">
+    <div className="answer-markdown text-body-lg leading-relaxed text-foreground">
       <ReactMarkdown
         remarkPlugins={[
           remarkGfm,

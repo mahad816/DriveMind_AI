@@ -20,6 +20,7 @@ export type SourceTrustDetails = {
 
 type SourceTrustPanelProps = {
   filename: string;
+  headingLevel?: 1 | 2 | 3;
   excerpt: string;
   driveFileId?: string;
   sourceHref?: string;
@@ -36,6 +37,7 @@ type SourceTrustPanelProps = {
 
 export function SourceTrustPanel({
   filename,
+  headingLevel = DEMO_MODE ? 1 : 2,
   excerpt,
   driveFileId,
   sourceHref,
@@ -49,6 +51,7 @@ export function SourceTrustPanel({
   className,
   onAskClick,
 }: SourceTrustPanelProps) {
+  const Heading = `h${headingLevel}` as "h1" | "h2" | "h3";
   const [expanded, setExpanded] = useState(false);
   const displayExcerpt = expanded ? excerpt : truncatePreview(excerpt, 480);
   const canExpand = excerpt.trim().length > 480;
@@ -66,7 +69,7 @@ export function SourceTrustPanel({
       ) : null}
 
       <div className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">{filename}</h1>
+        <Heading className="source-filename text-xl font-semibold tracking-tight text-foreground">{filename}</Heading>
         <p className="text-sm text-muted-foreground">
           {modifiedAt
             ? `${sourceCopy.modified} ${formatFileDate(modifiedAt)}`
@@ -82,14 +85,14 @@ export function SourceTrustPanel({
         </div>
       ) : null}
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? <p role={DEMO_MODE ? undefined : "alert"} className="text-sm text-destructive">{error}</p> : null}
 
       {!isLoading && !error ? (
         <div className="space-y-3">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {sourceCopy.excerpt}
           </p>
-          <blockquote className="border-l-2 border-primary/30 pl-4 text-body-lg leading-relaxed text-foreground">
+          <blockquote className="source-passage border-l-2 border-primary/30 pl-4 text-body-lg leading-relaxed text-foreground">
             &ldquo;{displayExcerpt}&rdquo;
           </blockquote>
           {canExpand ? (

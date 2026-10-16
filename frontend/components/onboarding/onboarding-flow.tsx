@@ -23,7 +23,7 @@ function NormalOnboardingFlow() {
       <Link href="/settings" className={buttonVariants({ variant: "ghost" })}>Settings</Link>
     </div>
     <header className="space-y-3">
-      <h1 className="text-2xl font-semibold tracking-tight">Set up your Drive knowledge</h1>
+      <h1 className="editorial-display text-2xl font-semibold tracking-tight">Set up your Drive knowledge</h1>
       <p className="max-w-lg text-sm leading-6 text-muted-foreground">Sign in, connect Drive, then discover supported documents. Discovering files is separate from preparing them for answers.</p>
     </header>
     <ol className="space-y-3 border-y border-border py-5 text-sm" aria-label="Setup steps">

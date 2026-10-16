@@ -83,7 +83,7 @@ export function EmptyStateHero({
             <span className="text-sm font-medium tracking-wide uppercase">{chatCopy.brandName}</span>
           </div>
         )}
-        <h1 className="text-balance text-2xl font-semibold tracking-tight text-foreground sm:text-hero">
+        <h1 className="editorial-display text-balance text-2xl font-semibold tracking-tight text-foreground sm:text-hero">
           {DEMO_MODE ? "Explore the HarborDesk sample knowledge" : chatCopy.emptyHeading}
         </h1>
         <p className="mx-auto max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
@@ -144,7 +144,7 @@ function NotReadyState({ heading, body, ctaLabel, ctaHref, className }: NotReady
       </div>
 
       <div className="space-y-2">
-        <h1 className="text-hero font-semibold tracking-tight text-foreground">{heading}</h1>
+        <h1 className="editorial-display text-hero font-semibold tracking-tight text-foreground">{heading}</h1>
         <p className="mx-auto max-w-sm text-sm text-muted-foreground">{body}</p>
       </div>
 
