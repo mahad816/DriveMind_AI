@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { DEMO_MODE } from "@/lib/demo";
 import { cn } from "@/lib/utils";
 
 type ToastVariant = "default" | "success" | "error";
@@ -57,7 +58,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6"
+        className={cn(!DEMO_MODE && "normal-workspace", "pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4 sm:items-end sm:px-6")}
         aria-live="polite"
         aria-relevant="additions"
       >
@@ -67,6 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             role="status"
             className={cn(
               "pointer-events-auto w-full max-w-sm rounded-2xl border px-4 py-3 shadow-lg",
+              !DEMO_MODE && "shadow-sm",
               toast.variant === "success" &&
                 "border-success/30 bg-success/10 text-foreground",
               toast.variant === "error" &&

@@ -1,5 +1,6 @@
 "use client";
 
+import { DEMO_MODE } from "@/lib/demo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -122,7 +123,7 @@ export function ConversationItem({
           />
           <Menu.Portal>
             <Menu.Positioner side="bottom" align="end" sideOffset={4} className="z-50">
-              <Menu.Popup className="w-36 rounded-md border border-border bg-popover py-1 shadow-sm outline-none">
+              <Menu.Popup aria-label="Conversation options" className={cn(!DEMO_MODE && "normal-workspace text-popover-foreground", "w-36 rounded-md border border-border bg-popover py-1 shadow-sm outline-none")}>
                 <Menu.Item
                   className="flex cursor-default items-center gap-2 px-3 py-1.5 text-sm outline-none data-highlighted:bg-muted"
                   onClick={() => setIsEditing(true)}

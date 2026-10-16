@@ -6,6 +6,7 @@ import { Popover } from "@base-ui/react/popover";
 
 import type { CitationItem } from "@/lib/api/types";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { sourceHref } from "@/lib/chat/source-navigation";
 
 type CitationPreviewProps = {
@@ -21,13 +22,14 @@ export function CitationPreview({ citation, number, onOpenEvidence, conversation
       <Popover.Trigger
         type="button"
         aria-label={`View citation ${number}`}
+        data-slot="citation-trigger"
         className="mx-0.5 inline-flex align-baseline text-xs font-semibold text-primary underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         [{number}]
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner sideOffset={8}>
-          <Popover.Popup className="z-50 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-sm outline-none">
+          <Popover.Popup className={cn(!DEMO_MODE && "normal-workspace", "z-50 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover p-3 text-sm text-popover-foreground shadow-sm outline-none")}>
             <Popover.Title className="sr-only">Citation {number}</Popover.Title>
             <p className="font-medium break-words">{citation.filename}</p>
             <p className="mt-2 max-h-36 overflow-y-auto text-muted-foreground break-words">
@@ -37,7 +39,7 @@ export function CitationPreview({ citation, number, onOpenEvidence, conversation
               {!DEMO_MODE ? (
                 <Link
                   href={sourceHref(citation.chunk_id, conversationId)}
-                  className="font-medium text-primary underline underline-offset-2"
+                  className={cn(!DEMO_MODE && "overlay-action", "font-medium text-primary underline underline-offset-2")}
                 >
                   Open source
                 </Link>
@@ -45,7 +47,7 @@ export function CitationPreview({ citation, number, onOpenEvidence, conversation
               {onOpenEvidence ? (
                 <button
                   type="button"
-                  className="font-medium text-primary underline underline-offset-2"
+                  className={cn(!DEMO_MODE && "overlay-action", "font-medium text-primary underline underline-offset-2")}
                   onClick={() => onOpenEvidence(citation)}
                 >
                   View full evidence

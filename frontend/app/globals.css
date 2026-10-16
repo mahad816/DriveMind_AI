@@ -158,59 +158,125 @@
 
 /* Private workspace only; the public demo retains its original visual tokens. */
 .normal-workspace {
-  --background: #f7f7f5;
+  color: var(--foreground);
+  --background: #f2ebdd;
   --surface-canvas: var(--background);
-  --secondary: var(--muted);
+  --card: #f8f4ec;
+  --surface-elevated: #fcf9f2;
+  --popover: var(--surface-elevated);
+  --foreground: #26221c;
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --primary: var(--foreground);
+  --primary-foreground: #fcf9f2;
+  --primary-hover: #3a342b;
+  --secondary: var(--card);
   --secondary-foreground: var(--foreground);
-  --foreground: #242424;
-  --primary: #242424;
-  --primary-foreground: #fff;
-  --accent: #eaeae7;
-  --accent-foreground: #242424;
-  --ring: #555;
-  --card: #fff;
-  --card-foreground: #242424;
-  --popover: #fff;
-  --popover-foreground: #242424;
-  --muted: #eeedea;
-  --muted-foreground: #62625e;
-  --border: #deded9;
-  --input: #deded9;
-  --surface-elevated: #fff;
-  --sidebar: #f0f0ed;
-  --sidebar-foreground: #242424;
-  --sidebar-accent: #e5e5e0;
-  --sidebar-accent-foreground: #242424;
-  --sidebar-primary: #242424;
-  --sidebar-primary-foreground: #fff;
-  --sidebar-ring: #555;
-  --sidebar-border: #deded9;
+  --muted: #ede5d7;
+  /* Secondary copy occurs on canvas as well as cards; keep its AA contrast. */
+  --muted-foreground: #686157;
+  --text-secondary: var(--muted-foreground);
+  --text-muted: #756d61;
+  --accent: #e7ddcd;
+  --accent-foreground: var(--foreground);
+  --border: #d4c7b4;
+  --control-boundary: #8a7d69;
+  --input: var(--control-boundary);
+  --input-surface: #fcf9f2;
+  --ring: #766247;
+  --disabled-surface: #e8e1d5;
+  --disabled-foreground: #81786a;
+  --success: #356047;
+  --success-surface: #e8f0e7;
+  --warning: #70501b;
+  --warning-surface: #f4e9cc;
+  --destructive: #9e3832;
+  --destructive-surface: #faeae5;
+  --info: #575d65;
+  --info-surface: #eceef0;
+  --sidebar: #ede4d5;
+  --sidebar-foreground: var(--foreground);
+  --sidebar-accent: #e0d4c1;
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+  --sidebar-border: var(--border);
 }
 .dark .normal-workspace {
-  --background: #222;
-  --foreground: #f1f1ee;
-  --primary: #f1f1ee;
-  --primary-foreground: #222;
-  --accent: #373737;
-  --accent-foreground: #f1f1ee;
-  --ring: #b8b8b3;
-  --card: #292929;
-  --card-foreground: #f1f1ee;
-  --popover: #292929;
-  --popover-foreground: #f1f1ee;
-  --muted: #333;
-  --muted-foreground: #b9b9b3;
-  --border: #484848;
-  --input: #484848;
-  --surface-elevated: #292929;
-  --sidebar: #252525;
-  --sidebar-foreground: #f1f1ee;
-  --sidebar-accent: #373737;
-  --sidebar-accent-foreground: #f1f1ee;
-  --sidebar-primary: #f1f1ee;
-  --sidebar-primary-foreground: #222;
-  --sidebar-ring: #b8b8b3;
-  --sidebar-border: #484848;
+  --background: #242320;
+  --card: #2c2b27;
+  --surface-elevated: #33312c;
+  --foreground: #f1ece2;
+  --primary-foreground: #242320;
+  --primary-hover: #ddd6c9;
+  --muted: #38362f;
+  --muted-foreground: #bcb5a9;
+  --text-muted: #a69e91;
+  --accent: #444037;
+  --border: #514d44;
+  --control-boundary: #8c8577;
+  --input-surface: #2c2b27;
+  --ring: #ceb98e;
+  --disabled-surface: #34322d;
+  --disabled-foreground: #928b7e;
+  --success: #b1d1b8;
+  --success-surface: #29372e;
+  --warning: #e0c385;
+  --warning-surface: #3b3324;
+  --destructive: #e8b0aa;
+  --destructive-surface: #432c2a;
+  --info: #c2c7cf;
+  --info-surface: #30343a;
+  --sidebar: #282722;
+  --sidebar-accent: #444037;
+}
+/* Tooltips intentionally invert the normal ink/paper pair. */
+.normal-workspace[data-slot="tooltip-content"] { color: var(--background); }
+/* Reuse existing button variants, including links rendered by buttonVariants.
+   Dividers stay quiet; interactive boundaries use the stronger input token. */
+.normal-workspace .group\/button:is([class~="border-border"], [class~="bg-secondary"]) {
+  border-color: var(--control-boundary);
+  background-color: var(--card);
+}
+.normal-workspace :is(button, a)[class~="bg-primary"]:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+.normal-workspace .group\/button:not([class~="bg-primary"]):hover:not(:disabled) {
+  background-color: var(--muted);
+}
+.normal-workspace :is([data-slot="input"], [data-slot="textarea"]) {
+  border-color: var(--control-boundary);
+  background-color: var(--input-surface);
+}
+.normal-workspace :is([data-slot="button"], [data-slot="input"]):disabled {
+  background-color: var(--disabled-surface);
+  color: var(--disabled-foreground);
+  opacity: 1;
+}
+.normal-workspace :is(button, [data-slot="input"], [role="menuitem"]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.normal-workspace [data-slot="input"][aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+.normal-workspace [class~="bg-success/10"] { background-color: var(--success-surface); }
+.normal-workspace [class~="bg-warning/10"] { background-color: var(--warning-surface); }
+.normal-workspace [class~="bg-destructive/10"] { background-color: var(--destructive-surface); }
+.normal-workspace .overlay-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding-inline: 0.25rem;
+  border-radius: 0.25rem;
+}
+.normal-workspace .overlay-action:hover { background-color: var(--muted); }
+.normal-workspace [role="menuitem"] { min-height: 2rem; }
+.normal-workspace [role="menuitem"][data-highlighted] {
+  background-color: var(--muted);
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 .normal-workspace [data-slot="button"] {
   min-height: 2.75rem;
@@ -237,7 +303,7 @@
   }
 }
 @media (max-width: 767px) {
-  .normal-workspace :is(button, [role="button"], [role="tab"], [data-slot="input"]) {
+  .normal-workspace :is(button, [role="button"], [role="tab"], [data-slot="input"]):not([data-slot="citation-trigger"]) {
     min-width: 2.75rem;
     min-height: 2.75rem;
   }
@@ -246,6 +312,10 @@
     align-items: center;
     min-width: 2.75rem;
     min-height: 2.75rem;
+  }
+  .normal-workspace :is(.overlay-action, [role="menuitem"]) {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
   }
   .normal-workspace [data-slot="tabs-list"] {
     height: auto;
