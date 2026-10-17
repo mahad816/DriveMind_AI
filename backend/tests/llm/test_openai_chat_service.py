@@ -10,7 +10,7 @@ import pytest
 from openai import APIError
 
 from app.core.config import Settings
-from app.llm.base import ChatConfigurationError, ChatError
+from app.llm.base import ChatCitationValidationError, ChatConfigurationError, ChatError
 from app.llm.factory import get_chat_service
 from app.llm.openai_service import OpenAIChatService
 from app.llm.prompts import RAG_SYSTEM_PROMPT
@@ -58,6 +58,15 @@ def mock_client() -> AsyncMock:
 @pytest.fixture
 def service(settings: Settings, mock_client: AsyncMock) -> OpenAIChatService:
     return OpenAIChatService(settings=settings, client=mock_client)
+
+
+async def test_exhausted_citation_regeneration_has_typed_error(service, mock_client):
+    mock_client.chat.completions.create.return_value = _chat_response("Uncited answer")
+    with pytest.raises(ChatCitationValidationError, match="verified with source citations"):
+        await service.generate_file_target_answer(
+            "Summarize notes", [_chunk()], max_context_chars=12000
+        )
+    assert mock_client.chat.completions.create.await_count == 2
 
 
 def test_get_chat_service_returns_openai_provider(settings: Settings) -> None:

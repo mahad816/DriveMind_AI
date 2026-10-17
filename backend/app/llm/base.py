@@ -15,6 +15,10 @@ class ChatConfigurationError(ChatError):
     """Raised when chat provider settings are missing or invalid."""
 
 
+class ChatCitationValidationError(ChatError):
+    """Raised when generated source citations remain invalid after regeneration."""
+
+
 class ChatService(Protocol):
     """Protocol implemented by chat completion providers."""
 

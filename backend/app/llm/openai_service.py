@@ -8,7 +8,7 @@ import re
 from openai import APIError, AsyncOpenAI, omit
 
 from app.core.config import Settings, get_settings
-from app.llm.base import ChatConfigurationError, ChatError
+from app.llm.base import ChatCitationValidationError, ChatConfigurationError, ChatError
 from app.llm.prompts import (
     CHITCHAT_SYSTEM_PROMPT,
     COLLECTION_SYSTEM_PROMPT,
@@ -188,7 +188,7 @@ class OpenAIChatService:
                     "Use [N] markers for supported claims. Recheck every date against the source. "
                     "Return only the corrected answer.",
                 )
-        raise ChatError("The answer could not be verified with source citations")
+        raise ChatCitationValidationError("The answer could not be verified with source citations")
 
     async def rewrite_followup(self, question: str, history: list[dict[str, str]]) -> str:
         message = json.dumps({"question": question, "recent_conversation": history})

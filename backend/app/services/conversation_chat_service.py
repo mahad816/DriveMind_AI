@@ -1,18 +1,22 @@
 """Bounded request-owned RAG: durable admission, no detached generation tasks."""
 
 import asyncio
+import json
+import logging
 import math
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.db.enums import DriveFileStatus
 from app.db.models import Chunk, Document, DriveFile, QueryHistory
 from app.db.models.conversation_turn import TurnStatus
+from app.llm.base import ChatCitationValidationError, ChatConfigurationError, ChatError
 from app.schemas.conversation import (
     ConversationSubmit,
     ConversationSubmission,
@@ -32,9 +36,43 @@ from app.services.conversation_service import (
 )
 from app.services.rag_service import RagService, RagResult
 
+logger = logging.getLogger(__name__)
+
 
 class CitationAuthorityLost(Exception):
     pass
+
+
+def _log_attempt_failure(turn_id: UUID, stage: str, exc: Exception) -> None:
+    # Fixed categories only: exception strings, provider bodies and traceback
+    # locals may contain private prompts, document text or credentials.
+    if isinstance(exc, ChatCitationValidationError):
+        category = "CITATION_VALIDATION_FAILED"
+        if stage == "rag_execution":
+            stage = "citation_validation"
+    elif isinstance(exc, ChatConfigurationError):
+        category = "CHAT_CONFIGURATION_ERROR"
+    elif isinstance(exc, ChatError):
+        category = "CHAT_GENERATION_ERROR"
+    elif isinstance(exc, CitationAuthorityLost):
+        category = "SOURCE_AUTHORIZATION_CHANGED"
+    elif isinstance(exc, SQLAlchemyError):
+        category = "DATABASE_ERROR"
+    elif isinstance(exc, TimeoutError):
+        category = "EXECUTION_TIMEOUT"
+    else:
+        category = "UNEXPECTED_ERROR"
+    logger.warning(
+        "conversation_attempt_failed %s",
+        json.dumps(
+            {
+                "turn_id": str(turn_id),
+                "stage": stage,
+                "exception_category": category,
+                "failed_at": datetime.now(UTC).isoformat(),
+            }
+        ),
+    )
 
 
 class ConversationChatService:
@@ -225,6 +263,7 @@ class ConversationChatService:
         # Release the request's admission transaction before any external IO.
         task = asyncio.current_task()
         initial_cancellations = task.cancelling() if task is not None else 0
+        stage = "history_loading"
         try:
             async with asyncio.timeout(self.generation_timeout) as budget:
                 async with self.read_sessions() as db:
@@ -235,6 +274,7 @@ class ConversationChatService:
                     rag = self.rag_factory(db, self.settings)
                     if rag.persist_query_history:
                         raise ValueError("Generation cannot independently persist results")
+                    stage = "rag_execution"
                     result = await rag.ask(
                         body.question,
                         principal.corpus_user_id,
@@ -247,6 +287,7 @@ class ConversationChatService:
             if task is not None and task.cancelling() > initial_cancellations:
                 raise asyncio.CancelledError()
             # Validate bounded canonical fields before entering publication.
+            stage = "result_validation"
             citations = [SavedCitation.model_validate(c) for c in result.citations]
             if (
                 not result.answer.strip()
@@ -255,6 +296,7 @@ class ConversationChatService:
                 or result.retrieval_count < 0
             ):
                 raise ValueError("Generation result exceeds publication contract")
+            stage = "result_publication"
             async with self.sessions() as db:
                 async with ConversationService(db).transaction(principal, write=True):
                     repo = ConversationRepository(db)
@@ -263,7 +305,9 @@ class ConversationChatService:
                     )
                     if active.initiating_session_id != principal.session_id:
                         raise ConversationExecutionLost()
+                    stage = "source_authorization"
                     await self._citations(db, principal.corpus_user_id, result)
+                    stage = "result_publication"
                     stored = QueryHistory(
                         id=uuid4(),
                         user_id=principal.corpus_user_id,
@@ -290,7 +334,8 @@ class ConversationChatService:
                 principal, cid, tid, execution_id, "REQUEST_CANCELLED", interrupted=True
             )
             raise
-        except TimeoutError:
+        except TimeoutError as exc:
+            _log_attempt_failure(tid, stage, exc)
             await self._cleanup(
                 principal, cid, tid, execution_id, "GENERATION_TIMEOUT", interrupted=True
             )
@@ -310,11 +355,13 @@ class ConversationChatService:
             await self._cleanup(
                 principal, cid, tid, execution_id, "EXECUTION_EXPIRED", interrupted=True
             )
-        except CitationAuthorityLost:
+        except CitationAuthorityLost as exc:
+            _log_attempt_failure(tid, stage, exc)
             await self._cleanup(
                 principal, cid, tid, execution_id, "SOURCE_CHANGED", interrupted=False
             )
-        except Exception:
+        except Exception as exc:
+            _log_attempt_failure(tid, stage, exc)
             await self._cleanup(
                 principal, cid, tid, execution_id, "GENERATION_OR_STORAGE_FAILED", interrupted=False
             )
