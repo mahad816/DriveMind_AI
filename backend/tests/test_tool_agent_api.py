@@ -184,7 +184,7 @@ def public(body):
                 full(),
                 AgentStepResult(text="Project deadline is March 18."),
             ],
-            1,
+            0,
         ),
         (
             "Summarize report.pdf.",
@@ -202,7 +202,7 @@ def public(body):
                 full(),
                 AgentStepResult(text="report.pdf: deadline is March 18."),
             ],
-            1,
+            0,
         ),
         (
             "Find missing.pdf",
@@ -227,6 +227,9 @@ async def test_integrated_success_matrix(monkeypatch, question, steps, expected_
         body = response.json()
         public(body)
         assert len(body["citations"]) == expected_sources
+        if question in {"Summarize my latest file.", "List files and summarize the first one."}:
+            assert "Only verified file metadata is shown" in body["answer"]
+            assert "deadline is March 18" not in body["answer"]
         assert db.closed and db.exited
         assert len(db.saved) == 1
         record = db.saved[0]
@@ -531,7 +534,7 @@ async def test_multisource_citation_order_dedup_and_schema(monkeypatch):
         monkeypatch,
         [
             search(),
-            AgentStepResult(text="Supported [source_3] [source_1] [source_3] [source_999]."),
+            AgentStepResult(text="Supported [source_3] [source_1] [source_3]."),
         ],
         files=[file(10), file(11, "other.pdf")],
         chunks=[one, two, three],
@@ -729,7 +732,9 @@ async def test_cross_turn_guard_allows_current_run_filename_provenance(monkeypat
                 "history": [{"role": "assistant", "text": "An old list mentioned other.pdf."}],
             },
         )
-        assert response.status_code == 200 and response.json()["citations"]
+        assert response.status_code == 200 and not response.json()["citations"]
+        assert "Only verified file metadata is shown" in response.json()["answer"]
+        assert "Project deadline" not in response.json()["answer"]
         assert "RESOLVED" in chat.received[2][-1].text
         assert "UNRESOLVED_CROSS_TURN_REFERENCE" not in chat.received[2][-1].text
         public(response.json())
@@ -777,3 +782,35 @@ async def test_empty_file_evidence_does_not_turn_into_an_absence_claim(monkeypat
         assert response.json()["retrieval_count"] == 0
         assert isinstance(retriever.requests[0].scope, ResolvedFileScope)
         assert len(retriever.requests) == 1  # no corpus retry/fallback
+
+
+@pytest.mark.asyncio
+async def test_fabricated_citation_rejects_publication_instead_of_repair(monkeypatch):
+    async with api(
+        monkeypatch, [search(), AgentStepResult(text="Invented support [source_999].")]
+    ) as (client, db, _chat, _retriever, _legacy):
+        response = await client.post("/api/v1/chat", json={"question": "Summarize report.pdf"})
+        assert response.status_code == 503
+        assert "Invented support" not in response.text
+        assert not db.saved and db.closed
+
+
+@pytest.mark.asyncio
+async def test_cross_owner_evidence_cannot_authorize_document_claim(monkeypatch):
+    from dataclasses import replace
+
+    claim = "PRIVATE_OTHER_OWNER_DOCUMENT_CLAIM"
+    async with api(
+        monkeypatch,
+        [search(), AgentStepResult(text=claim)],
+        files=[file(10), file(11, user=UUID(int=2))],
+        chunks=[replace(chunk(), drive_file_id=UUID(int=11))],
+    ) as (client, db, _chat, _retriever, _legacy):
+        response = await client.post("/api/v1/chat", json={"question": "Summarize my file"})
+        assert response.status_code == 200
+        assert response.json()["answer"] == (
+            "No eligible indexed file matches the reference. Which filename do you mean?"
+        )
+        assert response.json()["citations"] == []
+        assert response.json()["retrieval_count"] == 0
+        assert claim not in response.text and db.closed

@@ -268,8 +268,14 @@ async def test_four_dependent_full_document_workflows(producer, index):
     assert state["failure"] is None
     assert state["evidence"][0].members[0].file_id == target.id
     assert state["final_answer"] is not None
-    assert "[1]" in state["final_answer"] and "file_" not in state["final_answer"]
-    assert state["citations"][0].chunk_id == rows[0][0]
+    assert "file_" not in state["final_answer"]
+    if producer == "resolve_file":
+        assert "[1]" in state["final_answer"]
+        assert state["citations"][0].chunk_id == rows[0][0]
+    else:
+        assert "Only verified file metadata is shown" in state["final_answer"]
+        assert "This file describes the project" not in state["final_answer"]
+        assert not state["citations"]
     assert all(str(target.id) not in m.model_dump_json() for m in state["messages"])
     spy.retrieve.assert_not_awaited()
     assert [h.call.tool_name for h in state["tool_history"]] == [
@@ -285,7 +291,7 @@ async def test_four_dependent_full_document_workflows(producer, index):
         ("Supported answer. [source_1]", False, True),
         ("Supported answer. [evidence_1]", False, True),
         ("Supported answer.", False, True),
-        ("Supported answer. [source_999]", False, True),
+        ("Supported answer. [source_999]", True, False),
         ("Evidence from file_1.", True, False),
         ("Quoted literal source_999 stays unmodified.", True, False),
         (str(UUID(int=10)), True, False),
@@ -302,7 +308,7 @@ async def test_finalizer_authoritative_sources_and_output_validation(answer, fai
         ]
     )
     # Register through a producer to maintain real application handle provenance.
-    chat.steps.insert(0, call("files_query", inventory("LATEST"), "producer"))
+    chat.steps.insert(0, call("resolve_file", {"reference": "report.pdf"}, "producer"))
     state = await ToolRagAgentService(chat).run(
         "Summarize my latest file.",
         user_id=USER,
