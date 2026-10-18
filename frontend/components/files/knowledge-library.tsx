@@ -2,11 +2,12 @@
 
 import { DEMO_MODE } from "@/lib/demo";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { RefreshCcw, FolderOpen } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, useRef, useId } from "react";
+import { RefreshCcw, FolderOpen, Search, ArrowRight, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { DriveDiscovery } from "@/components/files/drive-discovery";
 import { EmptyState } from "@/components/shared/empty-state";
+import { FilesTable } from "@/components/files/files-table";
 import { FileList } from "@/components/files/file-list";
 import { FilePreviewPanel } from "@/components/files/file-preview-panel";
 import { FilePreviewSheet } from "@/components/files/file-preview-sheet";
@@ -71,6 +72,11 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
   const [status, setStatus] = useState<DriveFileStatus | "all">("all");
+  const [page, setPage] = useState(0);
+  const tabsId = useId();
+  const reviewButton = useRef<HTMLButtonElement>(null);
+  const filesHeading = useRef<HTMLHeadingElement>(null);
+  const focusAfterReview = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [scope] = useState(() => ({ owner: sessionOwner(), revision: sessionRevision() }));
@@ -85,7 +91,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
       try { setGate(scope.owner ? readPreparationGate(scope.owner).kind : "blocked"); }
       catch { setGate("blocked"); }
     };
-    const clearDraft = () => { setDraft([]); setReviewing(false); setGate("blocked"); setFilesState({ data: null, isLoading: false, error: null }); };
+    const clearDraft = () => { setSelectedId(null); setMobilePreviewOpen(false); setDraft([]); setReviewing(false); setGate("blocked"); setFilesState({ data: null, isLoading: false, error: null }); };
     checkGate();
     const timer = window.setInterval(checkGate, 3000);
     window.addEventListener("storage", checkGate);
@@ -158,6 +164,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   );
 
   useEffect(() => {
+    if (!DEMO_MODE) return;
     if (filteredFiles.length === 0) {
       setSelectedId(null);
       return;
@@ -169,41 +176,57 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
 
   const handleSelect = useCallback((file: DriveFileRead) => {
     setSelectedId(file.id);
-    if (window.matchMedia("(max-width: 767px)").matches) {
+    if (!DEMO_MODE || window.matchMedia("(max-width: 767px)").matches) {
       setMobilePreviewOpen(true);
     }
   }, []);
 
-  const filterPills: Array<{ value: DriveFileStatus | "all"; count?: number }> = [
-    { value: "all", count: filesState.data?.total ?? 0 },
-    { value: "indexed", count: statusCounts.indexed },
-    { value: "indexing", count: statusCounts.indexing },
-    { value: "discovered", count: statusCounts.discovered },
-    { value: "failed", count: statusCounts.failed },
-    { value: "skipped", count: statusCounts.skipped },
+  const filterPills: Array<{ value: DriveFileStatus | "all"; label: string; count: number }> = DEMO_MODE ? [
+    { value: "all", label: "All", count: filesState.data?.total ?? 0 },
+    ...(["indexed", "indexing", "discovered", "failed", "skipped"] as const).map(value => ({ value, label: fileFilterLabel[value], count: statusCounts[value] })),
+  ] : [
+    { value: "discovered", label: "To prepare", count: statusCounts.discovered },
+    { value: "indexed", label: "Ready", count: statusCounts.indexed },
+    { value: "indexing", label: "Preparing", count: statusCounts.indexing },
+    { value: "all", label: "All", count: filesState.data?.total ?? 0 },
   ];
+  const pageSize = 12;
+  const lastPage = Math.max(0, Math.ceil(filteredFiles.length / pageSize) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const pageFiles = filteredFiles.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const hiddenSelections = draft.filter(file => !pageFiles.some(row => row.id === file.id)).length;
+  const selectionDisabled = gate !== "empty" || !live() || !connection?.connected || !!connectionError || filesState.isLoading || !!filesState.error;
+  const selectionDisabledReason = !connection?.connected || connectionError ? "Check Drive access before selecting documents for preparation." : "Check file inventory and existing preparation before making another selection.";
 
   const draftNeedsAttention = draft.some(selected => {
     const current = files.find(file => file.id === selected.id);
     return !current || current.user_id !== scope.owner || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
   });
+  useEffect(() => {
+    if (reviewing || filesState.isLoading || !focusAfterReview.current) return;
+    focusAfterReview.current = false;
+    const destination = reviewButton.current;
+    if (destination && !destination.disabled) destination.focus();
+    else filesHeading.current?.focus();
+  }, [reviewing, filesState.isLoading]);
   const togglePreparation = (file: DriveFileRead) => {
-    if (!live() || !scope.owner || gate !== "empty" || !connection?.connected || connectionError) return;
+    if (!live() || !scope.owner || gate !== "empty" || !connection?.connected || connectionError || filesState.isLoading || filesState.error) return;
     setDraft(before => before.some(f => f.id === file.id) ? before.filter(f => f.id !== file.id) :
       before.length < 5 && file.user_id === scope.owner && preparationEligibility(file) === null ? [...before, { ...file }] : before);
   };
   if (!DEMO_MODE && reviewing && scope.owner && live()) return <div key="preparation-review" className="min-h-0 min-w-0 md:flex-1 md:overflow-y-auto">
-    <QueuePreparationView owner={scope.owner} draft={draft} onBack={reserved => { setReviewing(false); if (reserved) setDraft([]); void refreshFiles(); }} />
+    <QueuePreparationView owner={scope.owner} draft={draft} onRemove={id => setDraft(before => before.filter(file => file.id !== id))} onBack={reserved => { focusAfterReview.current = true; setReviewing(false); if (reserved) setDraft([]); void refreshFiles(); }} />
   </div>;
 
   return (
-    <div className={cn("flex flex-col md:min-h-0 md:flex-1", DEMO_MODE ? "gap-6" : "gap-2 md:overflow-y-auto", className)}>
-      {!DEMO_MODE ? <DriveDiscovery compact onComplete={() => { void refreshFiles(); void refreshConnection(); }} /> : null}
+    <div className={cn("flex flex-col md:min-h-0 md:flex-1", DEMO_MODE ? "gap-6" : "files-library", className)}>
+      {!DEMO_MODE ? <header className="files-page-header"><div><h1 ref={filesHeading} tabIndex={-1} className="editorial-display">Files</h1><p>Your Drive documents, ready to become knowledge.</p></div><DriveDiscovery filesHeader onComplete={() => { void refreshFiles(); void refreshConnection(); }} /></header> : null}
       {!DEMO_MODE && ["queue", "legacy", "blocked"].includes(gate) ? <div className="space-y-1">
         <Link href="/prepare" className="inline-flex min-h-11 items-center self-start text-sm underline underline-offset-4">{gate === "queue" || gate === "legacy" ? "Review existing preparation" : "View preparation progress"}</Link>
         {gate !== "empty" && gate !== "checking" ? <p className="text-sm text-muted-foreground">{gate === "blocked" ? "Saved preparation could not be verified. Review progress before starting new work." : "Resolve or close existing preparation before preparing another selection."}</p> : null}
       </div> : null}
 
+      {DEMO_MODE ? <>
       <div className={cn("flex flex-col sm:flex-row sm:justify-between", DEMO_MODE ? "gap-3 border-b border-border pb-5 sm:items-end" : "gap-2 py-1 sm:items-center")}>
         <p className="text-sm tabular-nums text-muted-foreground" role="status">
           {filesState.data ? `${filesState.data.total} ${filesCopy.fileCount}` :
@@ -255,21 +278,39 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         })}
       </div>
 
-      {!DEMO_MODE && scope.owner ? <section aria-label="Preparation selection" className="space-y-1 border-y border-border py-2">
-        <div className="flex flex-wrap items-center justify-between gap-2"><p role="status" className="text-sm">{draft.length ? `${draft.length} of 5 documents selected` : "Select up to five documents to prepare."}</p>
-        {draft.length ? <Button disabled={gate !== "empty" || !connection?.connected || filesState.isLoading || !!filesState.error || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}</Button> : null}</div>
-        {draft.length === 5 ? <p className="text-sm text-muted-foreground">Five-document limit reached. Remove one to choose another.</p> : null}
-        {draft.length ? <ol aria-label="Selected documents" className="max-h-40 space-y-1 overflow-y-auto">
-          {draft.map((selected, index) => {
-            const current = files.find(f => f.id === selected.id);
-            const changed = !current || preparationEligibility(current) !== null || preparationFrame(current) !== preparationFrame(selected);
-            return <li key={selected.id} className="flex min-w-0 items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{index + 1}. {selected.name}{changed && !filesState.isLoading ? " · Needs attention" : ""}</span>
-              <Button variant="ghost" className="min-h-11 shrink-0" aria-label={`Remove ${selected.name} from selection`} onClick={() => setDraft(before => before.filter(f => f.id !== selected.id))}>Remove</Button>
-            </li>;
-          })}
-        </ol> : null}
-        {draftNeedsAttention && draft.length && !filesState.isLoading ? <p role="alert" className="text-sm">A selected document changed or is no longer eligible. Remove it and review your selection.</p> : null}
+      </> : <>
+      <div className="files-toolbar">
+        <div role="tablist" aria-label="Filter files by status" className="files-tabs">
+          {filterPills.map((pill, index) => <button key={pill.value} id={`${tabsId}-${pill.value}`} type="button" role="tab"
+            aria-selected={status === pill.value} aria-controls={`${tabsId}-panel`} tabIndex={status === pill.value ? 0 : -1}
+            disabled={!canBrowse || filesState.isLoading}
+            onClick={() => { setStatus(pill.value); setPage(0); }}
+            onKeyDown={event => {
+              const next = event.key === "ArrowRight" ? (index + 1) % filterPills.length : event.key === "ArrowLeft" ? (index + filterPills.length - 1) % filterPills.length : event.key === "Home" ? 0 : event.key === "End" ? filterPills.length - 1 : null;
+              if (next === null) return;
+              event.preventDefault(); setStatus(filterPills[next].value); setPage(0);
+              document.getElementById(`${tabsId}-${filterPills[next].value}`)?.focus();
+            }}>
+            {pill.label} <span>{filesState.data ? `(${pill.count})` : "—"}</span>
+          </button>)}
+        </div>
+        <div className="files-search-actions">
+          <div className="files-search"><Search aria-hidden="true" className="size-3.5" /><Input value={query}
+            onChange={event => { setQuery(event.target.value); setPage(0); }} placeholder={filesCopy.searchPlaceholder}
+            disabled={!canBrowse || filesState.isLoading} aria-label="Search files" />
+            {query && <Button variant="ghost" size="icon-sm" aria-label="Clear file search" onClick={() => { setQuery(""); setPage(0); }}><X className="size-3.5" /></Button>}
+          </div>
+          <Button variant="ghost" size="icon-sm" aria-label="Refresh list" title="Refresh stored file metadata" disabled={!canBrowse || filesState.isLoading} onClick={() => void refreshFiles()}><RefreshCcw className="size-3.5" /></Button>
+        </div>
+      </div>
+      </>}
+      {!DEMO_MODE && canBrowse && filesState.isLoading ? <p role="status" className="text-xs text-muted-foreground">Loading files…</p> : null}
+      {!DEMO_MODE && scope.owner && draft.length > 0 ? <section aria-label="Preparation selection" className="files-selection">
+        <div><p role="status">{draft.length} of 5 documents selected</p>{hiddenSelections > 0 && <p className="text-xs text-muted-foreground">{hiddenSelections} selected {hiddenSelections === 1 ? "document is" : "documents are"} hidden by search, filter or pagination.</p>}</div>
+        <div className="files-selection-actions"><Button variant="ghost" onClick={() => setDraft([])}>Clear selection</Button><Button ref={reviewButton}
+          disabled={selectionDisabled || draftNeedsAttention} onClick={() => setReviewing(true)}>Review {draft.length} {draft.length === 1 ? "document" : "documents"}<ArrowRight className="size-3.5" /></Button></div>
+        {draft.length === 5 && <p className="files-selection-note">Five-document limit reached. Remove one to choose another.</p>}
+        {draftNeedsAttention && !filesState.isLoading && <div className="files-selection-note"><p role="alert">A selected document changed or is no longer eligible. Remove it and review your selection.</p>{draft.map(file => <Button key={file.id} variant="ghost" aria-label={`Remove ${file.name} from selection`} onClick={() => setDraft(before => before.filter(row => row.id !== file.id))}>Remove {file.name}</Button>)}</div>}
       </section> : null}
 
       {connectionUnavailable ? (
@@ -327,25 +368,23 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
         />
       ) : null}
 
-      {canBrowse && !filesState.isLoading && files.length > 0 && filteredFiles.length === 0 ? (
+      {DEMO_MODE && canBrowse && !filesState.isLoading && files.length > 0 && filteredFiles.length === 0 ? (
         <EmptyState title={filesCopy.noResults} />
       ) : null}
 
-      {canBrowse && (!DEMO_MODE || !filesState.isLoading) && filteredFiles.length > 0 ? (
-        <div className="grid min-w-0 grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-5 md:gap-6">
-          <div className={cn("min-w-0 md:min-h-0 md:overflow-y-auto md:overscroll-contain", DEMO_MODE ? "md:col-span-2" : "md:col-span-3")}>
-            <FileList
-              files={filteredFiles}
-              selectedId={selectedId}
-              onSelect={handleSelect}
-              preparation={DEMO_MODE ? undefined : { selected: draft.map(f => f.id), disabled: gate !== "empty" || !live() || !connection?.connected || !!connectionError, disabledReason: !connection?.connected || connectionError ? "Check Drive access before selecting documents for preparation." : undefined, onToggle: togglePreparation }}
-            />
-          </div>
-          <div className={cn("hidden md:block md:min-h-0", DEMO_MODE ? "md:col-span-3" : "md:col-span-2")}>
-            <FilePreviewPanel file={selectedFile} canPrepare={connection?.connected === true && !connectionError} className="md:min-h-0" />
-          </div>
-        </div>
-      ) : null}
+      {canBrowse && !DEMO_MODE && files.length > 0 && !filesState.error ? <section id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${status}`} className="files-list-panel" aria-busy={filesState.isLoading}>
+        <FilesTable files={pageFiles} selected={draft.map(file => file.id)} owner={scope.owner} disabled={selectionDisabled}
+          disabledReason={selectionDisabledReason} onToggle={togglePreparation} onPreview={handleSelect} />
+        {!filesState.isLoading && !filteredFiles.length && <EmptyState title={filesCopy.noResults} />}
+        <footer className="files-pagination"><span>{filteredFiles.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filteredFiles.length)} of ${filteredFiles.length} documents` : "0 documents"}</span>
+          <div><Button variant="ghost" size="icon-sm" aria-label="Previous page" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}><ChevronLeft className="size-4" /></Button><span>{currentPage + 1} / {lastPage + 1}</span><Button variant="ghost" size="icon-sm" aria-label="Next page" disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}><ChevronRight className="size-4" /></Button></div>
+        </footer>
+      </section> : null}
+      {!DEMO_MODE && <p className="files-footnote">Only documents you prepare become searchable. Open a filename to preview its details.</p>}
+      {canBrowse && DEMO_MODE && !filesState.isLoading && filteredFiles.length > 0 ? <div id={`${tabsId}-panel`} role="tabpanel" aria-labelledby={`${tabsId}-${status}`} className="grid min-w-0 grid-cols-1 gap-4 md:min-h-0 md:flex-1 md:grid-cols-5 md:gap-6">
+        <div className="min-w-0 md:col-span-2 md:min-h-0 md:overflow-y-auto"><FileList files={filteredFiles} selectedId={selectedId} onSelect={handleSelect} /></div>
+        <div className="hidden md:block md:col-span-3 md:min-h-0"><FilePreviewPanel file={selectedFile} className="md:min-h-0" /></div>
+      </div> : null}
 
       <FilePreviewSheet
         canPrepare={connection?.connected === true && !connectionError}

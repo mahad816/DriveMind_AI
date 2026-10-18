@@ -2,16 +2,17 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { RefreshCcw } from "lucide-react";
 import { useApplicationSession } from "@/components/providers/application-session-provider";
 import { Button } from "@/components/ui/button";
 import { DiscoveryController } from "@/lib/knowledge/discovery";
 
-export function DriveDiscovery({ onComplete, compact = false }: { onComplete?: () => void; compact?: boolean }) {
+export function DriveDiscovery({ onComplete, compact = false, filesHeader = false }: { onComplete?: () => void; compact?: boolean; filesHeader?: boolean }) {
   const { userId } = useApplicationSession();
-  return userId ? <OwnedDiscovery key={userId} owner={userId} onComplete={onComplete} compact={compact} /> : null;
+  return userId ? <OwnedDiscovery key={userId} owner={userId} onComplete={onComplete} compact={compact} filesHeader={filesHeader} /> : null;
 }
 
-function OwnedDiscovery({ owner, onComplete, compact }: { owner: string; onComplete?: () => void; compact: boolean }) {
+function OwnedDiscovery({ owner, onComplete, compact, filesHeader }: { owner: string; onComplete?: () => void; compact: boolean; filesHeader: boolean }) {
   const completed = useRef(onComplete);
   completed.current = onComplete;
   const [controller] = useState(() => new DiscoveryController(owner, () => completed.current?.()));
@@ -24,6 +25,17 @@ function OwnedDiscovery({ owner, onComplete, compact }: { owner: string; onCompl
     return () => { clearInterval(timer); controller.dispose(); };
   }, [controller]);
   const canStart = state.connected && ["idle", "complete"].includes(state.phase);
+  if (filesHeader) return <section className="files-discovery" aria-label="Drive discovery">
+    <Button variant="outline" disabled={!canStart} onClick={() => void controller.start()}>
+      <RefreshCcw aria-hidden="true" className="size-3.5" />
+      {state.phase === "submitting" || state.phase === "active" ? "Syncing Drive…" : "Sync Drive"}
+    </Button>
+    {state.phase !== "idle" && <div className="files-discovery-feedback">
+      <p role="status" aria-live="polite">{state.message}</p>
+      <Button variant="ghost" size="sm" disabled={state.phase === "submitting"} onClick={() => void controller.check()}>Check sync status</Button>
+      {!state.connected && state.phase !== "checking" && <Link href="/onboarding">Check Drive access</Link>}
+    </div>}
+  </section>;
   return <section className={compact ? "flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border pb-2" : "space-y-3 border-b border-border pb-5"} aria-label="Drive discovery">
     {!compact ? <div className="space-y-1">
       <h2 className="text-sm font-semibold">Discover Drive files</h2>

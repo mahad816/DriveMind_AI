@@ -8,6 +8,8 @@ export const metadata = {
 };
 
 export default function FilesPage() {
+  if (!DEMO_MODE) return <div className="files-workspace"><KnowledgeLibrary /></div>;
+
   return (
     <PageShell
       size="xl"

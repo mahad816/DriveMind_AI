@@ -8,7 +8,8 @@ import { PageShell } from "@/components/layout/page-shell";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { FileStatusBadge } from "@/components/files/file-status-badge";
 import { fileTypeLabel } from "@/lib/files/utils";
-import { SingleFilePreparation, stages } from "@/lib/knowledge/single-file-preparation";
+import { SingleFileProgress } from "./preparation-progress";
+import { SingleFilePreparation } from "@/lib/knowledge/single-file-preparation";
 import { DEMO_MODE } from "@/lib/demo";
 
 export function SingleFilePreparationView() {
@@ -31,8 +32,10 @@ function OwnedPreparation({ owner, fileId }: { owner: string; fileId: string | n
       document.removeEventListener("visibilitychange", pauseWhenHidden); controller.dispose();
     };
   }, [controller]);
-  const labels = ["Reading document", "Preparing searchable text", "Building search index"];
-  const current = stages.indexOf(state.stage!);
+  if (state.stage) return <div className="files-workspace"><SingleFileProgress owner={owner} state={state}
+    onConfirm={() => void controller.confirm()} onCheck={() => void controller.check()} onPause={controller.pause}
+    onReadyChat={() => { void controller.finish().then(closed => { if (closed) router.push("/chat"); }); }}
+    onFinish={() => { void controller.finish().then(closed => { if (closed) router.push("/files"); }); }} /></div>;
   return <PageShell title={state.phase === "review" ? "Review document" : "Document preparation"} size="md">
     {state.file ? <section aria-label="Selected document" className="space-y-2 border-y border-border py-5">
       <p className="text-xs font-medium text-muted-foreground">One document selected</p>
@@ -41,12 +44,6 @@ function OwnedPreparation({ owner, fileId }: { owner: string; fileId: string | n
     </section> : null}
     <p role="status" aria-live="polite" className="text-sm leading-6">{state.message}</p>
     {state.phase === "review" ? <p className="text-sm leading-6 text-muted-foreground">DriveMind will read this document, extract searchable text, and create a search index. Relevant content is processed using the configured AI services. Your original Google Drive document will not be modified.</p> : null}
-    {state.stage ? <ol aria-label="Preparation stages" className="space-y-3 text-sm">
-      {stages.map((stage, i) => <li key={stage} aria-current={stage === state.stage ? "step" : undefined} className={i > current ? "text-muted-foreground" : "text-foreground"}>
-        {labels[i]} <span className="text-muted-foreground">· {i < current ? "Completed" : i > current ? "Not started" : state.phase === "ready" || state.phase === "continue" ? "Completed" : state.phase === "submitting" ? "Requesting" : state.phase === "unknown" || state.phase === "blocked" ? "Needs review" : state.job?.status === "queued" ? "Queued" : state.job?.status === "running" ? "In progress" : state.phase === "skipped" ? "Skipped" : state.phase === "failed" ? "Failed" : "Needs review"}</span>
-      </li>)}
-    </ol> : null}
-    {state.job?.total === 1 && state.stage && ["active", "continue", "ready"].includes(state.phase) ? <p className="text-sm tabular-nums text-muted-foreground">{state.job.processed ?? 0} of 1 document processed in this stage</p> : null}
     <div className="flex flex-wrap gap-2">
       {state.phase === "review" ? <Button onClick={() => void controller.confirm()}>Prepare this document</Button> : null}
       {state.phase === "continue" ? <Button onClick={() => void controller.confirm()}>Continue preparation</Button> : null}

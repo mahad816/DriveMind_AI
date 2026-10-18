@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApplicationSession } from "@/components/providers/application-session-provider";
-import { PageShell } from "@/components/layout/page-shell";
 import { SingleFilePreparationView } from "./single-file-preparation-view";
 import { QueuePreparationView } from "./queue-preparation-view";
 import { readPreparationGate } from "@/lib/knowledge/preparation-queue-store";
@@ -31,5 +30,5 @@ function OwnedPreparation({ owner, hasFile }: { owner: string; hasFile: boolean 
   }, [owner]);
   if (kind === "checking") return <p role="status" className="p-6">Checking preparation…</p>;
   if (kind === "legacy" || (kind === "empty" && hasFile)) return <SingleFilePreparationView />;
-  return <PageShell title="Prepare documents" size="md"><QueuePreparationView owner={owner} /></PageShell>;
+  return <div className="files-workspace"><QueuePreparationView owner={owner} /></div>;
 }

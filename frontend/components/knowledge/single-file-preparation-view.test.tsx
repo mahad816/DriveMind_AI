@@ -46,8 +46,8 @@ it("unknown acceptance never presents the owner's latest job as this document's 
     return init?.method==='POST'?json({detail:'Unknown response'},503):response;
   });
   render(<SingleFilePreparationView/>);await userEvent.setup().click(await screen.findByRole('button',{name:'Prepare this document'}));
-  await waitFor(()=>expect(screen.getByRole('status')).toHaveTextContent('could not be confirmed'));
-  expect(screen.getByRole('list',{name:'Preparation stages'})).toHaveTextContent('Reading document · Needs review');
-  expect(screen.getByRole('list',{name:'Preparation stages'})).not.toHaveTextContent('In progress');
+  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('could not be confirmed'));
+  expect(screen.queryByRole('list',{name:'Processing stages'})).toBeNull();
+  expect(screen.getByRole('list',{name:'Documents in preparation order'})).toHaveTextContent('Needs review');
   expect(screen.queryByRole('button',{name:'Continue preparation'})).toBeNull();
 });

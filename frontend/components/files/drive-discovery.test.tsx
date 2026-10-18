@@ -132,3 +132,24 @@ it("compact disconnected discovery preserves connection guidance and disables su
   expect(screen.getByRole("button", { name: "Check status" })).toBeEnabled();
   expect(syncDriveMetadata).not.toHaveBeenCalled();
 });
+
+it("Files header uses the existing discovery controller, preserves uncertain receipts and never submits on observation", async () => {
+  const intent = { jobId: null, submissionId: "header-uncertain" };
+  window.localStorage.setItem(discoveryKey, JSON.stringify(intent));
+  render(<DriveDiscovery filesHeader />);
+  expect(await screen.findByText(/The discovery request could not be confirmed/)).toHaveAttribute("aria-live", "polite");
+  expect(screen.getByRole("button", { name: "Sync Drive" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Check sync status" }));
+  expect(syncDriveMetadata).not.toHaveBeenCalled();
+  expect(JSON.parse(window.localStorage.getItem(discoveryKey)!)).toEqual(intent);
+});
+it("Files header explicitly submits metadata sync through the existing receipt-aware action", async () => {
+  render(<DriveDiscovery filesHeader />);
+  const sync = screen.getByRole("button", { name: "Sync Drive" });
+  await waitFor(() => expect(sync).toBeEnabled());
+  vi.mocked(syncDriveMetadata).mockRejectedValue(new Error("Unknown acknowledgement"));
+  await userEvent.click(sync);
+  expect(await screen.findByText(/could not be confirmed/)).toBeInTheDocument();
+  expect(syncDriveMetadata).toHaveBeenCalledExactlyOnceWith(false, expect.any(AbortSignal), expect.any(Function));
+  expect(sync).toBeDisabled();
+});

@@ -6,17 +6,15 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { listDriveFiles } from "@/lib/api/files";
 import type { DriveFileRead } from "@/lib/api/types";
 import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
-import { fileTypeLabel } from "@/lib/files/utils";
 import { preparationEligibility, preparationFrame } from "@/lib/knowledge/single-file-preparation";
 import { PreparationQueue, queueConfirmation } from "@/lib/knowledge/preparation-queue";
-import { fileStatusLabel } from "@/lib/user-language";
+import { PreparationProgress } from "@/components/knowledge/preparation-progress";
+import { PreparationReview } from "@/components/files/preparation-review";
 
-const stageLabels = { INGEST: "Reading document", CHUNK: "Preparing searchable text", BUILD: "Building search index" };
-
-type Props = { owner: string; draft?: readonly DriveFileRead[]; onBack?: (reserved: boolean) => void };
+type Props = { owner: string; draft?: readonly DriveFileRead[]; onBack?: (reserved: boolean) => void; onRemove?: (id: string) => void };
 
 /** Review and observe the C1 coordinator; rendering/polling never grants permission. */
-export function QueuePreparationView({ owner, draft, onBack }: Props) {
+export function QueuePreparationView({ owner, draft, onBack, onRemove }: Props) {
   const [controller] = useState(() => new PreparationQueue(owner));
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [inventory, setInventory] = useState<DriveFileRead[] | null>(null);
@@ -101,58 +99,29 @@ export function QueuePreparationView({ owner, draft, onBack }: Props) {
     } finally { actionBusy.current = false; if (live()) setWorking(false); }
   };
 
-  return <section aria-label={queue ? "Preparation progress" : "Review selection"} aria-busy={working} className="min-w-0 space-y-5">
-    <div className="space-y-2">
-      <h2 ref={heading} tabIndex={-1} className="text-xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">{queue ? state.phase === "complete" ? "Documents ready" : "Document preparation" : draft ? "Review selection" : "Preparation"}</h2>
-      {entries.length ? <p className="text-sm text-muted-foreground">{entries.length} {entries.length === 1 ? "document" : "documents"} · Prepared one at a time, in this order.</p> : null}
+  if (!queue && draft && ["idle", "checking"].includes(state.phase)) return <PreparationReview
+    draft={draft} inventory={inventory} working={working}
+    disabled={state.phase !== "idle" || working || !inventory || metadataError || invalidDraft}
+    error={actionError ?? (metadataError ? "Document details could not be verified. Return to Files and refresh before continuing." : null)}
+    onRemove={onRemove} onPrepare={() => void start()} onBack={back} />;
+
+  if (queue) return <PreparationProgress owner={owner} state={state} inventory={inventory} metadataError={metadataError}
+    actionError={actionError} working={working} canConfirm={canConfirm}
+    onConfirm={() => void start()} onCheck={() => { void controller.check(); void refreshMetadata(); }}
+    onClose={() => void close()} onBack={onBack ? back : undefined} onLeave={back} />;
+
+  const message = actionError ?? (metadataError ? "Document details could not be verified. Processing is paused. Check status before continuing." : state.message);
+  return <section aria-label="Preparation status" className="preparation-workspace" aria-busy={working}>
+    <header className="files-page-header"><h1 ref={heading} tabIndex={-1} className="editorial-display">Preparation</h1></header>
+    <div className="preparation-panel preparation-empty">
+      <p role={state.phase === "blocked" || metadataError || actionError ? "alert" : "status"}>{message}</p>
+      <div className="preparation-actions">
+        {onBack ? <Button variant="ghost" onClick={back}>Back to files</Button> : <Link onClick={back} href="/files" className={buttonVariants({ variant: "ghost" })}>Back to files</Link>}
+        <Button variant="ghost" disabled={working} onClick={() => { void controller.check(); void refreshMetadata(); }}>Check status</Button>
+        {chatReady && <Link onClick={back} href="/chat" className={buttonVariants()}>Start chatting</Link>}
+        {state.phase === "legacy" && <Link onClick={back} href="/prepare" className={buttonVariants()}>Review existing preparation</Link>}
+        {state.phase === "blocked" && <Link onClick={back} href="/settings" className={buttonVariants({ variant: "ghost" })}>Settings</Link>}
+      </div>
     </div>
-    <p role="status" aria-live="polite" className="text-sm leading-6">{working ? "Checking and requesting preparation…" : state.message}</p>
-    {metadataError ? <p role="alert" className="text-sm">Document details could not be verified. Processing is paused. Check status before continuing.</p> : inventory === null ? <p className="text-sm text-muted-foreground">Loading authorized document details…</p> : null}
-    {actionError ? <p role="alert" className="text-sm">{actionError}</p> : null}
-    {entries.length ? <ol aria-label="Documents in preparation order" className="divide-y divide-border border-y border-border">
-      {entries.map((entry, index) => {
-        const file = files.find(f => f.id === entry.fileId);
-        const changed = !file || preparationFrame(file) !== entry.frame;
-        const active = !!queue && index === queue.current;
-        let label = "Not started";
-        let detail: string | null = null;
-        if (entry.result === "ready") label = changed || file?.status !== "indexed" || state.phase === "blocked" ? "Needs review" : "Ready";
-        else if (entry.result === "failed") label = "Failed";
-        else if (entry.result === "skipped") label = "Skipped";
-        else if (active && state.phase === "blocked") label = "Needs review";
-        else if (active && state.child?.phase === "failed") label = "Failed";
-        else if (active && state.child?.phase === "skipped") label = "Skipped";
-        else if (active && state.child?.stage) {
-          label = stageLabels[state.child.stage];
-          detail = state.child.phase === "continue" ? "Stage completed · Confirm to continue" : state.child.job?.status === "running" ? "In progress" : state.child.job?.status === "queued" ? "Queued" : "Needs review";
-        }
-        if (!queue && (changed || (file && preparationEligibility(file)))) {
-          label = "Needs attention"; detail = changed ? "Document metadata changed or is unavailable. Return to Files and review this selection." : preparationEligibility(file!);
-        }
-        return <li key={entry.fileId} aria-current={active ? "step" : undefined} className="flex min-w-0 gap-3 py-4">
-          <span aria-hidden="true" className="pt-0.5 text-sm tabular-nums text-muted-foreground">{index + 1}.</span>
-          <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="break-words text-sm font-medium [overflow-wrap:anywhere]">{file?.name ?? "Document details unavailable"}</h3>
-            <p className="text-xs text-muted-foreground">{file ? fileTypeLabel(file.mime_type) : "Type unavailable"}{!queue && file ? ` · ${fileStatusLabel[file.status]}` : ""}</p>
-            <p className="text-sm">{label}</p>
-            {detail ? <p className="text-sm leading-6 text-muted-foreground">{detail}</p> : null}
-          </div>
-        </li>;
-      })}
-    </ol> : null}
-    {!queue && draft ? <p className="text-sm leading-6 text-muted-foreground">DriveMind will read these documents, extract searchable text, and create a search index. Relevant content is processed using the configured AI services. Your original Google Drive documents will not be modified. You’ll confirm before each next document starts.</p> : null}
-    {queue && ["progress", "awaiting_next", "review"].includes(state.phase) ? <p className="text-sm leading-6 text-muted-foreground">Leaving this page does not cancel an accepted server job. Returning or refreshing only checks saved work; confirm before continuing. Each next document requires your confirmation.</p> : null}
-    {queue && ["blocked", "stopped"].includes(state.phase) ? <p className="text-sm leading-6 text-muted-foreground">Preparation has stopped. Earlier ready documents remain available. Check status or ask the beta owner to investigate. Do not repeat an uncertain request or clear saved preparation.</p> : null}
-    <div className="flex flex-wrap gap-2">
-      {!queue && draft && state.phase === "idle" ? <Button disabled={working || !inventory || metadataError || invalidDraft} onClick={() => void start()}>Prepare first document</Button> : null}
-      {canConfirm ? <Button disabled={working || metadataError} onClick={() => void start()}>{state.child?.phase === "continue" ? "Continue preparation" : queue!.current === 0 ? "Prepare first document" : "Prepare next document"}</Button> : null}
-      {onBack ? <Button variant="outline" onClick={back}>{queue ? "Back to files" : "Cancel review"}</Button> : <Link onClick={back} href="/files" className={buttonVariants({ variant: "outline" })}>Back to files</Link>}
-      <Button variant="ghost" disabled={working} onClick={() => { void controller.check(); void refreshMetadata(); }}>Check status</Button>
-      {chatReady ? <Link onClick={back} href="/chat" className={buttonVariants()}>Start chatting</Link> : null}
-      {queue && (state.phase === "complete" || (state.phase === "stopped" && state.child?.canRelease)) ? <Button variant="outline" disabled={working} onClick={() => void close()}>{state.phase === "complete" ? "Close completed preparation" : "End preparation"}</Button> : null}
-      {state.phase === "legacy" ? <Link onClick={back} href="/prepare" className={buttonVariants()}>Review existing preparation</Link> : null}
-      {state.phase === "blocked" ? <Link onClick={back} href="/settings" className={buttonVariants({ variant: "ghost" })}>Settings</Link> : null}
-    </div>
-    {chatReady ? <p className="text-sm leading-6 text-muted-foreground">Chat searches your prepared knowledge generally, not only this selection.</p> : null}
   </section>;
 }
