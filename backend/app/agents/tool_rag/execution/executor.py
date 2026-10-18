@@ -202,7 +202,13 @@ async def file_evidence(
         scope=ResolvedFileScope(file_ids=(file_id,)),
         candidate_limit=20,
     )
-    return c.FileEvidenceResult(file_id=file_id, sections=await retrieve_sections(request, context))
+    sections = await retrieve_sections(request, context)
+    if not sections and context.recovery_budget.claim(file_id):
+        # A semantic miss is not proof that the resolved document has no content.
+        # Reuse the bounded, owner-filtered source reader, within this same tool call.
+        # Exceptions and scope violations above deliberately never reach this path.
+        return await full_document(file_id, context)
+    return c.FileEvidenceResult(file_id=file_id, sections=sections)
 
 
 async def full_document(file_id: UUID, context: ExecutionContext) -> c.FileEvidenceResult:

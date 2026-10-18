@@ -772,7 +772,13 @@ async def test_empty_file_evidence_does_not_turn_into_an_absence_claim(monkeypat
         ),
         AgentStepResult(text="There is no deadline in that file."),
     ]
-    async with api(monkeypatch, steps, chunks=[]) as (client, _db, _chat, retriever, _legacy):
+    async with api(monkeypatch, steps, chunks=[], rows=[]) as (
+        client,
+        _db,
+        _chat,
+        retriever,
+        _legacy,
+    ):
         response = await client.post(
             "/api/v1/chat", json={"question": "What deadline is in report.pdf?"}
         )
@@ -781,7 +787,8 @@ async def test_empty_file_evidence_does_not_turn_into_an_absence_claim(monkeypat
         assert not response.json()["citations"]
         assert response.json()["retrieval_count"] == 0
         assert isinstance(retriever.requests[0].scope, ResolvedFileScope)
-        assert len(retriever.requests) == 1  # no corpus retry/fallback
+        # No corpus retry; the bounded exact-file read is also empty.
+        assert len(retriever.requests) == 1
 
 
 @pytest.mark.asyncio

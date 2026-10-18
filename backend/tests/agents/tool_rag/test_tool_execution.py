@@ -255,15 +255,20 @@ async def test_file_evidence_revalidates_current_eligibility(status, user):
 
 
 @pytest.mark.asyncio
-async def test_file_evidence_exact_and_empty_no_fallback():
+async def test_file_evidence_exact_and_empty_bounded_fallback():
+    from dataclasses import replace
+    from tests.agents.tool_rag.test_revision_safety import DocumentDB
+
     retriever = AsyncMock()
     retriever.retrieve.return_value = []
-    ctx = context([file()], retriever)
+    ctx = replace(context([file()], retriever), db=cast(AsyncSession, DocumentDB([file()], [])))
     handle = ctx.handles.register_file(UUID(int=10))
     out = await execute(
         "file_evidence", {"file_handle": handle.model_dump(), "query": "summary"}, ctx
     )
     assert out.error is None and out.llm_result.sections == ()
+    assert out.llm_result.mode == "FULL_DOCUMENT"
+    assert out.llm_result.coverage.total_chunks == 0
     request = retriever.retrieve.await_args.args[0]
     assert request.scope.file_ids == (UUID(int=10),)
     retriever.retrieve.assert_awaited_once()
