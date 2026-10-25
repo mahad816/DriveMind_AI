@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     rag_max_context_chars: int = 12000
 
     tool_rag_agent_enabled: bool = False
+    # Explicit backend opt-in; the frontend build flag must be rolled out separately.
+    chat_streaming_enabled: bool = False
     agent_graph_enabled: bool = False
     agent_max_rewrite_attempts: int = 2
 

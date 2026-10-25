@@ -31,6 +31,7 @@ export type ServerConversationState = Readonly<{
   submission: LogicalSubmission | null;
   polling: boolean;
   metadataLoading: boolean;
+  streaming?: { conversationId: string; requestId: string; phase: api.ChatStreamProgress["phase"]; text: string } | null;
   creation: Readonly<{
     requestId: string;
     title?: string;
@@ -502,7 +503,7 @@ export class ServerConversationController {
       return;
     const pending = Object.freeze({ ...request, phase: "unknown" as const });
     this.requests.set(cid, pending);
-    this.update({ submission: pending });
+    this.update({ submission: pending, streaming: null });
     this.stop("submit", cid);
   }
   private currentRequest(scope: Scope, request: LogicalSubmission): boolean {
@@ -537,7 +538,15 @@ export class ServerConversationController {
       return;
     const entry = this.begin(scope, "submit", request.conversationId);
     try {
-      const result = await this.transport.submitTurn(request.conversationId, request.payload, entry.abort.signal);
+      const result = await this.transport.submitTurn(request.conversationId, request.payload, entry.abort.signal, progress => {
+        if (!this.valid(entry) || !this.currentRequest(scope, request) || this.state.selectedId !== request.conversationId) return;
+        this.update({ streaming: { conversationId: request.conversationId, requestId: request.payload.client_request_id, ...progress } });
+      }, turn => {
+        if (!this.valid(entry) || !this.currentRequest(scope, request)) return;
+        this.accept(scope, request.conversationId, turn, request);
+        if (this.state.selectedId === request.conversationId)
+          this.update({ streaming: { conversationId: request.conversationId, requestId: request.payload.client_request_id, phase: "searching", text: "" } });
+      });
       if (!this.valid(entry) || !this.currentRequest(scope, request))
         return;
       this.accept(scope, request.conversationId, result.turn, request);
@@ -561,6 +570,8 @@ export class ServerConversationController {
     }
     finally {
       this.finish(entry);
+      if (this.live(scope) && this.state.streaming?.requestId === request.payload.client_request_id)
+        this.update({ streaming: null });
     }
   }
   async refreshTurn(turnId: string): Promise<void> {

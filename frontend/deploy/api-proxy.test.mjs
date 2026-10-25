@@ -114,3 +114,31 @@ test("browser disconnect closes the upstream HTTP wait", async (t) => {
   await closed;
   // This proves transport cleanup only, not cancellation of durable model work.
 });
+
+test("SSE keeps no-transform and delivers a chunk before upstream completion", { timeout: 5000 }, async (t) => {
+  let finish;
+  let finished = false;
+  const base = await fixture(t, (req, res) => {
+    assert.equal(req.headers["x-csrf-token"], "synthetic-csrf");
+    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "private, no-store, no-transform" });
+    res.write('event: state\ndata: {"phase":"searching"}\n\n');
+    finish = () => { finished = true; res.end('event: complete\ndata: {}\n\n'); };
+  });
+  const result = await fetch(`${base}/api/v1/conversations/x/turns/stream`, {
+    method: "POST", headers: { "X-CSRF-Token": "synthetic-csrf" },
+  });
+  assert.equal(result.headers.get("content-type"), "text/event-stream");
+  assert.equal(result.headers.get("cache-control"), "private, no-store, no-transform");
+  const reader = result.body.getReader();
+  const first = await reader.read();
+  assert.match(new TextDecoder().decode(first.value), /event: state/);
+  assert.equal(finished, false);
+  finish();
+  let tail = "";
+  while (true) {
+    const item = await reader.read();
+    if (item.done) break;
+    tail += new TextDecoder().decode(item.value);
+  }
+  assert.match(tail, /event: complete/);
+});

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.core.public_safety import public_error_detail
 from app.core.config import Settings, get_settings
 from app.services.conversation_chat_service import ConversationChatService
+from app.services.chat_stream import emit, event_stream
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationRead,
@@ -96,6 +97,10 @@ class ConversationRoute(APIRoute):
                     {"detail": "Conversation storage is temporarily unavailable."}, status_code=503
                 )
             response.headers.update(PRIVATE_HEADERS)
+            if response.headers.get("content-type", "").startswith("text/event-stream"):
+                # Next's development proxy otherwise gzip-buffers small SSE
+                # responses until EOF. Preserve privacy and prohibit transforms.
+                response.headers["Cache-Control"] += ", no-transform"
             return response
 
         return private_handler
@@ -208,6 +213,40 @@ async def submit_conversation_turn(
             f"{service.settings.api_prefix}/conversations/{conversation_id}/turns/{result.turn.id}"
         )
     return result
+
+
+@router.post("/{conversation_id}/turns/stream")
+async def stream_conversation_turn(
+    conversation_id: UUID,
+    body: ConversationSubmit,
+    principal: ApplicationPrincipal = Depends(require_conversation_mutation),
+    service: ConversationChatService = Depends(get_conversation_chat_service),
+) -> StreamingResponse:
+    if not service.settings.chat_streaming_enabled:
+        raise HTTPException(404, "Not found")
+    if not service.settings.tool_rag_agent_enabled:
+        raise HTTPException(409, "Streaming requires the native tool agent.")
+
+    async def run() -> None:
+        result, code = await service.submit(principal, conversation_id, body)
+        event = (
+            "complete"
+            if result.turn.status == "COMPLETED"
+            else "receipt"
+            if result.replayed
+            else "error"
+        )
+        await emit(event, {"receipt": result.model_dump(mode="json"), "http_status": code})
+
+    return StreamingResponse(
+        event_stream(run),
+        media_type="text/event-stream",
+        headers={
+            **PRIVATE_HEADERS,
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/{conversation_id}/turns/{turn_id}", response_model=ConversationTurnStatus)

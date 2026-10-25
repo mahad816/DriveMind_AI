@@ -1,7 +1,8 @@
 """Native OpenAI function calling, isolated from existing answer generation."""
 
+import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import cast
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from app.llm.openai_service import OpenAIChatService
@@ -114,3 +115,96 @@ class OpenAIAgentChatService(OpenAIChatService):
             )
         except Exception:
             raise AgentResponseError("Agent provider response is invalid") from None
+
+    async def stream_step(
+        self,
+        *,
+        messages: Sequence[AgentMessage],
+        tools: Sequence[ToolDefinition],
+        on_text: Callable[[str], Awaitable[None]],
+    ) -> AgentStepResult:
+        """Same native calls and budgets; only text deltas reach the private callback.
+
+        Tool argument fragments stay inside this adapter and pass the same strict
+        parser as non-streaming calls. Never retry or issue a second completion.
+        """
+        if self._client is None:
+            self._client = super()._get_client()
+        response = None
+        try:
+            response = await self._client.with_options(max_retries=0).chat.completions.create(
+                model=self.model_name,
+                temperature=0,
+                messages=native_messages(messages),
+                tools=[
+                    cast(
+                        ChatCompletionToolParam,
+                        {"type": "function", "function": t.model_dump(mode="json")},
+                    )
+                    for t in tools
+                ],
+                tool_choice="auto",
+                parallel_tool_calls=True,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            text = ""
+            calls: dict[int, dict[str, str]] = {}
+            finish = None
+            usage = AgentUsage()
+            model = None
+            async for chunk in response:
+                model = chunk.model
+                if chunk.usage:
+                    usage = AgentUsage(
+                        input_tokens=chunk.usage.prompt_tokens,
+                        output_tokens=chunk.usage.completion_tokens,
+                    )
+                if not chunk.choices:
+                    continue
+                if len(chunk.choices) != 1 or chunk.choices[0].index != 0 or finish is not None:
+                    raise ValueError("Invalid completion sequence")
+                choice = chunk.choices[0]
+                if choice.delta.refusal:
+                    raise ValueError("Provider refusal")
+                for call in choice.delta.tool_calls or ():
+                    if call.index not in range(8) or call.type not in (None, "function"):
+                        raise ValueError("Invalid native function call")
+                    item = calls.setdefault(call.index, {"id": "", "name": "", "arguments": ""})
+                    item["id"] += call.id or ""
+                    if call.function:
+                        item["name"] += call.function.name or ""
+                        item["arguments"] += call.function.arguments or ""
+                    if (
+                        len(item["arguments"]) > 20000
+                        or len(item["id"]) > 200
+                        or len(item["name"]) > 64
+                    ):
+                        raise ValueError("Native call budget exceeded")
+                if choice.delta.content:
+                    text += choice.delta.content
+                    if len(text) > 32000:
+                        raise ValueError("Answer budget exceeded")
+                    if not calls:
+                        await on_text(text)
+                if choice.finish_reason:
+                    finish = choice.finish_reason
+            if finish != ("tool_calls" if calls else "stop"):
+                raise ValueError("Incomplete completion")
+            if calls and sorted(calls) != list(range(len(calls))):
+                raise ValueError("Incomplete tool calls")
+            return AgentStepResult(
+                text=text or None,
+                tool_calls=tuple(
+                    parse_call(calls[i]["id"], calls[i]["name"], calls[i]["arguments"])
+                    for i in sorted(calls)
+                ),
+                usage=usage,
+                returned_model=model,
+            )
+        except Exception:
+            raise AgentResponseError("Agent provider stream could not complete safely") from None
+        finally:
+            if response is not None:
+                async with asyncio.timeout(5):
+                    await response.close()

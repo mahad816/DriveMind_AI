@@ -4,6 +4,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 NEXT_PUBLIC_API_URL=/api/v1 NEXT_PUBLIC_DEMO_MODE=
 COPY package.json package-lock.json ./
 RUN npm ci
 FROM dependencies AS build
+ARG NEXT_PUBLIC_CHAT_STREAMING_ENABLED=false
 COPY app ./app
 COPY components ./components
 COPY lib ./lib

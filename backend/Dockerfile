@@ -3,7 +3,8 @@ FROM python:3.12-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3
 COPY --from=uv /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 \
-    APP_ENV=production DEBUG=false LOG_LEVEL=INFO DEMO_MODE=false INDEXING_ENABLED=false
+    APP_ENV=production DEBUG=false LOG_LEVEL=INFO DEMO_MODE=false INDEXING_ENABLED=false \
+    CHAT_STREAMING_ENABLED=false
 RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::ForceIPv4=true -o Acquire::https::Timeout=30 -o Acquire::Retries=2 update \
     && apt-get -o Acquire::ForceIPv4=true -o Acquire::https::Timeout=30 -o Acquire::Retries=2 install -y --no-install-recommends tesseract-ocr \

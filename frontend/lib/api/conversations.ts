@@ -8,7 +8,7 @@
 import { inspectApplicationSession } from "@/lib/api/auth";
 import { apiFetchWithStatus, buildQueryString } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
+import { notifySessionInvalid, sessionOwner, sessionRevision } from "@/lib/api/session-events";
 import type { CitationItem } from "@/lib/api/types";
 import { DEMO_MODE, questionCharacters } from "@/lib/demo";
 export type ConversationMetadata = {
@@ -409,12 +409,16 @@ export async function interruptExpiredTurn(id: string, turnId: string, signal?: 
     fail();
   return parsed;
 }
-export async function submitTurn(id: string, body: SubmitTurnRequest, signal?: AbortSignal): Promise<SubmitTurnResult> {
+export type ChatStreamProgress = { phase: "searching" | "generating" | "validating"; text: string };
+
+export async function submitTurn(id: string, body: SubmitTurnRequest, signal?: AbortSignal, onProgress?: (progress: ChatStreamProgress) => void, onAccepted?: (turn: TurnStatus) => void): Promise<SubmitTurnResult> {
   input(() => { writable(body, ["client_request_id", "question", "expected_content_version"]); uuid(id); uuid(body.client_request_id); string(body.question, 4000); if (!canonicalQuestion(body.question))
     fail(); integer(body.expected_content_version); });
   const submission = Object.freeze({ conversation_id: id, payload: Object.freeze({ ...body }) });
   const original = submission.payload;
   try {
+    if (process.env.NEXT_PUBLIC_CHAT_STREAMING_ENABLED === "true")
+      return await streamTurn(id, original, signal, onProgress, onAccepted);
     const response = await send(`/conversations/${id}/turns`, signal, { method: "POST", body: original });
     status(response, [200, 202]);
     const parsed = receipt(response.data);
@@ -426,11 +430,89 @@ export async function submitTurn(id: string, body: SubmitTurnRequest, signal?: A
     return { ...parsed, httpStatus: response.status as 200 | 202 };
   }
   catch (error) {
+    if (error instanceof ApiError && !(error instanceof ConversationApiError))
+      throw new ConversationApiError(error.status, category(error), submission);
     if (error instanceof ConversationApiError) {
       if (error.receipt && (error.receipt.turn.client_request_id.toLowerCase() !== original.client_request_id.toLowerCase() || error.receipt.turn.question !== canonicalQuestion(original.question) || error.receipt.turn.status === "COMPLETED"))
         throw new UncertainSubmissionError(submission, "protocol");
       throw new ConversationApiError(error.status, error.category, submission, error.receipt);
     }
     throw new UncertainSubmissionError(submission, error instanceof ConversationProtocolError ? "protocol" : signal?.aborted ? "aborted" : "transport");
+  }
+}
+
+async function streamTurn(id: string, body: SubmitTurnRequest, signal?: AbortSignal,
+  onProgress?: (progress: ChatStreamProgress) => void, onAccepted?: (turn: TurnStatus) => void): Promise<SubmitTurnResult> {
+  const ctx = context();
+  const bounded = signal ? AbortSignal.any([signal, AbortSignal.timeout(135000)]) : AbortSignal.timeout(135000);
+  const session = await inspectApplicationSession(bounded);
+  current(ctx);
+  if (session.user_id !== ctx.owner) throw new ConversationApiError(409, "session_changed");
+  const { data: response } = await apiFetchWithStatus<Response>(`/conversations/${id}/turns/stream`, {
+    method: "POST", body: JSON.stringify(body), signal: bounded, cache: "no-store", rawResponse: true,
+    headers: { Accept: "text/event-stream", "X-CSRF-Token": session.csrf_token },
+  });
+  current(ctx);
+  if (!response.headers.get("content-type")?.includes("text/event-stream") || !response.body) fail();
+  const reader = response.body!.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
+  let buffer = "", acceptedId: string | null = null, completed = false, events = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      current(ctx); bounded.throwIfAborted();
+      buffer += decoder.decode(chunk.value, { stream: !chunk.done }).replace(/\r\n/g, "\n");
+      if (buffer.length > 524288) fail();
+      let boundary: number;
+      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+        const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+        if (!frame || frame.startsWith(":")) continue;
+        if (++events > 40000 || completed) fail();
+        const lines = frame.split("\n");
+        const name = lines.find(line => line.startsWith("event: "))?.slice(7);
+        const data = JSON.parse(lines.filter(line => line.startsWith("data: ")).map(line => line.slice(6)).join("\n"));
+        if (name === "state") {
+          const row = object(data, ["phase"]);
+          if (!acceptedId || !["searching", "validating"].includes(row.phase as string)) fail();
+          onProgress?.({ phase: row.phase as "searching" | "validating", text: "" });
+        } else if (name === "provisional") {
+          const row = object(data, ["text"]);
+          if (!acceptedId) fail();
+          onProgress?.({ phase: "generating", text: string(row.text, 32000) });
+        } else if (name === "accepted") {
+          const parsed = receipt(data);
+          if (acceptedId || parsed.replayed || parsed.turn.status !== "RUNNING"
+            || parsed.turn.client_request_id !== body.client_request_id || parsed.turn.question !== canonicalQuestion(body.question)) fail();
+          acceptedId = parsed.turn.id;
+          onAccepted?.(parsed.turn);
+        } else if (["complete", "receipt", "error"].includes(name ?? "")) {
+          if (name === "error" && data.code === "SESSION_EXPIRED") {
+            object(data, ["code", "message"]);
+            notifySessionInvalid();
+            throw new ConversationApiError(401, "unauthenticated");
+          }
+          if (!data.receipt) throw new ConversationApiError(503, "unavailable");
+          const parsed = receipt(data.receipt);
+          if (parsed.turn.client_request_id !== body.client_request_id || parsed.turn.question !== canonicalQuestion(body.question)
+            || acceptedId && parsed.turn.id !== acceptedId) fail();
+          if (name === "error") {
+            if (parsed.turn.status === "COMPLETED" || parsed.turn.status === "RUNNING") fail();
+            throw new ConversationApiError(503, "unavailable", undefined, parsed);
+          }
+          if (name === "complete" && (data.http_status !== 200 || parsed.turn.status !== "COMPLETED")) fail();
+          if (name === "receipt" && (!parsed.replayed || parsed.turn.status === "COMPLETED"
+            || data.http_status !== (parsed.turn.status === "RUNNING" ? 202 : 200))) fail();
+          completed = true;
+          // Only a canonical terminal receipt can publish an answer. Cancel the
+          // reader after this event; a missing completion is always uncertain.
+          return { ...parsed, httpStatus: data.http_status as 200 | 202 };
+        } else fail();
+      }
+      if (chunk.done) break;
+    }
+    return fail();
+  } finally {
+    onProgress?.({ phase: "validating", text: "" });
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
 }

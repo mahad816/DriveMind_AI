@@ -72,7 +72,8 @@ function OwnedServerChat({ conversationId }: { conversationId?: string }) {
   const turns = selected ? state.turns : [];
   const request = selected ? state.submission : null;
   const running = turns.find(turn => turn.status === "RUNNING");
-  const waiting = request?.phase === "submitting";
+  const streaming = state.streaming?.conversationId === routeId ? state.streaming : null;
+  const waiting = request?.phase === "submitting" || request?.phase === "running" && !!streaming;
   const uncertain = request?.phase === "unknown";
   const busy = !!running || waiting || uncertain || !!state.creation;
 
@@ -188,6 +189,10 @@ function OwnedServerChat({ conversationId }: { conversationId?: string }) {
   const messages = turns.map(turn => renderTurn(turn, state.ownerId ?? ""));
   if (request && !request.turn && waiting)
     messages.push({ id: request.payload.client_request_id, question: request.payload.question, status: "loading", error: null });
+  if (streaming && request?.payload.client_request_id === streaming.requestId) {
+    const message = messages.find(turn => turn.id === (request.turn?.id ?? streaming.requestId));
+    if (message?.status === "loading") message.provisional = streaming;
+  }
 
   return <div className="flex min-h-0 flex-1 flex-col">
     <ChatHeader title={selected ? state.conversation?.title ?? null : null} />
@@ -197,10 +202,10 @@ function OwnedServerChat({ conversationId }: { conversationId?: string }) {
     <div className="flex flex-wrap gap-2 px-4 py-2">
       {selected ? <Button variant="ghost" disabled={state.detailLoading} onClick={() => void controller.reloadSelected()}>Refresh conversation</Button> : null}
       {state.detailLoading ? <span role="status">Refreshing conversation…</span> : null}
-      {waiting ? <Button variant="outline" onClick={() => controller.cancelSubmission()}>Stop waiting</Button> : null}
-      {uncertain ? <><p role="status">The response is unknown. Stopping the wait does not stop server generation.</p>
+      {waiting ? <Button variant="outline" onClick={() => controller.cancelSubmission()}>{streaming ? "Stop" : "Stop waiting"}</Button> : null}
+      {uncertain ? <><p role="status">The outcome is unknown. Reconcile the saved attempt before sending another question.</p>
         <Button onClick={() => void controller.reconcileSubmission()}>Reconcile submission</Button></> : null}
-      {running ? <>
+      {running && !streaming ? <>
         <span role="status">Server turn RUNNING</span>
         <Button disabled={state.polling} onClick={() => void controller.pollTurn(running.id)}>Check progress</Button>
         {state.polling ? <Button onClick={() => controller.stopPolling()}>Stop checking</Button> : null}

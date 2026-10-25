@@ -4,6 +4,8 @@ import { ApiError } from "@/lib/api/errors";
 import type { FastApiErrorBody } from "@/lib/api/types";
 
 type ApiFetchOptions = RequestInit & {
+  /** Streaming callers consume the body after the same HTTP/session checks. */
+  rawResponse?: boolean;
   /** Skip JSON parsing for empty or non-JSON success responses. */
   parseJson?: boolean;
   /** Durable bookkeeping only, before session fencing. Must not publish private UI. */
@@ -53,7 +55,7 @@ async function parseErrorResponse(response: Response): Promise<ApiError> {
 export async function apiFetchWithStatus<T>(
   path: string, options: ApiFetchOptions = {},
 ): Promise<{ status: number; data: T }> {
-  const { parseJson = true, headers, onResponseReceipt, ...init } = options;
+  const { parseJson = true, rawResponse = false, headers, onResponseReceipt, ...init } = options;
   const url = joinUrl(path);
 
   const revision = sessionRevision();
@@ -87,6 +89,8 @@ export async function apiFetchWithStatus<T>(
   }
 
   if (receiptFailed) throw receiptError;
+
+  if (rawResponse) return { status: response.status, data: response as T };
 
   if (!parseJson || response.status === 204) {
     return { status: response.status, data: undefined as T };

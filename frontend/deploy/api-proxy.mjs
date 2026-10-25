@@ -45,8 +45,9 @@ export function createApiProxy(target, { timeoutMs = 180_000 } = {}) {
     };
     upstream.on("error", fail);
     upstream.on("response", (incoming) => {
+      const streaming = String(incoming.headers["content-type"] ?? "").startsWith("text/event-stream");
       response.writeHead(incoming.statusCode ?? 502, {
-        ...endToEndHeaders(incoming.headers), "cache-control": "private, no-store",
+        ...endToEndHeaders(incoming.headers), "cache-control": streaming ? "private, no-store, no-transform" : "private, no-store",
       });
       incoming.on("error", () => response.destroy());
       incoming.pipe(response);

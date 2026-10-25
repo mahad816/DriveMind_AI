@@ -60,6 +60,87 @@ async function ready() {
   await controller.initialize();
   return { rpc, controller };
 }
+
+it("keeps streaming provisional, fences duplicate submits and publishes only canonical completion", async () => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const pending = deferred<api.SubmitTurnResult>();
+  rpc.submitTurn.mockImplementation(() => pending.promise);
+  const sending = controller.submitQuestion("Stream question");
+  const [cid, body, , progress] = rpc.submitTurn.mock.calls[0];
+  progress?.({ phase: "generating", text: "Provisional " });
+  expect(controller.getSnapshot().streaming?.text).toBe("Provisional ");
+  expect(controller.getSnapshot().turns).toEqual([]);
+  await controller.submitQuestion("Duplicate");
+  expect(rpc.submitTurn).toHaveBeenCalledTimes(1);
+  pending.resolve({ httpStatus: 200, replayed: false, turn: turn("COMPLETED", { question: body.question, client_request_id: body.client_request_id }) });
+  await sending;
+  expect(cid).toBe(X);
+  expect(controller.getSnapshot().turns[0].status).toBe("COMPLETED");
+  expect(controller.getSnapshot().streaming).toBeNull();
+});
+
+it("publishes the accepted running receipt before generation completes, preserving Stop and reconciliation", async () => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const pending = deferred<api.SubmitTurnResult>();
+  rpc.submitTurn.mockImplementation(() => pending.promise);
+  const sending = controller.submitQuestion("Accepted question");
+  const [, body, , progress, accepted] = rpc.submitTurn.mock.calls[0];
+  const receipt = turn("RUNNING", { question: body.question, client_request_id: body.client_request_id });
+  accepted?.(receipt);
+  expect(controller.getSnapshot().submission?.turn).toEqual(receipt);
+  expect(controller.getSnapshot().turns).toEqual([receipt]);
+  expect(controller.getSnapshot().streaming?.phase).toBe("searching");
+  progress?.({ phase: "generating", text: "Partial " });
+  controller.cancelSubmission();
+  expect(controller.getSnapshot().submission?.turn?.id).toBe(receipt.id);
+  expect(controller.getSnapshot().streaming).toBeNull();
+  rpc.getTurnStatus.mockResolvedValue(turn("INTERRUPTED", { question: body.question, client_request_id: body.client_request_id }));
+  await controller.reconcileSubmission();
+  expect(rpc.getTurnStatus).toHaveBeenCalledWith(X, receipt.id, expect.any(AbortSignal));
+  expect(rpc.submitTurn).toHaveBeenCalledTimes(1);
+  pending.reject(new DOMException("Aborted", "AbortError"));
+  await sending;
+  expect(controller.getSnapshot().submission?.phase).toBe("interrupted");
+});
+
+it("Stop immediately removes provisional text and late stream callbacks cannot restore it", async () => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const pending = deferred<api.SubmitTurnResult>();
+  rpc.submitTurn.mockImplementation(() => pending.promise);
+  const sending = controller.submitQuestion("Stop me");
+  const [, body, signal, progress] = rpc.submitTurn.mock.calls[0];
+  progress?.({ phase: "generating", text: "Unverified " });
+  controller.cancelSubmission();
+  expect(signal?.aborted).toBe(true);
+  expect(controller.getSnapshot().streaming).toBeNull();
+  progress?.({ phase: "generating", text: "Late text " });
+  pending.resolve({ httpStatus: 200, replayed: false, turn: turn("COMPLETED", { question: body.question, client_request_id: body.client_request_id }) });
+  await sending;
+  expect(controller.getSnapshot().turns).toEqual([]);
+  expect(controller.getSnapshot().submission?.phase).toBe("unknown");
+  expect(controller.getSnapshot().streaming).toBeNull();
+});
+
+it("does not show a previous conversation's stream in a new selection or account", async () => {
+  const { rpc, controller } = await ready();
+  await controller.select(X);
+  const pending = deferred<api.SubmitTurnResult>();
+  rpc.submitTurn.mockImplementation(() => pending.promise);
+  const sending = controller.submitQuestion("Old account");
+  const [, body, , progress] = rpc.submitTurn.mock.calls[0];
+  await controller.select(Y);
+  progress?.({ phase: "generating", text: "Old conversation " });
+  expect(controller.getSnapshot().streaming).toBeUndefined();
+  switchOwner(B);
+  progress?.({ phase: "generating", text: "Old account " });
+  pending.resolve({ httpStatus: 200, replayed: false, turn: turn("COMPLETED", { question: body.question, client_request_id: body.client_request_id }) });
+  await sending;
+  expect(controller.getSnapshot().turns).toEqual([]);
+  expect(controller.getSnapshot().streaming).toBeUndefined();
+});
 function switchOwner(owner: string | null) { setSessionOwner(owner); invalidateSessionRequests(); }
 it("initializes only from verified session authority and reloads server state for the same owner", async () => {
   const { rpc, controller } = await ready();

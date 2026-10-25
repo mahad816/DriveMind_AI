@@ -16,6 +16,7 @@ export type ChatTurn =
       question: string;
       status: "loading";
       error: null;
+      provisional?: { text: string; phase: "searching" | "generating" | "validating" };
     }
   | {
       id: string;
@@ -62,7 +63,10 @@ export function MessageThread({
           <section key={message.id} className="space-y-4" aria-label="Conversation turn">
             <UserMessage content={message.question} />
 
-            {message.status === "loading" ? <ThinkingIndicator /> : null}
+            {message.status === "loading" ? message.provisional ? <div className="space-y-3">
+              <p role="status" className="text-xs text-muted-foreground">{message.provisional.phase === "searching" ? "Searching your knowledge…" : message.provisional.phase === "validating" ? "Verifying answer and sources…" : "Generating · Answer is not yet verified"}</p>
+              {message.provisional.text && <div aria-label="Unverified response" className="answer-markdown text-body-lg leading-relaxed text-foreground"><p className="whitespace-pre-wrap">{message.provisional.text}</p></div>}
+            </div> : <ThinkingIndicator /> : null}
 
             {message.status === "error" ? (
               <div className="space-y-3">

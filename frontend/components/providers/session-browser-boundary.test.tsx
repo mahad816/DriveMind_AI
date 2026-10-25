@@ -81,7 +81,82 @@ beforeEach(() => {
   Object.defineProperty(window, "localStorage", { configurable: true, value: { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => { data[key] = value; }, removeItem: (key: string) => { delete data[key]; } } });
   vi.stubGlobal("fetch", vi.fn((url: string, options?: RequestInit) => server(url, options)));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); setSessionOwner(null); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); setSessionOwner(null); });
+it.each(["", "New unsent draft"])("stream acknowledgement clears the submitted question before generation while preserving newer text %j", async newer => {
+  vi.stubEnv("NEXT_PUBLIC_CHAT_STREAMING_ENABLED", "true");
+  let pipe!: ReadableStreamDefaultController<Uint8Array>;
+  let submitted!: Record<string, string>;
+  const stream = new ReadableStream<Uint8Array>({ start(controller) { pipe = controller; } });
+  const frame = (event: string, data: unknown) => new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  intercept = (path, options) => {
+    if (!path.endsWith("/turns/stream")) return;
+    submitted = JSON.parse(String(options.body));
+    return Promise.resolve(new Response(stream, { headers: { "content-type": "text/event-stream" } }));
+  };
+  mount(); await screen.findByText("A saved answer");
+  const input = screen.getByRole("textbox", { name: "Message" });
+  fireEvent.change(input, { target: { value: "Question sent with Enter" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(submitted).toBeDefined());
+  if (newer) fireEvent.change(input, { target: { value: newer } });
+  const completed = { ...stored("Streaming final answer"), id: crypto.randomUUID(), sequence: 2,
+    client_request_id: submitted.client_request_id, question: submitted.question };
+  const running = { ...completed, status: "RUNNING", answer: null, query_id: null, citations: [],
+    finished_at: null, error_code: null, retrieval_count: 0, execution_expired: false };
+  await act(async () => pipe.enqueue(frame("accepted", { turn: running, replayed: false })));
+  await waitFor(() => expect(input).toHaveValue(newer));
+  expect(screen.getAllByText("Question sent with Enter")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+  expect(screen.queryByText("Streaming final answer")).toBeNull();
+  await act(async () => pipe.enqueue(frame("provisional", { text: "Still generating " })));
+  expect(await screen.findByLabelText("Unverified response")).toHaveTextContent("Still generating");
+  expect(input).toHaveValue(newer);
+  rows.get(A)!.get(X)!.turns.push(completed);
+  await act(async () => pipe.enqueue(frame("complete", { receipt: { turn: { ...completed, execution_expired: false }, replayed: false }, http_status: 200 })));
+  await screen.findByText("Streaming final answer");
+  expect(input).toHaveValue(newer);
+});
+it("mid-stream session expiry clears private output and reauthentication observes the interrupted attempt without replay", async () => {
+  vi.stubEnv("NEXT_PUBLIC_CHAT_STREAMING_ENABLED", "true");
+  let pipe!: ReadableStreamDefaultController<Uint8Array>;
+  let submitted!: Record<string, string>;
+  const stream = new ReadableStream<Uint8Array>({ start(controller) { pipe = controller; } });
+  const frame = (event: string, data: unknown) => new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  intercept = (path, options) => {
+    if (!path.endsWith("/turns/stream")) return;
+    submitted = JSON.parse(String(options.body));
+    return Promise.resolve(new Response(stream, { headers: { "content-type": "text/event-stream" } }));
+  };
+  mount(); await screen.findByText("A saved answer");
+  send("Private streaming question");
+  await waitFor(() => expect(submitted).toBeDefined());
+  const running = { ...stored(), id: crypto.randomUUID(), sequence: 2, question: submitted.question,
+    client_request_id: submitted.client_request_id, status: "RUNNING", answer: null, query_id: null,
+    citations: [], finished_at: null, error_code: null, retrieval_count: 0 } as StoredTurn;
+  rows.get(A)!.get(X)!.turns.push(running);
+  await act(async () => {
+    pipe.enqueue(frame("accepted", { turn: { ...running, execution_expired: false }, replayed: false }));
+    pipe.enqueue(frame("provisional", { text: "Private unverified stream " }));
+  });
+  expect(await screen.findByLabelText("Unverified response")).toHaveTextContent("Private unverified stream");
+  cookie = null;
+  const interrupted = { ...running, status: "INTERRUPTED", finished_at: fixture.submission.turn.finished_at, error_code: "TURN_INTERRUPTED" } as StoredTurn;
+  rows.get(A)!.get(X)!.turns[1] = interrupted;
+  await act(async () => pipe.enqueue(frame("error", { code: "SESSION_EXPIRED", message: "Your session expired. Sign in again to continue." })));
+  await screen.findByRole("main", { name: "Application sign-in" });
+  expect(screen.queryByLabelText("Unverified response")).toBeNull();
+  expect(screen.queryByText("Private unverified stream")).toBeNull();
+  expect(screen.queryByText("A saved answer")).toBeNull();
+  expect(screen.queryByText("Conversation service is unavailable.")).toBeNull();
+  expect(requests()).toHaveLength(1);
+  cookie = A;
+  await act(async () => { await session.refresh(); });
+  await screen.findByText(/This attempt was interrupted/);
+  expect(screen.getByText("Private streaming question")).toBeInTheDocument();
+  expect(screen.queryByText("Private unverified stream")).toBeNull();
+  expect(requests()).toHaveLength(1);
+  expect(rows.get(A)!.get(X)!.turns[1]).toMatchObject({ status: "INTERRUPTED", answer: null, client_request_id: submitted.client_request_id });
+});
 it("mounted create and submit use canonical server ID, no browser history or question URL", async () => {
   rows.get(A)!.clear(); go("/chat"); mount(); await screen.findByText(`Verified ${A}`);
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Private follow up" } });

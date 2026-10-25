@@ -23,7 +23,8 @@ from .contracts import (
     FileEvidencePayload,
 )
 
-from .finalization import finalize_answer
+from .finalization import finalize_answer, provenance_response
+from app.services.chat_stream import emit, provisional_text, stream_sink
 
 MAX_AGENT_CYCLES = 6
 MAX_MODEL_HISTORY_CHARS = 128000
@@ -55,7 +56,30 @@ def build_tool_graph(
         if sum(len(m.model_dump_json()) for m in state["messages"]) > MAX_MODEL_HISTORY_CHARS:
             return {"failure": "MESSAGE_LIMIT"}
         try:
-            step = await chat.step(messages=state["messages"], tools=definitions)
+            if stream_sink.get() is not None:
+                await emit("state", {"phase": "searching"})
+                # Re-evaluate ordered provenance before every model call. Metadata,
+                # missing/failed reads and unresolved references never stream prose.
+                eligible = provenance_response(state) is None
+                previous_text = ""
+
+                async def on_text(text: str) -> None:
+                    nonlocal previous_text
+                    safe = provisional_text(text) if eligible else ""
+                    if safe and safe != previous_text:
+                        await emit("provisional", {"text": safe})
+                        previous_text = safe
+
+                stream_step = getattr(chat, "stream_step", None)
+                if stream_step is None:
+                    raise AgentResponseError("Streaming provider unavailable")
+                step = await stream_step(
+                    messages=state["messages"], tools=definitions, on_text=on_text
+                )
+                if step.tool_calls:
+                    await emit("state", {"phase": "searching"})
+            else:
+                step = await chat.step(messages=state["messages"], tools=definitions)
             step = AgentStepResult.model_validate_json(step.model_dump_json())
         except AgentResponseError:
             return {"cycle_count": count + 1, "failure": "MALFORMED_RESPONSE"}

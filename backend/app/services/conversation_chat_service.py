@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.services.chat_stream import emit, stream_sink
 from app.db.enums import DriveFileStatus
 from app.db.models import Chunk, Document, DriveFile, QueryHistory
 from app.db.models.conversation_turn import TurnStatus
@@ -265,6 +266,9 @@ class ConversationChatService:
         initial_cancellations = task.cancelling() if task is not None else 0
         stage = "history_loading"
         try:
+            if stream_sink.get() is not None:
+                await emit("accepted", response.model_dump(mode="json"))
+            await emit("state", {"phase": "searching"})
             async with asyncio.timeout(self.generation_timeout) as budget:
                 async with self.read_sessions() as db:
                     await db.execute(text("SET LOCAL statement_timeout='10s'"))
@@ -288,6 +292,7 @@ class ConversationChatService:
                 raise asyncio.CancelledError()
             # Validate bounded canonical fields before entering publication.
             stage = "result_validation"
+            await emit("state", {"phase": "validating"})
             citations = [SavedCitation.model_validate(c) for c in result.citations]
             if (
                 not result.answer.strip()
