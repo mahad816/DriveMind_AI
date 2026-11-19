@@ -20,8 +20,12 @@ def decode_plain_text_bytes(data: bytes) -> str:
 
 
 def normalize_extracted_text(text: str) -> str:
-    """Normalize line endings and trim trailing whitespace per line."""
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    """Normalize line endings, drop NUL characters and trim trailing whitespace per line.
+
+    NUL (U+0000) is dropped because PostgreSQL text columns cannot store it. Math-heavy PDFs
+    emit it for large brackets, and one such character made the whole document unstorable.
+    """
+    normalized = text.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.rstrip() for line in normalized.split("\n")]
     while lines and lines[-1] == "":
         lines.pop()

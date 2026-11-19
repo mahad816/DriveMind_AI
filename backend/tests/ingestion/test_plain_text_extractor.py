@@ -117,3 +117,17 @@ def test_builtin_registration_exposes_txt_and_google_doc_extractors() -> None:
 
     assert txt_result.text == "hello txt"
     assert doc_result.text == "hello doc"
+
+
+def test_normalize_extracted_text_drops_nul_but_keeps_everything_else() -> None:
+    """PostgreSQL cannot store U+0000; the surrounding text must be left exactly as it was."""
+    from app.ingestion.extractors.plain_text import normalize_extracted_text
+
+    assert normalize_extracted_text("p(i) \x00x\x00 + 1\r\nnext\x00") == "p(i) x + 1\nnext"
+    assert normalize_extracted_text("keep \x01 this\ttab") == "keep \x01 this\ttab"
+    assert "\x00" not in normalize_extracted_text("\x00\x00")
+
+
+def test_plain_text_extractor_result_never_contains_nul() -> None:
+    result = PlainTextExtractor().extract(b"before\x00after", mime_type=TXT_MIME, filename="a.txt")
+    assert result.text == "beforeafter"
