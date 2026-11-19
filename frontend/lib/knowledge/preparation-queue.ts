@@ -6,6 +6,7 @@ import { DEMO_MODE } from "@/lib/demo";
 import {
   SingleFilePreparation, preparationEligibility, preparationFrame, type PreparationState,
 } from "./single-file-preparation";
+import { JoinedCheck } from "./joined-check";
 import {
   readPreparationGate, replaceQueue, queueChildStore,
   type PreparationQueueRecord,
@@ -29,7 +30,9 @@ export class PreparationQueue {
   private revision = sessionRevision();
   private generation = 0;
   private disposed = false;
-  private busy = false;
+  private gate = new JoinedCheck();
+  private get busy() { return this.gate.busy; }
+  private set busy(value: boolean) { this.gate.busy = value; }
   private child: SingleFilePreparation | null = null;
   private binding: string | null = null;
   private listeners = new Set<() => void>();
@@ -112,7 +115,9 @@ export class PreparationQueue {
     }
     return reserved;
   };
-  check = async () => {
+  /** Overlapping callers join the check in flight instead of being dropped. */
+  check = () => this.gate.join(() => this.runCheck());
+  private runCheck = async () => {
     if (this.busy || !this.live()) return;
     this.busy = true;
     try {

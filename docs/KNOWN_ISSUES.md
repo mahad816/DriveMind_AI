@@ -10,7 +10,7 @@ registry being updated.
 | Side | Where | Mechanism |
 |---|---|---|
 | Backend | `backend/tests/known_issues/` | `@known_issue("KI-xxx", ...)` = `xfail(strict=True, raises=AssertionError)` |
-| Frontend | `frontend/lib/knowledge/known-issues.test.tsx` | a "today" test pinning current behaviour + an `it.fails` test of the correct behaviour |
+| Frontend | `frontend/lib/knowledge/known-issues.test.tsx` (currently none open; the file is recreated when one is added) | a "today" test pinning current behaviour + an `it.fails` test of the correct behaviour |
 
 *Strict* means: when a fix makes the test pass, the suite goes **red** (XPASS / `it.fails`
 passing). The fixer then removes the marker (backend) or changes `it.fails` to `it`
@@ -18,7 +18,7 @@ passing). The fixer then removes the marker (backend) or changes `it.fails` to `
 
 ```bash
 cd backend  && uv run pytest tests/known_issues -rxX      # expect "passed, N xfailed"
-cd frontend && npx vitest run lib/knowledge/known-issues.test.tsx
+cd frontend && npx vitest run lib/knowledge/known-issues.test.tsx   # only while a frontend issue is open
 ```
 
 Rule for new entries: reproduce first, assert only what a user would call correct, add a
@@ -32,13 +32,6 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Cause:** `finalize_answer` validates that handles/markers exist and belong to the user (identity), by design nothing checks claim-level faithfulness (documented limitation; see also the existing test `test_content_evidence_and_real_handle_allow_grounded_answer`, which encodes the same gap).
 - **Test:** `test_ki002_claim_absent_from_evidence_is_not_published_with_a_citation` (xfail).
 - **Suggested direction:** not a quick patch. First measure how often it happens (the planned 24-case gold run), then consider an entailment/faithfulness check or quote-based answering. Decide approach with data, avoid shipping a heuristic that looks like safety but is not.
-
-### KI-012 — "Check status" can do nothing  *(user-visible, frontend)*
-- **Symptom:** the Check status button appears inert.
-- **Reproduced cause (partial):** `PreparationQueue.check()` (`frontend/lib/knowledge/preparation-queue.ts`) does `if (this.busy …) return;`, so a click while any operation runs is discarded and returns at once; the caller cannot tell and the UI shows no result.
-- **Tests:** `KI-012 (today)` / `KI-012 (correct)` (a second check must wait for / join the in-flight one).
-- **Not reproduced:** when a check *does* run and still cannot verify, `blocked()` republishes the identical message, so a repeat click looks unchanged. No test yet because the desired UI (timestamp? reason?) is a product decision.
-- **Suggested fix:** return the in-flight promise instead of dropping (join), then add a visible "checked just now / still unconfirmed because …" result.
 
 ### KI-020 — Indexing admission is a permanent fail-closed latch  *(unreproduced / needs decision, backend)*
 - **Observation:** `IndexingSupervisor._fail()` (`backend/app/services/indexing_lifecycle.py`) sets `FAILED` and stops; nothing returns it to `READY` without a process restart. The handoff reports one hosted case that a restart recovered after a transient provider problem.
@@ -64,3 +57,9 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Was:** every local refusal said "The Drive check was not accepted. Verify your connection…" though the backend was never called.
 - **Fix:** typed `DiscoveryBlockedError` reasons with their own messages (unfinished preparation, unreadable preparation record, a discovery already pending in this browser, no safe tab coordination). Denied browser storage says so and states nothing was sent. The "verify your connection" text now appears only after a request really was sent and rejected.
 
+### KI-012 — "Check status" could do nothing  *(fixed on branch `fix/check-status-join`)*
+- **Was:** `PreparationQueue.check()` and `DiscoveryController.check()` did `if (busy) return`, so a click during any running check, or during a submit/confirm, was discarded instantly. The screens also poll every 3 to 5 seconds, so the button often landed mid-poll. And a check that found the same blocked message republished it unchanged, so even a real check looked like nothing happened.
+- **Fix (control):** `lib/knowledge/joined-check.ts`. A click during a status check *joins* it (shares its single network read and resolves only when it truly finishes); a click during another operation waits for that operation, then checks. A finished check is never replayed from cache. Clicks can never submit work.
+- **Fix (feedback):** `useManualCheck` shows "Checking…" (button disabled), then "Checked at HH:MM:SS. No change." or "Status updated." on the discovery buttons and the Preparation screen, so the outcome is always visible.
+- **Deliberately not changed:** the "Check for files" (start) action still ignores a click while a check is running. Making it wait could let two submissions race, so it needs its own design.
+- **Tests:** `joined-check.test.ts` (6), `check-status-join.test.tsx` (8, 4 fail without the fix), plus UI tests in `drive-discovery.test.tsx`, `preparation-progress.test.tsx` and `queue-preparation.integration.test.tsx`.

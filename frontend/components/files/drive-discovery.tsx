@@ -6,6 +6,7 @@ import { RefreshCcw } from "lucide-react";
 import { useApplicationSession } from "@/components/providers/application-session-provider";
 import { Button } from "@/components/ui/button";
 import { DiscoveryController } from "@/lib/knowledge/discovery";
+import { useManualCheck } from "@/components/knowledge/use-manual-check";
 
 export function DriveDiscovery({ onComplete, compact = false, filesHeader = false }: { onComplete?: () => void; compact?: boolean; filesHeader?: boolean }) {
   const { userId } = useApplicationSession();
@@ -24,6 +25,7 @@ function OwnedDiscovery({ owner, onComplete, compact, filesHeader }: { owner: st
     const timer = setInterval(() => { void controller.check(); }, 5000);
     return () => { clearInterval(timer); controller.dispose(); };
   }, [controller]);
+  const manual = useManualCheck(() => controller.check(), () => { const s = controller.getSnapshot(); return `${s.phase}|${s.message}`; });
   const canStart = state.connected && ["idle", "complete"].includes(state.phase);
   if (filesHeader) return <section className="files-discovery" aria-label="Drive discovery">
     <Button variant="outline" disabled={!canStart} onClick={() => void controller.start()}>
@@ -32,7 +34,8 @@ function OwnedDiscovery({ owner, onComplete, compact, filesHeader }: { owner: st
     </Button>
     {state.phase !== "idle" && <div className="files-discovery-feedback">
       <p role="status" aria-live="polite">{state.message}</p>
-      <Button variant="ghost" size="sm" disabled={state.phase === "submitting"} onClick={() => void controller.check()}>Check sync status</Button>
+      <Button variant="ghost" size="sm" disabled={state.phase === "submitting" || manual.checking} onClick={() => void manual.check()}>Check sync status</Button>
+      {manual.note ? <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{manual.note}</p> : null}
       {!state.connected && state.phase !== "checking" && <Link href="/onboarding">Check Drive access</Link>}
     </div>}
   </section>;
@@ -45,9 +48,10 @@ function OwnedDiscovery({ owner, onComplete, compact, filesHeader }: { owner: st
     {state.job?.operation === "SYNC" && state.job.total !== undefined && state.job.total > 0 ? <p className="text-sm tabular-nums text-muted-foreground">{state.job.processed ?? 0} of {state.job.total} metadata updates processed</p> : null}
     <div className="flex flex-wrap gap-2">
       <Button variant={compact ? "outline" : "default"} disabled={!canStart} onClick={() => void controller.start()}>{compact ? "Check for files" : "Check Drive for files / changes"}</Button>
-      <Button variant={compact ? "ghost" : "outline"} disabled={state.phase === "submitting"} onClick={() => void controller.check()}>{compact ? "Check status" : "Check discovery status"}</Button>
+      <Button variant={compact ? "ghost" : "outline"} disabled={state.phase === "submitting" || manual.checking} onClick={() => void manual.check()}>{compact ? "Check status" : "Check discovery status"}</Button>
       {!state.connected && state.phase !== "checking" ? <Link className="inline-flex min-h-11 items-center text-sm underline underline-offset-4" href="/onboarding">Connect or check Drive access</Link> : null}
     </div>
+    {manual.note ? <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{manual.note}</p> : null}
     {compact ? <p className="text-sm text-muted-foreground">File details only; no content is prepared.</p> : null}
   </section>;
 }
