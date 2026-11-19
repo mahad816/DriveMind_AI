@@ -44,4 +44,8 @@ async def indexing_health(request: Request) -> dict[str, str]:
     )
     if reason is not None:
         result["reason"] = reason
+    # Still open, but a dependency is failing inside its recovery window (fixed code only).
+    degraded = supervisor.degraded if supervisor is not None else None
+    if degraded is not None:
+        result["degraded"] = degraded
     return result

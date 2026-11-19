@@ -579,3 +579,45 @@ async def test_normal_adapter_cannot_bypass_enablement_through_test_injection(wo
             main.create_app(indexing_test_runtime=cast(DisposableIndexingRuntime, normal))
     finally:
         await r.refresh.shutdown_and_dispose(r.engine.dispose)
+
+
+async def test_dependency_hiccup_recovers_but_a_persistent_outage_closes_after_the_window(
+    world, monkeypatch
+):
+    """KI-020 on the real configuration path: a brief Qdrant/database blip must not latch the door."""
+    from app.services.indexing_runtime import IndexingActivationError, NormalIndexingRuntime
+
+    app, _, _ = await normal_app(world, monkeypatch)
+    native = NormalIndexingRuntime.check_dependencies
+    mode = {"fail": 3}
+    clock = {"now": 1000.0}
+
+    async def flaky(self):
+        if mode["fail"] == -1 or mode["fail"] > 0:
+            mode["fail"] -= mode["fail"] > 0
+            raise IndexingActivationError("QDRANT_UNAVAILABLE")
+        return await native(self)
+
+    async with app.router.lifespan_context(app):
+        sup = app.state.indexing_supervisor
+        sup._clock = lambda: clock["now"]
+        monkeypatch.setattr(NormalIndexingRuntime, "check_dependencies", flaky)
+        async with asyncio.timeout(5):
+            while sup.degraded is None:
+                await asyncio.sleep(0.02)
+            while sup.degraded is not None:  # three failed rounds, then a real passing one
+                await asyncio.sleep(0.02)
+        assert sup.healthy and sup.failure_reason is None
+        assert not sup.tasks["dependencies"].done()
+        # Now an outage that never ends: still open inside the window, closed after it.
+        mode["fail"] = -1
+        async with asyncio.timeout(5):
+            while sup.degraded is None:
+                await asyncio.sleep(0.02)
+        clock["now"] += sup.runtime.outage_tolerance_seconds - 1
+        await asyncio.sleep(0.3)
+        assert sup.healthy
+        clock["now"] += 2
+        await asyncio.wait([sup.tasks["dependencies"]], timeout=5)
+        assert not sup.healthy and sup.failure_reason == "QDRANT_UNAVAILABLE"
+        assert (await post(app, world)).status_code == 503

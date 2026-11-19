@@ -508,7 +508,10 @@ async def test_application_cannot_start_a_second_owned_lifespan(world):
 
 
 async def test_idle_claim_connection_stall_is_bounded_and_unhealthy(world, monkeypatch):
-    r = await runtime(world)
+    # A stalled claim is a momentary-outage candidate (KI-020): it is retried, but only inside the
+    # recovery window. A tiny window keeps this test about the BOUND: a stall that never ends must
+    # still close admission. Recovery inside the window is tested in test_indexing_outage_recovery.py.
+    r = await runtime(world, outage_tolerance_seconds=0.2)
     app = create_app(indexing_test_runtime=r)
     entered = asyncio.Event()
 

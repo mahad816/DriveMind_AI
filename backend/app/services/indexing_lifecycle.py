@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
@@ -23,6 +25,7 @@ from app.services.indexing_runtime import (
     NormalIndexingRuntime,
     IndexingActivationError,
     check_collection,
+    is_transient,
 )
 from app.services.indexing_worker import IndexingWorker, StageProgress
 
@@ -47,6 +50,7 @@ class DisposableIndexingRuntime:
     drain_seconds: float = 20.0
     cleanup_seconds: float = 5.0
     classification_batch: int = 50
+    outage_tolerance_seconds: float = 30.0
 
     def __post_init__(self) -> None:
         from urllib.parse import urlsplit
@@ -86,6 +90,11 @@ class DisposableIndexingRuntime:
         ):
             if not math.isfinite(value) or not 0.01 <= value <= 60:
                 raise ValueError("Indexing lifecycle intervals must be bounded")
+        if (
+            not math.isfinite(self.outage_tolerance_seconds)
+            or not 0.01 <= self.outage_tolerance_seconds <= 300
+        ):
+            raise ValueError("Indexing recovery window must be bounded")
         if not 1 <= self.classification_batch <= 100:
             raise ValueError("Indexing classification batch must be bounded")
 
@@ -138,6 +147,46 @@ class IndexingSupervisor:
         self._admissions: set[AdmissionPermit] = set()
         self._admissions_idle = asyncio.Event()
         self._admissions_idle.set()
+        # source -> (monotonic time of first failure, consecutive failures, fixed nonsecret code)
+        self._outages: dict[str, tuple[float, int, str]] = {}
+        self._clock: Callable[[], float] = time.monotonic
+
+    @property
+    def degraded(self) -> str | None:
+        """Fixed nonsecret code while a dependency is failing but still inside its recovery window."""
+        return next((code for _, _, code in self._outages.values()), None)
+
+    def _tolerate(self, source: str, error: BaseException, *, code: str | None = None) -> bool:
+        """Decide whether ``error`` may be retried. False means: close the door as before.
+
+        Only momentary outages (timeouts, dropped connections, brief Qdrant loss) are retried,
+        and only until ``outage_tolerance_seconds`` have passed since this source *started* failing
+        continuously. Real damage, unknown errors and shutdown never retry. No error text is
+        stored or logged: only a fixed code.
+        """
+        if self.stop.is_set() or not is_transient(error):
+            return False
+        now = self._clock()
+        since, attempts, _ = self._outages.get(source, (now, 0, ""))
+        fixed = error.code if isinstance(error, IndexingActivationError) else "DATABASE_UNAVAILABLE"
+        if now - since >= self.runtime.outage_tolerance_seconds:
+            self._outages.pop(source, None)
+            self.failure_reason = code or fixed
+            return False
+        self._outages[source] = (since, attempts + 1, fixed)
+        if attempts == 0:
+            logger.warning(
+                "Indexing %s is degraded (%s); retrying within its recovery window.", source, fixed
+            )
+        return True
+
+    def _recovered(self, source: str) -> None:
+        if self._outages.pop(source, None) is not None:
+            logger.info("Indexing %s recovered.", source)
+
+    def _backoff(self, source: str) -> float:
+        attempts = self._outages[source][1]
+        return min(self.runtime.poll_seconds * float(2 ** (attempts - 1)), 10.0)
 
     @property
     def healthy(self) -> bool:
@@ -166,6 +215,11 @@ class IndexingSupervisor:
             error = task.exception()  # Observe without logging sensitive exception details.
             if isinstance(error, IndexingActivationError):
                 self.failure_reason = error.code
+            elif error is not None and self.failure_reason is None:
+                # Always leave a fixed diagnostic (never error text). A specific activation code
+                # from a sibling task still replaces it, so the answer does not depend on which
+                # loop notices the same outage first.
+                self.failure_reason = "EXECUTOR_TASK_FAILED"
         if not self.stop.is_set():
             self._fail()
 
@@ -261,6 +315,14 @@ class IndexingSupervisor:
             if isinstance(self.runtime, NormalIndexingRuntime):
                 await check_collection(self.worker.settings)
         except Exception as exc:
+            if is_transient(exc):
+                # Refuse this one request (the caller answers 503, try again). The polling and
+                # dependency loops own the decision to close for good, after the recovery window.
+                logger.warning(
+                    "Indexing admission refused: dependency momentarily unavailable (%s).",
+                    exc.code if isinstance(exc, IndexingActivationError) else type(exc).__name__,
+                )
+                return False
             self.failure_reason = (
                 exc.code if isinstance(exc, IndexingActivationError) else "DATABASE_UNAVAILABLE"
             )
@@ -341,8 +403,18 @@ class IndexingSupervisor:
                 break
             # Bound idle connection/claim stalls without putting a deadline around
             # a legitimate long stage (its independent heartbeat supervises it).
-            async with asyncio.timeout(self.runtime.database_timeout):
-                claim = await self.worker.claim_next()
+            try:
+                async with asyncio.timeout(self.runtime.database_timeout):
+                    claim = await self.worker.claim_next()
+            except Exception as exc:
+                # Idle claiming holds no job, so retrying is safe. A claim that committed while its
+                # reply was lost expires and is classified exactly as after a restart. A failure
+                # while *executing* a stage (below) is never retried: its state is uncertain.
+                if not self._tolerate("worker", exc):
+                    raise
+                await self._pause(self._backoff("worker"))
+                continue
+            self._recovered("worker")
             if claim is not None:
                 if self.stop.is_set() or not self.healthy:
                     if not self.stop.is_set():
@@ -370,11 +442,18 @@ class IndexingSupervisor:
             try:
                 done, _ = await asyncio.wait([probe], timeout=2 * self.runtime.database_timeout)
                 if not done:
-                    # Close health before awaiting cancellation-resistant SQL cleanup.
+                    # A round that outlives twice its own bounded timeouts is not a hiccup: its
+                    # cleanup may be stuck. Close health first, before awaiting that cleanup.
                     self.failure_reason = "DEPENDENCY_CHECK_TIMEOUT"
                     self._fail()
                     probe.cancel()
-                await asyncio.shield(probe)
+                try:
+                    await asyncio.shield(probe)
+                except Exception as exc:
+                    if not self._tolerate("dependencies", exc):
+                        raise
+                else:
+                    self._recovered("dependencies")
             finally:
                 if not probe.done() and not probe.cancelling():
                     probe.cancel()
@@ -424,7 +503,13 @@ class IndexingSupervisor:
         while not self.stop.is_set():
             await self._pause(self.runtime.classifier_seconds)
             if not self.stop.is_set():
-                await self._classification_round()
+                try:
+                    await self._classification_round()
+                except Exception as exc:
+                    if not self._tolerate("classifier", exc):
+                        raise
+                else:
+                    self._recovered("classifier")
 
     def begin_shutdown(self) -> None:
         """Synchronous close, once-only cancellation, strongly retained final join."""

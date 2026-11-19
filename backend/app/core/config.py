@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     indexing_startup_timeout: float = Field(default=30.0, ge=0.05, le=60, allow_inf_nan=False)
     indexing_drain_seconds: float = Field(default=20.0, ge=0.01, le=60, allow_inf_nan=False)
     indexing_cleanup_seconds: float = Field(default=5.0, ge=0.01, le=60, allow_inf_nan=False)
+    # How long a dependency may keep failing with momentary errors (timeouts, dropped connections)
+    # before indexing admission is closed. Real damage (schema, configuration) closes at once.
+    indexing_outage_tolerance_seconds: float = Field(
+        default=30.0, ge=0.05, le=300, allow_inf_nan=False
+    )
 
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
