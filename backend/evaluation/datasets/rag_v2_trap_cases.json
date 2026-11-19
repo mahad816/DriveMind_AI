@@ -2,6 +2,7 @@
  "version": 2,
  "corpus": "synthetic Larkspur Systems + public noise (see corpus manifest)",
  "created": "2026-11-20",
+ "version_note": "v2: 18 original traps + 13 more trap kinds + 18 paired answerable controls",
  "purpose": "Invention traps: the files hold a neighbouring fact, but not the one asked for. A good reply gives what the files say and does not make up the rest.",
  "cases": [
   {
@@ -467,6 +468,831 @@
    "split": "test",
    "judge_note": "Missing part: an exact release date. Only 'the first half of December 2026' is stated.",
    "trap": "a planning window is given, an exact date is not"
+  },
+  {
+   "id": "tr19",
+   "category": "invention_trap",
+   "question": "Who does the Security Lead report to?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "Only 'all department heads report to the CEO' and 'Support reports to the Operations Manager' are stated; nothing says whom the Security Lead reports to.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/team_directory.txt",
+     "quote": "Reporting lines: all department heads report to the CEO."
+    },
+    {
+     "file": "synthetic/team_directory.txt",
+     "quote": "Support reports to the Operations Manager."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Only two reporting lines are stated: all department heads report to the CEO, and Support reports to the Operations Manager. The Security Lead is listed under Operations but no reporting line is stated for the role. Naming the CEO or the Operations Manager as the Security Lead's manager is an unsupported inference.",
+   "trap": "two reporting rules exist; neither names the Security Lead"
+  },
+  {
+   "id": "tr20",
+   "category": "invention_trap",
+   "question": "What mileage rate is paid for using a company car?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "Only the rate for a private car (0.35 USD per kilometre) is stated; company cars are not mentioned.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/expense_policy_v2.txt",
+     "quote": "Business use of a private car is reimbursed at 0.35 USD per kilometre."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Only the rate for business use of a PRIVATE car (0.35 USD per kilometre) is stated. Company cars are not mentioned. Applying 0.35 to a company car is wrong.",
+   "trap": "private car rate exists; company car does not"
+  },
+  {
+   "id": "tr21",
+   "category": "invention_trap",
+   "question": "What availability does Larkspur guarantee in the Basic plan?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/product_spec_scheduler_v2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "99.9"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "The API availability target is 99.9 percent per month. No plan-specific availability is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/product_spec_scheduler_v2.txt",
+     "quote": "The availability target for the API is 99.9 percent per month."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Missing part: any availability that differs by plan. The files give one general API availability target (99.9 percent per month) and say nothing per plan.",
+   "trap": "a general target exists; a per-plan figure does not"
+  },
+  {
+   "id": "tr22",
+   "category": "invention_trap",
+   "question": "What was Larkspur's total spend in the third quarter of 2026?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "Only Q1 (212,300) and Q2 (236,900) actual spend and the first-half total are given; no Q3 figure.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/budget_2026.txt",
+     "quote": "Q2 2026: 236,900"
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Actual spend is given for Q1 and Q2 only (and the first half total). No Q3 figure exists. Deriving one from the forecast or the approved total is wrong.",
+   "trap": "neighbouring quarters exist; the asked quarter does not"
+  },
+  {
+   "id": "tr23",
+   "category": "invention_trap",
+   "question": "Does the SMSGate contract give Larkspur a service credit for outages longer than 6 hours?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The email only confirms one credit of 300 USD for the 3 September outage; it states no credit rules or thresholds.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_email_smsgate.txt",
+     "quote": "As agreed we credit 300 USD to your next invoice."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "The email confirms a single 300 USD credit for the 3-hour outage of 3 September. It states no credit rules, outage-length thresholds or general terms. Saying the contract does or does not give a credit for 6-hour outages is an unsupported claim.",
+   "trap": "one credit is documented; the rule behind it is not"
+  },
+  {
+   "id": "tr24",
+   "category": "invention_trap",
+   "question": "For how many days are video recordings of Larkspur's meetings kept?",
+   "language": "en",
+   "expected_behavior": "correct_premise",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "None: Larkspur does not keep video recordings of meetings.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/data_retention_policy.txt",
+     "quote": "Larkspur does not keep video recordings of meetings."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "False premise: Larkspur does not keep video recordings of meetings, so there is no retention period. Giving a number of days is wrong; saying no recordings are kept is correct.",
+   "trap": "the question assumes recordings exist"
+  },
+  {
+   "id": "tr25",
+   "category": "invention_trap",
+   "question": "How long are SMSGate's message logs kept?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The files do not state any retention period for SMSGate's logs. The 90 days in the retention policy is for Larkspur's own application logs.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/data_retention_policy.txt",
+     "quote": "Application logs are kept for 90 days and then deleted automatically."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "The 90-day figure is Larkspur's own application log retention. SMSGate's message log retention is not stated anywhere. Presenting 90 days as SMSGate's period is wrong.",
+   "trap": "a similar fact belongs to a different party"
+  },
+  {
+   "id": "tr26",
+   "category": "invention_trap",
+   "question": "What fee does CloudHost charge to export Larkspur's data when the agreement ends?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The summary says data stays in the Frankfurt region and names a data processing agreement, but states no export fee.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_contract_cloudhost.txt",
+     "quote": "Data stays in the Frankfurt region."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "The contract summary states nothing about data export or its cost. Inventing a fee, or saying there is none, is unsupported.",
+   "trap": "data terms exist; an export fee does not"
+  },
+  {
+   "id": "tr27",
+   "category": "invention_trap",
+   "question": "What happens to Larkspur's data at CloudHost after the agreement ends?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The summary says CloudHost acts as a processor under a data processing agreement (Annex B) but does not describe what happens at the end.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_contract_cloudhost.txt",
+     "quote": "CloudHost acts as a processor. The data processing agreement is attached as Annex B."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "End-of-contract data handling is not described. The 7-year rule in the data retention policy concerns customer appointment data after a CUSTOMER contract ends, not CloudHost. Applying it to CloudHost, or inventing a deletion period, is wrong.",
+   "trap": "a retention rule exists, for a different relationship"
+  },
+  {
+   "id": "tr28",
+   "category": "invention_trap",
+   "question": "Does Larkspur offer phone support to its customers?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/faq_support.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "do not offer",
+     "does not offer",
+     "not offer",
+     "no phone",
+     "not available",
+     "doesn't offer"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "No. The FAQ says Larkspur does not offer phone support.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/faq_support.txt",
+     "quote": "We do not offer phone support."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "trap": "the files state an absence; a stated 'no' must be given as 'no'"
+  },
+  {
+   "id": "tr29",
+   "category": "invention_trap",
+   "question": "Which Sara Khan was the on-call engineer for incident INC-211: the Backend Engineer or the Support Specialist?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt",
+    "synthetic/team_directory.txt"
+   ],
+   "citation_mode": "any",
+   "must_include": [
+    [
+     "Backend Engineer",
+     "Engineering"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "The Sara Khan in Engineering, the Backend Engineer.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "On-call engineer: Sara Khan (Engineering)."
+    },
+    {
+     "file": "synthetic/team_directory.txt",
+     "quote": "Sara Khan, Backend Engineer"
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "trap": "two people share a name; the incident names the department"
+  },
+  {
+   "id": "tr30",
+   "category": "invention_trap",
+   "question": "What was the daily meal reimbursement limit under the original expense policy, version 1.0?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/expense_policy_v1.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "25"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "25 USD per day.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/expense_policy_v1.txt",
+     "quote": "Meals while travelling on company business are reimbursed up to 25 USD per day."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "trap": "an old version asked for by name must not be answered with the current value"
+  },
+  {
+   "id": "tr31",
+   "category": "invention_trap",
+   "question": "What is the nightly hotel limit for a trip to Lisbon?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/travel_policy.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "150"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "150 USD per night (the default; only San Francisco and New York are 220 USD).",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/travel_policy.txt",
+     "quote": "The nightly hotel limit is 150 USD."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "trap": "the specific-city exception must not be applied to another city"
+  },
+  {
+   "id": "tc01",
+   "category": "trap_control",
+   "question": "What notice period applies to an employee who leaves after probation?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/employee_handbook.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "30"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "30 days for the employee (60 days if the company ends the contract).",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "After probation the notice period is 30 days for the employee and 60 days for the company."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr01"
+  },
+  {
+   "id": "tc02",
+   "category": "trap_control",
+   "question": "Who leads the on-call rota?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/team_directory.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Tomas Silva"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Tomas Silva.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/team_directory.txt",
+     "quote": "Tomas Silva, Senior Engineer (lead of the on-call rota)"
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr02"
+  },
+  {
+   "id": "tc03",
+   "category": "trap_control",
+   "question": "What response time does CloudHost's premium support give for severity 1 tickets?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/vendor_contract_cloudhost.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "two-hour",
+     "two hours",
+     "2 hours",
+     "2-hour"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Two hours.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_contract_cloudhost.txt",
+     "quote": "Premium support is included with a two-hour response time for severity 1 tickets."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr03"
+  },
+  {
+   "id": "tc04",
+   "category": "trap_control",
+   "question": "How long does Larkspur keep its own database backups?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/data_retention_policy.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "35"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "35 days.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/data_retention_policy.txt",
+     "quote": "Database backups are kept for 35 days."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr04"
+  },
+  {
+   "id": "tc05",
+   "category": "trap_control",
+   "question": "How long were customers unable to book appointments during incident INC-204?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "47"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "47 minutes.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "Customers could not book appointments for 47 minutes."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr05"
+  },
+  {
+   "id": "tc06",
+   "category": "trap_control",
+   "question": "How much does the Plus plan cost per clinic per month?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/faq_support.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "149"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "149 USD.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/faq_support.txt",
+     "quote": "Plus: 149 USD per clinic per month."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr06"
+  },
+  {
+   "id": "tc07",
+   "category": "trap_control",
+   "question": "When does the travel policy allow taxis?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/travel_policy.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "unsafe"
+    ],
+    [
+     "luggage"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "When public transport is unsafe or unavailable, or when luggage makes it impractical.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/travel_policy.txt",
+     "quote": "Taxis are allowed when public transport is unsafe, unavailable, or when luggage makes it impractical."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr07"
+  },
+  {
+   "id": "tc08",
+   "category": "trap_control",
+   "question": "How many clinics were listed as customers in the board numbers of the 12 May 2026 meeting?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/meeting_notes_2026_05_12.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "214"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "214 clinics.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/meeting_notes_2026_05_12.txt",
+     "quote": "Customers: 214 clinics."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr08"
+  },
+  {
+   "id": "tc09",
+   "category": "trap_control",
+   "question": "What are Larkspur's core working hours?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/employee_handbook.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "10:00"
+    ],
+    [
+     "16:00"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "10:00 to 16:00 local time.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Core hours are 10:00 to 16:00 in your local time zone."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr09"
+  },
+  {
+   "id": "tc10",
+   "category": "trap_control",
+   "question": "Who must approve an expense above 1,500 USD?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/expense_policy_v2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Finance Lead"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "The manager and the Finance Lead.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/expense_policy_v2.txt",
+     "quote": "Expenses above 1,500 USD also need approval from the Finance Lead."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr10"
+  },
+  {
+   "id": "tc11",
+   "category": "trap_control",
+   "question": "What is the annual budget of the Engineering department?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/budget_2026.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "420,000"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "420,000 USD.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/budget_2026.txt",
+     "quote": "Engineering | 3 | 420,000"
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr11"
+  },
+  {
+   "id": "tc12",
+   "category": "trap_control",
+   "question": "Who was the on-call engineer for incident INC-211?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Sara Khan"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Sara Khan (Engineering).",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "On-call engineer: Sara Khan (Engineering)."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr12"
+  },
+  {
+   "id": "tc13",
+   "category": "trap_control",
+   "question": "How many days before the renewal date must Larkspur cancel the SMSGate contract in writing?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/vendor_email_smsgate.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "60 days"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "At least 60 days.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_email_smsgate.txt",
+     "quote": "unless you cancel in writing at least 60 days before the renewal date"
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr13"
+  },
+  {
+   "id": "tc14",
+   "category": "trap_control",
+   "question": "How much does the Premium plan cost per clinic per month?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/faq_support.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "299"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "299 USD.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/faq_support.txt",
+     "quote": "Premium: 299 USD per clinic per month."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr14"
+  },
+  {
+   "id": "tc15",
+   "category": "trap_control",
+   "question": "Within how many days of the expense date must a claim be submitted?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/expense_policy_v2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "45"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "45 days.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/expense_policy_v2.txt",
+     "quote": "Claims must be submitted through the finance portal within 45 days of the expense date."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr15"
+  },
+  {
+   "id": "tc16",
+   "category": "trap_control",
+   "question": "How many paid sick days per year does an employee get?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/employee_handbook.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "10"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "10 paid days.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Sick leave is 10 paid days per year."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr16"
+  },
+  {
+   "id": "tc17",
+   "category": "trap_control",
+   "question": "How many extra paid weeks of parental leave does Larkspur add for each parent?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/employee_handbook.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "two extra",
+     "2 extra",
+     "two additional",
+     "2 additional"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Two extra paid weeks.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Larkspur adds two extra paid weeks for each parent."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "pair_of": "tr17"
+  },
+  {
+   "id": "tc18",
+   "category": "trap_control",
+   "question": "When is Scheduler 2.1 planned for release?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/roadmap_2026.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "December"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "In the first half of December 2026.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/roadmap_2026.txt",
+     "quote": "Scheduler 2.1 planned for the first half of December 2026."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "pair_of": "tr18"
   }
  ]
 }

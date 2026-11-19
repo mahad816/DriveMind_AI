@@ -106,13 +106,24 @@ def test_trap_file_shape_and_balance():
     cases = TRAPS["cases"]
     ids = [c["id"] for c in cases]
     baseline = {c["id"] for c in DATASET["cases"]}
-    assert len(set(ids)) == len(ids) == 18 and not baseline & set(ids)
-    assert {c["category"] for c in cases} == {"invention_trap"}
-    assert {c["expected_behavior"] for c in cases} == {"not_found", "partial"}
+    assert len(set(ids)) == len(ids) == 49 and not baseline & set(ids)
+    traps = [c for c in cases if c["category"] == "invention_trap"]
+    controls = [c for c in cases if c["category"] == "trap_control"]
+    assert len(traps) == 31 and len(controls) == 18
     assert {c["split"] for c in cases} == {"dev", "test"}
-    assert all(c["trap"] if c["expected_behavior"] == "answer" else True for c in cases)
-    # every judged trap tells the judge exactly what is missing from the files
-    assert all(c.get("judge_note") for c in cases)
+    # a trap must have a reason; every trap that expects a refusal or partial answer carries a judge note
+    assert all(c.get("trap") for c in traps)
+    assert all(c.get("judge_note") for c in traps if c["expected_behavior"] != "answer")
+    # each control is an answerable twin of one original trap: a system that refuses everything fails them
+    originals = {c["id"] for c in traps}
+    assert all(c["expected_behavior"] == "answer" and c["pair_of"] in originals for c in controls)
+    assert len({c["pair_of"] for c in controls}) == 18
+    assert {c["expected_behavior"] for c in traps} >= {
+        "not_found",
+        "partial",
+        "correct_premise",
+        "answer",
+    }
 
 
 def test_partial_case_needs_expected_files_and_anchors():
