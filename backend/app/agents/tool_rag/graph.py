@@ -23,7 +23,9 @@ from .contracts import (
     FileEvidencePayload,
 )
 
+from .claim_check import ClaimChecker, evidence_text
 from .finalization import finalize_answer, provenance_response
+from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.services.chat_stream import emit, provisional_text, stream_sink
 
 MAX_AGENT_CYCLES = 6
@@ -42,7 +44,9 @@ def route_after_agent(state: AgentState) -> Literal["FINAL", "TOOLS", "ERROR"]:
 
 
 def build_tool_graph(
-    chat: AgentChatService, executor: ToolExecutor | None = None
+    chat: AgentChatService,
+    executor: ToolExecutor | None = None,
+    claim_check: ClaimChecker | None = None,
 ) -> CompiledStateGraph[AgentState, ExecutionContext, AgentState, AgentState]:
     execution = executor or ToolExecutor()
     definitions = tuple(ToolDefinition.model_validate(d) for d in execution.registry.definitions())
@@ -150,12 +154,24 @@ def build_tool_graph(
             "pending": None,
         }
 
-    def finalize(state: AgentState, runtime: Runtime[ExecutionContext]) -> dict[str, object]:
+    async def finalize(state: AgentState, runtime: Runtime[ExecutionContext]) -> dict[str, object]:
         pending = state["pending"]
         if pending is None or not pending.text or pending.tool_calls:
             return {"failure": "STATE_ERROR", "final_answer": FAILURE_MESSAGE}
+        text = pending.text.strip()
+        if claim_check is not None and state["evidence"]:
+            # KI-002: drop statements the retrieved evidence does not support. Never raises;
+            # an unusable check leaves the text unchanged.
+            try:
+                checked = await claim_check(text, evidence_text(state["evidence"]))
+            except Exception:  # a broken checker must not take answering down with it
+                checked = None
+            if checked is not None:
+                if checked.nothing_left:
+                    return {"final_answer": NO_EVIDENCE_ANSWER, "citations": ()}
+                text = checked.text
         try:
-            answer = finalize_answer(pending.text.strip(), state, runtime.context.handles)
+            answer = finalize_answer(text, state, runtime.context.handles)
         except Exception:
             return {
                 "failure": "UNSAFE_FINAL_OUTPUT",

@@ -89,6 +89,10 @@ class Settings(BaseSettings):
     # Explicit backend opt-in; the frontend build flag must be rolled out separately.
     chat_streaming_enabled: bool = False
     agent_graph_enabled: bool = False
+    # KI-002: after the tool agent writes an answer, drop statements the retrieved evidence does not
+    # support (one extra small-model call). Fails open: an unusable check leaves the answer as is.
+    claim_check_enabled: bool = True
+    claim_check_model: str = "gpt-5.4-mini"
     agent_max_rewrite_attempts: int = 2
 
     frontend_url: str = "http://localhost:3000"
