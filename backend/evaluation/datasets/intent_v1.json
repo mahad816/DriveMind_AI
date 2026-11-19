@@ -1,0 +1,391 @@
+{
+ "version": "intent_v1",
+ "note": "Labels follow the routing prompt: when unsure or when files may be needed, document_question. Includes mixed and Roman Urdu cases.",
+ "cases": [
+  {
+   "id": "i001",
+   "text": "Hello, can you hear me?",
+   "intent": "greeting"
+  },
+  {
+   "id": "i002",
+   "text": "hi there",
+   "intent": "greeting"
+  },
+  {
+   "id": "i003",
+   "text": "Hey!",
+   "intent": "greeting"
+  },
+  {
+   "id": "i004",
+   "text": "good morning!",
+   "intent": "greeting"
+  },
+  {
+   "id": "i005",
+   "text": "How are you?",
+   "intent": "greeting"
+  },
+  {
+   "id": "i006",
+   "text": "hellooo",
+   "intent": "greeting"
+  },
+  {
+   "id": "i007",
+   "text": "yo whats up",
+   "intent": "greeting"
+  },
+  {
+   "id": "i008",
+   "text": "Hi, is anyone there?",
+   "intent": "greeting"
+  },
+  {
+   "id": "i009",
+   "text": "hola",
+   "intent": "greeting"
+  },
+  {
+   "id": "i010",
+   "text": "salam",
+   "intent": "greeting"
+  },
+  {
+   "id": "i011",
+   "text": "assalam o alaikum",
+   "intent": "greeting"
+  },
+  {
+   "id": "i012",
+   "text": "kya haal hai?",
+   "intent": "greeting"
+  },
+  {
+   "id": "i013",
+   "text": "heyy how's it going",
+   "intent": "greeting"
+  },
+  {
+   "id": "i014",
+   "text": "Good evening DriveMind",
+   "intent": "greeting"
+  },
+  {
+   "id": "i015",
+   "text": "can you hear me",
+   "intent": "greeting"
+  },
+  {
+   "id": "i016",
+   "text": "hii",
+   "intent": "greeting"
+  },
+  {
+   "id": "i017",
+   "text": "  HELLO  ",
+   "intent": "greeting"
+  },
+  {
+   "id": "i018",
+   "text": "Thanks a lot",
+   "intent": "thanks"
+  },
+  {
+   "id": "i019",
+   "text": "thank you so much!",
+   "intent": "thanks"
+  },
+  {
+   "id": "i020",
+   "text": "shukriya",
+   "intent": "thanks"
+  },
+  {
+   "id": "i021",
+   "text": "ok great, thanks",
+   "intent": "thanks"
+  },
+  {
+   "id": "i022",
+   "text": "cool",
+   "intent": "thanks"
+  },
+  {
+   "id": "i023",
+   "text": "perfect, appreciate it",
+   "intent": "thanks"
+  },
+  {
+   "id": "i024",
+   "text": "thx",
+   "intent": "thanks"
+  },
+  {
+   "id": "i025",
+   "text": "bohat shukriya",
+   "intent": "thanks"
+  },
+  {
+   "id": "i026",
+   "text": "bye",
+   "intent": "farewell"
+  },
+  {
+   "id": "i027",
+   "text": "see you later",
+   "intent": "farewell"
+  },
+  {
+   "id": "i028",
+   "text": "goodbye for now",
+   "intent": "farewell"
+  },
+  {
+   "id": "i029",
+   "text": "khuda hafiz",
+   "intent": "farewell"
+  },
+  {
+   "id": "i030",
+   "text": "ok i'm done, bye!",
+   "intent": "farewell"
+  },
+  {
+   "id": "i031",
+   "text": "talk to you tomorrow",
+   "intent": "farewell"
+  },
+  {
+   "id": "i032",
+   "text": "What can you do?",
+   "intent": "about_assistant"
+  },
+  {
+   "id": "i033",
+   "text": "who are you?",
+   "intent": "about_assistant"
+  },
+  {
+   "id": "i034",
+   "text": "how do you work?",
+   "intent": "about_assistant"
+  },
+  {
+   "id": "i035",
+   "text": "what are you able to help me with",
+   "intent": "about_assistant"
+  },
+  {
+   "id": "i036",
+   "text": "tum kya kar sakte ho?",
+   "intent": "about_assistant"
+  },
+  {
+   "id": "i037",
+   "text": "are you a chatbot?",
+   "intent": "about_assistant"
+  },
+  {
+   "id": "i038",
+   "text": "write a complex algorithm to sort a linked list",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i039",
+   "text": "Write me an email to my boss asking for leave",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i040",
+   "text": "tell me a joke",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i041",
+   "text": "translate 'good morning' into French",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i042",
+   "text": "what is 15 times 7?",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i043",
+   "text": "write a python function to reverse a string",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i044",
+   "text": "give me life advice about quitting my job",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i045",
+   "text": "mujhe ek joke sunao",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i046",
+   "text": "write a poem about the sea",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i047",
+   "text": "explain how to build a react app from scratch",
+   "intent": "out_of_scope"
+  },
+  {
+   "id": "i048",
+   "text": "Hi, summarize my resume",
+   "intent": "document_question"
+  },
+  {
+   "id": "i049",
+   "text": "hello, can you tell me what the contract says about refunds?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i050",
+   "text": "Thanks! Now list all the policies",
+   "intent": "document_question"
+  },
+  {
+   "id": "i051",
+   "text": "thank you, which file mentions onboarding?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i052",
+   "text": "the second one",
+   "intent": "document_question"
+  },
+  {
+   "id": "i053",
+   "text": "and what about that file?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i054",
+   "text": "compare it with the previous document",
+   "intent": "document_question"
+  },
+  {
+   "id": "i055",
+   "text": "yes please",
+   "intent": "document_question"
+  },
+  {
+   "id": "i056",
+   "text": "How many files do I have?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i057",
+   "text": "list all my PDF files",
+   "intent": "document_question"
+  },
+  {
+   "id": "i058",
+   "text": "Which is my newest document?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i059",
+   "text": "Summarize the Cover Letter",
+   "intent": "document_question"
+  },
+  {
+   "id": "i060",
+   "text": "What is the refund policy?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i061",
+   "text": "what does my CV say about Python?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i062",
+   "text": "what is RAG?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i063",
+   "text": "does the handbook mention remote work?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i064",
+   "text": "Cross-reference the offer letter with the contract and tell me if the salary matches",
+   "intent": "document_question"
+  },
+  {
+   "id": "i065",
+   "text": "make a table of all deadlines in the project plan",
+   "intent": "document_question"
+  },
+  {
+   "id": "i066",
+   "text": "mera resume dikhao",
+   "intent": "document_question"
+  },
+  {
+   "id": "i067",
+   "text": "mujhe contract ka summary do",
+   "intent": "document_question"
+  },
+  {
+   "id": "i068",
+   "text": "kya meri files mein refund policy hai?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i069",
+   "text": "kitni files hain mere paas?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i070",
+   "text": "hi, how many files do I have",
+   "intent": "document_question"
+  },
+  {
+   "id": "i071",
+   "text": "write an email summarizing my meeting notes",
+   "intent": "document_question"
+  },
+  {
+   "id": "i072",
+   "text": "what's the capital of France?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i073",
+   "text": "Hello",
+   "intent": "greeting"
+  },
+  {
+   "id": "i074",
+   "text": "find the document about leave policy",
+   "intent": "document_question"
+  },
+  {
+   "id": "i075",
+   "text": "who is mentioned in the NDA?",
+   "intent": "document_question"
+  },
+  {
+   "id": "i076",
+   "text": "tell me about Project Atlas",
+   "intent": "document_question"
+  },
+  {
+   "id": "i077",
+   "text": "is there a file called budget?",
+   "intent": "document_question"
+  }
+ ]
+}

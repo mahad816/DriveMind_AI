@@ -12,6 +12,12 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.tool_rag.agent_models import AgentChatService, AgentMessage
 from app.agents.tool_rag.agent_service import ToolRagAgentService
+from app.agents.tool_rag.conversation import (
+    CONVERSATIONAL,
+    REPLIES,
+    CompleteJson,
+    classify_intent,
+)
 from app.agents.tool_rag.contracts import (
     FileEvidencePayload,
     FileEvidenceResult,
@@ -68,7 +74,9 @@ class ToolAgentAdapter:
         chat: AgentChatService | None = None,
         agent: ToolRagAgentService | None = None,
         retriever: HybridRetriever | None = None,
+        intent_complete: CompleteJson | None = None,
     ):
+        self.intent_complete = intent_complete
         self.db = db
         self.settings = settings
         self.chat = chat
@@ -95,8 +103,28 @@ class ToolAgentAdapter:
         else:
             assert chat is not None
             agent = ToolRagAgentService(chat)
+        # Demo keeps its own behaviour; tests that inject a chat/agent skip the gate unless
+        # they pass ``intent_complete`` explicitly. The gate never receives documents.
+        complete = self.intent_complete or (owned_chat.complete_json if owned_chat else None)
         try:
             async with asyncio.timeout(TOOL_AGENT_TIMEOUT_SECONDS):
+                if complete is not None and not self.settings.demo_mode:
+                    intent = await classify_intent(complete, question)
+                    if intent in CONVERSATIONAL:
+                        logger.info(
+                            "rag_execution %s",
+                            json.dumps(
+                                {
+                                    "path": "intent",
+                                    "intent": intent,
+                                    "duration_ms": (perf_counter() - started) * 1000,
+                                },
+                                sort_keys=True,
+                            ),
+                        )
+                        return ToolAgentResult(
+                            answer=REPLIES[intent], citations=(), retrieval_count=0
+                        )
                 state = await agent.run(
                     question,
                     user_id=user_id,
