@@ -12,6 +12,7 @@ import re
 
 from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from qdrant_client.models import Distance, PayloadSchemaType, VectorParams
 
@@ -39,6 +40,26 @@ class IndexingActivationError(ValueError):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(f"Normal indexing unavailable: {code}")
+
+
+# Momentary infrastructure failures: worth retrying for a bounded window. Everything else
+# (schema, configuration, identity, collection shape) is real damage and closes at once.
+TRANSIENT_CODES = frozenset(
+    {"DATABASE_UNAVAILABLE", "SCHEMA_OR_DATABASE_UNAVAILABLE", "QDRANT_UNAVAILABLE"}
+)
+
+
+def is_transient(error: BaseException) -> bool:
+    """True only for a momentary outage: timeout, refused/dropped connection, brief Qdrant loss.
+
+    A missing table or column (``ProgrammingError``), a constraint violation, a programming
+    error or any unknown exception is NOT transient: unknown must fail closed, never retry.
+    """
+    if isinstance(error, IndexingActivationError):
+        return error.code in TRANSIENT_CODES
+    if isinstance(error, DBAPIError):
+        return isinstance(error, (OperationalError, InterfaceError)) or error.connection_invalidated
+    return isinstance(error, (TimeoutError, OSError))
 
 
 def activation_target(settings: Settings) -> str:
@@ -188,7 +209,10 @@ async def check_database(
                 await db.execute(select(IndexingJob.id).limit(1))
     except IndexingActivationError:
         raise
-    except Exception:
+    except Exception as error:
+        if not is_transient(error):
+            # E.g. a missing table/column: the database answered, but not with the accepted schema.
+            raise IndexingActivationError("SCHEMA_INCOMPATIBLE") from None
         raise IndexingActivationError(
             "SCHEMA_OR_DATABASE_UNAVAILABLE" if schema else "DATABASE_UNAVAILABLE"
         ) from None
@@ -240,6 +264,7 @@ class NormalIndexingRuntime:
     drain_seconds: float = 20.0
     cleanup_seconds: float = 5.0
     classification_batch: int = 50
+    outage_tolerance_seconds: float = 30.0
 
     @property
     def engine(self) -> AsyncEngine:
@@ -299,4 +324,5 @@ async def create_normal_runtime(
         startup_timeout=settings.indexing_startup_timeout,
         drain_seconds=settings.indexing_drain_seconds,
         cleanup_seconds=settings.indexing_cleanup_seconds,
+        outage_tolerance_seconds=settings.indexing_outage_tolerance_seconds,
     )
