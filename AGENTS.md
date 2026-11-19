@@ -113,6 +113,7 @@ npm run build
 - Treat code and configuration as authoritative when documentation disagrees; update affected docs when appropriate.
 - Do not unintentionally change public API paths, schemas, status semantics, citation contracts, or frontend expectations.
 - Preserve user work in a dirty worktree and do not overwrite unrelated changes.
+- Known unfixed defects live in `docs/KNOWN_ISSUES.md` with strict expected-failure tests (`backend/tests/known_issues/`, `frontend/lib/knowledge/known-issues.test.tsx`). When you fix one, remove its marker and update the registry. Add new known defects there with a reproducing test.
 
 ## Known Important Constraints
 
