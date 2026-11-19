@@ -37,7 +37,7 @@ class Observed:
 
 def evidence_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | None:
     expected = case["expected_files"]
-    if case["expected_behavior"] != "answer" or not expected:
+    if case["expected_behavior"] not in {"answer", "partial"} or not expected:
         return None
     hits = [f for f in expected if f in seen.cited_files]
     ok = bool(hits) if case.get("citation_mode") == "any" else len(hits) == len(expected)
@@ -46,7 +46,7 @@ def evidence_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | Non
 
 
 def answer_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | None:
-    if case["expected_behavior"] not in {"answer", "inventory", "correct_premise"}:
+    if case["expected_behavior"] not in {"answer", "partial", "inventory", "correct_premise"}:
         return None
     missing = [g for g in case["must_include"] if not satisfies(seen.answer, g)]
     forbidden = [c for c in case["must_not_include"] if contains(seen.answer, c)]
@@ -58,7 +58,7 @@ def answer_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | None:
 
 
 def clean_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | None:
-    if case["expected_behavior"] == "answer":
+    if case["expected_behavior"] in {"answer", "partial"}:
         return None
     forbidden = [c for c in case["must_not_include"] if contains(seen.answer, c)]
     return {

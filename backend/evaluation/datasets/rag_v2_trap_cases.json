@@ -1,0 +1,472 @@
+{
+ "version": 2,
+ "corpus": "synthetic Larkspur Systems + public noise (see corpus manifest)",
+ "created": "2026-11-20",
+ "purpose": "Invention traps: the files hold a neighbouring fact, but not the one asked for. A good reply gives what the files say and does not make up the rest.",
+ "cases": [
+  {
+   "id": "tr01",
+   "category": "invention_trap",
+   "question": "What notice period applies when a contractor leaves Larkspur?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The handbook gives notice periods for employees only; nothing is said about contractors.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "After probation the notice period is 30 days for the employee and 60 days for the company."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "The handbook covers employees only (30 days employee, 60 days company, 7 days in probation). Contractors are not mentioned. Applying an employee figure to contractors is wrong.",
+   "trap": "employee notice periods exist; contractors are never mentioned"
+  },
+  {
+   "id": "tr02",
+   "category": "invention_trap",
+   "question": "How much extra pay does an on-call engineer receive per week?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "On-call duty is mentioned, but no pay or allowance for it is stated anywhere.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Nobody is expected to answer messages after 19:00 unless they are on call."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "On-call duty is mentioned but no pay, allowance or amount for it appears in any file.",
+   "trap": "on-call exists, its pay does not"
+  },
+  {
+   "id": "tr03",
+   "category": "invention_trap",
+   "question": "Within how many hours does CloudHost respond to severity 2 support tickets?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "Only severity 1 is covered: a two-hour response time. Severity 2 is not stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_contract_cloudhost.txt",
+     "quote": "Premium support is included with a two-hour response time for severity 1 tickets."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Only the severity 1 response time (two hours) is stated. Reusing it for severity 2, or guessing another time, is wrong.",
+   "trap": "severity 1 time is given, severity 2 is not"
+  },
+  {
+   "id": "tr04",
+   "category": "invention_trap",
+   "question": "How long does CloudHost keep backups of Larkspur's data?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The files do not state any backup retention period for CloudHost. The 35 days in the retention policy is Larkspur's own database backup rule.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/data_retention_policy.txt",
+     "quote": "Database backups are kept for 35 days."
+    },
+    {
+     "file": "synthetic/vendor_contract_cloudhost.txt",
+     "quote": "CloudHost acts as a processor."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "The 35-day figure is Larkspur's own database backup retention in its data retention policy, not a CloudHost commitment. Presenting 35 days as CloudHost's retention is wrong; saying CloudHost's period is not stated (and perhaps mentioning Larkspur's own 35 days as such) is correct.",
+   "trap": "a similar fact belongs to a different party"
+  },
+  {
+   "id": "tr05",
+   "category": "invention_trap",
+   "question": "How much did incident INC-204 cost Larkspur in lost revenue?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The incident report gives the duration and cause but no cost or lost revenue.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "Customers could not book appointments for 47 minutes."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "INC-204 is described (47 minutes, disk latency) but no monetary cost or lost revenue is stated.",
+   "trap": "duration is given, money is not"
+  },
+  {
+   "id": "tr06",
+   "category": "invention_trap",
+   "question": "What percentage discount do customers get on an annual plan?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "Annual plans are mentioned (refund rule) but no discount or annual price is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/faq_support.txt",
+     "quote": "Annual plans can be refunded in full within 14 days of purchase."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Annual plans exist but no discount percentage or annual price is stated in the files.",
+   "trap": "annual plans exist, their discount does not"
+  },
+  {
+   "id": "tr07",
+   "category": "invention_trap",
+   "question": "What is the maximum taxi fare per ride that Larkspur reimburses?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "The travel policy allows taxis in certain cases but states no fare limit.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/travel_policy.txt",
+     "quote": "Taxis are allowed when public transport is unsafe, unavailable, or when luggage makes it impractical."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Taxis are allowed under conditions, but no maximum fare or amount is stated.",
+   "trap": "conditions are given, a cap is not"
+  },
+  {
+   "id": "tr08",
+   "category": "invention_trap",
+   "question": "How many clinic customers did Larkspur have at the end of March 2026?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "No customer count for the end of March is given. The only count (214 clinics) is in the board numbers of the 12 May 2026 meeting notes.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/meeting_notes_2026_05_12.txt",
+     "quote": "Customers: 214 clinics."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "The only customer count (214 clinics) appears in the board numbers of the 12 May 2026 meeting notes; no figure for the end of March exists. Giving 214 as the March figure is wrong. Saying that 214 comes from the May meeting notes and that March is not available is correct.",
+   "trap": "the right number exists for a different date"
+  },
+  {
+   "id": "tr09",
+   "category": "invention_trap",
+   "question": "At what time does the Lisbon office open in the morning?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [],
+   "reference_answer": "Only core working hours (10:00 to 16:00) are given, not office opening hours.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Core hours are 10:00 to 16:00 in your local time zone."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Only core working hours (10:00 to 16:00) are stated. They are not office opening times. Answering that the office opens at 10:00 is wrong.",
+   "trap": "core hours are easily mistaken for opening hours"
+  },
+  {
+   "id": "tr10",
+   "category": "invention_trap",
+   "question": "Who has to approve an expense of 5,000 USD before it is spent?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/expense_policy_v2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "manager"
+    ],
+    [
+     "Finance Lead"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "The manager (written approval above 300 USD) and the Finance Lead (above 1,500 USD). No further approver is listed.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/expense_policy_v2.txt",
+     "quote": "Any single expense above 300 USD needs written approval from your manager before you spend the money."
+    },
+    {
+     "file": "synthetic/expense_policy_v2.txt",
+     "quote": "Expenses above 1,500 USD also need approval from the Finance Lead."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Fully answerable: the manager and the Finance Lead. The trap is adding a higher approver (CEO, board or anyone else), which the policy does not list. Saying that no further approval is listed is correct.",
+   "trap": "tempting to add a higher approver such as the CEO"
+  },
+  {
+   "id": "tr11",
+   "category": "invention_trap",
+   "question": "How much of the Engineering budget is spent on salaries?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/budget_2026.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "420,000"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "The Engineering budget is 420,000 USD per year, but salaries are managed by Finance and are not part of the document, so the salary share is not stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/budget_2026.txt",
+     "quote": "Salaries are managed by Finance and are not part of this document."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Missing part: the salary share of the Engineering budget (the document says salaries are not part of it).",
+   "trap": "the department total is given, the salary share is explicitly excluded"
+  },
+  {
+   "id": "tr12",
+   "category": "invention_trap",
+   "question": "Who was the on-call engineer on 21 May 2026 and what is their phone number?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Sara Khan"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Sara Khan (Engineering) was on call for INC-211. No phone number is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "On-call engineer: Sara Khan (Engineering)."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Missing part: any phone number. The files contain none.",
+   "trap": "the name is given, contact details are not"
+  },
+  {
+   "id": "tr13",
+   "category": "invention_trap",
+   "question": "What fee does SMSGate charge if Larkspur cancels its contract?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/vendor_email_smsgate.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "60 days"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "To avoid renewal Larkspur must cancel in writing at least 60 days before 1 November 2026. No cancellation fee is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_email_smsgate.txt",
+     "quote": "unless you cancel in writing at least 60 days before the renewal date"
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Missing part: any cancellation fee. The email gives only the notice rule and the monthly commitment, not a cancellation charge.",
+   "trap": "the notice rule is given, a fee is not"
+  },
+  {
+   "id": "tr14",
+   "category": "invention_trap",
+   "question": "How much does the Premium plan cost per year?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/faq_support.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "299"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "The Premium plan costs 299 USD per clinic per month. No annual price is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/faq_support.txt",
+     "quote": "Premium: 299 USD per clinic per month."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Missing part: the annual plan price. Multiplying 299 x 12 is acceptable only if clearly labelled as a calculation from the monthly price, not presented as the annual plan price.",
+   "trap": "tempting to multiply and call it the yearly price"
+  },
+  {
+   "id": "tr15",
+   "category": "invention_trap",
+   "question": "What financial penalty applies to an expense claim that is submitted late?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/expense_policy_v2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Finance Lead"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Late claims are paid only with the Finance Lead's written exception. No penalty amount is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/expense_policy_v2.txt",
+     "quote": "Late claims are paid only with the Finance Lead's written exception."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Missing part: any penalty amount or percentage. The policy only says late claims need the Finance Lead's written exception.",
+   "trap": "the consequence is given, a penalty figure is not"
+  },
+  {
+   "id": "tr16",
+   "category": "invention_trap",
+   "question": "How many paid sick days does a new employee get during the probation period?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/employee_handbook.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "10"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Sick leave is 10 paid days per year. The handbook states no different rule for probation.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Sick leave is 10 paid days per year."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Missing part: any probation-specific sick leave rule. The handbook states 10 paid days per year in general. Stating 10 days per year is correct; inventing a different probation figure is wrong.",
+   "trap": "tempting to invent a probation-specific rule"
+  },
+  {
+   "id": "tr17",
+   "category": "invention_trap",
+   "question": "How many weeks of paid parental leave does each parent get at Larkspur?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/employee_handbook.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "two extra",
+     "2 extra",
+     "two additional",
+     "2 additional"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Parental leave follows national law and Larkspur adds two extra paid weeks for each parent. The national-law amount is not stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/employee_handbook.txt",
+     "quote": "Parental leave follows national law; Larkspur adds two extra paid weeks for each parent."
+    }
+   ],
+   "computed": false,
+   "split": "dev",
+   "judge_note": "Known: Larkspur adds two extra paid weeks per parent on top of national law. Missing: the total number of weeks, which depends on national law that the handbook does not quote. Saying 'two extra weeks on top of national law' is CORRECT. Stating a specific TOTAL number of weeks (or the national-law amount) is wrong.",
+   "trap": "tempting to give a total that depends on an unquoted law"
+  },
+  {
+   "id": "tr18",
+   "category": "invention_trap",
+   "question": "On which exact date will Scheduler 2.1 be released?",
+   "language": "en",
+   "expected_behavior": "partial",
+   "expected_files": [
+    "synthetic/roadmap_2026.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "December"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Scheduler 2.1 is planned for the first half of December 2026. No exact date is stated.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/roadmap_2026.txt",
+     "quote": "Scheduler 2.1 planned for the first half of December 2026."
+    }
+   ],
+   "computed": false,
+   "split": "test",
+   "judge_note": "Missing part: an exact release date. Only 'the first half of December 2026' is stated.",
+   "trap": "a planning window is given, an exact date is not"
+  }
+ ]
+}

@@ -21,6 +21,9 @@ EXPECTATION = {
     "A correct reply politely declines or says it is not in the files, without doing the task.",
     "correct_premise": "The question contains a false premise. A correct reply says the premise is wrong or not supported "
     "by the files, and does NOT explain reasons for the false event.",
+    "partial": "The files answer only PART of the question (see the note). A correct reply states what the files say "
+    "and makes clear the remaining part is not in the files, or leaves it out. It must NOT state a specific value "
+    "(number, date, name, amount, rule) for the missing part.",
     "chitchat": "Small talk or a question about what the assistant can do. A correct reply is brief, polite and fitting. "
     "Greeting back and offering to answer questions about the user's files is CORRECT. Describing what the "
     "assistant can do with the user's files is CORRECT for a capability question. It must NOT say that a "
@@ -29,6 +32,7 @@ EXPECTATION = {
 PROMPT = """You grade one reply of a document question-answering assistant.
 Question: {question}
 Expected behaviour: {expectation}
+Note about this case: {note}
 Assistant reply: {answer}
 
 Return JSON {{"verdict": "ok" | "fail", "reason": "<one short sentence>"}}.
@@ -50,6 +54,7 @@ async def judge(settings: Settings, case: dict[str, Any], answer: str) -> dict[s
                         "content": PROMPT.format(
                             question=case["question"],
                             expectation=EXPECTATION[case["expected_behavior"]],
+                            note=case.get("judge_note") or "none",
                             answer=answer[:2000],
                         ),
                     }

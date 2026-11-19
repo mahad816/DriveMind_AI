@@ -91,3 +91,44 @@ def test_rejects_duplicate_ids():
     data = one(DATASET, "sf01")
     data["cases"].append(copy.deepcopy(data["cases"][0]))
     assert any("duplicate id" in p for p in validate(data, SYNTHETIC))
+
+
+# --- invention traps and the "partial" behaviour -------------------------------------------------
+
+TRAPS = load_cases("rag_v2_trap_cases.json")
+
+
+def test_every_trap_case_is_grounded_in_the_corpus_text():
+    assert validate(TRAPS, SYNTHETIC) == []
+
+
+def test_trap_file_shape_and_balance():
+    cases = TRAPS["cases"]
+    ids = [c["id"] for c in cases]
+    baseline = {c["id"] for c in DATASET["cases"]}
+    assert len(set(ids)) == len(ids) == 18 and not baseline & set(ids)
+    assert {c["category"] for c in cases} == {"invention_trap"}
+    assert {c["expected_behavior"] for c in cases} == {"not_found", "partial"}
+    assert {c["split"] for c in cases} == {"dev", "test"}
+    assert all(c["trap"] if c["expected_behavior"] == "answer" else True for c in cases)
+    # every judged trap tells the judge exactly what is missing from the files
+    assert all(c.get("judge_note") for c in cases)
+
+
+def test_partial_case_needs_expected_files_and_anchors():
+    bad = {
+        "cases": [
+            {
+                **next(c for c in TRAPS["cases"] if c["expected_behavior"] == "partial"),
+                "expected_files": [],
+                "evidence_anchors": [],
+            }
+        ]
+    }
+    assert any("needs expected_files and evidence_anchors" in p for p in validate(bad, SYNTHETIC))
+
+
+def test_partial_case_whose_known_fact_is_not_in_the_files_is_rejected():
+    case = next(c for c in TRAPS["cases"] if c["id"] == "tr14")
+    broken = {"cases": [{**case, "must_include": [["4,999"]]}]}
+    assert any("must_include" in p for p in validate(broken, SYNTHETIC))

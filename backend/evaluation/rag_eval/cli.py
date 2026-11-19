@@ -40,7 +40,7 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 async def run(args: argparse.Namespace) -> None:
     files = synthetic_files() + public_files()
     verify(files)
-    dataset = load_cases()
+    dataset = load_cases(args.dataset)
     problems = validate(dataset, files)
     if problems:
         raise SystemExit("Dataset invalid; refusing to spend money:\n" + "\n".join(problems))
@@ -81,7 +81,7 @@ async def rescore(args: argparse.Namespace) -> None:
     source = Path(args.file)
     data = json.loads(source.read_text())
     total = len(synthetic_files() + public_files())
-    cases = {c["id"]: prepare_case(c, total) for c in load_cases()["cases"]}
+    cases = {c["id"]: prepare_case(c, total) for c in load_cases(args.dataset)["cases"]}
     settings = eval_settings(chat_model=data["model"])
     meter = CostMeter(args.cap)
     with meter.installed():
@@ -111,6 +111,9 @@ def main() -> None:
     parser.add_argument("--category", nargs="*")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--ids", nargs="*", help="only these case ids")
+    parser.add_argument(
+        "--dataset", default="rag_v2_cases.json", help="case file in evaluation/datasets"
+    )
     parser.add_argument("--tag", help="suffix for the result file name, e.g. claimcheck")
     parser.add_argument(
         "--no-claim-check",

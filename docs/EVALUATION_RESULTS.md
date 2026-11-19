@@ -123,6 +123,27 @@ So on this corpus the check almost never fires (the model rarely invents facts n
 
 Caveats: single run per arm; the planted test and the dev tuning share the author; the RAGBench labels come from one LLM annotator; cost and latency are per question with the default model. Result files are kept locally in `backend/evaluation/results/` (gitignored): `rag_v2_*_claimcheck_{on,off}.json`, `planted_claims_*.json`, `ragbench_*_seed2.json`.
 
+## Invention traps (18 cases, live, 2026-11-20)
+
+File: `backend/evaluation/datasets/rag_v2_trap_cases.json` (run with `--dataset rag_v2_trap_cases.json`; the 94-case baseline file is untouched). Each question is about something the files do **not** fully contain, while a neighbouring fact is present, so a model is tempted to fill the gap. Every quote and fact was checked word for word against the documents by the dataset validator. Nine cases are "not in the files" (the reply must say so), nine are "partly in the files" (the reply must give the known part, with a source, and must not invent the rest). Split: 9 dev, 9 test.
+
+Tool agent (`gpt-5.4-nano`), claim check on: **11 of 18 passed** (61 %, 95 % interval 39-80 %). One run, $0.06.
+
+| Case | What the files have | What went wrong |
+|---|---|---|
+| tr01 | employee notice periods | applied them to contractors (invented scope) |
+| tr04 | Larkspur's own 35-day backup rule | said CloudHost keeps backups 35 days (misattributed) |
+| tr09 | core hours 10:00-16:00 | answered "office opens at 10:00" (borderline) |
+| tr11 | "salaries are not part of this document" | said none of the budget goes to salaries (flipped meaning) |
+| tr13 | 60-day cancellation notice | stated "no cancellation fee" as a fact |
+| tr12, tr14 | the answer is in the files | search found nothing (KI-022); not an invention |
+
+Findings:
+- Roughly one tricky question in three still gets a confident wrong answer from this model. Two of the failures were a retrieval miss, not an invention.
+- The claim check did not catch these: in `tr04` and `tr01` the sentence is *supported by the text it was shown*; the error is about **who or what** it applies to (CloudHost vs Larkspur, contractor vs employee), and `tr13` is a claim about something being **absent**. The current checker asks "is this fact in the evidence?", not "is this fact about the right subject?" or "does the evidence really say nothing exists?". This is the next thing to improve (see `docs/IMPROVEMENT_PLAN.md`).
+- Post-hoc change, disclosed: the first judge note for `tr17` made the judge fail a correct reply ("two extra paid weeks on top of national law"). I corrected the note and re-judged the stored replies (no new agent run); that moved 10 of 18 to 11 of 18. `tr09` is arguable and was left as the judge scored it.
+- Not yet measured: the same traps with the claim check off, and with a larger chat model.
+
 ## Intent gate — `intent_v1` (live)
 
 Question: can the small model call that runs before the document agent recognise greetings, thanks,

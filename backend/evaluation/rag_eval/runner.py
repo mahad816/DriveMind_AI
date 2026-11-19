@@ -17,7 +17,7 @@ from .score import Observed, answer_score, clean_score, evidence_score, summaris
 from .target import EVAL_USER_ID, session_factory
 
 PIPELINES = {"tool_agent": True, "legacy": False}  # value = tool_rag_agent_enabled
-JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat"}
+JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat", "partial"}
 REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
 
 
