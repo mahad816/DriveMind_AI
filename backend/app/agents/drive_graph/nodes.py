@@ -17,6 +17,7 @@ from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
 from app.evaluation.trace import AbstentionReason, EvalTraceCollector, elapsed_ms
 from app.llm.base import ChatService
 from app.llm.factory import get_chat_service
+from app.llm.openai_service import completion_options
 from app.llm.prompts import no_evidence_answer, normalize_answer_citations
 from app.llm.prompts import format_citation_snippet, select_prompt_chunks
 from app.retrieval.base import Retriever
@@ -534,6 +535,7 @@ async def _rewrite_with_openai(
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.1,
+            extra_body=completion_options(settings.chat_model),
         )
     except APIError:
         return None

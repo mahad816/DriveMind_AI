@@ -5,7 +5,7 @@ import json
 from collections.abc import Awaitable, Callable, Sequence
 from typing import cast
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
-from app.llm.openai_service import OpenAIChatService
+from app.llm.openai_service import OpenAIChatService, completion_options
 from app.llm.base import ChatError
 from app.agents.tool_rag.agent_models import (
     AgentMessage,
@@ -82,6 +82,7 @@ class OpenAIAgentChatService(OpenAIChatService):
             response = await self._client.chat.completions.create(
                 model=self.model_name,
                 temperature=0,
+                extra_body=completion_options(self.model_name),
                 messages=native_messages(messages),
                 tools=[
                     cast(
@@ -135,6 +136,7 @@ class OpenAIAgentChatService(OpenAIChatService):
             response = await self._client.with_options(max_retries=0).chat.completions.create(
                 model=self.model_name,
                 temperature=0,
+                extra_body=completion_options(self.model_name),
                 messages=native_messages(messages),
                 tools=[
                     cast(

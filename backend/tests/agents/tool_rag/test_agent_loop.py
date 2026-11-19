@@ -473,3 +473,21 @@ def test_new_runtime_has_no_old_router_or_jev_dependency():
             or "retrieval_plan" in name
             for name in names
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model,extra", [("gpt-6-luna", {"reasoning_effort": "none"}), ("gpt-4o-mini", {})]
+)
+async def test_agent_step_requests_carry_the_model_specific_body(model, extra):
+    from app.llm.openai_agent_service import OpenAIAgentChatService
+
+    client = AsyncMock()
+    client.chat.completions.create.return_value = provider_response("Hello")
+    service = OpenAIAgentChatService(
+        Settings(openai_api_key="sk-test", chat_model=model), client=client
+    )
+    await service.step(messages=[AgentMessage(role="USER", text="hi")], tools=[])
+    kwargs = client.chat.completions.create.await_args.kwargs
+    assert kwargs["model"] == model and kwargs["temperature"] == 0
+    assert kwargs["extra_body"] == extra
