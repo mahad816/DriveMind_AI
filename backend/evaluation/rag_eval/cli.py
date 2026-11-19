@@ -51,6 +51,8 @@ async def run(args: argparse.Namespace) -> None:
         cases = [c for c in cases if c["id"] in args.ids]
     cases = cases[: args.limit] if args.limit else cases
     settings = eval_settings(chat_model=args.model)
+    if args.no_claim_check:
+        settings = settings.model_copy(update={"claim_check_enabled": False})
     meter = CostMeter(args.cap)
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     RESULTS.mkdir(exist_ok=True)
@@ -64,7 +66,10 @@ async def run(args: argparse.Namespace) -> None:
                 print(f"STOPPED: {exc}. Ask before spending more.")
                 break
             result.update(split=args.split, spend_so_far=meter.summary())
-            path = RESULTS / f"rag_v2_{stamp}_{pipeline}_{settings.chat_model}_{args.split}.json"
+            tag = f"_{args.tag}" if args.tag else ""
+            path = (
+                RESULTS / f"rag_v2_{stamp}_{pipeline}_{settings.chat_model}_{args.split}{tag}.json"
+            )
             path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
             print(f"\n== {pipeline} ({settings.chat_model}, split={args.split}) -> {path.name}")
             print(json.dumps(result["summary"], indent=1))
@@ -106,6 +111,12 @@ def main() -> None:
     parser.add_argument("--category", nargs="*")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--ids", nargs="*", help="only these case ids")
+    parser.add_argument("--tag", help="suffix for the result file name, e.g. claimcheck")
+    parser.add_argument(
+        "--no-claim-check",
+        action="store_true",
+        help="switch the KI-002 claim check off (before-fix behaviour)",
+    )
     parser.add_argument("--model", default=None, help="chat model (default: the app default)")
     parser.add_argument("--concurrency", type=int, default=3)
     args = parser.parse_args()

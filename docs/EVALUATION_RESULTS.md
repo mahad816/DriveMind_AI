@@ -73,6 +73,50 @@ The raw first-run files are kept next to the corrected ones (`*_all.json` vs `*_
 - The refusal judge is one small model, not a human; I read the dev failures myself and corrected the harness errors above, but did not hand-grade every pass.
 - Seven of the 188 case runs ended in an error (4 tool agent, 3 legacy); they are counted as failures. The four tool-agent ones succeeded when re-run alone (`*_rerun_of_4_errored_cases.json`); that rerun is not part of the table.
 
+## KI-002 claim check: accuracy and before/after (live, 2026-11-19)
+
+The check (`app/agents/tool_rag/claim_check.py`) sends the answer, split into numbered statements, and the retrieved evidence to `gpt-5.4-mini` (temperature 0). It removes only the statements the model says assert a specific fact the evidence lacks or contradicts, and fails open (any error, timeout or unusable reply leaves the answer unchanged). Headings, lead-ins and fragments are never removed.
+
+### 1. How accurate is the checker itself? (RAGBench, fresh sample, seed 2)
+Source: `galileo-ai/ragbench` (CC BY 4.0), 11 configs, 25 rows each, 266 rows used (9 skipped: empty/too long). The checker ran through the exact production call path. Labels are RAGBench's `adherence_score` and `unsupported_response_sentence_keys`, written by GPT-4o, so this measures agreement with that annotator, not truth. Prompt and splitter were tuned on a different sample (seed 1, 109 rows); seed 2 was run once, after tuning.
+
+| Level | Positives in labels | Precision | Recall | Accuracy | F1 |
+|---|---|---|---|---|---|
+| Response (is anything unsupported?) | 13.2 % of 266 | 0.52 (95 % CI 0.35-0.68, n=31) | 0.46 (0.31-0.62, n=35) | 0.87 (0.83-0.91) | 0.49 |
+| Sentence (which sentence?) | 7.8 % of 1047 | 0.46 (0.36-0.55, n=99) | 0.55 (0.44-0.65, n=82) | 0.91 (0.89-0.93) | 0.50 |
+
+Read plainly: about half of what it flags the annotator also flagged, and it finds about half of what the annotator flagged. On general-purpose RAG data this is a modest checker, not a precise one. `gpt-5.4-nano` was tried first and was unusable (precision about 0.27), so `gpt-5.4-mini` is the default. Cost of this run: $0.49.
+
+### 2. Does it do its job in this product's failure shape? (planted claims, 45 answerable fact cases)
+Evidence = the real file(s); clean answer = the case's reference answer. Variants built by fixed rules, no model: `clean`, `appended` (clean answer plus one invented, specific sentence), `contradict` (first number changed by +7). Script: `evaluation/rag_eval/planted_claims.py`. Cost $0.07.
+
+| Test | Result |
+|---|---|
+| Invented sentence removed | 44 of 45 = 97.8 % (CI 88-100 %) |
+| Changed number caught | 29 of 36 = 80.6 % (CI 65-90 %) |
+| True reference answer wrongly flagged (false removal) | 2 of 45 = 4.4 % (CI 1-15 %) |
+| Other sentences flagged in the appended variants | 3 |
+
+The planted sentences are synthetic and obviously out of place, so 98 % is an easy case; the contradiction row (80 %) is the more honest number. Number swaps the evidence merely makes less likely, or that sit inside a long list, are the ones it misses.
+
+### 3. End to end: tool agent on the 94 cases, check on vs off (same code, same day)
+| | Check OFF | Check ON |
+|---|---|---|
+| Overall pass | 78 / 94 (83.0 %) | 76 / 94 (80.9 %) |
+| Evidence found | 50 / 62 | 51 / 62 |
+| Answer correct | 55 / 67 | 51 / 67 |
+| Refusal OK | 27 / 28 | 27 / 28 |
+| Latency median / p90 | 3.8 s / 6.3 s | 5.2 s / 7.8 s |
+| Extra cost per run | - | about $0.18 |
+
+The difference (2 cases) is inside the noise: 50 of 94 replies differed in wording between two identical-code runs. To find what the check itself did, the 5 cases that went from pass to fail were rerun 3 times each with the checker's decisions logged:
+- `sf01`, `fu01`, `pu02`, `pu03`: the checker flagged nothing. `sf01` and one `fu01` run refused because search found nothing (the KI-022 recall cliff); the rest were the model's own variation.
+- `ag05`: the checker removed the bullet "SMSGate - SMS provider used for text reminders" in 1 of 3 runs, and that run then missed an expected fact. The incident report does say this, so this is probably a false removal (the cited source number may have been the email thread, which does not).
+
+So on this corpus the check almost never fires (the model rarely invents facts next to a real citation here), and when it fired once it probably cost a correct bullet. The measurable benefit is the planted-claims result above, not an improvement in the 94-case score. The 94 cases contain no case that deliberately gets the model to invent a fact beside a real citation; adding such cases is the natural next step.
+
+Caveats: single run per arm; the planted test and the dev tuning share the author; the RAGBench labels come from one LLM annotator; cost and latency are per question with the default model. Result files are kept locally in `backend/evaluation/results/` (gitignored): `rag_v2_*_claimcheck_{on,off}.json`, `planted_claims_*.json`, `ragbench_*_seed2.json`.
+
 ## Intent gate — `intent_v1` (live)
 
 Question: can the small model call that runs before the document agent recognise greetings, thanks,

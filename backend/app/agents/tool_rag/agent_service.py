@@ -8,6 +8,7 @@ from app.retrieval.hybrid import HybridRetriever
 from app.core.config import get_settings
 from .agent_models import AgentChatService, AgentMessage
 from .agent_state import AgentState
+from .claim_check import ClaimChecker
 from .graph import build_tool_graph, MAX_AGENT_CYCLES
 from .prompts import AGENT_SYSTEM_PROMPT
 from .handles import RuntimeHandleRegistry
@@ -22,6 +23,7 @@ class ToolRagAgentService:
         *,
         executor: ToolExecutor | None = None,
         max_cycles: int = MAX_AGENT_CYCLES,
+        claim_check: ClaimChecker | None = None,
     ):
         if (
             isinstance(max_cycles, bool)
@@ -30,7 +32,7 @@ class ToolRagAgentService:
         ):
             raise ValueError("max_cycles must be application-owned and within 1..6")
         self.max_cycles = max_cycles
-        self.graph = build_tool_graph(chat, executor)
+        self.graph = build_tool_graph(chat, executor, claim_check)
 
     async def run(
         self,

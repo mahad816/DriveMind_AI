@@ -9,9 +9,12 @@ from dataclasses import dataclass
 from time import perf_counter
 from uuid import UUID
 
+from functools import partial
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.tool_rag.agent_models import AgentChatService, AgentMessage
 from app.agents.tool_rag.agent_service import ToolRagAgentService
+from app.agents.tool_rag.claim_check import enforce_claims
 from app.agents.tool_rag.conversation import (
     CONVERSATIONAL,
     REPLIES,
@@ -75,8 +78,10 @@ class ToolAgentAdapter:
         agent: ToolRagAgentService | None = None,
         retriever: HybridRetriever | None = None,
         intent_complete: CompleteJson | None = None,
+        claim_complete: CompleteJson | None = None,
     ):
         self.intent_complete = intent_complete
+        self.claim_complete = claim_complete
         self.db = db
         self.settings = settings
         self.chat = chat
@@ -98,11 +103,29 @@ class ToolAgentAdapter:
             else None
         )
         chat = self.chat or owned_chat
+        claim_service: OpenAIAgentChatService | None = None
         if self.agent is not None:
             agent = self.agent
         else:
             assert chat is not None
-            agent = ToolRagAgentService(chat)
+            claim_complete = self.claim_complete
+            if (
+                claim_complete is None
+                and owned_chat is not None
+                and self.settings.claim_check_enabled
+                and not self.settings.demo_mode
+            ):
+                candidate = OpenAIAgentChatService(
+                    self.settings.model_copy(update={"chat_model": self.settings.claim_check_model})
+                )
+                # Fail open: a checker that cannot be built means "unchecked", never "unanswered".
+                claim_complete = getattr(candidate, "complete_json", None)
+                if claim_complete is not None:
+                    claim_service = candidate
+            agent = ToolRagAgentService(
+                chat,
+                claim_check=partial(enforce_claims, claim_complete) if claim_complete else None,
+            )
         # Demo keeps its own behaviour; tests that inject a chat/agent skip the gate unless
         # they pass ``intent_complete`` explicitly. The gate never receives documents.
         complete = self.intent_complete or getattr(owned_chat, "complete_json", None)
@@ -212,10 +235,14 @@ class ToolAgentAdapter:
             logger.info("rag_execution path=tool_agent outcome=INTERNAL_ERROR")
             raise ChatError("The tool agent could not complete safely.") from None
         finally:
-            if owned_chat is not None:
-                try:
-                    async with asyncio.timeout(5):
-                        await owned_chat.aclose()
-                except Exception:
-                    logger.info("rag_execution path=tool_agent outcome=CLIENT_CLEANUP_ERROR")
-                    raise ChatError("The tool agent could not complete safely.") from None
+            cleanup_failed = False
+            for service in (owned_chat, claim_service):  # always try both before reporting
+                if service is not None:
+                    try:
+                        async with asyncio.timeout(5):
+                            await service.aclose()
+                    except Exception:
+                        cleanup_failed = True
+            if cleanup_failed:
+                logger.info("rag_execution path=tool_agent outcome=CLIENT_CLEANUP_ERROR")
+                raise ChatError("The tool agent could not complete safely.") from None

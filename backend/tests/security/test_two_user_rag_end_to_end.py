@@ -20,6 +20,7 @@ from openai import AsyncOpenAI
 from qdrant_client.models import PointStruct
 from sqlalchemy import select, text as sql_text, update
 
+from app.agents.tool_rag.claim_check import SYSTEM_PROMPT as CLAIM_CHECK_SYSTEM_PROMPT
 from app.agents.tool_rag.conversation import INTENT_SYSTEM_PROMPT
 from app.api.chat import get_rag_service
 from app.agents.tool_rag import contracts as tool_contracts
@@ -65,6 +66,7 @@ class ModelTransport:
     def __init__(self):
         self.requests = []
         self.intent_requests = []
+        self.claim_requests = []
         self.tool_steps = 0
         self.clients = []
         self.tool_final_answer = None
@@ -91,6 +93,10 @@ class ModelTransport:
             return self.completion(
                 {"role": "assistant", "content": '{"intent": "document_question"}'}
             )
+        if body["messages"][0]["content"] == CLAIM_CHECK_SYSTEM_PROMPT:
+            # The claim check sees the answer and the owner's evidence, never the question.
+            self.claim_requests.append(body)
+            return self.completion({"role": "assistant", "content": '{"unsupported": []}'})
         self.requests.append(body)
         visible = json.dumps(body["messages"])
         answer = "GPA: 3.8" if MARKERS[USER_A] in visible else "GPA: 1.2"
@@ -374,6 +380,11 @@ def assert_private(c, owner):
     # The intent gate receives only the question: no evidence, history or foreign data.
     intent = json.dumps(c.model.intent_requests)
     assert not any(m in intent for m in (*MARKERS.values(), *STORED_HISTORY.values()))
+    # The claim check receives the answer and the owner's own evidence only: nothing foreign.
+    claim = json.dumps(c.model.claim_requests)
+    assert not any(
+        m in claim for m in (MARKERS[foreign], STORED_HISTORY[foreign], "UNINDEXED_PRIVATE_TEXT")
+    )
     assert_tool_messages_owned(c, owner)
 
 
@@ -430,6 +441,10 @@ async def test_real_http_grounded_modes(corpus, owner, mode):
         # Exactly one intent-gate call, carrying only the question (privacy checked above).
         assert len(c.model.intent_requests) == 1
         assert c.model.intent_requests[0]["messages"][1]["content"] == QUESTION
+        # Exactly one claim-check call, on the owner's evidence, never the question.
+        assert len(c.model.claim_requests) == 1
+        assert MARKERS[owner] in json.dumps(c.model.claim_requests[0]["messages"])
+        assert QUESTION not in c.model.claim_requests[0]["messages"][1]["content"]
 
 
 @pytest.mark.parametrize("state", ["missing", "invalid", "expired", "revoked", "wrong_kind"])
