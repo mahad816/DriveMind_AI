@@ -105,7 +105,7 @@ class ToolAgentAdapter:
             agent = ToolRagAgentService(chat)
         # Demo keeps its own behaviour; tests that inject a chat/agent skip the gate unless
         # they pass ``intent_complete`` explicitly. The gate never receives documents.
-        complete = self.intent_complete or (owned_chat.complete_json if owned_chat else None)
+        complete = self.intent_complete or getattr(owned_chat, "complete_json", None)
         try:
             async with asyncio.timeout(TOOL_AGENT_TIMEOUT_SECONDS):
                 if complete is not None and not self.settings.demo_mode:
