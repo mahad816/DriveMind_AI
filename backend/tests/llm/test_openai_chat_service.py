@@ -144,3 +144,36 @@ async def test_generate_grounded_answer_rejects_empty_model_response(
             [_chunk()],
             max_context_chars=12000,
         )
+
+
+# --- model-family request options (gpt-6 needs reasoning off for tools / temperature=0) -----
+
+
+@pytest.mark.parametrize(
+    "model,expected",
+    [
+        ("gpt-6-luna", {"reasoning_effort": "none"}),
+        ("gpt-6-sol", {"reasoning_effort": "none"}),
+        ("gpt-4o-mini", {}),
+        ("gpt-5-nano", {}),
+        ("", {}),
+    ],
+)
+def test_completion_options_are_model_family_specific(model, expected):
+    from app.llm.openai_service import completion_options
+
+    assert completion_options(model) == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "model,extra", [("gpt-6-luna", {"reasoning_effort": "none"}), ("gpt-4o-mini", {})]
+)
+async def test_chat_requests_carry_the_model_specific_body(mock_client, model, extra):
+    service = OpenAIChatService(
+        settings=Settings(openai_api_key="sk-test-key", chat_model=model), client=mock_client
+    )
+    await service.generate_direct_answer("hi")
+    kwargs = mock_client.chat.completions.create.await_args.kwargs
+    assert kwargs["model"] == model and kwargs["temperature"] == 0
+    assert kwargs["extra_body"] == extra

@@ -69,7 +69,7 @@ Backend values to verify:
 | `FRONTEND_URL` | Exact beta HTTPS origin used for Origin checks |
 | Google callback/client/encryption settings | Existing valid configuration; key presence only; no rotation |
 | `OPENAI_API_KEY` | Configured/nonempty or sealed; never print; presence is not proof of validity/quota |
-| `CHAT_MODEL`, `EMBEDDING_MODEL` | Confirm intended `gpt-4o-mini` and existing embedding model |
+| `CHAT_MODEL`, `EMBEDDING_MODEL` | Confirm intended `gpt-6-luna` (`gpt-4o-mini` shuts down 2027-01-14) and existing embedding model |
 | `TOOL_RAG_AGENT_ENABLED` | Must be `true` before streaming activation; if currently false, stop for separate review of agent activation |
 | `CHAT_STREAMING_ENABLED` | Default/initial rollout `false`; later deliberate runtime opt-in |
 | `DATABASE_URL`, Qdrant config | Existing intended beta targets; presence/target identity only, no credentials |

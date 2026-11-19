@@ -27,7 +27,17 @@ from app.llm.prompts import (
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.relationships import select_relationship_evidence
 
-DEFAULT_CHAT_MODEL = "gpt-4o-mini"
+DEFAULT_CHAT_MODEL = "gpt-6-luna"
+
+
+def completion_options(model: str) -> dict[str, str]:
+    """Extra request body some model families require (empty for all others).
+
+    gpt-6 models default to reasoning, which on Chat Completions rejects function tools
+    and ``temperature=0``. Turning reasoning off keeps these cheap, fast, deterministic
+    calls working. Verified live against gpt-6-luna on 2026-11-19.
+    """
+    return {"reasoning_effort": "none"} if model.startswith("gpt-6") else {}
 
 
 class OpenAIChatService:
@@ -62,6 +72,7 @@ class OpenAIChatService:
             response = await client.chat.completions.create(
                 model=self.model_name,
                 temperature=0,
+                extra_body=completion_options(self.model_name),
                 response_format={"type": "json_object"} if json_output else omit,
                 messages=[
                     {"role": "system", "content": system_prompt},
