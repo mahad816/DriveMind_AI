@@ -2,7 +2,7 @@
 
 import pytest
 
-from evaluation.rag_eval.runner import overall, prepare, prepare_case, score_row
+from evaluation.rag_eval.runner import describe_error, overall, prepare, prepare_case, score_row
 from evaluation.rag_eval.score import (
     Observed,
     answer_score,
@@ -143,3 +143,14 @@ def test_score_row_recomputes_every_deterministic_stage_from_the_stored_reply():
 def test_interval_always_contains_the_observed_rate(n, k):
     lo, hi = wilson(k, n)
     assert lo <= k / n <= hi
+
+
+def test_describe_error_keeps_class_names_only():
+    try:
+        try:
+            raise TimeoutError("secret-looking text sk-123")
+        except TimeoutError as inner:
+            raise RuntimeError("outer secret") from inner
+    except RuntimeError as exc:
+        text = describe_error(exc)
+    assert text == "RuntimeError<-TimeoutError" and "secret" not in text

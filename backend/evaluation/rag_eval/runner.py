@@ -21,6 +21,16 @@ JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat"}
 REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
 
 
+def describe_error(exc: BaseException) -> str:
+    """Class names along the cause chain, e.g. 'ChatError<-TimeoutError'. Never message text."""
+    names = [type(exc).__name__]
+    cause = exc.__cause__ or exc.__context__
+    while cause is not None and len(names) < 4:
+        names.append(type(cause).__name__)
+        cause = cause.__cause__ or cause.__context__
+    return "<-".join(names)
+
+
 def prepare(text: str, total_files: int) -> str:
     return text.replace("{TOTAL_FILES}", str(total_files))
 
@@ -64,7 +74,7 @@ async def run_case(
     except BudgetExceeded:
         raise
     except Exception as exc:  # one failing case must not end the run; record the class only
-        error = type(exc).__name__
+        error = describe_error(exc)
     finally:
         label_var.reset(label)
     latency = perf_counter() - started

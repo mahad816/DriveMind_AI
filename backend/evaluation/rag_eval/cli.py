@@ -47,6 +47,8 @@ async def run(args: argparse.Namespace) -> None:
     cases = [c for c in dataset["cases"] if args.split == "all" or c["split"] == args.split]
     if args.category:
         cases = [c for c in cases if c["category"] in args.category]
+    if args.ids:
+        cases = [c for c in cases if c["id"] in args.ids]
     cases = cases[: args.limit] if args.limit else cases
     settings = eval_settings(chat_model=args.model)
     meter = CostMeter(args.cap)
@@ -103,6 +105,7 @@ def main() -> None:
     parser.add_argument("--split", choices=["dev", "test", "all"], default="dev")
     parser.add_argument("--category", nargs="*")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--ids", nargs="*", help="only these case ids")
     parser.add_argument("--model", default=None, help="chat model (default: the app default)")
     parser.add_argument("--concurrency", type=int, default=3)
     args = parser.parse_args()
