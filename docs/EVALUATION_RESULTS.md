@@ -87,17 +87,23 @@ Source: `galileo-ai/ragbench` (CC BY 4.0), 11 configs, 25 rows each, 266 rows us
 
 Read plainly: about half of what it flags the annotator also flagged, and it finds about half of what the annotator flagged. On general-purpose RAG data this is a modest checker, not a precise one. `gpt-5.4-nano` was tried first and was unusable (precision about 0.27), so `gpt-5.4-mini` is the default. Cost of this run: $0.49.
 
-### 2. Does it do its job in this product's failure shape? (planted claims, 45 answerable fact cases)
-Evidence = the real file(s); clean answer = the case's reference answer. Variants built by fixed rules, no model: `clean`, `appended` (clean answer plus one invented, specific sentence), `contradict` (first number changed by +7). Script: `evaluation/rag_eval/planted_claims.py`. Cost $0.07.
+### 2. Does it do its job in this product's failure shape? (planted claims, corrected 2026-11-19)
+Evidence = the real file(s); clean answer = the case's reference answer. Variants built by fixed rules, no model: `clean`, `appended` (clean answer plus one invented, specific sentence), `contradict` (first number changed by +7), and `computed` (correct calculated answers, to check the checker does not delete honest arithmetic). Script: `evaluation/rag_eval/planted_claims.py`. About $0.06 per run.
 
-| Test | Result |
-|---|---|
-| Invented sentence removed | 44 of 45 = 97.8 % (CI 88-100 %) |
-| Changed number caught | 29 of 36 = 80.6 % (CI 65-90 %) |
-| True reference answer wrongly flagged (false removal) | 2 of 45 = 4.4 % (CI 1-15 %) |
-| Other sentences flagged in the appended variants | 3 |
+**The first version of this test was wrong, and the numbers first published here (false removal 4.4 %, invented sentence 44/45, number swap 29/36) should not be used.** Reading every failing case showed: (a) 2 "false removals" were correct answers that mention the *old* policy while the test handed the checker only the *new* policy file, so flagging them was right; (b) one "contradiction" repeated another real incident number, which is not a false fact; (c) the checker itself had a bug: any statement under 4 words was treated as a heading and could never be removed, so a short answer like "17 February 2026." could not be caught; (d) the checker never saw the user's question, so it could not tell that 13 = 22 - 9 uses numbers the user typed. The test now leaves out cases whose reference answer the chosen files do not fully support (4 cases) and builds a "contradiction" only when the changed number is genuinely new.
 
-The planted sentences are synthetic and obviously out of place, so 98 % is an easy case; the contradiction row (80 %) is the more honest number. Number swaps the evidence merely makes less likely, or that sit inside a long list, are the ones it misses.
+Fixes (branch `fix/claim-check-numbers`): short fragments with a digit are checked; a plain non-AI step lists numbers written in a statement that appear nowhere in the evidence or the user's words, and the model is asked to check each unless it is arithmetic; the user's messages are given to the checker.
+
+Two runs per version (the model is not fully repeatable even at temperature 0):
+
+| Test (corrected) | Old checker (2 runs) | New checker (2 runs) |
+|---|---|---|
+| Invented sentence removed | 37 and 39 of 41 | **41 and 41 of 41** |
+| Changed number caught | 21 and 22 of 26 | **25 and 25 of 26** |
+| True answer wrongly removed | 0 of 41, 0 of 41 | 0 of 41, 0 of 41 |
+| Correct calculated answer wrongly removed | not measured | 1 of 8, 1 of 8 (`ca02`: minutes converted to hours) |
+
+Remaining misses: `sv04` (a date changed from 4 March to 11 March inside a long sentence) and `ca02`. The planted sentences are synthetic and obviously out of place, so removing them is the easy case.
 
 ### 3. End to end: tool agent on the 94 cases, check on vs off (same code, same day)
 | | Check OFF | Check ON |

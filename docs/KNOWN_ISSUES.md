@@ -46,9 +46,9 @@ something known without a test (or say plainly that it is *unreproduced*).
 ### KI-002 — A real citation did not prove the claim  *(fixed on branch `fix/claim-grounding`)*
 - **Was:** a claim the source does not say, carrying a valid `[source_N]` marker, was shown with a genuine citation (evidence "Authoritative refund policy text."; answer "Refunds are always approved within 90 days. [source_1]" was published).
 - **Fix:** after the tool agent answers, `claim_check.py` asks `CLAIM_CHECK_MODEL` (default `gpt-5.4-mini`) which numbered statements assert a specific fact the evidence lacks or contradicts and removes them before citation handling; if nothing supported is left the normal "could not find" reply is used. It fails open (errors leave the answer unchanged), skips headings and fragments, and can be turned off with `CLAIM_CHECK_ENABLED=false`. One extra call per grounded answer: about +1.4 s median latency.
-- **Measured (docs/EVALUATION_RESULTS.md):** removes an invented sentence 44/45 and a changed number 29/36; 2/45 true answers wrongly flagged; on RAGBench precision 0.52 / recall 0.46 at response level. Not perfect: a wrong claim that is merely implied by the evidence passes, and a correct detail is occasionally removed.
+- **Measured (docs/EVALUATION_RESULTS.md, corrected test, two runs):** removes an invented sentence 41/41, catches a changed number 25/26, wrongly removes 0/41 true answers and 1/8 correct calculated answers; on RAGBench (general data, GPT-4o labels) precision 0.52 / recall 0.46 at response level. Not perfect: a wrong claim that is only implied by the evidence passes, a number changed inside a long sentence can slip through (`sv04`), and a unit conversion (minutes to hours) can be removed.
 - **Scope:** tool agent only. The legacy pipeline and the LangGraph path are not checked.
-- **Tests:** `backend/tests/agents/tool_rag/test_claim_check.py` (39); the former xfail test was removed.
+- **Tests:** `backend/tests/agents/tool_rag/test_claim_check.py` (55); the former xfail test was removed.
 
 ### KI-010 — A finished preparation record blocked Drive discovery  *(fixed on branch `fix/discovery-preparation-gate`)*
 - **Was:** after documents finished preparing, "Check Drive" refused until the Preparation screen was closed.
