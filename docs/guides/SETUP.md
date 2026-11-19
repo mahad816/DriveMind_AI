@@ -160,7 +160,7 @@ Or use the Chat UI at **http://localhost:3000/chat**.
 | `QDRANT_COLLECTION` | `drivemind_chunks` | Collection name |
 | `OPENAI_API_KEY` | — | LLM + embeddings |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHAT_MODEL` | `gpt-6-luna` | Chat model |
+| `CHAT_MODEL` | `gpt-5.4-nano` | Chat model |
 | `GOOGLE_CLIENT_ID` | — | OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | — | OAuth client secret |
 | `GOOGLE_REDIRECT_URI` | `http://localhost:8000/api/v1/auth/google/callback` | OAuth callback |

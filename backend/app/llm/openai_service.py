@@ -27,7 +27,7 @@ from app.llm.prompts import (
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.relationships import select_relationship_evidence
 
-DEFAULT_CHAT_MODEL = "gpt-6-luna"
+DEFAULT_CHAT_MODEL = "gpt-5.4-nano"
 
 
 def completion_options(model: str) -> dict[str, str]:

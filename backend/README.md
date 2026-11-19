@@ -29,7 +29,7 @@ Question → embed → Qdrant search → Postgres chunk hydrate → LLM answer �
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `CHAT_MODEL` | `gpt-6-luna` | OpenAI chat model for grounded answers |
+| `CHAT_MODEL` | `gpt-5.4-nano` | OpenAI chat model for grounded answers |
 | `RETRIEVAL_TOP_K` | `8` | Max chunks retrieved from Qdrant |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Minimum similarity score for retrieval |
 | `RAG_MAX_CONTEXT_CHARS` | `12000` | Max context sent to the LLM |

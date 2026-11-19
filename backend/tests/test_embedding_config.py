@@ -61,7 +61,7 @@ def test_settings_retrieval_defaults() -> None:
 def test_settings_chat_defaults() -> None:
     """Chat and RAG field defaults should match Phase 6 MVP tuning."""
     fields = Settings.model_fields
-    assert fields["chat_model"].default == "gpt-6-luna"
+    assert fields["chat_model"].default == "gpt-5.4-nano"
     assert fields["rag_max_context_chars"].default == 12000
 
 
