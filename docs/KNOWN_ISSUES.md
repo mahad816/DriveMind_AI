@@ -27,13 +27,6 @@ something known without a test (or say plainly that it is *unreproduced*).
 
 ## Open
 
-### KI-001 — Greetings and small talk get the "no document evidence" refusal  *(user-visible, backend)*
-- **Symptom:** "Hello, can you hear me?" answers "I don't have retrieved document evidence to answer that. Which file should I look up?" (OpenAI call itself succeeded). Also refused today: "Hi there", "How are you?", "Thanks a lot", "thank you so much", "What can you do?", "Who are you?".
-- **Cause:** `backend/app/agents/tool_rag/finalization.py` `_SOCIAL` is an exact-match list of 10 phrases. With no tool call, free-form model text is (deliberately) never published, so everything outside the list falls to `NO_CONTENT`. The tool agent runs before the legacy router, which has a larger list (`_CHITCHAT_EXACT` in `backend/app/retrieval/query_router.py`, includes "how are you", "what can you do", "who are you") that is never consulted.
-- **Tests:** `test_ki001_social_input_is_not_refused_as_missing_evidence` (7 cases, xfail). Guards that pass today and must keep passing: greeting + document question still needs evidence (4 cases); "Hey!", "Good morning!", "Thanks!" keep working.
-- **Suggested fix (smallest, safe):** reuse the router's phrase set instead of a second list (DRY), add "can you hear me" / "are you there" style phrases, keep matching on the *whole normalized message* so "Hello, summarize my file" is still refused. Return server-owned text only; never publish model prose. Do **not** loosen the no-tools policy.
-- **Not decided:** exact wording of the replies; whether "what can you do" should list capabilities.
-
 ### KI-002 — A real citation does not prove the claim  *(correctness, backend)*
 - **Symptom:** the model may write a claim the source does not say; if it carries a valid `[source_N]` marker it is shown with a genuine citation. Reproduced: evidence says "Authoritative refund policy text."; answer "Refunds are always approved within 90 days. [source_1]" is published.
 - **Cause:** `finalize_answer` validates that handles/markers exist and belong to the user (identity), by design nothing checks claim-level faithfulness (documented limitation; see also the existing test `test_content_evidence_and_real_handle_allow_grounded_answer`, which encodes the same gap).
@@ -62,10 +55,14 @@ something known without a test (or say plainly that it is *unreproduced*).
 
 ### KI-020 — Indexing admission is a permanent fail-closed latch  *(unreproduced / needs decision, backend)*
 - **Observation:** `IndexingSupervisor._fail()` (`backend/app/services/indexing_lifecycle.py`) sets `FAILED` and stops; nothing returns it to `READY` without a process restart. The handoff reports one hosted case that a restart recovered after a transient provider problem.
+- **Evidence (2026-11-19):** in one of three full backend runs on a heavily loaded machine, `tests/security/test_indexing_lifecycle.py::test_two_real_instances_start_and_shutdown_independently` failed with the captured log line "Indexing executor is unavailable; local admission is closed." (the supervisor entered `FAILED` during the test), then timed out waiting for the worker. It passed 8/8 when run alone. This suggests a transient slowness can latch the supervisor; it is also a flaky test (about 1 in 3 full runs under load). The test was left unchanged on purpose so the fragility stays visible.
 - **No test on purpose:** this may be deliberate (fail closed, supervised). Writing a "should recover" test now would assume the design. Decide: self-heal with bounded retries, or keep fail-closed but expose the reason and a clear operator action.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 
 ## Fixed
-*(none yet — move entries here with the commit hash when fixed)*
+### KI-001 — Greetings and small talk got the "no document evidence" refusal  *(fixed on branch `feat/conversation-reply-tool`)*
+- **Was:** "Hello, can you hear me?", "Hi there", "Thanks a lot", "What can you do?" etc. were refused because the tool agent only recognised 10 exact phrases.
+- **Fix:** `backend/app/agents/tool_rag/conversation.py` classifies the *meaning* of the message with one small model call (enum output only, any wording / order / Roman Urdu). Conversational intents get server-owned reply text, never model prose, and skip the agent, embeddings and SQL. Anything uncertain, malformed, slow, failing, over 300 characters or in demo mode falls back to the normal grounded agent.
+- **Tests:** `backend/tests/agents/tool_rag/test_intent_gate.py` (wiring, fail-safe, no model prose). Recognition quality is measured separately by the live intent evaluation (see `backend/evaluation/`), not by phrase lists in unit tests.

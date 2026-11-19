@@ -20,6 +20,7 @@ from openai import AsyncOpenAI
 from qdrant_client.models import PointStruct
 from sqlalchemy import select, text as sql_text, update
 
+from app.agents.tool_rag.conversation import INTENT_SYSTEM_PROMPT
 from app.api.chat import get_rag_service
 from app.agents.tool_rag import contracts as tool_contracts
 from app.agents.tool_rag.execution import executor as tool_executor
@@ -63,6 +64,7 @@ class ModelTransport:
 
     def __init__(self):
         self.requests = []
+        self.intent_requests = []
         self.tool_steps = 0
         self.clients = []
         self.tool_final_answer = None
@@ -83,6 +85,12 @@ class ModelTransport:
 
     def respond(self, request):
         body = json.loads(request.content)
+        if body["messages"][0]["content"] == INTENT_SYSTEM_PROMPT:
+            # The intent gate sees only the question; record it apart from agent traffic.
+            self.intent_requests.append(body)
+            return self.completion(
+                {"role": "assistant", "content": '{"intent": "document_question"}'}
+            )
         self.requests.append(body)
         visible = json.dumps(body["messages"])
         answer = "GPA: 3.8" if MARKERS[USER_A] in visible else "GPA: 1.2"
@@ -110,6 +118,10 @@ class ModelTransport:
             message["content"] = json.dumps({"needs_context": True, "question": QUESTION})
         elif "rewritten_query" in json.dumps(body["messages"]):
             message["content"] = json.dumps({"rewritten_query": QUESTION})
+        return self.completion(message)
+
+    @staticmethod
+    def completion(message):
         return httpx.Response(
             200,
             json={
@@ -359,6 +371,9 @@ def assert_private(c, owner):
     assert "UNINDEXED_PRIVATE_TEXT" not in visible
     assert "DEMO_ONLY_554" not in visible
     assert all(MARKERS[foreign] not in chunk.text for chunk in c.r.ranked)
+    # The intent gate receives only the question: no evidence, history or foreign data.
+    intent = json.dumps(c.model.intent_requests)
+    assert not any(m in intent for m in (*MARKERS.values(), *STORED_HISTORY.values()))
     assert_tool_messages_owned(c, owner)
 
 
@@ -412,6 +427,9 @@ async def test_real_http_grounded_modes(corpus, owner, mode):
     if mode == "tools":
         assert any("tools" in request for request in c.model.requests)
         assert not any("tools" not in request for request in c.model.requests)
+        # Exactly one intent-gate call, carrying only the question (privacy checked above).
+        assert len(c.model.intent_requests) == 1
+        assert c.model.intent_requests[0]["messages"][1]["content"] == QUESTION
 
 
 @pytest.mark.parametrize("state", ["missing", "invalid", "expired", "revoked", "wrong_kind"])

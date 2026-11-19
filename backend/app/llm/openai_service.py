@@ -90,6 +90,14 @@ class OpenAIChatService:
             raise ChatError("OpenAI chat request returned an empty answer")
         return content.strip()
 
+    async def complete_json(self, system_prompt: str, user_message: str) -> str:
+        """Public JSON-mode completion for small structured calls (e.g. intent routing)."""
+        if self._client is None:
+            # Cache the client so an owner's aclose() releases it (``_complete`` alone would
+            # create an unreferenced client per call).
+            self._client = self._get_client()
+        return await self._complete(system_prompt, user_message, json_output=True)
+
     async def generate_grounded_answer(
         self,
         question: str,
