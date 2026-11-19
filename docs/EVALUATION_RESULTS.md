@@ -178,6 +178,58 @@ part 2, not something the cut-off can fix.
   0.50 and maximum 0.67, the same range as answerable cases. So retrieval cannot decide when to refuse.
 - Counts have wide error bars (95 % interval for 83 / 89 is about 86 % to 97 %); a difference of 1-2 cases is noise.
 
+## Step 1a: the vector cut-off (2026-11-20)
+
+Change: `RETRIEVAL_SCORE_THRESHOLD` 0.35 -> **0.25**, and a new `RETRIEVAL_RELATIVE_THRESHOLD` = **0.7** (a vector hit
+must also score at least 70 % of the best vector hit). Both apply to the old pipeline too, which shares the retriever.
+
+**How the values were chosen (retrieval probe, dev split, then test split):**
+
+| Floor | Relative | Plain: right file in results (dev) | Ranking quality in the 3 lead-in wordings (dev, MRR) | Not-in-files cases that still return chunks |
+|---|---|---|---|---|
+| 0.35 (old) | off | 54 / 56 | 0.53 / 0.78 / 0.75 | 18 / 22 |
+| 0.30 | off | 55 / 56 | 0.50 / 0.75 / 0.78 | 20 / 22 |
+| 0.25 | off | 55 / 56 | 0.49 / 0.73 / 0.77 | 21 / 22 |
+| 0.20 to 0.0 | off | 55 / 56 (flat) | 0.49 / 0.71 / 0.77 | 21 to 22 / 22 |
+| 0.25 | 0.9 | 52 / 56 (loses `ru03`, `td01`, `tr21`) | 0.74 / 0.84 / 0.84 | 21 / 22 |
+| 0.25 | 0.8 | 55 / 56 | 0.59 / 0.82 / 0.80 | 21 / 22 |
+| 0.25 | 0.7 | 55 / 56 | 0.55 / 0.79 / 0.78 | 21 / 22 |
+| 0.15 | 0.8 | same as 0.25 / 0.8 | same | 21 / 22 |
+
+- Below 0.25 nothing more is found; the floor only matters until ~0.25. With the relative rule on, 0.15 and 0.25 give
+  identical results, so the floor is no longer a delicate choice.
+- A flat low floor alone has a cost: weak chunks fill the 8 slots and push the right file down in the lead-in
+  wordings (for example `sf01` rank 2 -> 6, `mx04` 1 -> 4). The relative rule removes most of that.
+- The test split is used as a veto, with the rule fixed in advance: take the largest fraction that loses no right
+  file. On test, 0.8 and 0.75 each lose one multi-file case (2 of 3 found, 3 of 3 with the rule off); 0.7 loses none.
+  Test, floor 0.25 vs 0.35, plain: 32 / 33 vs 29 / 33; with 0.7 the lead-in wordings gain a little ("according to the
+  report" 0.69 -> 0.74, "policy document" 0.45 -> 0.52 MRR). The relative rule's gain is modest.
+- Right-file score vs top score (dev): the right file's best chunk scores 81 % to 100 % of the top vector score
+  (median 100 %), which is why fractions above 0.8 start losing files.
+
+**Agent level, dev split, 88 cases (baseline + trap + control files), tool agent, one run each, cost 0.22 + 0.22 USD:**
+
+| | Old (0.35, off) | New (0.25, 0.7) |
+|---|---|---|
+| Overall pass | 74 / 88 (84.1 %) | 79 / 88 (89.8 %) |
+| Right file found | 53 / 59 | 56 / 59 |
+| Answer correct | 54 / 63 | 57 / 63 |
+| Refusal handled correctly | 27 / 31 | 29 / 31 |
+| Answers with no citation on refusals ("clean") | 14 / 29 | 11 / 29 |
+
+Five cases went from failing to passing (`sf01`, `fu01`, `tr21`, `tr05`, `tr09`); none went from passing to failing.
+How to read it: single runs, error bars about +/- 8 points. `sf01` and `tr21` are the retrieval fix working as
+diagnosed. `tr05` and `tr09` improving is most likely model variance (a lower cut-off should not make refusals
+better), so the honest gain is about 2 to 3 cases, not 5.
+
+**What got worse, and why:** "clean" fell by 3 cases (`pu04`, `pu05`, `tr05`). In two of them the old pass was
+accidental (the agent hit a tool error and returned a canned message; now it searches and writes a real refusal).
+`pu05` cites the one file that mentions the person, which is reasonable. `pu04` ("release 1.4") attaches **8 files,
+including unrelated NIST PDFs**, to a refusal. Cause: when an answer has no citation markers, `finalize_answer`
+appends "Sources consulted:" with every file the search returned, so any retrieval change that returns more files
+makes refusals look more cited. This was already true before (15 of 29 refusals were not clean); it is a separate
+defect, planned as Step 1d, not patched here.
+
 ## Intent gate — `intent_v1` (live)
 
 Question: can the small model call that runs before the document agent recognise greetings, thanks,

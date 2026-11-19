@@ -69,18 +69,25 @@ in the top 8, at what rank, and does the answer-bearing chunk appear"; also a wo
 with it first and confirmed with one paid run. Test: unit test on a fake retriever for the metric maths.
 
 ### Step 1 - Fix the retrieval bugs the probes proved (cost: about 0 to tune, one paid confirm)
-1. Lower the vector cut-off from 0.35 to about 0.20 (exact value chosen on dev with the probe; test split
-   confirms). Why: finds 3 more right files.
-2. Ignore generic file-name words (words that occur in many file names, e.g. "policy", "report", "document")
+1. **(1a, DONE 2026-11-20)** Vector cut-off 0.35 -> 0.25, plus a relative rule (a hit must score at least 70 % of
+   the best hit). Chosen on dev with the probe, vetoed/confirmed on test; agent level, dev, 88 cases: 74 -> 79 pass,
+   no case got worse (honest gain 2 to 3 cases, single runs). Details: `docs/EVALUATION_RESULTS.md`, "Step 1a".
+2. (1b) Ignore generic file-name words (words that occur in many file names, e.g. "policy", "report", "document")
    in the "file name contains word" path, and stop the metadata search adding the newest files unless the
    user said "latest/newest/recent". Why: finding 5.
 3. Remove the dead grade, or make it honest. Honest means: keep it only if it can reject; the probes say no
    score can, so the plan is to **delete the dead check** and rely on Step 4. Why: dead code that looks like
    a safety net is worse than none. (Legacy path tests must be updated in the same commit.)
-4. Tool description and agent prompt: tell the model to search with short keyword queries (names, numbers,
+4. **(1d, new, found in 1a)** A refusal with no citation markers gets "Sources consulted:" followed by every file the
+   search returned (`finalize_answer`), e.g. 8 files, unrelated NIST PDFs included, on "release 1.4". Decide what a
+   "not found" answer should show (recommended: no source list, or only files the answer actually names), then fix
+   in `finalization.py` with a test. Before this step 15 of 29 refusals already carried citations.
+5. Tool description and agent prompt: tell the model to search with short keyword queries (names, numbers,
    IDs, the topic), to run a second differently-worded search if the first returns nothing useful, and to
    include the topic from earlier turns when the user's message is a follow-up.
-Expected: right file found 81 % -> 88-90 % at agent level. Risk: more weak chunks reach the model on
+`sf07` ("Who is the Security Lead?") is a 1b case: `team_directory.txt` scores 0.43 by vector but ranks below 8 behind
+public NIST chunks, and the keyword path puts `security_policy.txt` first only because the word "security" is in its
+file name. Expected: right file found 81 % -> 88-90 % at agent level. Risk: more weak chunks reach the model on
 unanswerable questions; guard: refusal cases (28 baseline + 16 not-found traps) must stay at or above 95 %.
 
 ### Step 2 - Make the agent search (cause B, part of C)
@@ -165,7 +172,7 @@ that is the first paid run (dev split, about 0.10 USD) so the "before" number ex
 
 ## 7. Budget (balance 1.56 USD, ceiling 1.50 USD)
 
-Spent so far in this analysis: about 0.06 USD (embedding probes). Steps 0, 1.1-1.3 are free to tune.
+Spent so far: about 0.50 USD (0.06 analysis probes; 0.44 for the two Step 1a agent runs, 88 cases each, 0.22 per run, which also serve as the dev-split baseline for later steps). About 1.0 USD remains under the 1.50 ceiling, so later steps should run on the cases they can change, not on everything. Steps 0, 1.1-1.3 are free to tune.
 Estimates, not measurements: a full run of 94 + 49 cases is about 0.35-0.40 USD; a dev-only run about half.
 Plan: baseline of the new traps (dev) 0.10, Step 1 confirm 0.20, Step 2 0.10, Step 3 0.10,
 Step 4 + planted re-check 0.25, Step 5 (mini model, traps only) 0.15, final full run 0.35 = about 1.25 USD.

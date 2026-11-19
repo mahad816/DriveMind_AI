@@ -211,6 +211,8 @@ async def run(args: argparse.Namespace) -> None:
     updates: dict[str, Any] = {}
     if args.threshold is not None:
         updates["retrieval_score_threshold"] = args.threshold
+    if args.relative is not None:
+        updates["retrieval_relative_threshold"] = args.relative
     if args.top_k is not None:
         updates["retrieval_top_k"] = args.top_k
     settings: Settings = eval_settings(tool_agent=True).model_copy(update=updates)
@@ -226,6 +228,7 @@ async def run(args: argparse.Namespace) -> None:
     report["settings"] = {
         "retrieval_score_threshold": settings.retrieval_score_threshold,
         "retrieval_top_k": settings.retrieval_top_k,
+        "retrieval_relative_threshold": settings.retrieval_relative_threshold,
         "split": args.split,
         "candidate_limit": CANDIDATE_LIMIT,
     }
@@ -241,7 +244,7 @@ def print_report(report: dict[str, Any], filename: str) -> None:
     s = report["settings"]
     print(
         f"retrieval probe  split={s['split']}  cut-off={s['retrieval_score_threshold']}  "
-        f"top-k={s['retrieval_top_k']}  -> {filename}"
+        f"relative={s['retrieval_relative_threshold']}  top-k={s['retrieval_top_k']}  -> {filename}"
     )
     print("(query = the question text; the real agent writes its own)\n")
     header = f"{'wording':18s} {'cases':>5s} {'found':>11s} {'ranked 1st':>11s} {'MRR':>6s} {'files/res':>9s}"
@@ -272,6 +275,11 @@ def main() -> None:
         "--phrasings", action="store_true", help="also test the three lead-in wordings"
     )
     parser.add_argument("--threshold", type=float, help="override retrieval_score_threshold")
+    parser.add_argument(
+        "--relative",
+        type=float,
+        help="override retrieval_relative_threshold (fraction of best hit)",
+    )
     parser.add_argument("--top-k", type=int, help="override retrieval_top_k")
     parser.add_argument("--tag", help="suffix for the result file name")
     parser.add_argument("--cap", type=float, default=0.10, help="hard spend cap in USD")

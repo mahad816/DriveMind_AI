@@ -31,7 +31,8 @@ Question → embed → Qdrant search → Postgres chunk hydrate → LLM answer �
 |----------|---------|---------|
 | `CHAT_MODEL` | `gpt-5.4-nano` | OpenAI chat model for grounded answers |
 | `RETRIEVAL_TOP_K` | `8` | Max chunks retrieved from Qdrant |
-| `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Minimum similarity score for retrieval |
+| `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Minimum similarity score for retrieval |
+| `RETRIEVAL_RELATIVE_THRESHOLD` | `0.7` | A vector hit must also score at least this fraction of the best hit (`0` = off) |
 | `RAG_MAX_CONTEXT_CHARS` | `12000` | Max context sent to the LLM |
 
 Requires `OPENAI_API_KEY`, a built Qdrant index (`POST /api/v1/index/build`), and Google OAuth connected.
@@ -63,7 +64,8 @@ Question -> vector + keyword + metadata retrieval -> RRF merge -> weighted reran
 | `HYBRID_RETRIEVAL_ENABLED` | `true` | Toggle hybrid retrieval in `RagService` |
 | `RETRIEVAL_CANDIDATE_K` | `24` | Candidate pool size per retriever before merge |
 | `RETRIEVAL_TOP_K` | `8` | Final reranked chunks sent downstream |
-| `RETRIEVAL_SCORE_THRESHOLD` | `0.35` | Vector score floor and evidence weak-signal rule |
+| `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Vector score floor and evidence weak-signal rule |
+| `RETRIEVAL_RELATIVE_THRESHOLD` | `0.7` | Drop vector hits scoring below this fraction of the best vector hit (`0` = off) |
 | `HYBRID_RRF_K` | `60` | Reciprocal rank fusion denominator constant |
 | `HYBRID_WEIGHT_VECTOR` | `0.5` | Weighted rerank contribution for vector scores |
 | `HYBRID_WEIGHT_KEYWORD` | `0.3` | Weighted rerank contribution for keyword scores |

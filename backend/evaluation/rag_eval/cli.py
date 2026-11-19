@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .corpus import public_files, synthetic_files, verify
-from .dataset import load_cases, validate
+from .dataset import load_many, validate
 from .meter import BudgetExceeded, CostMeter
 from .runner import PIPELINES, judge_row, prepare_case, run_pipeline, score_row
 from .score import summarise
@@ -40,7 +40,7 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 async def run(args: argparse.Namespace) -> None:
     files = synthetic_files() + public_files()
     verify(files)
-    dataset = load_cases(args.dataset)
+    dataset = load_many(args.dataset)
     problems = validate(dataset, files)
     if problems:
         raise SystemExit("Dataset invalid; refusing to spend money:\n" + "\n".join(problems))
@@ -53,6 +53,15 @@ async def run(args: argparse.Namespace) -> None:
     settings = eval_settings(chat_model=args.model)
     if args.no_claim_check:
         settings = settings.model_copy(update={"claim_check_enabled": False})
+    overrides = {
+        key: value
+        for key, value in (
+            ("retrieval_score_threshold", args.threshold),
+            ("retrieval_relative_threshold", args.relative),
+        )
+        if value is not None
+    }
+    settings = settings.model_copy(update=overrides)
     meter = CostMeter(args.cap)
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     RESULTS.mkdir(exist_ok=True)
@@ -65,7 +74,15 @@ async def run(args: argparse.Namespace) -> None:
             except BudgetExceeded as exc:
                 print(f"STOPPED: {exc}. Ask before spending more.")
                 break
-            result.update(split=args.split, spend_so_far=meter.summary())
+            result.update(
+                split=args.split,
+                datasets=args.dataset,
+                retrieval={
+                    "score_threshold": settings.retrieval_score_threshold,
+                    "relative_threshold": settings.retrieval_relative_threshold,
+                },
+                spend_so_far=meter.summary(),
+            )
             tag = f"_{args.tag}" if args.tag else ""
             path = (
                 RESULTS / f"rag_v2_{stamp}_{pipeline}_{settings.chat_model}_{args.split}{tag}.json"
@@ -81,7 +98,7 @@ async def rescore(args: argparse.Namespace) -> None:
     source = Path(args.file)
     data = json.loads(source.read_text())
     total = len(synthetic_files() + public_files())
-    cases = {c["id"]: prepare_case(c, total) for c in load_cases(args.dataset)["cases"]}
+    cases = {c["id"]: prepare_case(c, total) for c in load_many(args.dataset)["cases"]}
     settings = eval_settings(chat_model=data["model"])
     meter = CostMeter(args.cap)
     with meter.installed():
@@ -112,8 +129,13 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--ids", nargs="*", help="only these case ids")
     parser.add_argument(
-        "--dataset", default="rag_v2_cases.json", help="case file in evaluation/datasets"
+        "--dataset",
+        nargs="+",
+        default=["rag_v2_cases.json"],
+        help="one or more case files in evaluation/datasets",
     )
+    parser.add_argument("--threshold", type=float, help="override retrieval_score_threshold")
+    parser.add_argument("--relative", type=float, help="override retrieval_relative_threshold")
     parser.add_argument("--tag", help="suffix for the result file name, e.g. claimcheck")
     parser.add_argument(
         "--no-claim-check",

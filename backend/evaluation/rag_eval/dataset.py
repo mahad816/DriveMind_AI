@@ -2,6 +2,7 @@
 
 import json
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,14 @@ SPLITS = {"dev", "test"}
 def load_cases(name: str = "rag_v2_cases.json") -> dict[str, Any]:
     data: dict[str, Any] = json.loads((DATA / name).read_text())
     return data
+
+
+def load_many(names: Sequence[str]) -> dict[str, Any]:
+    """Several case files as one dataset; ``validate`` reports an id that appears twice."""
+    merged: dict[str, Any] = {"cases": []}
+    for name in names:
+        merged["cases"] += load_cases(name)["cases"]
+    return merged
 
 
 def corpus_texts(files: list[CorpusFile]) -> dict[str, str]:
