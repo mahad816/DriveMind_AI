@@ -332,3 +332,18 @@ it("account invalidation removes progress and fences delayed private metadata af
   expect(screen.queryByRole("region", { name: "Preparation progress" })).toBeNull();
   expect(screen.queryByRole("link", { name: "Start chatting" })).toBeNull(); expect(posts()).toHaveLength(1);
 });
+
+it("KI-012: Check status on the Preparation screen answers a click made while the first read is still loading", async () => {
+  const slow = deferred<Response>();
+  let held = true;
+  intercept = (p) => (held && new URL(p, "http://localhost").pathname === "/api/v1/files" ? slow.promise : undefined);
+  render(<QueuePreparationView owner={owner} />);
+  const button = await screen.findByRole("button", { name: "Check status" });
+  await userEvent.click(button);                                  // used to be dropped silently while a read was in flight
+  expect(screen.getByText("Checking…")).toBeInTheDocument();
+  expect(button).toBeDisabled();
+  held = false; slow.resolve(json({ files, total: files.length }));
+  expect(await screen.findByText(/Checked at .*\./)).toBeInTheDocument();
+  await waitFor(() => expect(button).toBeEnabled());
+  expect(posts()).toHaveLength(0);                                // checking never starts any processing
+});

@@ -9,6 +9,7 @@ import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
 import { preparationEligibility, preparationFrame } from "@/lib/knowledge/single-file-preparation";
 import { PreparationQueue, queueConfirmation } from "@/lib/knowledge/preparation-queue";
 import { PreparationProgress } from "@/components/knowledge/preparation-progress";
+import { useManualCheck } from "@/components/knowledge/use-manual-check";
 import { PreparationReview } from "@/components/files/preparation-review";
 
 type Props = { owner: string; draft?: readonly DriveFileRead[]; onBack?: (reserved: boolean) => void; onRemove?: (id: string) => void };
@@ -25,6 +26,10 @@ export function QueuePreparationView({ owner, draft, onBack, onRemove }: Props) 
   const actionBusy = useRef(false);
   const metadataRequest = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
+  const manual = useManualCheck(
+    () => Promise.all([controller.check(), refreshMetadata()]),
+    () => { const s = controller.getSnapshot(); return `${s.phase}|${s.message}|${s.queue?.current ?? ""}`; },
+  );
   const live = () => scope.current.alive && sessionOwner() === owner && sessionRevision() === scope.current.revision;
   const refreshMetadata = async () => {
     const request = ++metadataRequest.current;
@@ -107,7 +112,7 @@ export function QueuePreparationView({ owner, draft, onBack, onRemove }: Props) 
 
   if (queue) return <PreparationProgress owner={owner} state={state} inventory={inventory} metadataError={metadataError}
     actionError={actionError} working={working} canConfirm={canConfirm}
-    onConfirm={() => void start()} onCheck={() => { void controller.check(); void refreshMetadata(); }}
+    onConfirm={() => void start()} onCheck={() => void manual.check()} checkNote={manual.note} checking={manual.checking}
     onClose={() => void close()} onBack={onBack ? back : undefined} onLeave={back} />;
 
   const message = actionError ?? (metadataError ? "Document details could not be verified. Processing is paused. Check status before continuing." : state.message);
@@ -115,9 +120,10 @@ export function QueuePreparationView({ owner, draft, onBack, onRemove }: Props) 
     <header className="files-page-header"><h1 ref={heading} tabIndex={-1} className="editorial-display">Preparation</h1></header>
     <div className="preparation-panel preparation-empty">
       <p role={state.phase === "blocked" || metadataError || actionError ? "alert" : "status"}>{message}</p>
+      {manual.note ? <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{manual.note}</p> : null}
       <div className="preparation-actions">
         {onBack ? <Button variant="ghost" onClick={back}>Back to files</Button> : <Link onClick={back} href="/files" className={buttonVariants({ variant: "ghost" })}>Back to files</Link>}
-        <Button variant="ghost" disabled={working} onClick={() => { void controller.check(); void refreshMetadata(); }}>Check status</Button>
+        <Button variant="ghost" disabled={working || manual.checking} onClick={() => void manual.check()}>Check status</Button>
         {chatReady && <Link onClick={back} href="/chat" className={buttonVariants()}>Start chatting</Link>}
         {state.phase === "legacy" && <Link onClick={back} href="/prepare" className={buttonVariants()}>Review existing preparation</Link>}
         {state.phase === "blocked" && <Link onClick={back} href="/settings" className={buttonVariants({ variant: "ghost" })}>Settings</Link>}

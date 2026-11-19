@@ -38,13 +38,16 @@ type Props = {
   canConfirm: boolean;
   onConfirm: () => void;
   onCheck: () => void;
+  /** Visible outcome of the last user-pressed check (see useManualCheck). */
+  checkNote?: string | null;
+  checking?: boolean;
   onClose: () => void;
   onBack?: () => void;
   onLeave: () => void;
 };
 
 /** Read-only presentation of an existing batch. All actions belong to its controller. */
-export function PreparationProgress({ owner, state, inventory, metadataError, actionError, working, canConfirm, onConfirm, onCheck, onClose, onBack, onLeave }: Props) {
+export function PreparationProgress({ owner, state, inventory, metadataError, actionError, working, canConfirm, onConfirm, onCheck, checkNote = null, checking = false, onClose, onBack, onLeave }: Props) {
   const heading = useRef<HTMLHeadingElement>(null);
   const queue = state.queue;
   useEffect(() => { heading.current?.focus(); }, [queue?.batchId]);
@@ -111,8 +114,9 @@ export function PreparationProgress({ owner, state, inventory, metadataError, ac
           {chatReady && <Link href="/chat" onClick={onLeave} className={buttonVariants({ variant: complete ? "default" : "ghost" })}>Start chatting<ArrowRight className="size-3.5" /></Link>}
         </div>
       </div>
+      {checkNote && <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{checkNote}</p>}
       {(needsCheck || canClose) && <div className="preparation-recovery-actions">
-        {needsCheck && <Button variant="ghost" size="sm" disabled={working} onClick={onCheck}>Check status</Button>}
+        {needsCheck && <Button variant="ghost" size="sm" disabled={working || checking} onClick={onCheck}>Check status</Button>}
         {canClose && <Button variant="ghost" size="sm" disabled={working || metadataError || loading || state.phase === "complete" && !complete} onClick={onClose}>{state.phase === "complete" ? "Close completed preparation" : "End preparation"}</Button>}
         {blocked && <Link href="/settings" onClick={onLeave} className={buttonVariants({ variant: "ghost", size: "sm" })}>Settings</Link>}
       </div>}

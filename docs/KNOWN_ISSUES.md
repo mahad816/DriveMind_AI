@@ -10,7 +10,7 @@ registry being updated.
 | Side | Where | Mechanism |
 |---|---|---|
 | Backend | `backend/tests/known_issues/` | `@known_issue("KI-xxx", ...)` = `xfail(strict=True, raises=AssertionError)` |
-| Frontend | `frontend/lib/knowledge/known-issues.test.tsx` | a "today" test pinning current behaviour + an `it.fails` test of the correct behaviour |
+| Frontend | `frontend/lib/knowledge/known-issues.test.tsx` (currently none open; the file is recreated when one is added) | a "today" test pinning current behaviour + an `it.fails` test of the correct behaviour |
 
 *Strict* means: when a fix makes the test pass, the suite goes **red** (XPASS / `it.fails`
 passing). The fixer then removes the marker (backend) or changes `it.fails` to `it`
@@ -18,7 +18,7 @@ passing). The fixer then removes the marker (backend) or changes `it.fails` to `
 
 ```bash
 cd backend  && uv run pytest tests/known_issues -rxX      # expect "passed, N xfailed"
-cd frontend && npx vitest run lib/knowledge/known-issues.test.tsx
+cd frontend && npx vitest run lib/knowledge/known-issues.test.tsx   # only while a frontend issue is open
 ```
 
 Rule for new entries: reproduce first, assert only what a user would call correct, add a
@@ -46,13 +46,6 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Tests:** `KI-011 (today)` / `KI-011 (correct)`.
 - **Suggested fix:** carry a reason from `replace()` (e.g. a small error code or subclass) and map it to distinct messages. Minimal change, no new state.
 
-### KI-012 — "Check status" can do nothing  *(user-visible, frontend)*
-- **Symptom:** the Check status button appears inert.
-- **Reproduced cause (partial):** `PreparationQueue.check()` (`frontend/lib/knowledge/preparation-queue.ts`) does `if (this.busy …) return;`, so a click while any operation runs is discarded and returns at once; the caller cannot tell and the UI shows no result.
-- **Tests:** `KI-012 (today)` / `KI-012 (correct)` (a second check must wait for / join the in-flight one).
-- **Not reproduced:** when a check *does* run and still cannot verify, `blocked()` republishes the identical message, so a repeat click looks unchanged. No test yet because the desired UI (timestamp? reason?) is a product decision.
-- **Suggested fix:** return the in-flight promise instead of dropping (join), then add a visible "checked just now / still unconfirmed because …" result.
-
 ### KI-020 — Indexing admission is a permanent fail-closed latch  *(unreproduced / needs decision, backend)*
 - **Observation:** `IndexingSupervisor._fail()` (`backend/app/services/indexing_lifecycle.py`) sets `FAILED` and stops; nothing returns it to `READY` without a process restart. The handoff reports one hosted case that a restart recovered after a transient provider problem.
 - **Evidence (2026-11-19):** in one of three full backend runs on a heavily loaded machine, `tests/security/test_indexing_lifecycle.py::test_two_real_instances_start_and_shutdown_independently` failed with the captured log line "Indexing executor is unavailable; local admission is closed." (the supervisor entered `FAILED` during the test), then timed out waiting for the worker. It passed 8/8 when run alone. This suggests a transient slowness can latch the supervisor; it is also a flaky test (about 1 in 3 full runs under load). The test was left unchanged on purpose so the fragility stays visible.
@@ -66,3 +59,10 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Was:** "Hello, can you hear me?", "Hi there", "Thanks a lot", "What can you do?" etc. were refused because the tool agent only recognised 10 exact phrases.
 - **Fix:** `backend/app/agents/tool_rag/conversation.py` classifies the *meaning* of the message with one small model call (enum output only, any wording / order / Roman Urdu). Conversational intents get server-owned reply text, never model prose, and skip the agent, embeddings and SQL. Anything uncertain, malformed, slow, failing, over 300 characters or in demo mode falls back to the normal grounded agent.
 - **Tests:** `backend/tests/agents/tool_rag/test_intent_gate.py` (wiring, fail-safe, no model prose). Recognition quality is measured separately by the live intent evaluation (see `backend/evaluation/`), not by phrase lists in unit tests.
+
+### KI-012 — "Check status" could do nothing  *(fixed on branch `fix/check-status-join`)*
+- **Was:** `PreparationQueue.check()` and `DiscoveryController.check()` did `if (busy) return`, so a click during any running check, or during a submit/confirm, was discarded instantly. The screens also poll every 3 to 5 seconds, so the button often landed mid-poll. And a check that found the same blocked message republished it unchanged, so even a real check looked like nothing happened.
+- **Fix (control):** `lib/knowledge/joined-check.ts`. A click during a status check *joins* it (shares its single network read and resolves only when it truly finishes); a click during another operation waits for that operation, then checks. A finished check is never replayed from cache. Clicks can never submit work.
+- **Fix (feedback):** `useManualCheck` shows "Checking…" (button disabled), then "Checked at HH:MM:SS. No change." or "Status updated." on the discovery buttons and the Preparation screen, so the outcome is always visible.
+- **Deliberately not changed:** the "Check for files" (start) action still ignores a click while a check is running. Making it wait could let two submissions race, so it needs its own design.
+- **Tests:** `joined-check.test.ts` (6), `check-status-join.test.tsx` (8, 4 fail without the fix), plus UI tests in `drive-discovery.test.tsx`, `preparation-progress.test.tsx` and `queue-preparation.integration.test.tsx`.

@@ -1,6 +1,7 @@
 import { getDriveSyncStatus, syncDriveMetadata, SyncSubmissionError } from "@/lib/api/indexing";
 import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
 import type { IndexingJobRead } from "@/lib/api/types";
+import { JoinedCheck } from "./joined-check";
 
 type Intent = { jobId: string | null; submissionId?: string; revision?: number };
 export type DiscoveryState = {
@@ -16,7 +17,9 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class DiscoveryController {
   private state = initial;
   private listeners = new Set<() => void>();
-  private busy = false;
+  private gate = new JoinedCheck();
+  private get busy() { return this.gate.busy; }
+  private set busy(value: boolean) { this.gate.busy = value; }
   private disposed = false;
   private notified: string | null = null;
   private revision = sessionRevision();
@@ -56,7 +59,9 @@ export class DiscoveryController {
   }
   connect = () => { this.disposed = false; };
   dispose = () => { this.disposed = true; };
-  check = async () => {
+  /** Overlapping callers join the check in flight instead of being dropped. */
+  check = () => this.gate.join(() => this.runCheck());
+  private runCheck = async () => {
     if (this.busy || !this.live()) return;
     this.busy = true;
     try {

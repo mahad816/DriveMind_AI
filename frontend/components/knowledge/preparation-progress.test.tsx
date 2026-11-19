@@ -105,3 +105,18 @@ it("announces initial metadata verification without flashing a failure or unveri
   expect(screen.getByRole("button", { name: "Close completed preparation" })).toBeDisabled();
   expect(screen.getAllByRole("status")).toHaveLength(1);
 });
+
+it("KI-012: shows the outcome note of the last check even after the Check status button is gone, and disables it while checking", () => {
+  const f = fixture(); f.state.phase = "blocked"; f.state.message = "Queue status could not be verified. Check status; do not repeat uncertain work.";
+  const { rerender } = render(<PreparationProgress {...f.props} checking checkNote="Checking…" />);
+  expect(screen.getByRole("button", { name: "Check status" })).toBeDisabled();
+  expect(screen.getByText("Checking…")).toHaveAttribute("role", "status");
+  rerender(<PreparationProgress {...f.props} checkNote="Checked at 10:00:01 AM. No change." />);
+  expect(screen.getByRole("button", { name: "Check status" })).toBeEnabled();
+  expect(screen.getByText("Checked at 10:00:01 AM. No change.")).toBeVisible();
+  // The note stays when the state heals and the button disappears: that is when reassurance matters most.
+  const healed = fixture();
+  rerender(<PreparationProgress {...healed.props} checkNote="Checked at 10:00:04 AM. Status updated." />);
+  expect(screen.queryByRole("button", { name: "Check status" })).toBeNull();
+  expect(screen.getByText("Checked at 10:00:04 AM. Status updated.")).toBeVisible();
+});

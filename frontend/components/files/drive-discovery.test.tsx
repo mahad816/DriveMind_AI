@@ -153,3 +153,46 @@ it("Files header explicitly submits metadata sync through the existing receipt-a
   expect(syncDriveMetadata).toHaveBeenCalledExactlyOnceWith(false, expect.any(AbortSignal), expect.any(Function));
   expect(sync).toBeDisabled();
 });
+
+it("KI-012 in the UI: pressing Check status mid-poll gives visible feedback, joins the read, and never submits", async () => {
+  let release!: (v: { connected: boolean; job: null }) => void;
+  const pending = new Promise<{ connected: boolean; job: null }>(r => { release = r; });
+  vi.mocked(getDriveSyncStatus).mockResolvedValueOnce({ connected: true, job: null });   // the initial mount read
+  render(<DriveDiscovery compact />);
+  const check = screen.getByRole("button", { name: "Check status" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Check for files" })).toBeEnabled());
+  vi.mocked(getDriveSyncStatus).mockClear();
+  vi.mocked(getDriveSyncStatus).mockImplementation(() => pending);
+  await userEvent.click(check);
+  expect(screen.getByText("Checking…")).toHaveAttribute("role", "status");   // immediate acknowledgement
+  expect(check).toBeDisabled();                                              // cannot be spammed
+  expect(getDriveSyncStatus).toHaveBeenCalledOnce();
+  release({ connected: true, job: null });
+  expect(await screen.findByText(/Checked at .*\. No change\./)).toHaveAttribute("role", "status");
+  expect(check).toBeEnabled();
+  expect(syncDriveMetadata).not.toHaveBeenCalled();
+});
+
+it("KI-012 in the UI: when the check finds something new the note says the status was updated", async () => {
+  render(<DriveDiscovery compact />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Check for files" })).toBeEnabled());
+  vi.mocked(getDriveSyncStatus).mockResolvedValue({ connected: true, job: discoveryJob("completed") });
+  await userEvent.click(screen.getByRole("button", { name: "Check status" }));
+  expect(await screen.findByText(/Checked at .*\. Status updated\./)).toBeInTheDocument();
+});
+
+it("KI-012 in the UI: a repeat click that finds the same blocked message still visibly shows a check happened", async () => {
+  vi.mocked(getDriveSyncStatus).mockResolvedValue({ connected: true, job: discoveryJob("failed", true) });
+  render(<DriveDiscovery compact />);
+  await screen.findByText("Existing work needs review before discovery can continue. Ask the beta owner for help.");
+  await userEvent.click(screen.getByRole("button", { name: "Check status" }));
+  expect(await screen.findByText(/Checked at .*\. No change\./)).toBeInTheDocument();
+});
+
+it("KI-012 in the UI: the files-header 'Check sync status' button gives the same feedback", async () => {
+  vi.mocked(getDriveSyncStatus).mockResolvedValue({ connected: true, job: discoveryJob("running") });   // a sync in progress keeps the feedback area visible
+  render(<DriveDiscovery filesHeader />);
+  await screen.findByText("Drive discovery in progress.");
+  await userEvent.click(screen.getByRole("button", { name: "Check sync status" }));
+  expect(await screen.findByText(/Checked at .*\. No change\./)).toBeInTheDocument();
+});
