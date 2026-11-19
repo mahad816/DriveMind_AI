@@ -8,7 +8,6 @@
  *    `it` and update the registry. Nothing rots.
  */
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { DiscoveryController } from "./discovery";
 import { PreparationQueue } from "./preparation-queue";
 import { preparationKey } from "./single-file-preparation";
 import { getDriveSyncStatus, syncDriveMetadata } from "@/lib/api/indexing";
@@ -28,10 +27,6 @@ const receipts = (jobs: (number | null)[]) =>
 const entry = (n: number, result: "pending" | "ready", jobs: (number | null)[]) => ({ fileId: id(n), runId: id(n + 50), frame: "frame", receipts: receipts(jobs), result });
 const seedPreparation = (record: unknown) => values.set(preparationKey(owner), JSON.stringify(record));
 const queueRecord = (current: number, entries: ReturnType<typeof entry>[]) => ({ schemaVersion: 2, owner, batchId: id(200), current, entries });
-/** Every document ready; waiting only for the user to press "Close". */
-const completedUnclosed = () => queueRecord(1, [entry(1, "ready", [11, 12, 13])]);
-/** Work still pending: a legitimate reason to hold discovery back. */
-const unfinished = () => queueRecord(0, [entry(1, "pending", [])]);
 
 beforeEach(() => {
   vi.clearAllMocks(); setSessionOwner(owner); values = new Map();
@@ -41,42 +36,6 @@ beforeEach(() => {
   vi.mocked(syncDriveMetadata).mockResolvedValue({ job_id: id(900), status: "queued", message: "Accepted" });
 });
 afterEach(() => setSessionOwner(null));
-
-async function tryDiscovery() {
-  const c = new DiscoveryController(owner, vi.fn());
-  await c.check(); await c.start();
-  return c;
-}
-
-// --- KI-010: a finished preparation record blocks Drive discovery --------------------------
-
-it("KI-010 (today): a completed-but-unclosed preparation record stops discovery before any API call", async () => {
-  seedPreparation(completedUnclosed());
-  const c = await tryDiscovery();
-  expect(c.getSnapshot().phase).toBe("blocked");
-  expect(syncDriveMetadata).not.toHaveBeenCalled();
-});
-it.fails("KI-010 (correct): a fully completed preparation must not hold discovery hostage", async () => {
-  seedPreparation(completedUnclosed());
-  await tryDiscovery();
-  expect(syncDriveMetadata).toHaveBeenCalledOnce();
-});
-
-// --- KI-011: the refusal names the wrong cause ---------------------------------------------
-
-it("KI-011 (today): a preparation block is reported as a Drive/connection problem", async () => {
-  seedPreparation(unfinished());
-  const c = await tryDiscovery();
-  expect(c.getSnapshot().phase).toBe("blocked");
-  expect(c.getSnapshot().message).toMatch(/Drive check was not accepted/);
-  expect(syncDriveMetadata).not.toHaveBeenCalled(); // The backend was never contacted.
-});
-it.fails("KI-011 (correct): the message explains that unfinished preparation is the reason", async () => {
-  seedPreparation(unfinished());
-  const c = await tryDiscovery();
-  expect(c.getSnapshot().message).toMatch(/preparation/i);
-  expect(c.getSnapshot().message).not.toMatch(/verify your connection/i);
-});
 
 // --- KI-012: "Check status" can be silently dropped ----------------------------------------
 

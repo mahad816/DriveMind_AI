@@ -153,3 +153,29 @@ it("Files header explicitly submits metadata sync through the existing receipt-a
   expect(syncDriveMetadata).toHaveBeenCalledExactlyOnceWith(false, expect.any(AbortSignal), expect.any(Function));
   expect(sync).toBeDisabled();
 });
+
+it("KI-010/KI-011 in the UI: a finished preparation does not block the button; unfinished work explains itself", async () => {
+  const uid = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
+  const entry = { fileId: uid(1), runId: uid(51), frame: "frame", receipts: ["INGEST", "CHUNK", "BUILD"].map((stage, i) => ({ stage, submissionId: uid(500 + i), jobId: uid(11 + i) })), result: "ready" };
+  const record = (current: number, entries: unknown[]) => ({ schemaVersion: 2, owner, batchId: uid(200), current, entries });
+  const prep = `drivemind:preparation:v1:${owner}`;
+  // Unfinished: the user is told why, and the backend is never called.
+  window.localStorage.setItem(prep, JSON.stringify(record(0, [{ ...entry, receipts: [], result: "pending" }])));
+  render(<DriveDiscovery compact />);
+  const action = screen.getByRole("button", { name: "Check for files" });
+  await waitFor(() => expect(action).toBeEnabled());
+  await userEvent.click(action);
+  expect(await screen.findByText(/document preparation is unfinished/)).toHaveAttribute("role", "status");
+  expect(screen.queryByText(/verify your connection/i)).toBeNull();
+  expect(syncDriveMetadata).not.toHaveBeenCalled();
+  cleanup();
+  // Finished: the same click now submits the sync.
+  window.localStorage.setItem(prep, JSON.stringify(record(1, [entry])));
+  vi.mocked(syncDriveMetadata).mockResolvedValue({ job_id: uid(900), status: "queued", message: "Accepted" });
+  render(<DriveDiscovery compact />);
+  const again = screen.getByRole("button", { name: "Check for files" });
+  await waitFor(() => expect(again).toBeEnabled());
+  await userEvent.click(again);
+  await waitFor(() => expect(syncDriveMetadata).toHaveBeenCalledOnce());
+  expect(window.localStorage.getItem(prep)).toBeNull();
+});
