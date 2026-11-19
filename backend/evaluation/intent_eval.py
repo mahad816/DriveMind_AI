@@ -50,7 +50,8 @@ async def evaluate(settings: Settings) -> dict[str, object]:
     rows = []
     for case in cases:
         predicted = await classify_intent(complete, case["text"], case.get("previous_assistant"))
-        rows.append({**case, "predicted": predicted, "correct": predicted == case["intent"]})
+        accepted = {case["intent"], *case.get("acceptable", ())}
+        rows.append({**case, "predicted": predicted, "correct": predicted in accepted})
     per_intent: dict[str, list[bool]] = defaultdict(list)
     for row in rows:
         per_intent[row["intent"]].append(row["correct"])

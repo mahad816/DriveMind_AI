@@ -49,7 +49,7 @@ INTENT_SYSTEM_PROMPT = (
     "such as 'the second one' or 'and that file?'.\n"
     "If a 'Previous assistant message' is shown, use it: a short reply that answers or accepts "
     "that message ('yes please', 'ok', 'the second one') continues the conversation, so it is "
-    "document_question; plain thanks after an answer is thanks. With no previous message, short "
+    "document_question; plain thanks, or a bare acknowledgement such as 'ok', 'cool' or 'got it', right after an answer (not after a question or offer) is thanks. With no previous message, short "
     "ambiguous replies such as 'yes please' or 'ok go ahead' are document_question.\n"
     "Rules: if the message mixes a greeting or thanks with a request about documents "
     "('hi, summarize my resume'), choose document_question. If a request needs the user's files "
