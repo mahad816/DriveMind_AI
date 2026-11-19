@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.agents.tool_rag.claim_check import find_unsupported, split_statements
+from app.agents.tool_rag.claim_check import find_unsupported, numbers_missing, split_statements
 from app.core.config import get_settings
 from app.llm.openai_agent_service import OpenAIAgentChatService
 
@@ -50,25 +50,63 @@ def change_first_number(text: str) -> str | None:
 
 
 def build_items(dataset: dict[str, Any], texts: dict[str, str]) -> list[dict[str, Any]]:
-    items = []
-    for n, case in enumerate(
+    """Items whose clean answer the evidence fully supports, plus the rule-built variants.
+
+    A case is left out when its reference answer mentions a number the chosen files do not contain
+    (for example "it was 30 days under v1.0" when only v2.0 is given): flagging that is correct, so
+    it would only inflate the false-removal rate. A "contradict" variant is built only when the
+    changed number is genuinely new, not another value that is in the evidence.
+    """
+    items, skipped = [], []
+    cases = [
         c
         for c in dataset["cases"]
         if c["expected_behavior"] == "answer"
         and not c["computed"]
         and c["category"] != "public_document"
         and not c.get("history")
-    ):
+    ]
+    for n, case in enumerate(cases):
         clean = case["reference_answer"]
         evidence = "\n\n".join(f"[{p.split('/')[-1]}]\n{texts[p]}" for p in case["expected_files"])
+        if numbers_missing(clean, evidence):
+            skipped.append(case["id"])
+            continue
         planted = FABRICATIONS[n % len(FABRICATIONS)]
         variants = {"clean": clean, "appended": f"{clean} {planted}"}
-        if (swapped := change_first_number(clean)) and swapped != clean:
+        swapped = change_first_number(clean)
+        if swapped and swapped != clean and numbers_missing(swapped, evidence):
             variants["contradict"] = swapped
         items.append(
-            {"id": case["id"], "evidence": evidence, "variants": variants, "planted": planted}
+            {
+                "id": case["id"],
+                "question": case["question"],
+                "evidence": evidence,
+                "variants": variants,
+                "planted": planted,
+            }
         )
+    SKIPPED_CASES[:] = skipped
+    # Honest calculations contain numbers the text does not: they must survive the number hint.
+    for case in dataset["cases"]:
+        if case["computed"] and case["expected_behavior"] == "answer" and not case.get("history"):
+            evidence = "\n\n".join(
+                f"[{p.split('/')[-1]}]\n{texts[p]}" for p in case["expected_files"] if p in texts
+            )
+            if evidence:
+                items.append(
+                    {
+                        "id": case["id"],
+                        "question": case["question"],
+                        "evidence": evidence,
+                        "variants": {"computed": case["reference_answer"]},
+                        "planted": "",
+                    }
+                )
     return items
+
+
+SKIPPED_CASES: list[str] = []
 
 
 async def main(args: argparse.Namespace) -> None:
@@ -80,10 +118,12 @@ async def main(args: argparse.Namespace) -> None:
     async def one(item: dict[str, Any], kind: str, text: str) -> dict[str, Any]:
         async with gate:
             statements = split_statements(text)
-            flagged = await find_unsupported(service.complete_json, statements, item["evidence"])
+            flagged = await find_unsupported(
+                service.complete_json, statements, item["evidence"], item["question"]
+            )
         if flagged is None:
             return {"id": item["id"], "kind": kind, "error": True}
-        if kind == "clean":
+        if kind in ("clean", "computed"):
             hit = bool(flagged)  # any flag on a true answer is a false removal
         elif kind == "appended":
             hit = any(
@@ -116,12 +156,14 @@ async def main(args: argparse.Namespace) -> None:
     out: dict[str, Any] = {
         "model": args.model,
         "cases": len(items),
+        "left_out_unsupported_reference": list(SKIPPED_CASES),
         "errors": sum(r["error"] for r in rows),
     }
     for kind, label in (
         ("clean", "false_removal_rate"),
         ("appended", "invented_sentence_removed"),
         ("contradict", "contradiction_caught"),
+        ("computed", "calculated_answer_false_removal"),
     ):
         ok = [r for r in rows if r["kind"] == kind and not r["error"]]
         k = sum(r["hit"] for r in ok)

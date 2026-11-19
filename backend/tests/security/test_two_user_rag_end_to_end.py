@@ -94,7 +94,7 @@ class ModelTransport:
                 {"role": "assistant", "content": '{"intent": "document_question"}'}
             )
         if body["messages"][0]["content"] == CLAIM_CHECK_SYSTEM_PROMPT:
-            # The claim check sees the answer and the owner's evidence, never the question.
+            # The claim check sees the answer, the owner's evidence and the owner's question.
             self.claim_requests.append(body)
             return self.completion({"role": "assistant", "content": '{"unsupported": []}'})
         self.requests.append(body)
@@ -441,10 +441,11 @@ async def test_real_http_grounded_modes(corpus, owner, mode):
         # Exactly one intent-gate call, carrying only the question (privacy checked above).
         assert len(c.model.intent_requests) == 1
         assert c.model.intent_requests[0]["messages"][1]["content"] == QUESTION
-        # Exactly one claim-check call, on the owner's evidence, never the question.
+        # Exactly one claim-check call: the owner's evidence plus the owner's own question (numbers
+        # the user typed are given, not claims). Foreign data is checked in assert_private.
         assert len(c.model.claim_requests) == 1
         assert MARKERS[owner] in json.dumps(c.model.claim_requests[0]["messages"])
-        assert QUESTION not in c.model.claim_requests[0]["messages"][1]["content"]
+        assert QUESTION in c.model.claim_requests[0]["messages"][1]["content"]
 
 
 @pytest.mark.parametrize("state", ["missing", "invalid", "expired", "revoked", "wrong_kind"])

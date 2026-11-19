@@ -23,7 +23,7 @@ from .contracts import (
     FileEvidencePayload,
 )
 
-from .claim_check import ClaimChecker, evidence_text
+from .claim_check import ClaimChecker, evidence_text, user_text
 from .finalization import finalize_answer, provenance_response
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.services.chat_stream import emit, provisional_text, stream_sink
@@ -163,7 +163,9 @@ def build_tool_graph(
             # KI-002: drop statements the retrieved evidence does not support. Never raises;
             # an unusable check leaves the text unchanged.
             try:
-                checked = await claim_check(text, evidence_text(state["evidence"]))
+                checked = await claim_check(
+                    text, evidence_text(state["evidence"]), user_text(state["messages"])
+                )
             except Exception:  # a broken checker must not take answering down with it
                 checked = None
             if checked is not None:

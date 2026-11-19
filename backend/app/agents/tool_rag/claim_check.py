@@ -23,6 +23,8 @@ from dataclasses import dataclass
 
 from app.routing.intent_frame.evidence import EvidenceSection
 
+from .agent_models import AgentMessage
+
 logger = logging.getLogger(__name__)
 
 CompleteJson = Callable[[str, str], Awaitable[str]]
@@ -42,7 +44,14 @@ SYSTEM_PROMPT = (
     "help; wording that is more or less specific than the evidence but not contradicted by it; "
     "partial support (if most of the statement is in the evidence, it is supported).\n"
     "Judge meaning, not word overlap, and ignore citation markers like [1] or [source_1]. "
-    "When in doubt, the statement is supported."
+    "When in doubt, the statement is supported.\n"
+    "The user's own messages are given too. Numbers the user wrote are not claims, and arithmetic "
+    "on them together with numbers from the evidence is fine.\n"
+    "After the statements there may be a list headed 'Numbers written in a statement that appear "
+    "nowhere in the evidence or the user's messages'. Check each one carefully: flag that statement "
+    "unless the number is the plain result of arithmetic or a date calculation on numbers or dates "
+    "that are in the evidence or the user's messages (a sum, difference, count, or a date a stated "
+    "number of days away), or a list number."
 )
 
 # A sentence ends at . ! or ? plus any citation markers ("[1]", "[source_2]") that follow it, when the
@@ -98,15 +107,62 @@ def _merge_markers(parts: list[str]) -> list[str]:
     return merged
 
 
+_MARKER = re.compile(r"\[[^\]\n]{1,30}\]")
+_LEADING_LIST_NUMBER = re.compile(r"^\s*(?:[-*]\s*)?\(?\d{1,2}[.)]\s+")
+_NUMBER = re.compile(r"\d[\d,.]*\d|\d")
+
+
+def numbers_missing(statement: str, evidence: str) -> list[str]:
+    """Numbers written in ``statement`` that appear nowhere in ``evidence`` (no model involved).
+    Pass the user's question together with the evidence: numbers the user typed are given.
+
+    Whole-number match, thousands separators ignored: 5 does not match 15 or 5.5. Citation markers
+    and a leading list number are not part of the claim. Only a hint: an honest calculation also
+    produces numbers the text does not contain, so the model decides what to do with the list.
+    """
+    text = _LEADING_LIST_NUMBER.sub("", _MARKER.sub(" ", statement))
+    haystack = re.sub(r"(?<=\d),(?=\d{3}\b)", "", evidence)
+    missing: list[str] = []
+    for token in _NUMBER.findall(text):
+        plain = token.replace(",", "").rstrip(".")
+        if (
+            plain
+            and plain not in missing
+            and not re.search(r"(?<![\d.])" + re.escape(plain) + r"(?!\d|\.\d)", haystack)
+        ):
+            missing.append(plain)
+    return missing
+
+
 def is_framing(statement: str) -> bool:
-    """A heading, lead-in or fragment ("Key points:", "Biddle.") carries no claim worth removing."""
+    """A heading, lead-in or word-only fragment ("Key points:", "Biddle.") carries no claim.
+
+    A short fragment that contains a digit ("17 February 2026.") is exactly what a short answer
+    looks like, so it is checked like any other statement.
+    """
     text = statement.strip()
-    return text.endswith(":") or len(text.split()) < 4
+    return text.endswith(":") or (len(text.split()) < 4 and not re.search(r"\d", text))
 
 
-def build_user_message(statements: Sequence[str], evidence: str) -> str:
+def build_user_message(statements: Sequence[str], evidence: str, question: str = "") -> str:
     numbered = "\n".join(f"[S{i}] {s}" for i, s in enumerate(statements, 1))
-    return f"Evidence passages:\n{evidence[:MAX_EVIDENCE_CHARS]}\n\nAnswer statements:\n{numbered}"
+    given = f"{evidence[:MAX_EVIDENCE_CHARS]}\n{question}"
+    absent = [
+        f"[S{i}] {', '.join(missing)}"
+        for i, s in enumerate(statements, 1)
+        if (missing := numbers_missing(s, given))
+    ]
+    hint = (
+        "\n\nNumbers written in a statement that appear nowhere in the evidence or the user's "
+        "messages:\n" + "\n".join(absent)
+        if absent
+        else ""
+    )
+    asked = f"\n\nUser's messages:\n{question}" if question.strip() else ""
+    return (
+        f"Evidence passages:\n{evidence[:MAX_EVIDENCE_CHARS]}{asked}"
+        f"\n\nAnswer statements:\n{numbered}{hint}"
+    )
 
 
 def parse_unsupported(raw: str, count: int) -> frozenset[int] | None:
@@ -134,14 +190,16 @@ def parse_unsupported(raw: str, count: int) -> frozenset[int] | None:
 
 
 async def find_unsupported(
-    complete_json: CompleteJson, statements: Sequence[str], evidence: str
+    complete_json: CompleteJson, statements: Sequence[str], evidence: str, question: str = ""
 ) -> frozenset[int] | None:
     """Ask the model which statements are unsupported; None means the check could not be done."""
     if not statements or not evidence.strip() or len(statements) > MAX_STATEMENTS:
         return None
     try:
         async with asyncio.timeout(CLAIM_CHECK_TIMEOUT_SECONDS):
-            raw = await complete_json(SYSTEM_PROMPT, build_user_message(statements, evidence))
+            raw = await complete_json(
+                SYSTEM_PROMPT, build_user_message(statements, evidence, question)
+            )
     except Exception:
         logger.info("rag_execution path=claim_check outcome=CHECK_ERROR")
         return None
@@ -164,14 +222,14 @@ class ClaimCheckResult:
 
 
 async def enforce_claims(
-    complete_json: CompleteJson, answer: str, evidence: str
+    complete_json: CompleteJson, answer: str, evidence: str, question: str = ""
 ) -> ClaimCheckResult:
     """Return ``answer`` without the statements the evidence does not support."""
     if _is_only_markers(answer):
         return ClaimCheckResult(answer, 0, False)
     lines = answer.splitlines()
     statements = split_statements(answer)
-    flagged = await find_unsupported(complete_json, statements, evidence)
+    flagged = await find_unsupported(complete_json, statements, evidence, question)
     if flagged is None:
         return ClaimCheckResult(answer, 0, False)
     if not flagged:
@@ -202,9 +260,16 @@ def clean_unit(text: str) -> str:
     return _TRAILING_MARKER.sub("", text.strip())
 
 
-ClaimChecker = Callable[[str, str], Awaitable[ClaimCheckResult]]  # (answer, evidence) -> result
+ClaimChecker = Callable[
+    [str, str, str], Awaitable[ClaimCheckResult]
+]  # (answer, evidence, question)
 
 
 def evidence_text(sections: Sequence[EvidenceSection]) -> str:
     """The text the agent actually retrieved this turn, labelled by file name."""
     return "\n\n".join(f"[{s.members[0].filename}]\n{s.combined_text}" for s in sections)
+
+
+def user_text(messages: Sequence[AgentMessage]) -> str:
+    """What the user wrote in this conversation: its numbers are given, not claims to verify."""
+    return "\n".join(m.text for m in messages if m.role == "USER" and m.text)

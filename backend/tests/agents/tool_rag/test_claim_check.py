@@ -12,16 +12,19 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.tool_rag.agent_models import AgentStepResult
+from app.agents.tool_rag.agent_models import AgentMessage, AgentStepResult
 from app.agents.tool_rag.agent_service import ToolRagAgentService
 from app.agents.tool_rag.claim_check import (
     ClaimCheckResult,
     clean_unit,
     enforce_claims,
     find_unsupported,
+    build_user_message,
     is_framing,
+    numbers_missing,
     parse_unsupported,
     split_statements,
+    user_text,
 )
 from app.core.config import Settings
 from app.llm.prompts import NO_EVIDENCE_ANSWER
@@ -80,6 +83,8 @@ def test_a_sentence_that_ends_in_a_number_is_not_cut():
         ("Biddle.", True),
         ("Yes, it is.", True),
         ("Refunds are approved within 90 days.", False),
+        ("17 February 2026.", False),  # a short answer with a digit is a claim, not framing
+        ("No. 5.", False),
     ],
 )
 def test_framing_is_structural_not_semantic(text, framing):
@@ -209,8 +214,8 @@ async def run_with(claim_check, steps):
 
 
 def checker(complete):
-    async def check(answer, evidence):
-        return await enforce_claims(complete, answer, evidence)
+    async def check(answer, evidence, question=""):
+        return await enforce_claims(complete, answer, evidence, question)
 
     return check
 
@@ -253,7 +258,7 @@ async def test_the_check_only_runs_when_there_is_evidence():
 
 
 async def test_a_checker_that_raises_cannot_take_answering_down():
-    async def broken(answer, evidence):
+    async def broken(answer, evidence, question=""):
         raise RuntimeError("bug in the checker")
 
     supported = "Authoritative refund policy text. [source_1]"
@@ -357,3 +362,65 @@ async def test_owned_path_unbuildable_checker_means_unchecked_not_unanswered(mon
 
     result = await owned_answer(monkeypatch, make_settings(), NoJson)
     assert "90 days" in result.answer  # answered, just not checked
+
+
+# --- numbers written in the answer that the evidence does not contain ------------------------
+
+NUMBERS = (
+    "Release date: 10 February 2026. Limit 60 requests per minute, raised to 120. Fee 4,200 USD."
+)
+
+
+@pytest.mark.parametrize(
+    "statement,missing",
+    [
+        ("17 February 2026.", ["17"]),
+        ("67 requests per minute", ["67"]),
+        ("From 60 to 120 requests per minute [source_1].", []),  # marker is not a number
+        ("4200 USD", []),  # thousands separator ignored
+        ("1,200 USD", ["1200"]),
+        ("5. It is 15 days", ["15"]),  # 5 is a list number? no: 15 is absent, and "5." leads
+        ("1. The limit is 60", []),  # a leading list number is not a claim
+        ("It is 6 or 12", ["6", "12"]),  # 60 / 120 do not contain 6 / 12
+        ("Version 1.2", ["1.2"]),
+    ],
+)
+def test_numbers_missing_is_exact_and_ignores_markers_and_list_numbers(statement, missing):
+    assert numbers_missing(statement, NUMBERS) == missing
+
+
+def test_numbers_the_user_wrote_are_not_reported_as_missing():
+    assert numbers_missing("You have 13 days left (22 - 9).", NUMBERS + "\n22 days, took 9") == [
+        "13"
+    ]
+
+
+def test_the_message_lists_absent_numbers_and_the_users_words_for_the_model():
+    message = build_user_message(["A", "It is 67 requests per minute."], NUMBERS, "limit? I use 67")
+    assert "appear nowhere" not in message  # 67 is in the user's words, so nothing is listed
+    absent = build_user_message(["It is 67 requests per minute."], NUMBERS)
+    assert "appear nowhere" in absent and "[S1] 67" in absent
+    assert "User's messages:\nlimit? I use 67" in message
+    assert "appear nowhere" not in build_user_message(["Fee 4200 USD."], NUMBERS)
+
+
+def test_user_text_keeps_only_what_the_user_wrote():
+    messages = [
+        AgentMessage(role="SYSTEM", text="rules"),
+        AgentMessage(role="USER", text="I took 9 days"),
+        AgentMessage(role="ASSISTANT", text="ok"),
+        AgentMessage(role="USER", text="how many are left?"),
+    ]
+    assert user_text(messages) == "I took 9 days\nhow many are left?"
+
+
+async def test_a_short_answer_with_a_digit_is_removed_when_flagged():
+    result = await enforce_claims(reply("S1"), "17 February 2026.", NUMBERS)
+    assert result.nothing_left and result.removed == 1
+
+
+async def test_the_question_reaches_the_model():
+    complete = reply()
+    await enforce_claims(complete, "You have 13 days left.", NUMBERS, "I have 22 days and took 9")
+    call_args = complete.await_args
+    assert call_args is not None and "I have 22 days and took 9" in call_args.args[1]
