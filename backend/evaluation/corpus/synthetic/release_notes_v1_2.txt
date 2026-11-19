@@ -1,0 +1,19 @@
+LARKSPUR SCHEDULER - RELEASE NOTES, VERSION 1.2
+Release date: 10 February 2026
+
+New
+- Waiting list for cancelled appointments.
+- Calendar sync with Google Calendar.
+- Booking widget available in four languages: English, Portuguese, Spanish and French.
+
+Changed
+- The public API limit is 60 requests per minute per customer key.
+- Reminder emails now show the clinic logo.
+
+Fixed
+- Time zone error for clinics that observe daylight saving time at different dates than the server.
+- Duplicate reminders when an appointment was moved twice on the same day.
+
+Known issues
+- Microsoft 365 calendar sync is not available yet.
+- Importing more than 20,000 rows at once can time out.

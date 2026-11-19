@@ -52,3 +52,6 @@ data/exports/
 
 # OS
 Thumbs.db
+
+# Evaluation: downloaded public documents (fetched by evaluation.rag_eval.fetch_public, never committed)
+backend/evaluation/corpus/public/

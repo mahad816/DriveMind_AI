@@ -1,0 +1,30 @@
+LARKSPUR SYSTEMS - TEAM DIRECTORY (June 2026)
+
+Executive
+- Elena Costa, CEO and co-founder
+
+Product
+- Marcus Webb, Head of Product
+- Lina Haddad, Product Designer (joined 1 June 2026)
+
+Engineering
+- Tomas Silva, Senior Engineer (lead of the on-call rota)
+- Sara Khan, Backend Engineer
+- Priya Nair, QA Lead
+
+Operations
+- Nadia Rahman, Operations Manager
+- Daniel Okafor, Security Lead
+
+Finance and People
+- Joao Ferreira, Finance Lead
+- Ana Martins, People Operations
+
+Sales
+- Mei Tanaka, Sales Manager
+
+Support
+- Sara Khan, Support Specialist (not the same person as the Backend Engineer; they only share a name)
+
+Total: 12 employees.
+Reporting lines: all department heads report to the CEO. Support reports to the Operations Manager.

@@ -1,0 +1,23 @@
+LARKSPUR SYSTEMS - INFORMATION SECURITY POLICY
+Owner: Security Lead. Last reviewed 15 February 2026.
+
+1. Accounts and passwords
+Passwords must have at least 14 characters. Password reuse across services is prohibited. All employees must use the company password manager. Multi-factor authentication is mandatory for email, the code repository, the cloud console and the finance portal. SMS codes are not an accepted second factor; use an authenticator app or a hardware key.
+
+2. Devices
+Company laptops use full-disk encryption and automatic screen lock after 5 minutes. Lost or stolen devices must be reported to security@larkspur.example within 2 hours of discovery.
+
+3. Customer data
+Customer data is classified as Restricted. It may only be stored in the production cloud account and must never be copied to laptops, personal cloud drives or chat tools. Test environments use synthetic data only.
+
+4. Incident reporting
+Any suspected security incident must be reported within 24 hours of discovery. The Security Lead decides whether to open a formal incident. Outages are handled by the on-call engineer and recorded in the incident reports.
+
+5. Access reviews
+Access rights are reviewed every quarter. Former employees lose access on their last working day by 18:00.
+
+6. Vendors
+New vendors that process customer data need a security review and a signed data processing agreement before go-live.
+
+7. Penetration testing
+An external penetration test is performed once a year. The next one is planned for September 2026.

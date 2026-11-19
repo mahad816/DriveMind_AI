@@ -1,0 +1,27 @@
+LARKSPUR SCHEDULER 2.0 - PRODUCT SPECIFICATION
+Owner: Marcus Webb, Head of Product
+
+Overview
+Scheduler 2.0 lets a clinic publish opening hours, let patients book, change or cancel appointments online and send automatic reminders by email and SMS.
+
+Core features
+- Online booking widget that can be embedded in a clinic website.
+- Reminders by email and SMS, sent 48 hours and 2 hours before an appointment.
+- Waiting list: if an appointment is cancelled, the first matching person on the waiting list is offered the slot.
+- Calendar sync with Google Calendar and Microsoft 365.
+- Role-based access for receptionists, doctors and administrators.
+
+Service levels
+The availability target for the API is 99.9 percent per month. Support responds to urgent problems within 2 hours during support hours.
+
+API limits
+The public API allows 120 requests per minute per customer key. Requests above the limit receive HTTP status 429. Bulk imports are limited to 10,000 rows per request.
+
+Languages
+The booking widget is available in six languages: English, Portuguese, Spanish, French, German and Italian.
+
+Data and privacy
+Customer appointment data is stored in the EU region only. Data is retained as described in the data retention policy.
+
+Not included
+Scheduler 2.0 does not process payments and does not offer video consultations. Both are only ideas for the future and are not planned.

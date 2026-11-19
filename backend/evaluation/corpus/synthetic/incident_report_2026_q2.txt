@@ -1,0 +1,21 @@
+LARKSPUR SYSTEMS - INCIDENT REPORT, SECOND QUARTER 2026 (April to June)
+Prepared by the Operations Manager, Nadia Rahman
+
+Summary
+Three customer-facing incidents were recorded in Q2. Total downtime was 3 hours 15 minutes, which keeps the quarter inside our 99.9 percent availability target for the scheduling API (about 131 minutes of downtime would be the limit for one 30-day month).
+
+INC-204 - 9 April 2026
+Database primary failed over to the replica. Customers could not book appointments for 47 minutes. Root cause: disk latency on the primary host. The on-call engineer was Tomas Silva. Follow-up: storage class upgraded on 16 April.
+
+INC-211 - 21 May 2026
+The TLS certificate for the booking widget expired and browsers showed warnings. Impact lasted 2 hours 10 minutes. Root cause: renewal reminder went to a former employee's mailbox. Follow-up: renewals now notify the shared operations address. On-call engineer: Sara Khan (Engineering).
+
+INC-219 - 30 June 2026
+A faulty deployment of release 1.3.1 broke reminder emails for 18 minutes. The deployment was rolled back. Root cause: a configuration flag that existed only in staging. On-call engineer: Tomas Silva.
+
+Lessons
+1. Certificate renewals must never depend on one person's mailbox.
+2. Configuration flags must be defined in code review, not by hand.
+3. Fail-over drills will be run every quarter.
+
+No customer data was lost in any of these incidents.

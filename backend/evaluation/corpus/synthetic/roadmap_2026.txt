@@ -1,0 +1,29 @@
+LARKSPUR SYSTEMS - PRODUCT AND COMPANY ROADMAP 2026
+Maintained by Marcus Webb. Last updated 12 May 2026 (after the product sync of that date).
+
+Q1 (done)
+- Release 1.2 shipped on 10 February 2026.
+- New expense policy effective 1 March 2026.
+
+Q2 (done)
+- Release 1.3 shipped on 22 April 2026, including Microsoft 365 calendar sync.
+- Product designer joined on 1 June 2026.
+
+Q3 (current)
+- Mobile app launch, target 15 September 2026. This was moved earlier from Q4 on 12 May 2026.
+- Mobile testing with the QA contractor starts 1 August 2026.
+- Annual external penetration test planned for September 2026.
+
+Q4
+- SOC 2 Type I readiness audit, window 5 October to 13 November 2026.
+- Evaluate a second SMS provider.
+- Scheduler 2.1 planned for the first half of December 2026.
+
+Not planned
+- Payment processing inside Scheduler.
+- Video consultations.
+- A second office in Porto (decided against on 12 May 2026).
+
+Ideas without a decision
+- Four-day work week (survey results are being analysed).
+- A self-service marketplace for clinic templates.

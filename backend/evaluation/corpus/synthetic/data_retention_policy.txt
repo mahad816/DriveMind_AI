@@ -1,0 +1,13 @@
+LARKSPUR SYSTEMS - DATA RETENTION POLICY
+Approved by the Security Lead and the Finance Lead, January 2026
+
+Application logs are kept for 90 days and then deleted automatically.
+Database backups are kept for 35 days.
+Customer appointment data is kept for 7 years after the customer contract ends, because clinics must meet record keeping rules. After 7 years it is deleted within 30 days.
+Support tickets are kept for 3 years.
+Financial records are kept for 10 years, as required by Portuguese law.
+Recruitment data of candidates who were not hired is deleted after 6 months.
+
+Deletion requests from individuals are answered within 30 days. Requests are logged by the Security Lead.
+
+Larkspur does not keep video recordings of meetings.
