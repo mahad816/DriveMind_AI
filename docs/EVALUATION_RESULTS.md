@@ -144,6 +144,40 @@ Findings:
 - Post-hoc change, disclosed: the first judge note for `tr17` made the judge fail a correct reply ("two extra paid weeks on top of national law"). I corrected the note and re-judged the stored replies (no new agent run); that moved 10 of 18 to 11 of 18. `tr09` is arguable and was left as the judge scored it.
 - Not yet measured: the same traps with the claim check off, and with a larger chat model.
 
+## Retrieval probe: does the search find the right file? (no chat model, 2026-11-20)
+
+Tool: `python -m evaluation.rag_eval.retrieval_probe [--phrasings] [--split dev|test|all] [--threshold X]`.
+It makes the same call as the agent's `search_knowledge` tool and checks whether a file the case expects is
+among the 8 returned chunks. Cost: query embeddings only (about 0.0001 USD for the whole run).
+The query is the question text itself; the real agent writes its own query, so this is the best case.
+89 answerable cases (the 94 baseline + 49 trap cases, minus those that need earlier turns or have no file).
+
+**Baseline, today's code (cut-off 0.35):**
+
+| Wording of the same questions | Right file in results | Ranked first | Rank quality (MRR) | Distinct files per result |
+|---|---|---|---|---|
+| Plain question | 83 / 89 (93.3 %) | 65 | 0.82 | 4.2 |
+| "In the company policy document, ..." | 78 / 84 (92.9 %) | 34 | 0.57 | 7.7 |
+| "According to the report, ..." | 78 / 84 (92.9 %) | 53 | 0.74 | 5.2 |
+| "Which file says this: ..." | 80 / 84 (95.2 %) | 50 | 0.74 | 6.8 |
+
+Misses (plain): `ca04, mf02, mx07, sf06, sf07, sn02`. Dev split 54 / 56, test split 29 / 33.
+
+**Same, only the cut-off lowered to 0.20** (the first change in Step 1, measured before it is made):
+plain 87 / 89 (97.8 %, misses `mx07, sf07`), MRR 0.86; "according to the report" 83 / 84; "which file" 82 / 84;
+but "in the company policy document" stays at 78 / 84 and its ranking gets **worse** (ranked first 34 -> 26,
+MRR 0.57 -> 0.48). Lowering the cut-off lets more weak chunks in, and the lead-in wording already
+floods the results with unrelated files (7.7 distinct files per result). That wording problem is Step 1
+part 2, not something the cut-off can fix.
+
+**Reading the probe correctly:**
+- Repeatable: two identical runs gave identical files, ranks and found/missed flags. Only the raw vector
+  score moves, by up to 0.004 in the third decimal (embedding service float jitter). Do not tune any
+  threshold finer than about 0.01.
+- 40 "not in the files" cases: 31 of them still return chunks (39 at cut-off 0.20); their best vector score has median
+  0.50 and maximum 0.67, the same range as answerable cases. So retrieval cannot decide when to refuse.
+- Counts have wide error bars (95 % interval for 83 / 89 is about 86 % to 97 %); a difference of 1-2 cases is noise.
+
 ## Intent gate — `intent_v1` (live)
 
 Question: can the small model call that runs before the document agent recognise greetings, thanks,
