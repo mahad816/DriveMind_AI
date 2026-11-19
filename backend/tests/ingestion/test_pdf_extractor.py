@@ -113,3 +113,19 @@ def test_builtin_registration_exposes_pdf_extractor() -> None:
         filename="sample.pdf",
     )
     assert result.page_count == 1
+
+
+@patch("app.ingestion.extractors.pdf.PdfReader")
+def test_extract_pdf_text_drops_nul_from_math_fonts(mock_reader_cls: MagicMock) -> None:
+    """Large brackets in math-heavy papers come out as U+0000, which the database rejects."""
+    page = MagicMock()
+    page.extract_text.return_value = "q(z|X)=N \x00z;mu\x01\x01 and log\n\x00\n1 + i"
+    mock_reader = MagicMock()
+    mock_reader.is_encrypted = False
+    mock_reader.pages = [page]
+    mock_reader_cls.return_value = mock_reader
+
+    text, _ = extract_pdf_text(b"%PDF-1.4 fake")
+
+    assert "\x00" not in text
+    assert text.startswith("q(z|X)=N z;mu")
