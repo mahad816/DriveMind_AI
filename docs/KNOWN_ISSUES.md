@@ -33,6 +33,13 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Test:** `test_ki002_claim_absent_from_evidence_is_not_published_with_a_citation` (xfail).
 - **Suggested direction:** not a quick patch. First measure how often it happens (the planned 24-case gold run), then consider an entailment/faithfulness check or quote-based answering. Decide approach with data, avoid shipping a heuristic that looks like safety but is not.
 
+### KI-022 — Wordy search queries find nothing (recall cliff)  *(retrieval quality, backend, reproduced by the evaluation, no unit test yet)*
+- **Symptom:** "How many days of annual leave do employees get per year?" answers "I could not find relevant information" (3 of 3 tries, tool agent) although the handbook says "Annual leave is 22 working days per calendar year."
+- **Cause (measured):** the agent searches with the model's rewrite, `annual leave entitlement days per year employees get`. Vector retrieval returns 0 (all hits are below `retrieval_score_threshold = 0.35`) and keyword retrieval returns 0 (`websearch_to_tsquery` requires every word; "entitlement" and "get" are not in the file). `annual leave days per year` finds the file (keyword hit plus a 0.37 vector hit).
+- **Reproduce:** `cd backend && uv run python -m evaluation.rag_eval.cli setup` then run the question through `RagService` on the `drivemind_eval_v2` store (see `docs/EVALUATION_RESULTS.md`). It needs an OpenAI key, so it has no unit test; a deterministic test would need a stored-embedding fixture.
+- **Not fixed on purpose:** changing the threshold or the keyword mode changes retrieval for everything and needs its own evaluation. The corpus here has many whole-file chunks, which probably makes the effect stronger than on long documents (unmeasured).
+- **Suggested direction:** make keyword matching tolerant (any-term ranking instead of all-terms), and compare a lower or relative vector threshold on the same cases before and after.
+
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 

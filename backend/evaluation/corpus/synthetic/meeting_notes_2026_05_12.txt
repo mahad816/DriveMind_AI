@@ -1,0 +1,19 @@
+PRODUCT SYNC AND BOARD PREPARATION - 12 MAY 2026
+Attendees: Elena Costa (CEO), Marcus Webb (Head of Product), Tomas Silva, Priya Nair, Nadia Rahman
+
+Decisions
+1. The mobile app launch is moved EARLIER, from Q4 to Q3 2026, with a target date of 15 September. Reason: three large clinic groups made it a condition of their renewals. This replaces the decision of 4 March.
+2. The product designer hire is confirmed; the offer was accepted by Lina Haddad, who starts on 1 June.
+3. The company will not open a second office in Porto this year.
+
+Numbers shared for the board
+- Annual recurring revenue at the end of April: 1.9 million USD.
+- Customers: 214 clinics.
+- Monthly churn: 1.1 percent.
+
+Open points
+- The four-day week survey had 9 answers out of 12 staff. The result is still being analysed; nothing is decided.
+
+Action items
+- Elena: prepare the board slides by 22 May.
+- Priya: confirm with the QA contractor that mobile testing can start on 1 August.

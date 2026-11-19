@@ -1,0 +1,16 @@
+PRODUCT SYNC - 4 MARCH 2026
+Attendees: Elena Costa (CEO), Marcus Webb (Head of Product), Tomas Silva, Sara Khan (Engineering), Nadia Rahman
+
+Decisions
+1. The mobile app launch is postponed to Q4 2026 so that the team can finish the new scheduling engine first.
+2. We will hire one product designer. Approved budget for the hire: 18,000 USD for the first six months.
+3. Release 1.3 goes out in April.
+
+Discussed but NOT decided
+- Opening a second office in Porto. Elena asked for a cost estimate; no decision was taken.
+- Moving to a four-day week. Several people liked the idea. Marcus will collect feedback by the end of April. This is only a proposal.
+
+Action items
+- Marcus: write the job description for the designer by 18 March.
+- Nadia: send three cost options for Porto to Elena by 1 April.
+- Tomas: prepare the release checklist for 1.3.

@@ -1,0 +1,19 @@
+LARKSPUR SCHEDULER - RELEASE NOTES, VERSION 1.3
+Release date: 22 April 2026
+
+New
+- Calendar sync with Microsoft 365.
+- Booking widget available in six languages: German and Italian were added.
+- Role-based access for receptionists, doctors and administrators.
+
+Changed
+- The public API limit was raised from 60 to 120 requests per minute per customer key.
+- Reminders are now sent 48 hours and 2 hours before the appointment (previously 24 hours only).
+
+Fixed
+- Imports of more than 20,000 rows no longer time out.
+- Duplicate reminders when an appointment was moved twice on the same day (partial fix).
+
+Known issues (updated 6 July 2026)
+- Hebrew and Arabic right-to-left layout is not supported.
+- Patch 1.3.1 (30 June 2026) was rolled back after incident INC-219; the fixed patch 1.3.2 was released on 6 July 2026.

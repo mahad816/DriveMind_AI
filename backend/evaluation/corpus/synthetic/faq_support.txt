@@ -1,0 +1,22 @@
+LARKSPUR SCHEDULER - SUPPORT FAQ (for customers)
+
+When is support available?
+Support is available Monday to Friday, 08:00 to 18:00 UTC. Customers on the Premium plan also have an emergency email address for outages outside those hours.
+
+How can I contact support?
+By email (help@larkspur.example) or in the chat inside the dashboard. We do not offer phone support.
+
+What does each plan cost?
+Basic: 79 USD per clinic per month. Plus: 149 USD per clinic per month. Premium: 299 USD per clinic per month. New customers get a 30 day free trial.
+
+Can I get a refund?
+Yes. Annual plans can be refunded in full within 14 days of purchase. Monthly plans are not refunded for the current month.
+
+How do I reset my password?
+Use "Forgot password" on the login page. The reset link is valid for 60 minutes. If your clinic uses single sign-on, ask your administrator.
+
+Can patients pay through the booking widget?
+No. Scheduler does not process payments.
+
+Where is my data stored?
+In the European Union only.

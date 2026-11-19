@@ -1,0 +1,15 @@
+LARKSPUR SYSTEMS - INCIDENT REPORT, THIRD QUARTER 2026 (July to September)
+Prepared by the Operations Manager, Nadia Rahman
+
+Summary
+Two customer-facing incidents were recorded in Q3. There were no security incidents.
+
+INC-231 - 14 August 2026
+The reminder queue backed up after a customer imported 90,000 appointments at once. Reminders were delayed by up to 1 hour 5 minutes. Root cause: no limit on bulk imports. Follow-up: imports are now limited to 10,000 rows per request. On-call engineer: Tomas Silva.
+
+INC-236 - 3 September 2026
+Our SMS provider (SMSGate) had a regional outage lasting 3 hours. Text reminders were not delivered; email reminders were unaffected. This was a vendor incident, not a Larkspur outage, so it is not counted in our own availability figure. Follow-up: a second SMS provider will be evaluated in Q4. On-call engineer: Priya Nair.
+
+Notes
+The penetration test planned for September was moved to October at the supplier's request.
+Postmortem meetings for both incidents are recorded in the meeting notes folder.

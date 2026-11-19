@@ -1,0 +1,23 @@
+LARKSPUR SYSTEMS - ONBOARDING CHECKLIST FOR NEW EMPLOYEES
+
+Before day one
+- People Operations sends the contract, the handbook and the equipment form.
+- IT prepares the laptop and the accounts (email, repository, password manager).
+
+Day one
+- Meet your buddy. Every new employee gets a buddy who is not their direct manager.
+- Collect the laptop and set up multi-factor authentication with an authenticator app.
+- Read the security policy and the expense policy.
+
+First week
+- Complete the 90-minute security awareness training.
+- Shadow an on-call shift (engineers) or a support shift (support staff).
+- Meet the CEO for a 30 minute welcome conversation.
+
+First 30 days
+- Agree three goals with your team lead.
+- Visit the Lisbon office on at least four days.
+- Attend the monthly all-hands meeting, held on the first Wednesday of the month at 15:00.
+
+Day 90
+- Probation review with your team lead and People Operations.

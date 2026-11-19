@@ -1,0 +1,24 @@
+CLOUDHOST GMBH - HOSTING AGREEMENT, SUMMARY FOR INTERNAL USE
+Contract owner at Larkspur: Joao Ferreira (Finance Lead)
+
+Parties: Larkspur Systems Lda. and CloudHost GmbH
+Service: managed hosting of the production environment in the Frankfurt region (EU).
+
+Term
+The agreement runs for 24 months, from 1 January 2026 to 31 December 2027.
+
+Fees
+Monthly fee: 4,200 USD, invoiced at the start of each month. Annual price increases are capped at 3 percent.
+
+Service levels
+CloudHost guarantees 99.95 percent monthly availability of the hosting platform.
+If availability falls below 99.95 percent, Larkspur receives a service credit of 10 percent of the monthly fee. Below 99.0 percent the credit is 25 percent.
+
+Termination
+Either party may terminate with 90 days written notice, effective no earlier than 31 December 2026. Larkspur may terminate immediately if CloudHost suffers a security breach that exposes customer data.
+
+Data
+CloudHost acts as a processor. The data processing agreement is attached as Annex B. Data stays in the Frankfurt region.
+
+Support
+Premium support is included with a two-hour response time for severity 1 tickets.

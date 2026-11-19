@@ -1,0 +1,20 @@
+CUSTOMER FEEDBACK SUMMARY - FIRST HALF OF 2026
+Prepared by Mei Tanaka (Sales Manager). Ratings use a scale from 1 (poor) to 5 (excellent).
+
+Five clinics were interviewed.
+- Alder Clinic: 4.5. Likes the waiting list. Wants a mobile app.
+- Birch Dental: 3.0. Reminders by SMS arrive late at times. Considering a competitor.
+- Cedar Pediatrics: 5.0. Praises support speed and the booking widget.
+- Dune Physio: 2.5. Unhappy with the calendar sync before release 1.3.
+- Elm Family Practice: 4.0. Wants payment at booking time.
+
+Average rating of the five interviews: 3.8.
+Net Promoter Score across the whole customer base: 31.
+
+Themes
+1. Mobile app is the most requested feature (three of five clinics).
+2. SMS delivery reliability is the main complaint.
+3. Payments at booking time were requested by one clinic; this is not on the roadmap.
+
+Follow-up
+Mei will re-interview Birch Dental and Dune Physio in the fourth quarter.

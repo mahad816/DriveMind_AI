@@ -1,0 +1,25 @@
+LARKSPUR SYSTEMS - BUDGET 2026 (approved December 2025, amounts in USD)
+
+Department budgets and headcount
+Department            | Headcount | Annual budget
+Executive             | 1         | 80,000
+Product               | 2         | 110,000
+Engineering           | 3         | 420,000
+Operations            | 2         | 64,000
+Finance and People    | 2         | 50,000
+Sales                 | 1         | 150,000
+Support               | 1         | 96,000
+Total                 | 12        | 970,000
+
+Notes
+- The Product budget includes 18,000 USD for the product designer hire for the first six months (approved 4 March 2026).
+- The Engineering budget includes the CloudHost hosting fee of 4,200 USD per month.
+- Salaries are managed by Finance and are not part of this document.
+
+Spend to date (actual)
+Q1 2026: 212,300
+Q2 2026: 236,900
+First half total: 449,200
+
+Forecast
+The finance team expects full-year spend to stay within 3 percent of the approved total.
