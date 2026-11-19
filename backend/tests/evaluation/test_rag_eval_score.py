@@ -154,3 +154,90 @@ def test_describe_error_keeps_class_names_only():
     except RuntimeError as exc:
         text = describe_error(exc)
     assert text == "RuntimeError<-TimeoutError" and "secret" not in text
+
+
+# --- the "partial" behaviour: known part checked by text, missing part by the judge --------------
+
+PARTIAL = {
+    "expected_behavior": "partial",
+    "expected_files": ["synthetic/faq_support.txt"],
+    "citation_mode": "all",
+    "must_include": [["299"]],
+    "must_not_include": [],
+}
+
+
+def test_partial_case_is_scored_for_evidence_and_known_fact_but_not_for_citation_noise():
+    seen = Observed(
+        "Premium costs 299 USD per month; no yearly price is stated.",
+        ("synthetic/faq_support.txt",),
+    )
+    assert evidence_score(PARTIAL, seen) == {
+        "found": True,
+        "expected": 1,
+        "hit": 1,
+        "noise_files": 0,
+    }
+    assert need(answer_score(PARTIAL, seen))["correct"] is True
+    assert clean_score(PARTIAL, seen) is None  # it is allowed, and expected, to cite its source
+
+
+def test_partial_case_fails_when_the_known_part_is_missing_or_unsourced():
+    refused = Observed("I could not find that.", ())
+    assert need(answer_score(PARTIAL, refused))["correct"] is False
+    assert need(evidence_score(PARTIAL, refused))["found"] is False
+
+
+def test_partial_case_passes_only_when_the_judge_agrees_nothing_was_invented():
+    row = {
+        "error": None,
+        "expected_behavior": "partial",
+        "answer": {"correct": True},
+        "evidence": {"found": True},
+        "clean": None,
+    }
+    assert overall({**row, "refusal": {"ok": True}}) is True
+    assert overall({**row, "refusal": {"ok": False}}) is False  # invented the missing part
+
+
+async def test_the_judge_is_told_what_is_missing_from_the_files(monkeypatch):
+    import evaluation.rag_eval.judge as judge_module
+    from types import SimpleNamespace
+    from typing import cast
+
+    from app.core.config import Settings
+
+    sent = {}
+
+    class Reply:
+        choices = [
+            type(
+                "C",
+                (),
+                {"message": type("M", (), {"content": '{"verdict": "ok", "reason": "fine"}'})},
+            )
+        ]
+
+    class FakeClient:
+        def __init__(self, **_):
+            self.chat = type("Chat", (), {"completions": self})
+
+        async def create(self, **kwargs):
+            sent.update(kwargs)
+            return Reply()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(judge_module, "AsyncOpenAI", FakeClient)
+    trap = {
+        "question": "Price per year?",
+        "expected_behavior": "partial",
+        "judge_note": "Missing part: annual price.",
+    }
+    verdict = await judge_module.judge(
+        cast(Settings, SimpleNamespace(openai_api_key="test")), trap, "299 per month."
+    )
+    prompt = sent["messages"][0]["content"]
+    assert verdict["verdict"] == "ok"
+    assert "Missing part: annual price." in prompt and "PART of the question" in prompt

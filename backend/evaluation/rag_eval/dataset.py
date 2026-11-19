@@ -16,6 +16,7 @@ BEHAVIORS = {
     "chitchat",
     "inventory",
     "correct_premise",
+    "partial",  # part of the answer is in the files, part is not: state the first, never invent the second
 }
 SPLITS = {"dev", "test"}
 
@@ -53,7 +54,7 @@ def validate(dataset: dict[str, Any], files: list[CorpusFile] | None = None) -> 
                 problems.append(
                     f"{cid}: evidence quote not found verbatim in {anchor['file']}: {anchor['quote'][:50]!r}"
                 )
-        if case["expected_behavior"] == "answer":
+        if case["expected_behavior"] in {"answer", "partial"}:
             if not case["expected_files"] or not case["evidence_anchors"]:
                 problems.append(f"{cid}: answer case needs expected_files and evidence_anchors")
             joined = " ".join(texts.get(p, "") for p in case["expected_files"])
