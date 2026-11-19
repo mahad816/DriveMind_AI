@@ -430,12 +430,12 @@ async def test_only_admission_unique_violation_is_conflict(admission, monkeypatc
         await db.commit()
     async with r.factory() as db:
         original = db.scalar
-        calls = 0
 
         async def hide_existing(statement, *args, **kwargs):
-            nonlocal calls
-            calls += 1
-            return None if calls == 2 else await original(statement, *args, **kwargs)
+            # Hide only the unresolved-job lookup so the unique index must fire.
+            if str(statement).lstrip().lower().startswith("select indexing_jobs.id"):
+                return None
+            return await original(statement, *args, **kwargs)
 
         monkeypatch.setattr(db, "scalar", hide_existing)
         with pytest.raises(IndexingAdmissionConflict):
@@ -445,13 +445,13 @@ async def test_only_admission_unique_violation_is_conflict(admission, monkeypatc
     # An unrelated FK violation must be operational failure, not a false 409.
     async with r.factory() as db:
         original = db.scalar
-        calls = 0
         missing_owner = uuid4()
 
         async def pretend_owner(statement, *args, **kwargs):
-            nonlocal calls
-            calls += 1
-            return missing_owner if calls == 1 else await original(statement, *args, **kwargs)
+            # Pretend only the owner lookup succeeded for a user that does not exist.
+            if str(statement).lstrip().lower().startswith("select users.id"):
+                return missing_owner
+            return await original(statement, *args, **kwargs)
 
         monkeypatch.setattr(db, "scalar", pretend_owner)
         with pytest.raises(IndexingStoreUnavailable):
