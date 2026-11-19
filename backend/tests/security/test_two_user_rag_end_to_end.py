@@ -911,7 +911,13 @@ async def test_owned_first_mixed_native_resolution_is_rejected(corpus, owner, mo
     authenticate(c.r, owner)
     response = await c.r.client.post("/api/v1/chat", json={"question": 'Explain "resume.txt"'})
     assert response.status_code == 200, response.text
-    await assert_citations(c, response, owner)  # Correct selected evidence is insufficient.
+    # The provenance gate treats an ambiguous resolution as blocking, so the user gets a
+    # deterministic refusal with no citations. The privacy assertions below must still
+    # detect that the model was shown the injected foreign candidate.
+    body = response.json()
+    assert body["user_id"] == str(owner)
+    assert body["answer"].startswith("Please disambiguate the filename")
+    assert body["citations"] == []
     result = c.tool_results[0]
     candidates = result.payload["result"]["candidates"]
     assert result.handles[candidates[0]["handle"]["value"]] == c.r.files[(owner, "resume.txt")].id

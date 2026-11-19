@@ -357,20 +357,57 @@ def test_app_without_keys_and_crypto_imports_stay_in_credential_boundary(setting
     with pytest.raises(MissingEncryptionConfiguration):
         GoogleCredentialCrypto.from_settings(settings)
     app_dir = Path(__file__).resolve().parents[2] / "app"
-    for path in app_dir.rglob("*.py"):
-        if path.name in {
-            "google_credential_crypto.py",
-            "google_credential_repository.py",
-            "google_credential_service.py",
-            "google_oauth_service.py",
-        }:
-            continue
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom):
-                assert "google_credential_crypto" not in (node.module or "")
-            elif isinstance(node, ast.Import):
-                assert all("google_credential_crypto" not in alias.name for alias in node.names)
+    importers = {
+        path.name
+        for path in app_dir.rglob("*.py")
+        if path.name != "google_credential_crypto.py" and _crypto_import_lines(path.read_text())
+    }
+    # Only these modules may import the crypto module at all.
+    assert importers == CREDENTIAL_BOUNDARY | VALIDATION_ONLY
+    # Validation-only modules may build the object to check key configuration,
+    # but must never encrypt or decrypt: that stays inside the credential boundary.
+    for name in VALIDATION_ONLY:
+        path = next(app_dir.rglob(name))
+        assert not _crypto_use_lines(path.read_text()), name
+
+
+CREDENTIAL_BOUNDARY = {
+    "google_credential_repository.py",
+    "google_credential_service.py",
+    "google_oauth_service.py",
+}
+# indexing_runtime only constructs GoogleCredentialCrypto at activation to fail
+# fast on a missing or invalid keyring; it never touches ciphertext or tokens.
+VALIDATION_ONLY = {"indexing_runtime.py"}
+
+
+def _crypto_import_lines(source: str) -> list[int]:
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and "google_credential_crypto" in (node.module or ""):
+            lines.append(node.lineno)
+        elif isinstance(node, ast.Import) and any(
+            "google_credential_crypto" in alias.name for alias in node.names
+        ):
+            lines.append(node.lineno)
+    return lines
+
+
+def _crypto_use_lines(source: str) -> list[int]:
+    return [
+        node.lineno
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Attribute) and node.attr in {"encrypt", "decrypt", "from_settings"}
+    ]
+
+
+def test_boundary_scanner_detects_violations():
+    leaked = "from app.security.google_credential_crypto import GoogleCredentialCrypto\n"
+    misuse = "def f(c, p):\n    return c.encrypt(p)\n"
+    assert _crypto_import_lines(leaked) == [1]
+    assert _crypto_import_lines("import os\n") == []
+    assert _crypto_use_lines(misuse) == [2]
+    assert _crypto_use_lines("def f(c):\n    return c.other()\n") == []
 
 
 async def test_existing_oauth_writer_uses_encrypted_repository(settings: Settings):

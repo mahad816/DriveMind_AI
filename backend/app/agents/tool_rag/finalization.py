@@ -58,34 +58,38 @@ def without_content(state: AgentState) -> str:
         if isinstance(result, (FileEvidenceResult, SearchKnowledgeResult)):
             return EMPTY_CONTENT
         if isinstance(result, ResolveFileResult):
-            value = result.result
-            if isinstance(value, AmbiguousFileResult):
+            resolved = result.result
+            if isinstance(resolved, AmbiguousFileResult):
                 return "Please disambiguate the filename. Matching indexed files:\n" + "\n".join(
-                    "- " + display_filename(f.filename) for f in value.candidates
+                    "- " + display_filename(f.filename) for f in resolved.candidates
                 )
-            if isinstance(value, NotFoundFileResult):
+            if isinstance(resolved, NotFoundFileResult):
                 return "No eligible indexed file matches that name. Check the filename and preparation status."
-            if isinstance(value, ResolvedFileResult):
+            if isinstance(resolved, ResolvedFileResult):
                 return (
                     "Found indexed file: "
-                    + display_filename(value.file.filename)
+                    + display_filename(resolved.file.filename)
                     + ". "
                     + NO_CONTENT
                 )
         if isinstance(result, FilesQueryResult):
-            value = result.result
-            if isinstance(value, FileCountResult):
-                return f"Indexed files: {value.count}."
-            if isinstance(value, FileListResult):
-                total = value.total_count if value.total_count is not None else len(value.items)
-                return f"Indexed files: {total}. Showing {len(value.items)}.\n" + "\n".join(
-                    "- " + display_filename(f.filename) for f in value.items
+            listing = result.result
+            if isinstance(listing, FileCountResult):
+                return f"Indexed files: {listing.count}."
+            if isinstance(listing, FileListResult):
+                total = (
+                    listing.total_count if listing.total_count is not None else len(listing.items)
                 )
-            if isinstance(value, FileSelectionResult):
-                if value.item is None:
+                return f"Indexed files: {total}. Showing {len(listing.items)}.\n" + "\n".join(
+                    "- " + display_filename(f.filename) for f in listing.items
+                )
+            if isinstance(listing, FileSelectionResult):
+                if listing.item is None:
                     return "No eligible indexed files were found."
                 return (
-                    value.kind.title() + " indexed file: " + display_filename(value.item.filename)
+                    listing.kind.title()
+                    + " indexed file: "
+                    + display_filename(listing.item.filename)
                 )
     question = state["original_question"].strip().casefold().rstrip(".!?")
     return _SOCIAL.get(question, NO_CONTENT)

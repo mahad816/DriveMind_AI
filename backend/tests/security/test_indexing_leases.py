@@ -553,10 +553,11 @@ async def test_stalled_heartbeat_transport_has_bounded_supervised_failure(world)
     async def stall(claim):
         nonlocal count
         count += 1
-        if count == 1:
+        if count == 1 or not entered.is_set():
+            # Renew normally until the external embedding call is in flight; only then
+            # model a hung transport. (Stalling earlier races slow manifest setup.)
             await original(claim)
         else:
-            await entered.wait()
             try:
                 await asyncio.Event().wait()
             finally:
