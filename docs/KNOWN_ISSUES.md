@@ -55,6 +55,7 @@ something known without a test (or say plainly that it is *unreproduced*).
 
 ### KI-020 — Indexing admission is a permanent fail-closed latch  *(unreproduced / needs decision, backend)*
 - **Observation:** `IndexingSupervisor._fail()` (`backend/app/services/indexing_lifecycle.py`) sets `FAILED` and stops; nothing returns it to `READY` without a process restart. The handoff reports one hosted case that a restart recovered after a transient provider problem.
+- **Evidence (2026-11-19):** in one of three full backend runs on a heavily loaded machine, `tests/security/test_indexing_lifecycle.py::test_two_real_instances_start_and_shutdown_independently` failed with the captured log line "Indexing executor is unavailable; local admission is closed." (the supervisor entered `FAILED` during the test), then timed out waiting for the worker. It passed 8/8 when run alone. This suggests a transient slowness can latch the supervisor; it is also a flaky test (about 1 in 3 full runs under load). The test was left unchanged on purpose so the fragility stays visible.
 - **No test on purpose:** this may be deliberate (fail closed, supervised). Writing a "should recover" test now would assume the design. Decide: self-heal with bounded retries, or keep fail-closed but expose the reason and a clear operator action.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
