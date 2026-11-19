@@ -27,12 +27,6 @@ something known without a test (or say plainly that it is *unreproduced*).
 
 ## Open
 
-### KI-002 — A real citation does not prove the claim  *(correctness, backend)*
-- **Symptom:** the model may write a claim the source does not say; if it carries a valid `[source_N]` marker it is shown with a genuine citation. Reproduced: evidence says "Authoritative refund policy text."; answer "Refunds are always approved within 90 days. [source_1]" is published.
-- **Cause:** `finalize_answer` validates that handles/markers exist and belong to the user (identity), by design nothing checks claim-level faithfulness (documented limitation; see also the existing test `test_content_evidence_and_real_handle_allow_grounded_answer`, which encodes the same gap).
-- **Test:** `test_ki002_claim_absent_from_evidence_is_not_published_with_a_citation` (xfail).
-- **Suggested direction:** not a quick patch. First measure how often it happens (the planned 24-case gold run), then consider an entailment/faithfulness check or quote-based answering. Decide approach with data, avoid shipping a heuristic that looks like safety but is not.
-
 ### KI-022 — Wordy search queries find nothing (recall cliff)  *(retrieval quality, backend, reproduced by the evaluation, no unit test yet)*
 - **Symptom:** "How many days of annual leave do employees get per year?" answers "I could not find relevant information" (3 of 3 tries, tool agent) although the handbook says "Annual leave is 22 working days per calendar year."
 - **Cause (measured):** the agent searches with the model's rewrite, `annual leave entitlement days per year employees get`. Vector retrieval returns 0 (all hits are below `retrieval_score_threshold = 0.35`) and keyword retrieval returns 0 (`websearch_to_tsquery` requires every word; "entitlement" and "get" are not in the file). `annual leave days per year` finds the file (keyword hit plus a 0.37 vector hit).
@@ -48,6 +42,13 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Was:** "Hello, can you hear me?", "Hi there", "Thanks a lot", "What can you do?" etc. were refused because the tool agent only recognised 10 exact phrases.
 - **Fix:** `backend/app/agents/tool_rag/conversation.py` classifies the *meaning* of the message with one small model call (enum output only, any wording / order / Roman Urdu). Conversational intents get server-owned reply text, never model prose, and skip the agent, embeddings and SQL. Anything uncertain, malformed, slow, failing, over 300 characters or in demo mode falls back to the normal grounded agent.
 - **Tests:** `backend/tests/agents/tool_rag/test_intent_gate.py` (wiring, fail-safe, no model prose). Recognition quality is measured separately by the live intent evaluation (see `backend/evaluation/`), not by phrase lists in unit tests.
+
+### KI-002 — A real citation did not prove the claim  *(fixed on branch `fix/claim-grounding`)*
+- **Was:** a claim the source does not say, carrying a valid `[source_N]` marker, was shown with a genuine citation (evidence "Authoritative refund policy text."; answer "Refunds are always approved within 90 days. [source_1]" was published).
+- **Fix:** after the tool agent answers, `claim_check.py` asks `CLAIM_CHECK_MODEL` (default `gpt-5.4-mini`) which numbered statements assert a specific fact the evidence lacks or contradicts and removes them before citation handling; if nothing supported is left the normal "could not find" reply is used. It fails open (errors leave the answer unchanged), skips headings and fragments, and can be turned off with `CLAIM_CHECK_ENABLED=false`. One extra call per grounded answer: about +1.4 s median latency.
+- **Measured (docs/EVALUATION_RESULTS.md):** removes an invented sentence 44/45 and a changed number 29/36; 2/45 true answers wrongly flagged; on RAGBench precision 0.52 / recall 0.46 at response level. Not perfect: a wrong claim that is merely implied by the evidence passes, and a correct detail is occasionally removed.
+- **Scope:** tool agent only. The legacy pipeline and the LangGraph path are not checked.
+- **Tests:** `backend/tests/agents/tool_rag/test_claim_check.py` (39); the former xfail test was removed.
 
 ### KI-010 — A finished preparation record blocked Drive discovery  *(fixed on branch `fix/discovery-preparation-gate`)*
 - **Was:** after documents finished preparing, "Check Drive" refused until the Preparation screen was closed.
