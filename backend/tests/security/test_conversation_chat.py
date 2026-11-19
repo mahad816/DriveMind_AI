@@ -340,7 +340,9 @@ async def test_publication_rejects_expiry_after_real_row_lock_wait(
     cid = (await create(api.world)).id
     chat.release = asyncio.Event()
     if authority == "deadline":
-        chat.timeout, chat.lease = 0.2, 1
+        # The deadline under test is the 1 s lease; the generation timeout only has to stay
+        # below it, and must leave room for the observer queries before release (no race).
+        chat.timeout, chat.lease = 0.9, 1
     pending = asyncio.create_task(submit(api, cid))
     await asyncio.wait_for(chat.started.wait(), 5)
     async with api.world.sessions() as observer:
