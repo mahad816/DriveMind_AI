@@ -143,3 +143,13 @@ def test_partial_case_whose_known_fact_is_not_in_the_files_is_rejected():
     case = next(c for c in TRAPS["cases"] if c["id"] == "tr14")
     broken = {"cases": [{**case, "must_include": [["4,999"]]}]}
     assert any("must_include" in p for p in validate(broken, SYNTHETIC))
+
+
+def test_load_many_merges_files_and_validate_catches_a_duplicate_id():
+    from evaluation.rag_eval.dataset import load_many
+
+    merged = load_many(["rag_v2_cases.json", "rag_v2_trap_cases.json"])
+    assert len(merged["cases"]) == len(DATASET["cases"]) + len(TRAPS["cases"])
+    assert not any("duplicate id" in p for p in validate(merged, SYNTHETIC))
+    twice = load_many(["rag_v2_trap_cases.json", "rag_v2_trap_cases.json"])
+    assert any("duplicate id" in p for p in validate(twice, SYNTHETIC))

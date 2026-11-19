@@ -14,11 +14,23 @@ from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.embeddings.base import EmbeddingService
 from app.embeddings.factory import get_embedding_service
-from app.embeddings.vector_store import QdrantVectorStore
+from app.embeddings.vector_store import QdrantVectorStore, ScoredChunkHit
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.scope import eligibility, is_eligible, require_request, scoped_session
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import ResolvedFileScope
+
+
+def drop_weak_tail(hits: list[ScoredChunkHit], fraction: float) -> list[ScoredChunkHit]:
+    """Keep hits that score at least ``fraction`` of the best hit; 0 keeps everything.
+
+    The absolute floor decides whether anything is relevant at all; this decides which of the
+    hits that passed it are close enough to the best one to be worth showing the model.
+    """
+    if fraction <= 0 or not hits:
+        return hits
+    cutoff = max(hit.score for hit in hits) * fraction
+    return [hit for hit in hits if hit.score >= cutoff]
 
 
 class VectorRetriever:
@@ -66,6 +78,7 @@ class VectorRetriever:
                 else {}
             ),
         )
+        hits = drop_weak_tail(hits, self.settings.retrieval_relative_threshold)
         if not hits:
             return []
 

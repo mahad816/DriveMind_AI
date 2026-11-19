@@ -17,7 +17,7 @@ from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.embeddings.vector_store import ScoredChunkHit
-from app.retrieval.vector import VectorRetriever
+from app.retrieval.vector import VectorRetriever, drop_weak_tail
 
 CHUNK_ID = uuid.uuid4()
 DOCUMENT_ID = uuid.uuid4()
@@ -248,3 +248,68 @@ def _request(query: str) -> RetrievalRequest:
         candidate_limit=11,
         candidate_policy="LEGACY",
     )
+
+
+# ---- relative threshold: drop hits far below the best hit ----------------------------------------
+
+
+def _hits(*scores: float) -> list[ScoredChunkHit]:
+    return [ScoredChunkHit(chunk_id=uuid.uuid4(), score=s) for s in scores]
+
+
+def test_drop_weak_tail_keeps_hits_at_or_above_the_fraction_of_the_best() -> None:
+    hits = _hits(0.50, 0.45, 0.40, 0.399, 0.20)
+    kept = drop_weak_tail(hits, 0.8)  # cut-off 0.40
+    assert [h.score for h in kept] == [0.50, 0.45, 0.40]
+
+
+def test_drop_weak_tail_is_off_at_zero_and_keeps_order_and_objects() -> None:
+    hits = _hits(0.5, 0.1)
+    assert drop_weak_tail(hits, 0.0) is hits
+    kept = drop_weak_tail(hits, 0.1)
+    assert kept == hits
+
+
+def test_drop_weak_tail_uses_the_best_hit_not_the_first_one() -> None:
+    hits = _hits(0.30, 0.50, 0.41, 0.39)  # unsorted input
+    assert [h.score for h in drop_weak_tail(hits, 0.8)] == [0.50, 0.41]
+
+
+def test_drop_weak_tail_handles_empty_and_single_hit_and_full_fraction() -> None:
+    assert drop_weak_tail([], 0.8) == []
+    only = _hits(0.2)
+    assert drop_weak_tail(only, 0.8) == only  # the best hit always survives
+    assert [h.score for h in drop_weak_tail(_hits(0.5, 0.49, 0.5), 1.0)] == [0.5, 0.5]
+
+
+@pytest.mark.asyncio
+async def test_retriever_applies_the_relative_threshold_from_settings(
+    mock_db: AsyncMock, mock_embedding: AsyncMock, mock_vector_store: AsyncMock
+) -> None:
+    weak_id = uuid.uuid4()
+    mock_vector_store.search_similar = AsyncMock(
+        return_value=[
+            ScoredChunkHit(chunk_id=CHUNK_ID, score=0.50),
+            ScoredChunkHit(chunk_id=weak_id, score=0.30),
+        ]
+    )
+    mock_db.scalars = AsyncMock(return_value=MagicMock(all=MagicMock(return_value=[_chunk()])))
+    retriever = VectorRetriever(
+        db=mock_db,
+        settings=Settings(retrieval_score_threshold=0.25, retrieval_relative_threshold=0.8),
+        embedding_service=mock_embedding,
+        vector_store=mock_vector_store,
+    )
+    await retriever.retrieve(_request("relative"))
+    requested = mock_db.scalars.await_args.args[0]
+    assert weak_id.hex not in str(requested.compile(compile_kwargs={"literal_binds": True}))
+    # the absolute floor still goes to the vector store untouched
+    assert mock_vector_store.search_similar.await_args.kwargs["score_threshold"] == 0.25
+
+
+def test_relative_threshold_setting_is_bounded_and_defaults_to_0_7() -> None:
+    assert Settings.model_fields["retrieval_relative_threshold"].default == 0.7
+    for bad in (-0.1, 1.1, float("nan")):
+        with pytest.raises(ValidationError):
+            Settings(retrieval_relative_threshold=bad)
+    assert Settings(retrieval_relative_threshold=1.0).retrieval_relative_threshold == 1.0

@@ -76,7 +76,9 @@ class Settings(BaseSettings):
     hybrid_retrieval_enabled: bool = True
     retrieval_candidate_k: int = 24
     retrieval_top_k: int = 8
-    retrieval_score_threshold: float = 0.35
+    retrieval_score_threshold: float = 0.25
+    # A vector hit must also score at least this fraction of the best vector hit (0 = off); measured, see EVALUATION_RESULTS.
+    retrieval_relative_threshold: float = Field(default=0.7, ge=0.0, le=1.0, allow_inf_nan=False)
     hybrid_rrf_k: int = 60
     hybrid_weight_vector: float = 0.5
     hybrid_weight_keyword: float = 0.3

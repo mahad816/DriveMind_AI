@@ -49,7 +49,8 @@ def test_settings_retrieval_defaults() -> None:
     assert fields["hybrid_retrieval_enabled"].default is True
     assert fields["retrieval_candidate_k"].default == 24
     assert fields["retrieval_top_k"].default == 8
-    assert fields["retrieval_score_threshold"].default == 0.35
+    assert fields["retrieval_score_threshold"].default == 0.25
+    assert fields["retrieval_relative_threshold"].default == 0.7
     assert fields["hybrid_rrf_k"].default == 60
     assert fields["hybrid_weight_vector"].default == 0.5
     assert fields["hybrid_weight_keyword"].default == 0.3
