@@ -25,6 +25,7 @@ INTENTS: frozenset[str] = frozenset(get_args(Intent))
 CONVERSATIONAL: frozenset[str] = INTENTS - {"document_question"}
 # A real greeting or thanks is short; long messages skip the call and go to the agent.
 MAX_CLASSIFIED_CHARS = 300
+MAX_CONTEXT_CHARS = 300
 CLASSIFY_TIMEOUT_SECONDS = 10.0
 
 INTENT_SYSTEM_PROMPT = (
@@ -46,6 +47,10 @@ INTENT_SYSTEM_PROMPT = (
     "folders, policies, people, facts or topics that the user's documents might contain, any "
     "request to find, list, count, summarize, compare or quote something, and any follow-up "
     "such as 'the second one' or 'and that file?'.\n"
+    "If a 'Previous assistant message' is shown, use it: a short reply that answers or accepts "
+    "that message ('yes please', 'ok', 'the second one') continues the conversation, so it is "
+    "document_question; plain thanks after an answer is thanks. With no previous message, short "
+    "ambiguous replies such as 'yes please' or 'ok go ahead' are document_question.\n"
     "Rules: if the message mixes a greeting or thanks with a request about documents "
     "('hi, summarize my resume'), choose document_question. If a request needs the user's files "
     "even when phrased as writing something, choose document_question. If you are unsure, "
@@ -72,14 +77,24 @@ REPLIES: dict[str, str] = {
 CompleteJson = Callable[[str, str], Awaitable[str]]
 
 
-async def classify_intent(complete_json: CompleteJson, question: str) -> Intent:
-    """Return the message intent, or ``document_question`` whenever anything is uncertain."""
+async def classify_intent(
+    complete_json: CompleteJson, question: str, previous_assistant: str | None = None
+) -> Intent:
+    """Return the message intent, or ``document_question`` whenever anything is uncertain.
+
+    ``previous_assistant`` (the last assistant turn, if any) lets short replies such as
+    "yes please" be read in context. It is truncated; nothing else is ever sent.
+    """
     text = question.strip()
     if not text or len(text) > MAX_CLASSIFIED_CHARS:
         return "document_question"
+    message = text
+    if previous_assistant and previous_assistant.strip():
+        context = previous_assistant.strip()[:MAX_CONTEXT_CHARS]
+        message = f"Previous assistant message: {context}\nUser message: {text}"
     try:
         async with asyncio.timeout(CLASSIFY_TIMEOUT_SECONDS):
-            raw = await complete_json(INTENT_SYSTEM_PROMPT, text)
+            raw = await complete_json(INTENT_SYSTEM_PROMPT, message)
         value = json.loads(raw).get("intent")
     except Exception:
         # Never surface a classifier failure; the grounded agent still answers safely.

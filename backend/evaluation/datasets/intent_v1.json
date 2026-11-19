@@ -386,6 +386,42 @@
    "id": "i077",
    "text": "is there a file called budget?",
    "intent": "document_question"
+  },
+  {
+   "id": "i078",
+   "text": "yes please",
+   "intent": "document_question",
+   "previous_assistant": "Which file should I look up?"
+  },
+  {
+   "id": "i079",
+   "text": "ok",
+   "intent": "document_question",
+   "previous_assistant": "I found 3 matching files. Want me to list them?"
+  },
+  {
+   "id": "i080",
+   "text": "the second one",
+   "intent": "document_question",
+   "previous_assistant": "I found two files: Offer.pdf and Contract.pdf. Which do you mean?"
+  },
+  {
+   "id": "i081",
+   "text": "thanks",
+   "intent": "thanks",
+   "previous_assistant": "The refund window is 30 days [1]."
+  },
+  {
+   "id": "i082",
+   "text": "ok",
+   "intent": "thanks",
+   "previous_assistant": "The refund window is 30 days [1]."
+  },
+  {
+   "id": "i083",
+   "text": "great, bye",
+   "intent": "farewell",
+   "previous_assistant": "The refund window is 30 days [1]."
   }
  ]
 }

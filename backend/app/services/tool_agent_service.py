@@ -109,7 +109,15 @@ class ToolAgentAdapter:
         try:
             async with asyncio.timeout(TOOL_AGENT_TIMEOUT_SECONDS):
                 if complete is not None and not self.settings.demo_mode:
-                    intent = await classify_intent(complete, question)
+                    previous = next(
+                        (
+                            m.text
+                            for m in reversed(bounded_agent_history(history))
+                            if m.role == "ASSISTANT"
+                        ),
+                        None,
+                    )
+                    intent = await classify_intent(complete, question, previous)
                     if intent in CONVERSATIONAL:
                         logger.info(
                             "rag_execution %s",

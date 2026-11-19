@@ -49,7 +49,7 @@ async def evaluate(settings: Settings) -> dict[str, object]:
 
     rows = []
     for case in cases:
-        predicted = await classify_intent(complete, case["text"])
+        predicted = await classify_intent(complete, case["text"], case.get("previous_assistant"))
         rows.append({**case, "predicted": predicted, "correct": predicted == case["intent"]})
     per_intent: dict[str, list[bool]] = defaultdict(list)
     for row in rows:
@@ -96,7 +96,7 @@ def main() -> None:
     parser.add_argument("--model", default=None, help="Override settings.chat_model.")
     args = parser.parse_args()
     if not args.execute:
-        print("Dry run: pass --execute to call the model (77 tiny requests).")
+        print("Dry run: pass --execute to call the model (one tiny request per case).")
         return
     settings = get_settings().model_copy(update={"chat_model": args.model} if args.model else {})
     if not settings.openai_api_key:

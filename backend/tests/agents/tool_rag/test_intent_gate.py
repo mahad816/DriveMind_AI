@@ -108,6 +108,24 @@ async def test_classifier_receives_only_the_trimmed_message():
     assert system == conversation.INTENT_SYSTEM_PROMPT
 
 
+@pytest.mark.asyncio
+async def test_previous_assistant_message_is_sent_as_truncated_context():
+    complete = declares("document_question")
+    await classify_intent(complete, "yes please", "Which file?" + "x" * 1000)
+    _, user = complete.calls[0]
+    assert user.startswith("Previous assistant message: Which file?")
+    assert user.endswith("\nUser message: yes please")
+    assert len(user) < conversation.MAX_CONTEXT_CHARS + 100
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("previous", [None, "", "   "])
+async def test_no_usable_previous_message_sends_only_the_question(previous):
+    complete = declares("greeting")
+    await classify_intent(complete, "hi", previous)
+    assert complete.calls[0][1] == "hi"
+
+
 def test_prompt_covers_roman_urdu_mixed_requests_and_the_safe_default():
     prompt = conversation.INTENT_SYSTEM_PROMPT
     for needle in ("Roman Urdu", "salam", "document_question", "If you are unsure"):
@@ -205,3 +223,25 @@ async def test_fallback_greeting_plus_document_question_still_needs_evidence(que
 async def test_fallback_punctuated_greetings_keep_working(question, expected):
     state, _, _ = await run([AgentStepResult(text=CLAIM)], question=question)
     assert state["final_answer"] == expected
+
+
+@pytest.mark.asyncio
+async def test_adapter_passes_only_the_last_assistant_turn_as_context():
+    complete = declares("document_question")
+    db = AsyncMock()
+    adapter = ToolAgentAdapter(
+        db,
+        Settings(_env_file=None),
+        chat=ScriptChat([AgentStepResult(text=CLAIM)]),
+        intent_complete=complete,
+    )
+    history = [
+        {"role": "user", "text": "first question"},
+        {"role": "assistant", "text": "first answer"},
+        {"role": "user", "text": "second question"},
+        {"role": "assistant", "text": "Which file should I look up?"},
+    ]
+    await adapter.answer("yes please", user_id=USER, history=history, history_window_complete=True)
+    assert complete.calls[0][1] == (
+        "Previous assistant message: Which file should I look up?\nUser message: yes please"
+    )
