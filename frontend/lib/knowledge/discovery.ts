@@ -1,6 +1,8 @@
 import { getDriveSyncStatus, syncDriveMetadata, SyncSubmissionError } from "@/lib/api/indexing";
 import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
 import type { IndexingJobRead } from "@/lib/api/types";
+import { preparationKey } from "./single-file-preparation";
+import { readPreparationGate } from "./preparation-queue-store";
 
 type Intent = { jobId: string | null; submissionId?: string; revision?: number };
 export type DiscoveryState = {
@@ -10,6 +12,17 @@ export type DiscoveryState = {
   connected: boolean;
 };
 const initial: DiscoveryState = { phase: "checking", job: null, message: "Checking Drive discovery…", connected: false };
+/** Why discovery was refused locally, before any backend call. Each reason has its own message. */
+export type DiscoveryBlockReason = "preparation_unfinished" | "preparation_unreadable" | "pending_elsewhere" | "coordination_unavailable";
+export class DiscoveryBlockedError extends Error {
+  constructor(readonly reason: DiscoveryBlockReason) { super(reason); }
+}
+const blockMessages: Record<DiscoveryBlockReason, string> = {
+  preparation_unfinished: "The Drive check was not started because document preparation is unfinished. Finish or close it on the Preparation screen, then check Drive again.",
+  preparation_unreadable: "The Drive check was not started because the saved preparation record could not be read. Review it on the Preparation screen or ask the beta owner for help.",
+  pending_elsewhere: "A Drive check is already pending in this browser. Check its status instead of starting another.",
+  coordination_unavailable: "The Drive check was not started because this browser cannot safely coordinate tabs. Nothing was sent to Drive.",
+};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Owns metadata discovery only. Unknown acceptance is never replayed. */
@@ -39,17 +52,33 @@ export class DiscoveryController {
   }
   /** Atomic matching-intent update across cooperating tabs. Never hold over network I/O. */
   private async replace(expected: Intent | null, next: Intent | null): Promise<boolean> {
-    if (!navigator.locks) throw new Error("Safe discovery coordination is unavailable");
+    if (!navigator.locks) throw new DiscoveryBlockedError("coordination_unavailable");
     return navigator.locks.request(this.key(), () => {
       if (JSON.stringify(this.read()) !== JSON.stringify(expected)) return false;
       // Preparation shares this short owner lock. Never slip a SYNC between its stages.
-      if (expected === null && next && window.localStorage.getItem(`drivemind:preparation:v1:${this.owner}`) !== null) {
-        throw new Error("A preparation workflow needs attention");
-      }
+      if (expected === null && next) this.clearFinishedPreparation();
       if (next) window.localStorage.setItem(this.key(), JSON.stringify(next));
       else window.localStorage.removeItem(this.key());
       return true;
     });
+  }
+  /**
+   * Only truly conflicting preparation blocks discovery. A queue whose every document is
+   * confirmed ready (cursor past the last entry; the store validates that) has no work left,
+   * so it is cleared here, exactly as the user's "Close completed preparation" would. Leaving
+   * it would risk an unclosable record if a later sync changes a prepared file. Anything
+   * pending, failed, skipped, legacy or unreadable keeps blocking. Runs inside the owner lock.
+   */
+  private clearFinishedPreparation() {
+    let gate;
+    try { gate = readPreparationGate(this.owner); }
+    catch { throw new DiscoveryBlockedError("preparation_unreadable"); }
+    if (gate.kind === "empty") return;
+    if (gate.kind === "queue" && gate.record.current === gate.record.entries.length) {
+      window.localStorage.removeItem(preparationKey(this.owner));
+      return;
+    }
+    throw new DiscoveryBlockedError("preparation_unfinished");
   }
   private publish(value: DiscoveryState) {
     if (this.live()) { this.state = value; this.listeners.forEach(listener => listener()); }
@@ -85,8 +114,11 @@ export class DiscoveryController {
         this.publish({ phase: completed ? "complete" : "idle", job, connected: result.connected, message: completed ? `Drive check completed. ${job.processed ?? 0} metadata updates processed.` : job?.operation === "SYNC" && job.status === "failed" ? "The Drive check failed. No documents were prepared. You can start a new check after reviewing your connection." : "Discover supported documents without preparing their content." });
         if (this.live() && completed && this.notified !== job.id) { this.notified = job.id; this.onComplete(); }
       }
-    } catch {
-      this.publish({ ...this.state, phase: "unknown", message: "Discovery status is unavailable. Check status before starting another request." });
+    } catch (error) {
+      const preparation = error instanceof DiscoveryBlockedError && error.reason.startsWith("preparation_");
+      this.publish({ ...this.state, phase: "unknown", message: preparation
+        ? "Drive discovery is running, but unfinished or unreadable document preparation prevents tracking it here. Resolve it on the Preparation screen, then check status."
+        : "Discovery status is unavailable. Check status before starting another request." });
     } finally { this.busy = false; }
   };
   start = async () => {
@@ -99,7 +131,7 @@ export class DiscoveryController {
     let apiCalled = false;
     let acceptedId: string | null = null;
     try {
-      if (!await this.replace(null, intent)) throw new SyncSubmissionError("not_submitted");
+      if (!await this.replace(null, intent)) throw new DiscoveryBlockedError("pending_elsewhere");
       if (!this.live()) throw new SyncSubmissionError("not_submitted");
       this.publish({ ...this.state, phase: "submitting", message: "Requesting a Drive metadata check…" });
       apiCalled = true;
@@ -124,7 +156,11 @@ export class DiscoveryController {
     } catch (error) {
       if (!apiCalled || (error instanceof SyncSubmissionError && error.outcome !== "unknown")) {
         try { await this.replace(intent, null); } catch { /* Preserve any record if safe cleanup fails. */ }
-        this.publish({ ...this.state, phase: "blocked", message: "The Drive check was not accepted. Verify your connection and check discovery status before explicitly trying again. Safe browser storage and coordination must be available." });
+        // Name the real cause: a local refusal never reached the backend, so it is not a connection problem.
+        const message = error instanceof DiscoveryBlockedError ? blockMessages[error.reason] : apiCalled
+          ? "The Drive check was not accepted. Verify your connection and check discovery status before explicitly trying again."
+          : "The Drive check was not started because browser storage or coordination is unavailable. Nothing was sent to Drive.";
+        this.publish({ ...this.state, phase: "blocked", message });
       } else if (acceptedId) {
         this.publish({ ...this.state, phase: "active", message: "Drive discovery accepted. Check its status." });
       } else {

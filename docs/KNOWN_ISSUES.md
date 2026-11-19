@@ -33,19 +33,6 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Test:** `test_ki002_claim_absent_from_evidence_is_not_published_with_a_citation` (xfail).
 - **Suggested direction:** not a quick patch. First measure how often it happens (the planned 24-case gold run), then consider an entailment/faithfulness check or quote-based answering. Decide approach with data, avoid shipping a heuristic that looks like safety but is not.
 
-### KI-010 — A finished preparation record blocks Drive discovery  *(user-visible, frontend)*
-- **Symptom:** after documents finish preparing, "Discover" refuses until the Preparation screen is explicitly closed; if that screen is not visited the user is stuck.
-- **Cause:** `DiscoveryController.replace()` (`frontend/lib/knowledge/discovery.ts`) throws "A preparation workflow needs attention" if *any* `drivemind:preparation:v1:<owner>` record exists, including a completed queue (`current === entries.length`). `start()` then never calls the API.
-- **Tests:** `KI-010 (today)` / `KI-010 (correct)`.
-- **Suggested fix:** let discovery treat a *completed* queue as non-blocking (reuse `readPreparationGate` from `preparation-queue-store.ts`, do not re-parse storage); keep blocking for pending / failed / skipped / unknown records.
-- **Needs your decision:** the owner stated discovery "should only block truly conflicting active/uncertain operations". Confirm a completed-but-unclosed batch counts as terminal. Failed/skipped batches are intentionally *not* covered by this test.
-
-### KI-011 — The refusal names the wrong cause  *(user-visible, frontend)*
-- **Symptom:** when preparation blocks discovery the user reads "The Drive check was not accepted. Verify your connection…", though the backend was never called and the connection is fine.
-- **Cause:** `DiscoveryController.start()` catch-all maps every pre-API failure (preparation gate, storage denied, no Web Locks, lost intent) to one message.
-- **Tests:** `KI-011 (today)` / `KI-011 (correct)`.
-- **Suggested fix:** carry a reason from `replace()` (e.g. a small error code or subclass) and map it to distinct messages. Minimal change, no new state.
-
 ### KI-012 — "Check status" can do nothing  *(user-visible, frontend)*
 - **Symptom:** the Check status button appears inert.
 - **Reproduced cause (partial):** `PreparationQueue.check()` (`frontend/lib/knowledge/preparation-queue.ts`) does `if (this.busy …) return;`, so a click while any operation runs is discarded and returns at once; the caller cannot tell and the UI shows no result.
@@ -66,3 +53,14 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Was:** "Hello, can you hear me?", "Hi there", "Thanks a lot", "What can you do?" etc. were refused because the tool agent only recognised 10 exact phrases.
 - **Fix:** `backend/app/agents/tool_rag/conversation.py` classifies the *meaning* of the message with one small model call (enum output only, any wording / order / Roman Urdu). Conversational intents get server-owned reply text, never model prose, and skip the agent, embeddings and SQL. Anything uncertain, malformed, slow, failing, over 300 characters or in demo mode falls back to the normal grounded agent.
 - **Tests:** `backend/tests/agents/tool_rag/test_intent_gate.py` (wiring, fail-safe, no model prose). Recognition quality is measured separately by the live intent evaluation (see `backend/evaluation/`), not by phrase lists in unit tests.
+
+### KI-010 — A finished preparation record blocked Drive discovery  *(fixed on branch `fix/discovery-preparation-gate`)*
+- **Was:** after documents finished preparing, "Check Drive" refused until the Preparation screen was closed.
+- **Fix:** `DiscoveryController` now asks the canonical `readPreparationGate`. A queue whose every document is confirmed ready is *cleared* (same as "Close completed preparation") and discovery proceeds. Pending, failed, skipped, legacy, unreadable, wrong-owner or unknown-version records still block and are never modified.
+- **Why cleared, not merely ignored:** a later sync can change a prepared file, after which the completed record could no longer be verified, and "Close completed preparation" is disabled for unverifiable batches. Leaving the record would trap the user.
+- **Tests:** `lib/knowledge/discovery-preparation-gate.test.tsx` (22) and one UI test in `components/files/drive-discovery.test.tsx`.
+
+### KI-011 — The refusal named the wrong cause  *(fixed on branch `fix/discovery-preparation-gate`)*
+- **Was:** every local refusal said "The Drive check was not accepted. Verify your connection…" though the backend was never called.
+- **Fix:** typed `DiscoveryBlockedError` reasons with their own messages (unfinished preparation, unreadable preparation record, a discovery already pending in this browser, no safe tab coordination). Denied browser storage says so and states nothing was sent. The "verify your connection" text now appears only after a request really was sent and rejected.
+
