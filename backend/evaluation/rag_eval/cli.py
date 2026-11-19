@@ -1,6 +1,7 @@
 """Command line entry for the v2 evaluation.
 
     python -m evaluation.rag_eval.cli setup     # create the isolated store and index the corpus
+    python -m evaluation.rag_eval.cli rescore FILE      # re-judge a saved run (same replies, current rubric)
     python -m evaluation.rag_eval.cli run --pipelines tool_agent legacy --split dev [--limit N]
 
 Requires the disposable PostgreSQL/Qdrant containers (see docs/EVALUATION_RESULTS.md) and an
@@ -16,7 +17,8 @@ from pathlib import Path
 from .corpus import public_files, synthetic_files, verify
 from .dataset import load_cases, validate
 from .meter import BudgetExceeded, CostMeter
-from .runner import PIPELINES, run_pipeline
+from .runner import PIPELINES, judge_row, prepare_case, run_pipeline, score_row
+from .score import summarise
 from .target import ensure_database, eval_settings, ingest, migrate
 
 
@@ -67,9 +69,35 @@ async def run(args: argparse.Namespace) -> None:
     print("\nSPEND:", json.dumps(meter.summary(), indent=1))
 
 
+async def rescore(args: argparse.Namespace) -> None:
+    """Apply the current judge and pass rules to the replies of a saved run; nothing is re-asked."""
+    source = Path(args.file)
+    data = json.loads(source.read_text())
+    total = len(synthetic_files() + public_files())
+    cases = {c["id"]: prepare_case(c, total) for c in load_cases()["cases"]}
+    settings = eval_settings(chat_model=data["model"])
+    meter = CostMeter(args.cap)
+    with meter.installed():
+        rows = [
+            await judge_row(settings, cases[r["id"]], score_row(cases[r["id"]], r))
+            for r in data["rows"]
+        ]
+    data.update(
+        rows=rows, summary=summarise(rows), rescored_from=source.name, rescore_spend=meter.summary()
+    )
+    target = source.with_name(source.stem + "_rescored.json")
+    target.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+    print(
+        f"-> {target.name}\n"
+        + json.dumps(data["summary"], indent=1)
+        + f"\nspend ${meter.total:.4f}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["setup", "run"])
+    parser.add_argument("command", choices=["setup", "run", "rescore"])
+    parser.add_argument("file", nargs="?", help="saved result file (rescore)")
     parser.add_argument("--cap", type=float, default=3.0, help="hard spend cap in USD")
     parser.add_argument("--pipelines", nargs="+", choices=sorted(PIPELINES), default=["tool_agent"])
     parser.add_argument("--split", choices=["dev", "test", "all"], default="dev")
@@ -78,7 +106,13 @@ def main() -> None:
     parser.add_argument("--model", default=None, help="chat model (default: the app default)")
     parser.add_argument("--concurrency", type=int, default=3)
     args = parser.parse_args()
-    asyncio.run(setup(args.cap) if args.command == "setup" else run(args))
+    asyncio.run(
+        {
+            "setup": lambda: setup(args.cap),
+            "run": lambda: run(args),
+            "rescore": lambda: rescore(args),
+        }[args.command]()
+    )
 
 
 if __name__ == "__main__":

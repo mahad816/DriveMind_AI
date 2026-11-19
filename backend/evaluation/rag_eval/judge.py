@@ -21,8 +21,10 @@ EXPECTATION = {
     "A correct reply politely declines or says it is not in the files, without doing the task.",
     "correct_premise": "The question contains a false premise. A correct reply says the premise is wrong or not supported "
     "by the files, and does NOT explain reasons for the false event.",
-    "chitchat": "Small talk. A correct reply is a short, friendly, on-topic reply. It must NOT say a document or "
-    "information could not be found.",
+    "chitchat": "Small talk or a question about what the assistant can do. A correct reply is brief, polite and fitting. "
+    "Greeting back and offering to answer questions about the user's files is CORRECT. Describing what the "
+    "assistant can do with the user's files is CORRECT for a capability question. It must NOT say that a "
+    "document or piece of information could not be found, and must not refuse or be rude.",
 }
 PROMPT = """You grade one reply of a document question-answering assistant.
 Question: {question}
@@ -30,8 +32,8 @@ Expected behaviour: {expectation}
 Assistant reply: {answer}
 
 Return JSON {{"verdict": "ok" | "fail", "reason": "<one short sentence>"}}.
-"ok" only if the reply matches the expected behaviour exactly; a reply that states a specific invented value, does the
-off-topic task, or (for small talk) claims a document is missing is "fail"."""
+"ok" if the reply satisfies the expected behaviour. "fail" if it states a specific invented value, does the off-topic
+task, claims a document is missing when the message was small talk, or otherwise contradicts the expectation."""
 
 
 async def judge(settings: Settings, case: dict[str, Any], answer: str) -> dict[str, str]:

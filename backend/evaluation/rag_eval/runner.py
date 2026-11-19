@@ -18,10 +18,22 @@ from .target import EVAL_USER_ID, session_factory
 
 PIPELINES = {"tool_agent": True, "legacy": False}  # value = tool_rag_agent_enabled
 JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat"}
+REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
 
 
-def prepare(case: dict[str, Any], total_files: int) -> str:
-    return str(case["question"]).replace("{TOTAL_FILES}", str(total_files))
+def prepare(text: str, total_files: int) -> str:
+    return text.replace("{TOTAL_FILES}", str(total_files))
+
+
+def prepare_case(case: dict[str, Any], total_files: int) -> dict[str, Any]:
+    """Fill the corpus-size placeholder in both the question and the expected facts."""
+    return {
+        **case,
+        "question": prepare(case["question"], total_files),
+        "must_include": [
+            [prepare(alt, total_files) for alt in group] for group in case["must_include"]
+        ],
+    }
 
 
 async def run_case(
@@ -56,7 +68,6 @@ async def run_case(
     finally:
         label_var.reset(label)
     latency = perf_counter() - started
-    seen = Observed(answer=answer, cited_files=cited, error=error)
     row: dict[str, Any] = {
         "id": case["id"],
         "category": case["category"],
@@ -68,39 +79,52 @@ async def run_case(
         "cited_files": list(cited),
         "error": error,
         "latency_s": round(latency, 2),
-        "evidence": evidence_score(case, seen),
-        "answer": answer_score(case, seen),
-        "refusal": None,
     }
-    row["clean"] = clean_score(case, seen)
+    return await judge_row(settings, case, score_row(case, row))
+
+
+def score_row(case: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic stages, recomputable from the stored reply and citations alone."""
+    seen = Observed(answer=row["reply"], cited_files=tuple(row["cited_files"]), error=row["error"])
+    row.update(
+        evidence=evidence_score(case, seen),
+        answer=answer_score(case, seen),
+        clean=clean_score(case, seen),
+        refusal=None,
+    )
+    return row
+
+
+async def judge_row(
+    settings: Settings, case: dict[str, Any], row: dict[str, Any]
+) -> dict[str, Any]:
+    """(Re)compute the judged stage and the overall verdict from an already recorded reply."""
     if case["expected_behavior"] in JUDGED:
+        answer = row["reply"]
         verdict = (
             await judge(settings, case, answer)
             if answer
             else {"verdict": "fail", "reason": "no answer"}
         )
         row["refusal"] = {"ok": verdict["verdict"] == "ok", "reason": verdict["reason"]}
-    row["overall"] = {"pass": overall(row)}
+    row["overall"] = {"pass": overall(row, case["expected_behavior"])}
     return row
 
 
-def overall(row: dict[str, Any]) -> bool:
+def overall(row: dict[str, Any], behavior: str | None = None) -> bool:
+    """A case passes when every applicable stage passes.
+
+    ``clean`` (no citation attached) is part of the verdict for small talk and inventory, where the
+    product promises no citations. For refusals it is reported separately as citation noise: the
+    serious failure there is an invented answer, which the judge and must_not_include already catch.
+    """
     if row["error"]:
         return False
-    parts = [
-        row[k][
-            "correct"
-            if k == "answer"
-            else "found"
-            if k == "evidence"
-            else "ok"
-            if k == "refusal"
-            else "clean"
-        ]
-        for k in ("answer", "evidence", "refusal", "clean")
-        if row.get(k) is not None
-    ]
-    return all(parts)
+    stages = ["answer", "evidence", "refusal"]
+    if (behavior or row.get("expected_behavior")) not in REFUSALS:
+        stages.append("clean")
+    keys = {"answer": "correct", "evidence": "found", "refusal": "ok", "clean": "clean"}
+    return all(row[k][keys[k]] for k in stages if row.get(k) is not None)
 
 
 async def run_pipeline(
@@ -115,7 +139,7 @@ async def run_pipeline(
     sessions = session_factory(pipeline_settings)
     gate = asyncio.Semaphore(concurrency)
     total = len(files)
-    prepared = [{**c, "question": prepare(c, total)} for c in cases]
+    prepared = [prepare_case(c, total) for c in cases]
 
     async def one(case: dict[str, Any]) -> dict[str, Any]:
         async with gate:

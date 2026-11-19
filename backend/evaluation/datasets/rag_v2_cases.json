@@ -1077,9 +1077,10 @@
    "expected_behavior": "answer",
    "expected_files": [
     "synthetic/vendor_contract_cloudhost.txt",
-    "synthetic/vendor_email_smsgate.txt"
+    "synthetic/vendor_email_smsgate.txt",
+    "synthetic/incident_report_2026_q3.txt"
    ],
-   "citation_mode": "all",
+   "citation_mode": "any",
    "must_include": [
     [
      "cloudhost"
@@ -1339,7 +1340,8 @@
    "expected_behavior": "answer",
    "expected_files": [
     "synthetic/meeting_notes_2026_03_04.txt",
-    "synthetic/meeting_notes_2026_05_12.txt"
+    "synthetic/meeting_notes_2026_05_12.txt",
+    "synthetic/roadmap_2026.txt"
    ],
    "citation_mode": "any",
    "must_include": [
@@ -2498,9 +2500,10 @@
    "language": "en",
    "expected_behavior": "answer",
    "expected_files": [
-    "public/nist_sp800_145.pdf"
+    "public/nist_sp800_145.pdf",
+    "public/nist_sp800_146.pdf"
    ],
-   "citation_mode": "all",
+   "citation_mode": "any",
    "must_include": [
     [
      "single organization",

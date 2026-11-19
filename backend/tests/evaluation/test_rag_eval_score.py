@@ -2,7 +2,7 @@
 
 import pytest
 
-from evaluation.rag_eval.runner import overall, prepare
+from evaluation.rag_eval.runner import overall, prepare, prepare_case, score_row
 from evaluation.rag_eval.score import (
     Observed,
     answer_score,
@@ -118,9 +118,25 @@ def test_rates_skip_inapplicable_rows_and_summary_splits_by_category():
     assert summary["latency_s"]["max"] == 3.0
 
 
-def test_inventory_placeholder_is_filled_with_the_real_corpus_size():
-    assert prepare({"question": "I have {TOTAL_FILES} files?"}, 55) == "I have 55 files?"
-    assert prepare({"question": "How many?"}, 55) == "How many?"
+def test_inventory_placeholder_is_filled_in_question_and_expected_facts():
+    assert prepare("I have {TOTAL_FILES} files?", 55) == "I have 55 files?"
+    inventory = case(
+        question="How many files?", must_include=[["{TOTAL_FILES}"]], expected_behavior="inventory"
+    )
+    ready = prepare_case(inventory, 55)
+    assert ready["must_include"] == [["55"]] and inventory["must_include"] == [
+        ["{TOTAL_FILES}"]
+    ]  # original untouched
+    assert need(answer_score(ready, Observed("Indexed files: 55.", ())))["correct"]
+
+
+def test_score_row_recomputes_every_deterministic_stage_from_the_stored_reply():
+    stored = {"reply": "You get 22 days.", "cited_files": ["synthetic/a.txt"], "error": None}
+    row = score_row(case(), dict(stored))
+    assert row["evidence"]["found"] and row["answer"]["correct"] and row["refusal"] is None
+    # same stored reply, stricter gold: the verdict follows the gold, nothing is re-asked
+    row = score_row(case(expected_files=["synthetic/b.txt"]), dict(stored))
+    assert not row["evidence"]["found"]
 
 
 @pytest.mark.parametrize("n,k", [(10, 5), (90, 81), (31, 28)])
