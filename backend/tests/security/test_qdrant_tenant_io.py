@@ -404,6 +404,10 @@ async def test_anonymous_demo_real_admission_and_ownerless_vectors(vector_world)
     normal_collection = w.store.collection_name
     r.settings.demo_mode = True
     r.settings.qdrant_collection = "drivemind_4d3_test_demo_" + uuid4().hex
+    # The demo service refuses the default database URL; name an explicit, non-default one.
+    r.settings.database_url = (
+        "postgresql+asyncpg://synthetic:synthetic@127.0.0.1/drivemind_session_test_demo"
+    )
     r.settings.retrieval_candidate_k = 24
     demo = QdrantVectorStore(r.settings, client=w.client)
     manifest = load_manifest()

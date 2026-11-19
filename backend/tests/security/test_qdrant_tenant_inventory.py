@@ -276,7 +276,7 @@ async def test_cli_json_and_exit_codes(world, monkeypatch, capsys):
     args = argparse.Namespace(
         command="verify",
         database_env="INVENTORY_TEST_DATABASE",
-        qdrant_url="http://127.0.0.1:56335",
+        qdrant_url=os.environ["QDRANT_TEST_URL"],
         collection=world.settings.qdrant_collection,
         batch_size=2,
         max_samples=1,
