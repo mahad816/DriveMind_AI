@@ -43,7 +43,10 @@ class ResolveFileArguments(ContractModel):
         min_length=1,
         max_length=1024,
         pattern=r"\S",
-        description="Human file reference, not trusted identity.",
+        description=(
+            "File name as the user wrote it, not trusted identity. Never a document number, "
+            "invoice or order reference, or a topic."
+        ),
     )
 
 
