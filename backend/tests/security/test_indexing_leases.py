@@ -251,6 +251,13 @@ async def test_heartbeat_failure_cancels_blocked_embedding_and_never_starts_writ
 
 
 async def test_healthy_heartbeat_outlives_original_lease_then_joins(world):
+    """A job that runs longer than its first lease keeps it alive by heartbeat, then finishes normally.
+
+    The lease must be short enough to expire while the stage is blocked, but not so short that ordinary
+    scheduling or database jitter is fatal: a renewal is bounded by lease/3 and arriving after expiry
+    counts as a lost claim (production uses 60 s). With 0.8 s that bound was 0.27 s and the test failed
+    on any busy machine; 3 s gives a 1 s bound and still takes only about 3.5 s.
+    """
     w = world
     entered, release, renewed = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
@@ -264,8 +271,8 @@ async def test_healthy_heartbeat_outlives_original_lease_then_joins(world):
         w.factory,
         w.settings,
         embedding_service=Blocking(),
-        lease_seconds=0.8,
-        heartbeat_seconds=0.1,
+        lease_seconds=3.0,
+        heartbeat_seconds=0.3,
     )
     original = worker.renew_lease
     deadline = None
@@ -283,11 +290,13 @@ async def test_healthy_heartbeat_outlives_original_lease_then_joins(world):
     await document(w)
     jid = await enqueue(w, IndexingOperation.BUILD)
     task = asyncio.create_task(worker.run_once())
-    await asyncio.wait_for(entered.wait(), 5)
-    await asyncio.wait_for(renewed.wait(), 5)
+    # Readiness waits, not assertions: how long the worker takes to reach the embedding step depends on
+    # the machine, so they only guard against a hang.
+    await asyncio.wait_for(entered.wait(), 30)
+    await asyncio.wait_for(renewed.wait(), 30)
     assert (await job(w, jid)).lease_expires_at > await clock(w)
     release.set()
-    await asyncio.wait_for(task, 5)
+    await asyncio.wait_for(task, 30)
     assert (await job(w, jid)).status == IndexingJobStatus.COMPLETED
     assert not any(
         t.get_name() in {"indexing-heartbeat", "indexing-stage"} for t in asyncio.all_tasks()
