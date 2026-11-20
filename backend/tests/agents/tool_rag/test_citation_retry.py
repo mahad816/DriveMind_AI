@@ -57,7 +57,7 @@ async def test_only_one_correction_is_allowed():
         ]
     )
     assert state["failure"] == "UNSAFE_FINAL_OUTPUT"
-    assert not state["citations"] and "source_3" not in state["final_answer"]
+    assert not state["citations"] and "source_3" not in (state["final_answer"] or "")
     assert len(chat.received) == 3  # tool call, first answer, one retry: no third attempt
 
 
