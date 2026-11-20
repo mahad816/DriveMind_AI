@@ -1,0 +1,498 @@
+{
+ "version": 2,
+ "corpus": "synthetic Larkspur Systems + messy invoice; written 2026-11-20 BEFORE the KI-025 recovery work, as a held-out check (do not tune wording on it)",
+ "created": "2026-11-20",
+ "cases": [
+  {
+   "id": "id01",
+   "category": "identifier_in_question",
+   "question": "What was the root cause of incident INC-204?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "disk latency"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Disk latency on the primary host.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "Root cause: disk latency on the primary host."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id02",
+   "category": "identifier_in_question",
+   "question": "Who was the on-call engineer for INC-219?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Tomas Silva"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Tomas Silva.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "Root cause: a configuration flag that existed only in staging. On-call engineer: Tomas Silva."
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id03",
+   "category": "identifier_in_question",
+   "question": "How long did incident INC-211 last?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "2 hours 10 minutes",
+     "2h 10",
+     "130 minutes"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "2 hours 10 minutes.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "Impact lasted 2 hours 10 minutes."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id04",
+   "category": "identifier_in_question",
+   "question": "What caused incident INC-231?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q3.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "bulk imports"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "There was no limit on bulk imports.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q3.txt",
+     "quote": "Root cause: no limit on bulk imports."
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id05",
+   "category": "identifier_in_question",
+   "question": "Which engineer was on call during INC-236?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q3.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Priya Nair"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Priya Nair.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q3.txt",
+     "quote": "On-call engineer: Priya Nair."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id06",
+   "category": "identifier_in_question",
+   "question": "When does contract SG-7731 renew?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/vendor_email_smsgate.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "1 November 2026"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Automatically on 1 November 2026, for another 12 months.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_email_smsgate.txt",
+     "quote": "Your contract SG-7731 renews automatically on 1 November 2026 for another 12 months"
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id07",
+   "category": "identifier_in_question",
+   "question": "How much notice is needed to cancel contract SG-7731?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/vendor_email_smsgate.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "60"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "At least 60 days before the renewal date, in writing.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_email_smsgate.txt",
+     "quote": "unless you cancel in writing at least 60 days before the renewal date."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id08",
+   "category": "identifier_in_question",
+   "question": "What is the price per message under SG-7731?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/vendor_email_smsgate.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "0.0075"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "0.0075 USD per message.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/vendor_email_smsgate.txt",
+     "quote": "our price is 0.0075 USD per message"
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id09",
+   "category": "identifier_in_question",
+   "question": "When was patch 1.3.2 released?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/release_notes_v1_3.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "6 July 2026"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "6 July 2026.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/release_notes_v1_3.txt",
+     "quote": "the fixed patch 1.3.2 was released on 6 July 2026."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id10",
+   "category": "identifier_in_question",
+   "question": "Why was patch 1.3.1 rolled back?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/release_notes_v1_3.txt",
+    "synthetic/incident_report_2026_q2.txt"
+   ],
+   "citation_mode": "any",
+   "must_include": [
+    [
+     "INC-219",
+     "faulty deployment",
+     "configuration flag"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "After incident INC-219: a faulty deployment broke reminder emails (a configuration flag existed only in staging).",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/release_notes_v1_3.txt",
+     "quote": "Patch 1.3.1 (30 June 2026) was rolled back after incident INC-219"
+    },
+    {
+     "file": "synthetic/incident_report_2026_q2.txt",
+     "quote": "A faulty deployment of release 1.3.1 broke reminder emails for 18 minutes."
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id11",
+   "category": "identifier_in_question",
+   "question": "What was the follow-up action after incident INC-231?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q3.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "10,000",
+     "10000"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Imports are limited to 10,000 rows per request.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q3.txt",
+     "quote": "Follow-up: imports are now limited to 10,000 rows per request."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id12",
+   "category": "identifier_in_question",
+   "question": "When is payment due for INV-0457?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "messy/invoice_0457.pdf"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "30"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Within 30 days of the issue date.",
+   "evidence_anchors": [
+    {
+     "file": "messy/invoice_0457.pdf",
+     "quote": "Payment is due within 30 days of the issue date."
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id13",
+   "category": "identifier_in_question",
+   "question": "Who was INV-0457 billed to?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "messy/invoice_0457.pdf"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "Clinica Sao Bento"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Clinica Sao Bento.",
+   "evidence_anchors": [
+    {
+     "file": "messy/invoice_0457.pdf",
+     "quote": "Billed to: Clinica Sao Bento"
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id14",
+   "category": "identifier_in_question",
+   "question": "What is the unit price of an extra training session on INV-0457?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "messy/invoice_0457.pdf"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "350.00"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "350.00 USD.",
+   "evidence_anchors": [
+    {
+     "file": "messy/invoice_0457.pdf",
+     "quote": "Extra training session | 2 | 350.00 | 700.00"
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id15",
+   "category": "identifier_in_question",
+   "question": "On which date was invoice INV-0457 issued?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "messy/invoice_0457.pdf"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "12 October 2026"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "12 October 2026.",
+   "evidence_anchors": [
+    {
+     "file": "messy/invoice_0457.pdf",
+     "quote": "Issue date: 12 October 2026"
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id16",
+   "category": "named_file",
+   "question": "According to incident_report_2026_q3.txt, how many incidents were recorded in Q3?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/incident_report_2026_q3.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "two",
+     "2"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "Two.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/incident_report_2026_q3.txt",
+     "quote": "Two customer-facing incidents were recorded in Q3."
+    }
+   ],
+   "computed": false,
+   "split": "test"
+  },
+  {
+   "id": "id17",
+   "category": "named_file",
+   "question": "In the file release_notes_v1_3.txt, what is the new public API limit?",
+   "language": "en",
+   "expected_behavior": "answer",
+   "expected_files": [
+    "synthetic/release_notes_v1_3.txt"
+   ],
+   "citation_mode": "all",
+   "must_include": [
+    [
+     "120"
+    ]
+   ],
+   "must_not_include": [],
+   "reference_answer": "120 requests per minute per customer key.",
+   "evidence_anchors": [
+    {
+     "file": "synthetic/release_notes_v1_3.txt",
+     "quote": "The public API limit was raised from 60 to 120 requests per minute per customer key."
+    }
+   ],
+   "computed": false,
+   "split": "dev"
+  },
+  {
+   "id": "id18",
+   "category": "named_file_missing",
+   "question": "What does quarterly_forecast_2027.xlsx say about revenue?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [
+    "revenue is",
+    "revenue was"
+   ],
+   "reference_answer": "No indexed file has that name, so the assistant cannot say what it contains.",
+   "evidence_anchors": [],
+   "computed": false,
+   "split": "test",
+   "names_a_file": true
+  },
+  {
+   "id": "id19",
+   "category": "named_file_missing",
+   "question": "What does the training handbook say about the first week for new hires?",
+   "language": "en",
+   "expected_behavior": "not_found",
+   "expected_files": [],
+   "citation_mode": "all",
+   "must_include": [],
+   "must_not_include": [
+    "the training handbook says",
+    "according to the training handbook"
+   ],
+   "reference_answer": "There is no training handbook among the indexed files; the assistant must not present another document as the handbook.",
+   "evidence_anchors": [],
+   "computed": false,
+   "split": "dev",
+   "names_a_file": true
+  }
+ ]
+}

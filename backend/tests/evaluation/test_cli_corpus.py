@@ -25,3 +25,17 @@ def test_the_messy_question_set_is_only_valid_with_the_messy_documents():
     synthetic = [f for f in corpus_files(with_messy=False) if f.kind == "synthetic"]
     assert validate(dataset, messy) == []
     assert validate(dataset, synthetic)  # points at files that are not there
+
+
+def test_files_to_check_skips_public_files_nobody_references():
+    from evaluation.rag_eval.dataset import files_to_check
+
+    files = corpus_files(with_messy=True)
+    public = next(f for f in files if f.path.startswith("public/"))
+    other = next(f for f in files if f.path.startswith("public/") and f.path != public.path)
+    dataset = {"cases": [{"expected_files": [public.path], "evidence_anchors": []}]}
+    kept = {f.path for f in files_to_check(dataset, files)}
+    assert public.path in kept and other.path not in kept
+    assert any(p.startswith("synthetic/") for p in kept) and any(
+        p.startswith("messy/") for p in kept
+    )

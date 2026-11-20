@@ -211,8 +211,16 @@ class AmbiguousFileResult(ContractModel):
         return self
 
 
+NOT_A_FILE_NAME_HINT = (
+    "File names are matched exactly. If the user did not give a file name (for example they gave an "
+    "invoice, ticket or contract number, or a topic), search the documents with search_knowledge."
+)
+NO_SUCH_FILE_HINT = "No indexed file has that name. Tell the user; do not answer from other files as if they were it."
+
+
 class NotFoundFileResult(ContractModel):
     kind: Literal["NOT_FOUND"] = "NOT_FOUND"
+    hint: str = Field(default=NOT_A_FILE_NAME_HINT, max_length=300)
 
 
 class SafeResolvedFile(ContractModel):

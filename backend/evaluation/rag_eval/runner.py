@@ -114,9 +114,10 @@ async def judge_row(
         answer = row["reply"]
         if not answer:
             verdict = {"verdict": "fail", "reason": "no answer"}
-        elif answer.strip() == FILE_NOT_FOUND_TEXT:
+        elif answer.strip() == FILE_NOT_FOUND_TEXT and not case.get("names_a_file"):
             # Wrong route (KI-025): the agent looked for a *file* of that name and never searched the
-            # text. It says "not found", so a grader that only reads the words would pass it.
+            # text. It says "not found", so a grader that only reads the words would pass it. A case
+            # whose question really names a file (``names_a_file``) is the one place this reply is right.
             verdict = {
                 "verdict": "fail",
                 "reason": "wrong route: file-name lookup, no content search",
