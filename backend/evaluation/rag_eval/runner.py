@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 
+from app.agents.tool_rag.finalization import FILE_NOT_FOUND_TEXT
 from app.core.config import Settings
 from app.services.rag_service import RagService
 
@@ -111,11 +112,17 @@ async def judge_row(
     """(Re)compute the judged stage and the overall verdict from an already recorded reply."""
     if case["expected_behavior"] in JUDGED:
         answer = row["reply"]
-        verdict = (
-            await judge(settings, case, answer)
-            if answer
-            else {"verdict": "fail", "reason": "no answer"}
-        )
+        if not answer:
+            verdict = {"verdict": "fail", "reason": "no answer"}
+        elif answer.strip() == FILE_NOT_FOUND_TEXT:
+            # Wrong route (KI-025): the agent looked for a *file* of that name and never searched the
+            # text. It says "not found", so a grader that only reads the words would pass it.
+            verdict = {
+                "verdict": "fail",
+                "reason": "wrong route: file-name lookup, no content search",
+            }
+        else:
+            verdict = await judge(settings, case, answer)
         row["refusal"] = {"ok": verdict["verdict"] == "ok", "reason": verdict["reason"]}
     row["overall"] = {"pass": overall(row, case["expected_behavior"])}
     return row

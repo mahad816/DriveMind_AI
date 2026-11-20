@@ -397,9 +397,17 @@ After the `resolve_file` argument wording change (KI-025, same probe): 2 of 70 r
 **After the KI-025 fix, the same 39 questions again (one run, $0.108, result file `..._all_all_messy_ki025.json`):**
 **35 / 39** (89.7%, 95% interval 76-96%), evidence found 33/34, answer correct 33/34, refusal 3/5, latency median 4.6 s,
 no API errors (the earlier run had one). Case by case against the 33/39 run: `vi04`, `vi05`, `vi07` fail -> pass;
-`vi06` pass -> fail (same answer, grader flipped, see KI-025); `dx08`, `px03`, `xl04` fail in both runs. The agent
+`vi06` pass -> fail (same answer, grader flipped: see the next paragraph); `dx08`, `px03`, `xl04` fail in both runs. The agent
 and grader are not deterministic, so a difference of one or two cases between runs is within noise; the three
 invoice fixes are backed by the first-step probe (25/70 -> 2/70), not only by this run.
+**`vi06` replaced by `vi08` (2026-11-20, after seeing this result, so it is a change to a test-split question and should be read as one).**
+`vi06` ("What discount was applied on invoice INV-0457?") was labelled "not in the files", but the invoice does answer
+it (there is no discount), and a correct reply quotes the subtotal, VAT and total, which the not-found grader rule
+forbids. The rule is right (it is what catches invented values such as `dx08`'s fee), so the question was changed, not
+the grader: `vi08` asks for the VAT registration number, which the invoice does not contain. Its reply must now name
+no value. `vi08` then exposed that KI-025 is not fully fixed (it goes to the file-name lookup every time), and showed
+the grader passing that wrong-route reply, so `judge_row` now fails it. Net effect on the 39-question score: none
+expected (`vi06` failed in the run above and `vi08` fails today); not re-run.
 Metric note: "clean" is 0/5 in both runs because refusals still attach a citation to the file they searched.
 
 How to read it: 39 questions, one run, error bars about +/- 14 points; use it as the baseline Stage B is compared
