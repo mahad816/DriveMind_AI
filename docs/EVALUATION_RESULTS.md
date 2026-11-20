@@ -389,6 +389,10 @@ The 6 failures, by cause (none is a reader error):
 - **Model arithmetic (xl04):** the table was found and read correctly; the sum of 5 delivered orders came out 33,100
   instead of 34,900.
 
+First-step probe on the 7 invoice questions (10 repeats each, $0.019): the first tool was `resolve_file` in 25 of 70 runs
+(`vi04`, `vi07` always, `vi05` half the time, the other four never), `search_knowledge` otherwise; when it searched, the
+right file came back 35 of 35. Details in KI-025.
+
 How to read it: 39 questions, one run, error bars about +/- 14 points; use it as the baseline Stage B is compared
 against, not as proof of anything smaller than about 15 points. The set was built by the same author as the readers
 (the questions describe what the fixtures contain).

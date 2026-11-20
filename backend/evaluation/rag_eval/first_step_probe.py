@@ -35,10 +35,18 @@ from app.llm.openai_agent_service import OpenAIAgentChatService
 from app.retrieval.hybrid import HybridRetriever
 from app.services.tool_agent_service import bounded_agent_history
 
-from .corpus import public_files, synthetic_files, verify
+from .corpus import messy_files, public_files, synthetic_files, verify
 from .dataset import load_cases, validate
 from .meter import BudgetExceeded, CostMeter
-from .retrieval_probe import DATASETS, RESULTS, Hit, expected_names, make_search, measure
+from .retrieval_probe import (
+    DATASETS,
+    MESSY_DATASETS,
+    RESULTS,
+    Hit,
+    expected_names,
+    make_search,
+    measure,
+)
 from .runner import prepare_case
 from .score import wilson
 from .target import eval_settings, session_factory
@@ -146,11 +154,15 @@ async def run_probe(
 
 async def run(args: argparse.Namespace) -> None:
     files = synthetic_files() + public_files()
+    if args.messy:
+        files += messy_files()  # the store must hold them too: cli setup --with-messy
     verify(files)
+    # Messy questions only name messy documents: validating against those alone skips slow PDF reads.
+    checked = messy_files() if args.messy else files
     cases: list[dict[str, Any]] = []
-    for name in DATASETS:
+    for name in MESSY_DATASETS if args.messy else DATASETS:
         dataset = load_cases(name)
-        problems = validate(dataset, files)
+        problems = validate(dataset, checked)
         if problems:
             raise SystemExit(f"{name} is invalid:\n" + "\n".join(problems))
         cases += [prepare_case(c, len(files)) for c in dataset["cases"]]
@@ -219,6 +231,11 @@ def main() -> None:
     )
     parser.add_argument("--split", choices=["dev", "test", "all"], default="dev")
     parser.add_argument("--ids", nargs="+", help="only these case ids")
+    parser.add_argument(
+        "--messy",
+        action="store_true",
+        help="use the messy question set instead (the store needs cli setup --with-messy)",
+    )
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--tag", help="suffix for the result file name")
     parser.add_argument("--cap", type=float, default=0.10, help="hard spend cap in USD")
