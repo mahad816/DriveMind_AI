@@ -36,21 +36,14 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Not fixed on purpose:** changing the threshold or the keyword mode changes retrieval for everything and needs its own evaluation. The corpus here has many whole-file chunks, which probably makes the effect stronger than on long documents (unmeasured).
 - **Suggested direction:** make keyword matching tolerant (any-term ranking instead of all-terms), and compare a lower or relative vector threshold on the same cases before and after.
 
-### KI-024 — File readers lose tables and slide notes, repeat page headers, and skip PPTX and XLSX  *(ingestion quality, backend, tests in `tests/known_issues/test_ki024_file_readers.py`)*
-
-Measured on the generated fixtures in `backend/evaluation/corpus/messy/`:
-
-- **DOCX: fixed in A2** (see Fixed below). Tables, headings and bullets are read; Google Docs are exported as DOCX.
-- **PPTX: fixed in A3** (see Fixed below).
-- **XLSX**: no reader exists, so these files are never ingested (A5).
-- **PDF: fixed in A4** (see Fixed below).
-
-Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
-
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 
 ## Fixed
+### KI-024 (XLSX part) — Excel files and Google Sheets were not read at all  *(fixed on branch `feat/extraction-a5-xlsx`, Stage A5)*
+
+Spreadsheets were not a supported type, so they were never indexed. Each visible sheet is now a Markdown table under `## Sheet: name` (first non-empty row as header, calculated values, ISO dates). Size is capped and every cut is announced in the text with a `Note:` line, so the assistant can say it saw only part of a sheet: 1,000 rows and 50 columns per sheet, 5,000 rows and 25 sheets per workbook, 500 characters per cell, files over 30 MB refused. Google Sheets are exported as XLSX (CSV, first sheet only, when Drive says the export is too large). `.csv` files (Markdown table) and `.md` files (as text) are supported too. Hidden sheets, charts, pivot tables, number formats and formulas without a stored result are not read. Tests: `tests/ingestion/test_xlsx_extractor.py`, `test_csv_and_tabular.py` (15 of 16 deliberate breakages caught; the 16th is equivalent on this Python), `tests/connectors/test_google_drive_client.py`, frontend `single-file-preparation.test.tsx`, and the former known-issue test in `tests/known_issues/test_ki024_file_readers.py`. Spreadsheets already in Drive are found by one full scan.
+
 ### KI-024 (PDF part) — PDF headers, footers and page numbers repeated on every page; ruled tables lost their rows  *(fixed on branch `feat/extraction-a4-pdf`, Stage A4)*
 
 Running headers, footers and bare page numbers are removed (the first copy of a repeating header is kept as the title), pages are separated by a form-feed line, and tables drawn with ruling lines become Markdown tables, but only when the table's characters match the page text it replaces (otherwise the page keeps its flowing text, so nothing is lost or added). Tables drawn without lines stay flowing text. Measured on the 33 public PDFs: repeated header/footer lines removed on 982 of 982 page occurrences, 38 of 62 detected tables used, none of the 4 PDF evidence quotes of the old cases lost. Tests: `tests/ingestion/test_pdf_reader.py`, `test_pdf_furniture.py`, `test_pdf_tables.py` (ten deliberate breakages of the code were each caught) and the three former known-issue tests in `tests/known_issues/test_ki024_file_readers.py`. Existing PDFs are read again once because `EXTRACTION_PIPELINE_VERSION` is now 3.

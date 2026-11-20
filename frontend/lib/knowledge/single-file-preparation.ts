@@ -37,6 +37,9 @@ const supported = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.google-apps.presentation",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.google-apps.spreadsheet",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv", "text/markdown",
   "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/tiff", "image/bmp",
 ]);
 /** Conservative beta policy: failures/skips need investigation, never a blind rebuild. */

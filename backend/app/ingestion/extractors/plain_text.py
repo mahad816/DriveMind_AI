@@ -1,10 +1,14 @@
-"""Plain-text extraction for TXT files (and the plain-text export fallback of large Google Docs)."""
+"""Plain-text extraction for TXT and Markdown files (and the plain-text export fallback of large Google Docs)."""
 
 from __future__ import annotations
 
-from app.connectors.google_drive.constants import TXT_MIME
+from app.connectors.google_drive.constants import MARKDOWN_MIME, TXT_MIME
 from app.ingestion.extractors.base import ExtractionError, ExtractionResult
 from app.ingestion.extractors.registry import register_extractor
+
+
+# Plain text and Markdown are both read as they are (Markdown is already light Markdown).
+_TEXT_MIME_TYPES = frozenset({TXT_MIME, MARKDOWN_MIME})
 
 
 def decode_plain_text_bytes(data: bytes) -> str:
@@ -43,7 +47,7 @@ class PlainTextExtractor:
     """Extract normalized plain text from UTF-8 or Latin-1 encoded bytes."""
 
     def extract(self, data: bytes, *, mime_type: str, filename: str) -> ExtractionResult:
-        if mime_type != TXT_MIME:
+        if mime_type not in _TEXT_MIME_TYPES:
             raise ExtractionError(f"PlainTextExtractor does not support MIME type: {mime_type}")
 
         text = normalize_extracted_text(decode_plain_text_bytes(data))
@@ -59,5 +63,6 @@ class PlainTextExtractor:
 
 
 def register_plain_text_extractors() -> None:
-    """Register the plain-text extractor for the TXT MIME type."""
-    register_extractor(TXT_MIME, PlainTextExtractor())
+    """Register the plain-text extractor for the TXT and Markdown MIME types."""
+    for mime_type in sorted(_TEXT_MIME_TYPES):
+        register_extractor(mime_type, PlainTextExtractor())

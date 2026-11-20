@@ -44,6 +44,9 @@ See the [Retrieval guide](guides/RETRIEVAL.md) for the [answer-flow diagram](gui
 | TXT | Text decode |
 | PDF | Text with running headers, footers and bare page numbers removed, pages separated by a form-feed line, and **ruled tables** as Markdown (only when verified against the page text). Tables drawn without lines stay flowing text; scanned PDFs have no OCR fallback |
 | Google Slides / PPTX | Slides in order (`## Slide N: title`), bullets, tables, text boxes and **speaker notes** (`Notes:`); footers, date and slide-number placeholders skipped; hidden slides marked. Google Slides are exported as PPTX. Charts, SmartArt and pictures are not read |
+| Google Sheets / XLSX | Every visible sheet as `## Sheet: name` plus a Markdown table (first row as header, calculated values). Capped at 1,000 rows and 50 columns per sheet, 5,000 rows and 25 sheets per workbook, with a `Note:` line wherever something was cut. Google Sheets are exported as XLSX (CSV, first sheet only, if the export is too large). Hidden sheets, charts, pivots and number formats are not read |
+| CSV | One Markdown table (delimiter detected), same limits and notes as a sheet |
+| Markdown | Read as text |
 | DOCX | Body in order as light Markdown: headings (`#`), bullets (`- `), tables (`| a | b |` with a header row). Headers, footers, text boxes and images are not read |
 | Images | Tesseract OCR |
 
