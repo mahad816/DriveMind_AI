@@ -394,6 +394,14 @@ First-step probe on the 7 invoice questions (10 repeats each, $0.019): the first
 right file came back 35 of 35. Details in KI-025.
 After the `resolve_file` argument wording change (KI-025, same probe): 2 of 70 runs; test split unchanged case by case.
 
+**After the KI-025 fix, the same 39 questions again (one run, $0.108, result file `..._all_all_messy_ki025.json`):**
+**35 / 39** (89.7%, 95% interval 76-96%), evidence found 33/34, answer correct 33/34, refusal 3/5, latency median 4.6 s,
+no API errors (the earlier run had one). Case by case against the 33/39 run: `vi04`, `vi05`, `vi07` fail -> pass;
+`vi06` pass -> fail (same answer, grader flipped, see KI-025); `dx08`, `px03`, `xl04` fail in both runs. The agent
+and grader are not deterministic, so a difference of one or two cases between runs is within noise; the three
+invoice fixes are backed by the first-step probe (25/70 -> 2/70), not only by this run.
+Metric note: "clean" is 0/5 in both runs because refusals still attach a citation to the file they searched.
+
 How to read it: 39 questions, one run, error bars about +/- 14 points; use it as the baseline Stage B is compared
 against, not as proof of anything smaller than about 15 points. The set was built by the same author as the readers
 (the questions describe what the fixtures contain).
