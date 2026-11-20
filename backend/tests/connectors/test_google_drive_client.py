@@ -25,10 +25,12 @@ from app.connectors.google_drive.constants import (
     DOCX_MIME,
     GOOGLE_DOC_MIME,
     GOOGLE_FOLDER_MIME,
+    GOOGLE_SHEETS_MIME,
     GOOGLE_SLIDES_MIME,
     PDF_MIME,
     PPTX_MIME,
     TXT_MIME,
+    XLSX_MIME,
     is_supported_mime_type,
     output_content_mime_type,
     requires_export,
@@ -402,6 +404,45 @@ def test_slides_and_pptx_are_supported_and_only_google_native_files_need_export(
     assert requires_export(GOOGLE_SLIDES_MIME) and not requires_export(PPTX_MIME)
     assert output_content_mime_type(GOOGLE_SLIDES_MIME) == PPTX_MIME
     assert output_content_mime_type(PPTX_MIME) == PPTX_MIME
+
+
+def test_google_sheets_are_exported_as_xlsx_and_fall_back_to_csv_when_too_large() -> None:
+    """Sheets cannot be exported as plain text; CSV (first sheet only) is the simpler export."""
+    files_resource = FakeFilesResource()
+    client = _client(files_resource)
+    with patch.object(client, "_read_media_bytes", return_value=b"xlsx bytes"):
+        assert client.get_file_content_with_type("book", GOOGLE_SHEETS_MIME) == (
+            b"xlsx bytes",
+            XLSX_MIME,
+        )
+
+    answers: list[Any] = [_http_error(403, "exportSizeLimitExceeded"), b"a,b\n1,2"]
+
+    def read(request: Any) -> bytes:
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    with patch.object(client, "_read_media_bytes", side_effect=read):
+        assert client.get_file_content_with_type("big-book", GOOGLE_SHEETS_MIME) == (
+            b"a,b\n1,2",
+            "text/csv",
+        )
+    assert [c["mimeType"] for c in files_resource.export_media_calls] == [
+        XLSX_MIME,
+        XLSX_MIME,
+        "text/csv",
+    ]
+
+
+def test_sheets_xlsx_csv_and_markdown_are_supported_and_only_google_sheets_need_export() -> None:
+    for mime in (GOOGLE_SHEETS_MIME, XLSX_MIME, "text/csv", "text/markdown"):
+        assert is_supported_mime_type(mime)
+    assert requires_export(GOOGLE_SHEETS_MIME) and not requires_export(XLSX_MIME)
+    assert output_content_mime_type(GOOGLE_SHEETS_MIME) == XLSX_MIME
+    assert output_content_mime_type("text/csv") == "text/csv"
+    assert not is_supported_mime_type("application/vnd.ms-excel")  # legacy .xls is not read
 
 
 def test_other_export_errors_are_not_retried_as_plain_text() -> None:

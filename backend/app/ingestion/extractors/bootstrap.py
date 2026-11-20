@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from app.ingestion.extractors.csv_text import register_csv_extractor
 from app.ingestion.extractors.docx import register_docx_extractor
 from app.ingestion.extractors.image_ocr import register_image_ocr_extractors
 from app.ingestion.extractors.plain_text import register_plain_text_extractors
 from app.ingestion.extractors.pdf import register_pdf_extractor
 from app.ingestion.extractors.pptx import register_pptx_extractor
+from app.ingestion.extractors.xlsx import register_xlsx_extractor
 
 _bootstrapped = False
 
@@ -20,6 +22,8 @@ def register_builtin_extractors() -> None:
     register_pdf_extractor()
     register_docx_extractor()
     register_pptx_extractor()
+    register_xlsx_extractor()
+    register_csv_extractor()
     register_image_ocr_extractors()
     _bootstrapped = True
 

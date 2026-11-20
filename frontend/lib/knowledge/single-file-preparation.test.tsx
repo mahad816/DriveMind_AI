@@ -94,8 +94,20 @@ it.each([500,503,504])("generic HTTP %s is uncertain", async status => {
 it.each(["failed", "skipped", "indexed", "indexing"] as const)("does not submit fresh work for %s files", async status => {
   file.status = status; const c = await controller(); await c.confirm(); expect(c.getSnapshot().phase).toBe("ineligible"); expect(writes()).toHaveLength(0); expect(preparationEligibility(file)).not.toBeNull();
 });
+it.each([
+  "application/vnd.google-apps.spreadsheet",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "text/markdown",
+  "application/vnd.google-apps.presentation",
+])("accepts %s as a supported type", (mime) => {
+  file.mime_type = mime; expect(preparationEligibility(file)).toBeNull();
+});
+it("rejects legacy Excel files, which the reader does not support", () => {
+  file.mime_type = "application/vnd.ms-excel"; expect(preparationEligibility(file)).toBe("This document type is not supported.");
+});
 it("rejects unsupported and foreign-owner metadata", async () => {
-  file.mime_type = "application/vnd.google-apps.spreadsheet"; let c = await controller(); await c.confirm(); expect(writes()).toHaveLength(0);
+  file.mime_type = "application/vnd.ms-excel"; let c = await controller(); await c.confirm(); expect(writes()).toHaveLength(0);
   file.user_id = other; c = await controller(); await c.confirm(); expect(c.getSnapshot().phase).toBe("unknown"); expect(writes()).toHaveLength(0);
 });
 it.each(["failed", "canceled", "skipped", "recovery", "invalid counters", "wrong target", "wrong operation", "not indexed"])("never advances after %s evidence", async problem => {

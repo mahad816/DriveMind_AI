@@ -1,13 +1,10 @@
-"""KI-024: file readers lose structure and add page furniture; PPTX and XLSX are not read at all.
+"""KI-024 (fixed in A2 to A5): what the file readers must produce for the generated fixtures.
 
-Each test states what the readers must produce for the generated fixtures
-(``evaluation/rag_eval/messy_fixtures.py``), written as "light Markdown": headings as ``#``, tables as
-``| a | b |`` rows with a header row, bullets as ``- ``, slides as ``## Slide N: title`` with a
-``Notes:`` line, sheets as ``## Sheet: name``. The tests that carry ``@known_issue`` fail today; when
-a reader (A2 DOCX, A3 PPTX, A4 PDF, A5 XLSX) makes its tests pass, pytest reports XPASS as a failure
-and the fixer deletes that marker and updates ``docs/KNOWN_ISSUES.md``.
-
-The unmarked tests at the end pass today and guard behaviour those fixes must not break.
+The expected texts are written as "light Markdown" (``evaluation/rag_eval/messy_fixtures.py`` holds the
+content): headings as ``#``, tables as ``| a | b |`` rows with a header row, bullets as ``- ``, slides as
+``## Slide N: title`` with a ``Notes:`` line, sheets as ``## Sheet: name``, PDF pages separated by a
+form-feed line. All of them pass now and stay as regression tests, together with the guards at the end
+that check older behaviour (two-column order, borderless table values, body text) did not break.
 """
 
 import re
@@ -20,9 +17,6 @@ from app.ingestion.extractors.base import UnsupportedMimeTypeError
 from evaluation.rag_eval import messy_fixtures as mf
 from evaluation.rag_eval.corpus import MIME
 
-from . import known_issue
-
-XLSX_FIX = known_issue("KI-024", "XLSX is not read (fixed by A5)")
 
 _SEPARATOR = re.compile(r"^:?-{3,}:?$")
 
@@ -135,7 +129,6 @@ def test_pptx_speaker_notes_and_free_text_boxes_are_included():
 # ---- XLSX (A5) -------------------------------------------------------------------------------------------------
 
 
-@XLSX_FIX
 def test_xlsx_every_sheet_is_a_titled_table():
     text = read("sales_2026.xlsx")
     lines = text.splitlines()

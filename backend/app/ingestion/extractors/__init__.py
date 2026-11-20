@@ -1,4 +1,4 @@
-"""File-type-specific text extractors (PDF, DOCX, OCR, etc.)."""
+"""File-type-specific text extractors (PDF, DOCX, PPTX, XLSX, CSV, OCR, etc.)."""
 
 from app.ingestion.extractors.base import (
     ExtractionError,
@@ -7,6 +7,11 @@ from app.ingestion.extractors.base import (
     UnsupportedMimeTypeError,
 )
 from app.ingestion.extractors.bootstrap import register_builtin_extractors, reset_builtin_extractors
+from app.ingestion.extractors.csv_text import (
+    CsvTextExtractor,
+    extract_csv_text,
+    register_csv_extractor,
+)
 from app.ingestion.extractors.docx import (
     DocxTextExtractor,
     extract_docx_text,
@@ -33,6 +38,11 @@ from app.ingestion.extractors.plain_text import (
     normalize_extracted_text,
     register_plain_text_extractors,
 )
+from app.ingestion.extractors.xlsx import (
+    XlsxTextExtractor,
+    extract_xlsx_text,
+    register_xlsx_extractor,
+)
 from app.ingestion.extractors.registry import (
     clear_extractors,
     get_extractor,
@@ -43,6 +53,7 @@ from app.ingestion.extractors.registry import (
 register_builtin_extractors()
 
 __all__ = [
+    "CsvTextExtractor",
     "DocxTextExtractor",
     "ExtractionError",
     "ExtractionResult",
@@ -52,21 +63,26 @@ __all__ = [
     "PlainTextExtractor",
     "TextExtractor",
     "UnsupportedMimeTypeError",
+    "XlsxTextExtractor",
     "clear_extractors",
     "decode_plain_text_bytes",
+    "extract_csv_text",
     "extract_docx_text",
     "extract_image_ocr_text",
     "extract_pdf_text",
     "extract_pptx_text",
+    "extract_xlsx_text",
     "get_extractor",
     "normalize_extracted_text",
     "register_builtin_extractors",
+    "register_csv_extractor",
     "register_docx_extractor",
     "register_extractor",
     "register_image_ocr_extractors",
     "register_pdf_extractor",
     "register_pptx_extractor",
     "register_plain_text_extractors",
+    "register_xlsx_extractor",
     "registered_mime_types",
     "reset_builtin_extractors",
 ]

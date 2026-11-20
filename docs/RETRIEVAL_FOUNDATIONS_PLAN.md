@@ -336,3 +336,18 @@ Known limits: tables without ruling lines stay flowing text (the report's Financ
 
 Not verified yet: PDFs from producers not in the corpus (the public PDFs are NIST and arXiv; the generated ones come from ReportLab), and the effect on answer quality (measured once at the end of Stage A with the messy question set).
 
+
+## A5 as built (2026-11-20)
+
+XLSX reader (`app/ingestion/extractors/xlsx.py`, shared table code in `tabular.py`): every **visible** sheet with content becomes `## Sheet: name` and a Markdown table; the first non-empty row is the header, blank rows and blank columns are dropped, values are what Excel last calculated (not formulas), floats are written without noise (`0.1 + 0.2` is `0.3`), dates as ISO dates, booleans as TRUE / FALSE, `|` and line breaks inside cells are made safe. Read with openpyxl in read-only streaming mode (now a runtime dependency; the stored "used range" is ignored because some writers get it wrong).
+
+**Row cap and why these numbers.** A sheet keeps its header plus 1,000 data rows and 50 columns; a workbook keeps 5,000 data rows and 25 sheets; a cell keeps 500 characters; a file over 30 MB (or over 300 MB once unpacked) is refused with a clear error rather than half-read. Measured: 1,000 rows of five short columns come to about 53,000 characters, roughly 15 chunks of 3,500, so a full sheet is a normal-sized document and the workbook budget of 5,000 rows bounds what one file can add (about 75 chunks at that width; wider sheets add more). Questions about the data of a sheet longer than that cannot be answered from the index (they need a calculation over all rows, which retrieval cannot do) — so the reader **says so**: wherever a limit cut something, a `Note: only the first 1000 rows are indexed.` (or columns, or "sheets not indexed because of the size limit: ...") line stands under the table. A 200,000-row workbook is read in 0.03 s because only the capped rows are read.
+
+**Google Sheets** are exported as XLSX (`GOOGLE_EXPORT_MIME`, one new entry). Sheets cannot export as plain text, so when Drive reports `exportSizeLimitExceeded` the fallback is CSV, which holds the **first sheet only** ([Google's export table](https://developers.google.com/workspace/drive/api/guides/ref-export-formats)); the new CSV reader (`csv_text.py`: delimiter detected among `, ; tab |`, same limits and notes) reads it, and also plain `.csv` files. `.md` files (`text/markdown`) are read as text. No pipeline-version change: no document was ever produced for these types.
+
+Frontend: the single-file preparation supported list now includes Sheets, XLSX, CSV and Markdown (its test used Sheets as the example of an unsupported type; it now uses legacy `.xls`). Existing spreadsheets in Drive need one full scan to be discovered.
+
+Not read, on purpose: hidden sheets, charts, pivot tables, images, comments, number formats (a percentage is `0.15`), a formula Excel never calculated (written by a script: left empty), encrypted files, legacy `.xls` / `.xlsm`. A merged cell keeps its text in its top-left cell.
+
+Not verified yet: a real Google Sheet exported by Drive and an Excel file saved by Excel itself (fixtures were written by openpyxl; the stored-formula-result path was tested by patching the XML), and whether Drive reports `.csv` / `.md` uploads with exactly `text/csv` / `text/markdown` (other values would be skipped as unsupported).
+

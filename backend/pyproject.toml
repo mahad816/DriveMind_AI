@@ -25,6 +25,7 @@ dependencies = [
     "sqlalchemy>=2.0.40",
     "uvicorn[standard]>=0.35.0",
     "pdfplumber>=0.11.10",
+    "openpyxl>=3.1.5",
 ]
 
 [dependency-groups]
@@ -35,7 +36,6 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "basedpyright>=1.39.9",
-    "openpyxl>=3.1.5",
     "reportlab>=5.1.0",
 ]
 
@@ -59,7 +59,7 @@ python_version = "3.12"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*", "PIL.*", "openai.*", "qdrant_client.*", "langgraph.*", "langchain_core.*"]
+module = ["google_auth_oauthlib.*", "googleapiclient.*", "docx.*", "pytesseract.*", "pypdf.*", "openpyxl.*", "PIL.*", "openai.*", "qdrant_client.*", "langgraph.*", "langchain_core.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

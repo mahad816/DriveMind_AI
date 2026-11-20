@@ -25,7 +25,7 @@ from app.connectors.google_drive.constants import (
     DEFAULT_PAGE_SIZE,
     FILE_FIELDS,
     GOOGLE_EXPORT_MIME,
-    GOOGLE_TEXT_EXPORT_MIME,
+    GOOGLE_FALLBACK_EXPORT_MIME,
     LIST_FILES_FIELDS,
     MAX_PAGE_SIZE,
     is_supported_mime_type,
@@ -368,8 +368,9 @@ class GoogleDriveClient:
     def get_file_content_with_type(self, file_id: str, source_mime_type: str) -> tuple[bytes, str]:
         """Return file bytes and the MIME type of the bytes actually returned.
 
-        Google Docs and Slides are exported as DOCX and PPTX; if Drive says that export is too large,
-        the plain-text export is returned instead (and reported as ``text/plain``). Binary types (PDF, DOCX, TXT,
+        Google Docs, Slides and Sheets are exported as DOCX, PPTX and XLSX; if Drive says that export is
+        too large, the simpler export is returned instead and its type reported (``text/plain`` for Docs
+        and Slides, ``text/csv`` with the first sheet only for Sheets). Binary types (PDF, DOCX, XLSX, TXT,
         images) are downloaded via the media endpoint.
         """
         if not file_id:
@@ -399,5 +400,6 @@ class GoogleDriveClient:
         except HttpError as exc:
             if not self._export_too_large(exc):
                 raise
-        request = service.files().export_media(fileId=file_id, mimeType=GOOGLE_TEXT_EXPORT_MIME)
-        return self._read_media_bytes(request), GOOGLE_TEXT_EXPORT_MIME
+        fallback_mime = GOOGLE_FALLBACK_EXPORT_MIME[source_mime_type]
+        request = service.files().export_media(fileId=file_id, mimeType=fallback_mime)
+        return self._read_media_bytes(request), fallback_mime

@@ -236,7 +236,7 @@ it("removes individual reviewed documents, disables empty preparation, and can c
   expect(posts()).toEqual([]); expect(values.has(key)).toBe(false);
 });
 it("uses actual ready, preparing, failed, skipped and unsupported eligibility with preview/chat retained", async () => {
-  files[1].status = "indexed"; files[2].status = "indexing"; files[3].status = "failed"; files[4].status = "skipped"; files[5].mime_type = "application/vnd.google-apps.spreadsheet";
+  files[1].status = "indexed"; files[2].status = "indexing"; files[3].status = "failed"; files[4].status = "skipped"; files[5].mime_type = "application/vnd.ms-excel";
   render(<KnowledgeLibrary />);
   expect(await screen.findByRole("checkbox", { name: "Select Document 1.txt for preparation" })).toBeEnabled();
   for (const n of [2, 3, 4, 5, 6]) expect(screen.getByRole("checkbox", { name: `Select Document ${n}.txt for preparation` })).toBeDisabled();
