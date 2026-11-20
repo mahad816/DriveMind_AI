@@ -414,6 +414,55 @@ How to read it: 39 questions, one run, error bars about +/- 14 points; use it as
 against, not as proof of anything smaller than about 15 points. The set was built by the same author as the readers
 (the questions describe what the fixtures contain).
 
+## KI-025 on a held-out question set (2026-11-20)
+
+**Why a held-out set.** The first KI-025 fix was tuned and measured on the same 7 invoice questions and looked like
+25 of 70 -> 2 of 70. A new question about the same invoice (`vi08`) went to the wrong tool in 20 of 20 runs, so the
+fix did not generalise. This set was written afterwards and **before any further code change**.
+
+`backend/evaluation/datasets/rag_v2_identifier_cases.json` (19 questions, run with `--dataset rag_v2_identifier_cases.json
+--with-messy`): 15 identifier questions (incidents INC-204/211/219/231/236, contract SG-7731, patches 1.3.1/1.3.2,
+invoice INV-0457), 2 that name an existing file, 2 that name a file that does not exist (one with an extension, one
+without). SHA-256 when first measured `1d9f4f05...`; after one correction (`id10`, below) `7f5f4dfd...`; not edited since.
+Correction: `id10` "Why was patch 1.3.1 rolled back?" was answered correctly from the incident report, but the gold
+required the release notes; two files answer it, so the gold now accepts either (same kind of flaw as `vi06`; the
+baseline was re-scored with the corrected gold).
+
+| Measurement (same questions, `gpt-5.4-nano`) | Before (committed code) | After (final change) |
+|---|---|---|
+| End to end, 19 questions | 14 (13 before the gold correction) | **16** |
+| First tool for the 15 identifier questions that was `resolve_file` | 10 of 150 (`id14` 10 of 10) | 10 of 150 (`id14` 10 of 10): prevention unchanged |
+| `id14` end to end (the question that always starts with the lookup), 10 extra runs | first call to the lookup 10 of 10; the one end-to-end run ended with the lookup-failure text (certain under the old rule) | **10 of 10 correct**: lookup -> hint -> search -> "$350.00" with citation |
+| Cost of one set (first step 10 repeats + end to end) | $0.054 + $0.063 | $0.054 + $0.047 |
+
+Failures left (16 of 19 pass): `id01`, `id11` (retrieval of identifier questions, KI-027) and `id19` (a document that
+does not exist is answered from a related one, KI-028). `id04` flipped between runs with identical code paths (fail,
+fail, pass, pass): it is part of KI-027 and is not counted as this fix's gain.
+
+**Regression checks on the final change (all `gpt-5.4-nano`, same store plus the 5 messy files):**
+
+| Check | Before | After |
+|---|---|---|
+| Test split, first tool, 106 runs | 98 search, 8 no tool, 64 of 66 right file | identical |
+| `ru06` (Roman-Urdu "not in the files"), searched, 20 runs | 17 to 18 of 20 | **20 of 20** |
+| `pb02` (NIST question), searched, 20 runs | 2 of 2 | **20 of 20** |
+| Older dev set end to end (88 questions, `rag_v2_cases` + `rag_v2_trap_cases`) | 77 (run of the same morning, before the messy files and Stage A readers) | **78**; 4 questions better, 3 worse, 1 error |
+| Messy set end to end (39) | 35 (run earlier today) | 34: `dx08`, `px03`, `xl04` fail as before, `vi05` and `vi08` ended in `ChatError` (KI-026); `vi06` was replaced by `vi08` |
+
+The older-dev comparison run was made hours earlier on the same store; its reader code and the messy files differ, so
+a difference of one or two questions is noise, not a result. A control run of the old code on the same day was not made
+(it would cost about $0.22) because the final run did not drop.
+
+**Two prompt-wording attempts that were rejected, with their numbers** (also in `docs/DECISIONS.md`): advice in the tool
+description made `ru06` stop searching (17 of 20 -> 1 of 20 and 0 of 20); advice in the system prompt did the same
+(0 of 20), made `pb02` skip the tools, and the older dev set fell 77 -> 72. Neither is in the code.
+
+**`vi06` replaced by `vi08` (test split, changed after seeing a result):** `vi06` ("What discount was applied on
+invoice INV-0457?") was labelled "not in the files", but the invoice answers it (no discount) and a correct reply
+quotes its figures, which the not-found grader rule forbids. The rule is right (it catches invented values such as
+`dx08`'s fee), so the question was changed, not the grader. `vi08` asks for the VAT registration number, which the
+invoice does not contain.
+
 ## Earlier baselines (pre-existing)
 
 See `backend/evaluation/analysis/baseline_v1_failure_analysis.md` (Gold v1, 24 cases, 2026-09-21: routing 20/24)

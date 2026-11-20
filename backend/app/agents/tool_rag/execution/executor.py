@@ -9,6 +9,7 @@ from app.db.models.document import Document
 from app.db.models.chunk import Chunk
 from ..scope_guard import unsupported_scope_widening
 from ..cross_turn_guard import unresolved_cross_turn_reference
+from ..file_reference import names_a_file
 from app.db.enums import DriveFileStatus
 from app.retrieval.hybrid import HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
@@ -111,7 +112,8 @@ async def resolve_file(
             if f.name.casefold() == arguments.reference.casefold()
         ]
     if not matches:
-        return c.ResolveFileResult(result=c.NotFoundFileResult())
+        hint = c.NO_SUCH_FILE_HINT if names_a_file(arguments.reference) else c.NOT_A_FILE_NAME_HINT
+        return c.ResolveFileResult(result=c.NotFoundFileResult(hint=hint))
     if len(matches) == 1:
         return c.ResolveFileResult(result=c.ResolvedFileResult(file=summary(matches[0])))
     if len(matches) > 10:

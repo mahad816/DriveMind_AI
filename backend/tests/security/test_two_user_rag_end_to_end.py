@@ -24,6 +24,7 @@ from app.agents.tool_rag.claim_check import SYSTEM_PROMPT as CLAIM_CHECK_SYSTEM_
 from app.agents.tool_rag.conversation import INTENT_SYSTEM_PROMPT
 from app.api.chat import get_rag_service
 from app.agents.tool_rag import contracts as tool_contracts
+from app.agents.tool_rag.contracts import NO_SUCH_FILE_HINT
 from app.agents.tool_rag.execution import executor as tool_executor
 from app.agents.tool_rag.handles import FileHandle, SourceHandle
 from app.db.enums import ApplicationSessionKind, DriveFileStatus
@@ -911,7 +912,11 @@ async def test_foreign_only_native_reference_exposes_no_metadata(corpus, owner, 
     assert response.status_code == 200, response.text
     assert_private(c, owner)
     result = c.tool_results[0]
-    assert result.payload == {"result": {"kind": "NOT_FOUND"}}
+    # KI-025: NOT_FOUND carries a fixed hint chosen only by the shape of the typed reference ("x.txt" has an
+    # extension), never by whether, or for whom, a file exists. So it is identical for a missing file and a
+    # foreign one and names nothing.
+    assert result.payload == {"result": {"kind": "NOT_FOUND", "hint": NO_SUCH_FILE_HINT}}
+    assert reference not in NO_SUCH_FILE_HINT and ".txt" not in NO_SUCH_FILE_HINT
     assert not result.handles and not response.json()["citations"]
     assert len(c.model.requests) == 2
 

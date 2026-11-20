@@ -60,3 +60,12 @@ async def test_an_empty_reply_still_fails_as_no_answer(judged: list[str]):
     result = await judge_row(object(), CASE, row(""))  # type: ignore[arg-type]
     assert result["refusal"] == {"ok": False, "reason": "no answer"}
     assert judged == []
+
+
+async def test_a_case_that_names_a_missing_file_may_get_the_file_lookup_failure_text(
+    judged: list[str],
+):
+    case = {**CASE, "names_a_file": True}
+    result = await judge_row(object(), case, row(FILE_NOT_FOUND_TEXT))  # type: ignore[arg-type]
+    assert result["refusal"]["ok"] is True  # the judge decides, as for any other reply
+    assert judged == [FILE_NOT_FOUND_TEXT]

@@ -214,7 +214,10 @@ def test_resolve_result_variants_and_privacy():
     )
     assert resolved.result.kind == "RESOLVED"
     missing = c.ResolveFileResult(result=c.NotFoundFileResult()).to_llm_payload(registry)
-    assert missing.model_dump() == {"result": {"kind": "NOT_FOUND"}}
+    # KI-025: the model is told what NOT_FOUND means (exact-name lookup) and where content questions go.
+    assert missing.model_dump() == {"result": {"kind": "NOT_FOUND", "hint": c.NOT_A_FILE_NAME_HINT}}
+    assert "search_knowledge" in c.NOT_A_FILE_NAME_HINT
+    assert "search_knowledge" not in c.NO_SUCH_FILE_HINT  # a missing named file is not searched for
     with pytest.raises(ValidationError):
         c.NotFoundFileResult.model_validate({"handle": FileHandle(value="file_1")})
     ambiguous = c.ResolveFileResult(

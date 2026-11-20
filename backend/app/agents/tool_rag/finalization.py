@@ -7,6 +7,7 @@ from app.schemas.query import CitationItem
 from app.llm.prompts import format_citation_snippet, normalize_answer_citations
 from .agent_state import AgentState, ToolExecutionRecord
 from .handles import RuntimeHandleRegistry
+from .file_reference import names_a_file
 from .contracts import (
     AmbiguousFileResult,
     FileCountResult,
@@ -120,6 +121,9 @@ def provenance_response(state: AgentState) -> str | None:
     """
     pending: dict[UUID, ToolExecutionRecord] = {}
     blocked: list[ToolExecutionRecord] = []
+    # KI-025: a failed name lookup of something that is not shaped like a file name ("invoice INV-0457")
+    # says nothing about the question, so a later successful content read in the same run clears it.
+    soft: list[ToolExecutionRecord] = []
     inventories: list[ToolExecutionRecord] = []
     for record in state["tool_history"]:
         if record.result.error is not None:
@@ -129,6 +133,10 @@ def provenance_response(state: AgentState) -> str | None:
         if isinstance(result, ResolveFileResult):
             if isinstance(result.result, ResolvedFileResult):
                 pending[result.result.file.file_id] = record
+            elif isinstance(result.result, NotFoundFileResult) and not names_a_file(
+                str(record.call.arguments.get("reference", ""))
+            ):
+                soft.append(record)
             else:
                 blocked.append(record)
         elif isinstance(result, (FileEvidenceResult, SearchKnowledgeResult)):
@@ -140,6 +148,7 @@ def provenance_response(state: AgentState) -> str | None:
                 }
                 for file_id in read_ids:
                     pending.pop(file_id, None)
+                soft.clear()
         elif isinstance(result, FilesQueryResult):
             inventories.append(record)
 
@@ -148,6 +157,8 @@ def provenance_response(state: AgentState) -> str | None:
 
     if blocked:
         return render(blocked[-1])
+    if soft:
+        return render(soft[-1])
     if pending:
         return render(next(reversed(pending.values())))
     if inventories:

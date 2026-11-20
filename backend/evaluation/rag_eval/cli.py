@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .corpus import CorpusFile, messy_files, public_files, synthetic_files, verify
-from .dataset import load_many, validate
+from .dataset import files_to_check, load_many, validate
 from .meter import BudgetExceeded, CostMeter
 from .runner import PIPELINES, judge_row, prepare_case, run_pipeline, score_row
 from .score import summarise
@@ -49,7 +49,7 @@ async def run(args: argparse.Namespace) -> None:
     files = corpus_files(with_messy=args.with_messy)
     verify(files)
     dataset = load_many(args.dataset)
-    problems = validate(dataset, files)
+    problems = validate(dataset, files_to_check(dataset, files))
     if problems:
         raise SystemExit("Dataset invalid; refusing to spend money:\n" + "\n".join(problems))
     cases = [c for c in dataset["cases"] if args.split == "all" or c["split"] == args.split]
@@ -105,8 +105,12 @@ async def rescore(args: argparse.Namespace) -> None:
     """Apply the current judge and pass rules to the replies of a saved run; nothing is re-asked."""
     source = Path(args.file)
     data = json.loads(source.read_text())
-    total = len(synthetic_files() + public_files())
-    cases = {c["id"]: prepare_case(c, total) for c in load_many(args.dataset)["cases"]}
+    total = len(corpus_files(with_messy=args.with_messy))  # pass --with-messy if the run used it
+    # The datasets the run was made with are recorded in its file; the command-line default is not.
+    cases = {
+        c["id"]: prepare_case(c, total)
+        for c in load_many(data.get("datasets") or args.dataset)["cases"]
+    }
     settings = eval_settings(chat_model=data["model"])
     meter = CostMeter(args.cap)
     with meter.installed():

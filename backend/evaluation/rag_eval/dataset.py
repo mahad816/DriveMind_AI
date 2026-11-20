@@ -35,6 +35,19 @@ def load_many(names: Sequence[str]) -> dict[str, Any]:
     return merged
 
 
+def files_to_check(dataset: dict[str, Any], files: Sequence[CorpusFile]) -> list[CorpusFile]:
+    """The files a dataset must be validated against, without reading the slow ones for nothing.
+
+    ``validate`` extracts every file it is given, and the public PDFs take minutes. Synthetic and messy
+    files are small, so they are always included (the "forbidden claim is really absent" check needs
+    them); a public file is included only when some case points at it.
+    """
+    referenced = {p for c in dataset["cases"] for p in c.get("expected_files", [])} | {
+        a["file"] for c in dataset["cases"] for a in c.get("evidence_anchors", [])
+    }
+    return [f for f in files if f.path.startswith(("synthetic/", "messy/")) or f.path in referenced]
+
+
 def corpus_texts(files: list[CorpusFile]) -> dict[str, str]:
     return {f.path: extract_text(f) for f in files}
 

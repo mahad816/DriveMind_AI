@@ -36,7 +36,7 @@ from app.retrieval.hybrid import HybridRetriever
 from app.services.tool_agent_service import bounded_agent_history
 
 from .corpus import messy_files, public_files, synthetic_files, verify
-from .dataset import load_cases, validate
+from .dataset import files_to_check, load_cases, validate
 from .meter import BudgetExceeded, CostMeter
 from .retrieval_probe import (
     DATASETS,
@@ -154,15 +154,14 @@ async def run_probe(
 
 async def run(args: argparse.Namespace) -> None:
     files = synthetic_files() + public_files()
-    if args.messy:
+    names = args.dataset or (list(MESSY_DATASETS) if args.messy else list(DATASETS))
+    if args.messy or args.with_messy:
         files += messy_files()  # the store must hold them too: cli setup --with-messy
     verify(files)
-    # Messy questions only name messy documents: validating against those alone skips slow PDF reads.
-    checked = messy_files() if args.messy else files
     cases: list[dict[str, Any]] = []
-    for name in MESSY_DATASETS if args.messy else DATASETS:
+    for name in names:
         dataset = load_cases(name)
-        problems = validate(dataset, checked)
+        problems = validate(dataset, files_to_check(dataset, files))
         if problems:
             raise SystemExit(f"{name} is invalid:\n" + "\n".join(problems))
         cases += [prepare_case(c, len(files)) for c in dataset["cases"]]
@@ -235,6 +234,14 @@ def main() -> None:
         "--messy",
         action="store_true",
         help="use the messy question set instead (the store needs cli setup --with-messy)",
+    )
+    parser.add_argument(
+        "--dataset",
+        nargs="+",
+        help="case files in evaluation/datasets (default: the v2 sets); add --with-messy if they use the messy files",
+    )
+    parser.add_argument(
+        "--with-messy", action="store_true", help="the store holds the messy documents"
     )
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--tag", help="suffix for the result file name")
