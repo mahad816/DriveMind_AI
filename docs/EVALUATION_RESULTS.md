@@ -392,6 +392,7 @@ The 6 failures, by cause (none is a reader error):
 First-step probe on the 7 invoice questions (10 repeats each, $0.019): the first tool was `resolve_file` in 25 of 70 runs
 (`vi04`, `vi07` always, `vi05` half the time, the other four never), `search_knowledge` otherwise; when it searched, the
 right file came back 35 of 35. Details in KI-025.
+After the `resolve_file` argument wording change (KI-025, same probe): 2 of 70 runs; test split unchanged case by case.
 
 How to read it: 39 questions, one run, error bars about +/- 14 points; use it as the baseline Stage B is compared
 against, not as proof of anything smaller than about 15 points. The set was built by the same author as the readers

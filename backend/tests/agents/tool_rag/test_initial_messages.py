@@ -39,3 +39,15 @@ def test_the_listing_tool_cannot_be_mistaken_for_a_way_to_read_documents():
     assert "search_knowledge" in listing  # it names where content questions belong
     assert "text inside" in descriptions["search_knowledge"]
     assert all(len(text) <= 500 for text in descriptions.values())  # ToolDefinition's limit
+
+
+def test_the_file_name_argument_says_a_document_number_is_not_a_file_name():
+    """KI-025: "invoice INV-0457" was taken for a file name, looked up, not found, never searched.
+
+    Measured with the real model: this wording cut those first calls from 25 of 70 to 2 of 70. Putting
+    the same advice into the tool *description* also fixed them but stopped the model searching for a
+    Roman-Urdu "not in the files" question (ru06: 17 of 20 searches became 0), so it is not there.
+    """
+    schema = next(d for d in ToolRegistry().definitions() if d["name"] == "resolve_file")
+    reference = schema["parameters"]["properties"]["reference"]["description"]  # type: ignore[index]
+    assert "Never a document number" in str(reference)
