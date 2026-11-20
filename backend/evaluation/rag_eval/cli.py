@@ -14,7 +14,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .corpus import public_files, synthetic_files, verify
+from .corpus import CorpusFile, messy_files, public_files, synthetic_files, verify
 from .dataset import load_many, validate
 from .meter import BudgetExceeded, CostMeter
 from .runner import PIPELINES, judge_row, prepare_case, run_pipeline, score_row
@@ -22,8 +22,16 @@ from .score import summarise
 from .target import ensure_database, eval_settings, ingest, migrate
 
 
-async def setup(cap: float) -> None:
+def corpus_files(*, with_messy: bool) -> list[CorpusFile]:
+    """The evaluation corpus. The generated messy documents (DOCX, PPTX, XLSX, PDF) are added on request:
+    a store that holds them gives different answers to the older datasets (five more files to confuse
+    with), so they never join a run by accident."""
     files = synthetic_files() + public_files()
+    return files + messy_files() if with_messy else files
+
+
+async def setup(cap: float, *, with_messy: bool = False) -> None:
+    files = corpus_files(with_messy=with_messy)
     verify(files)
     settings = eval_settings(tool_agent=False)
     await ensure_database()
@@ -38,7 +46,7 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 
 
 async def run(args: argparse.Namespace) -> None:
-    files = synthetic_files() + public_files()
+    files = corpus_files(with_messy=args.with_messy)
     verify(files)
     dataset = load_many(args.dataset)
     problems = validate(dataset, files)
@@ -144,10 +152,15 @@ def main() -> None:
     )
     parser.add_argument("--model", default=None, help="chat model (default: the app default)")
     parser.add_argument("--concurrency", type=int, default=3)
+    parser.add_argument(
+        "--with-messy",
+        action="store_true",
+        help="add the generated messy documents (needed for rag_v2_messy_cases.json; setup and run)",
+    )
     args = parser.parse_args()
     asyncio.run(
         {
-            "setup": lambda: setup(args.cap),
+            "setup": lambda: setup(args.cap, with_messy=args.with_messy),
             "run": lambda: run(args),
             "rescore": lambda: rescore(args),
         }[args.command]()

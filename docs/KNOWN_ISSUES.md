@@ -36,6 +36,12 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Not fixed on purpose:** changing the threshold or the keyword mode changes retrieval for everything and needs its own evaluation. The corpus here has many whole-file chunks, which probably makes the effect stronger than on long documents (unmeasured).
 - **Suggested direction:** make keyword matching tolerant (any-term ranking instead of all-terms), and compare a lower or relative vector threshold on the same cases before and after.
 
+### KI-025 — A question with an identifier like "INV-0457" can be answered with "No eligible indexed file matches that name"  *(tool agent, backend, reproduced by the evaluation, no unit test yet)*
+- **Seen:** messy question set, 2026-11-20, `gpt-5.4-nano`: 3 of the 7 questions about invoice `INV-0457` (vi04, vi05, vi07) got no answer (the same wording passed in the other 4). Two returned the server text from `app/agents/tool_rag/finalization.py` (`NotFoundFileResult`): the model's first tool call was the file-name resolver with the invoice number, it found no file, and the run ended without a content search. One ended in an API `ChatError`.
+- **Not the readers or search:** the retrieval probe finds `invoice_0457.pdf` for all 7 questions (33 of 34 answerable messy questions found; the one miss is a chunking matter, see the evaluation log).
+- **Likely cause:** the same family as KI-023 (the first tool call picks a metadata or name tool for a content question), triggered by an identifier that looks like a file name. Unmeasured: no repeated first-step probe has been run on these questions.
+- **Not fixed on purpose:** it is tool-agent behaviour, outside Stage A. Suggested direction: measure the first tool choice with `first_step_probe` (20 repeats, a few cents), then either sharpen the `resolve_file` description or let a not-found name result fall through to a content search.
+
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 

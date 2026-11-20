@@ -359,6 +359,40 @@ Reading the table honestly:
 - Cost: one request per case, a few hundred tokens each; well under one cent per full run (estimate from
   token counts at the official price).
 
+## Messy question set, first measurement (2026-11-20, after Stage A)
+
+First run of the 39 questions on the generated DOCX, PPTX, XLSX and two PDFs, read by the Stage A readers.
+Tool agent, `gpt-5.4-nano`, claim check on, one run, default retrieval settings (cut-off 0.25, relative 0.7).
+Store: the existing `drivemind_eval_v2` store plus the 5 messy files (the other 55 files keep their older extraction, so
+runs of the older datasets after this point see 5 extra files; Stage B rebuilds the store). Cost **$0.107** (estimate
+$0.10, cap $0.20); judge calls $0.002, claim check ($0.060) cost more than the agent ($0.046). Result file:
+`rag_v2_20261120_153553_tool_agent_gpt-5.4-nano_all_messy_a5.json`.
+
+| | Result (95% interval) |
+|---|---|
+| Overall pass | **33 / 39** (84.6%, 70-93%); dev 18/22, test 15/17 |
+| Right file found | 30 / 34 |
+| Answer correct | 29 / 34 |
+| "Not in the documents" handled | 4 / 5 |
+| By file | DOCX 7/8, PPTX 8/9, XLSX 5/6, PDF invoice 4/7, PDF annual report 9/9 |
+| Latency | median 4.9 s, 90th percentile 6.3 s |
+
+Retrieval alone (`retrieval_probe --messy`, query embeddings only, $0.00001): the right file is in the results for
+**33 of 34** answerable questions, ranked first for 29 (MRR 0.90). So the readers' output is findable.
+
+The 6 failures, by cause (none is a reader error):
+- **Agent chose a name lookup (vi04, vi05, vi07):** see KI-025.
+- **Chunking dilution (px03):** the 4-slide deck is one chunk, and "Signed 6 new clinics in Q3" lost to the rollout plan.
+  Stage B (heading-aware chunks) is meant to fix this.
+- **Model invented an answer (dx08):** the "Enterprise package" trap; it quoted the Network fee. The claim check did not
+  catch it (KI-002 family).
+- **Model arithmetic (xl04):** the table was found and read correctly; the sum of 5 delivered orders came out 33,100
+  instead of 34,900.
+
+How to read it: 39 questions, one run, error bars about +/- 14 points; use it as the baseline Stage B is compared
+against, not as proof of anything smaller than about 15 points. The set was built by the same author as the readers
+(the questions describe what the fixtures contain).
+
 ## Earlier baselines (pre-existing)
 
 See `backend/evaluation/analysis/baseline_v1_failure_analysis.md` (Gold v1, 24 cases, 2026-09-21: routing 20/24)
