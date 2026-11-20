@@ -24,7 +24,7 @@ from .contracts import (
 )
 
 from .claim_check import ClaimChecker, evidence_text, user_text
-from .finalization import finalize_answer, provenance_response
+from .finalization import UnknownCitation, finalize_answer, provenance_response
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.services.chat_stream import emit, provisional_text, stream_sink
 
@@ -174,6 +174,32 @@ def build_tool_graph(
                 text = checked.text
         try:
             answer = finalize_answer(text, state, runtime.context.handles)
+        except UnknownCitation as bad:
+            # No retry when it was already used, or when the cycle limit leaves no model call for it
+            # (the agent node would turn that into a misleading "cycle limit" message).
+            if state.get("citation_retried", False) or state["cycle_count"] >= state["max_cycles"]:
+                return {
+                    "failure": "UNSAFE_FINAL_OUTPUT",
+                    "final_answer": FAILURE_MESSAGE,
+                    "citations": (),
+                }
+            # KI-026: one corrective turn instead of an error. The retry is validated by exactly the same
+            # rules, and the cycle limit still applies. The invalid text stays in the history as the
+            # model's own assistant message (the agent node already stored it).
+            markers = ", ".join(f"[{m}]" for m in bad.valid)
+            if stream_sink.get() is not None:
+                # The rejected prose may already be on screen; "validating" clears it for the client.
+                await emit("state", {"phase": "validating"})
+            note = (
+                "Your answer cited a source that does not exist. "
+                + (f"The only valid citation markers are: {markers}. " if bad.valid else "")
+                + "Rewrite your answer with the same content, using only valid markers."
+            )
+            return {
+                "messages": state["messages"] + (AgentMessage(role="USER", text=note),),
+                "pending": None,
+                "citation_retried": True,
+            }
         except Exception:
             return {
                 "failure": "UNSAFE_FINAL_OUTPUT",
@@ -218,6 +244,17 @@ def build_tool_graph(
         lambda state: "ERROR" if state["failure"] else "AGENT",
         {"ERROR": "fail_safe", "AGENT": "agent"},
     )
-    graph.add_edge("finalize", END)
+    graph.add_conditional_edges(
+        "finalize",
+        # A set final answer or failure ends the run; only the one corrective turn loops back.
+        lambda s: (
+            "AGENT"
+            if s.get("citation_retried", False)
+            and s["final_answer"] is None
+            and s["failure"] is None
+            else "END"
+        ),
+        {"AGENT": "agent", "END": END},
+    )
     graph.add_edge("fail_safe", END)
     return graph.compile()

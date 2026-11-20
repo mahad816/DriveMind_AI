@@ -40,3 +40,4 @@ class AgentState(TypedDict):
     citations: tuple[CitationItem, ...]
     retrieval_count: int
     failure: Failure | None
+    citation_retried: bool  # KI-026: the model has already been asked to fix a bad marker once

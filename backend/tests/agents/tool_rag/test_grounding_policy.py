@@ -122,8 +122,13 @@ async def test_empty_read_has_explicit_nonabsence_outcome():
     "marker", ["[source_999]", "[evidence_999]", "[source_0]", "[source_fake]", "[99]"]
 )
 async def test_invented_citation_is_rejected_even_with_real_evidence(marker):
+    # KI-026: the model is asked once to fix a bad marker; if it repeats it, the answer is still refused.
     state, _, _ = await run(
-        [call("search_knowledge", SEARCH), AgentStepResult(text=CLAIM + marker)]
+        [
+            call("search_knowledge", SEARCH),
+            AgentStepResult(text=CLAIM + marker),
+            AgentStepResult(text=CLAIM + marker),
+        ]
     )
     assert state["failure"] == "UNSAFE_FINAL_OUTPUT"
     assert not state["citations"] and CLAIM not in state["final_answer"]

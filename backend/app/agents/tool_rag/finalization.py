@@ -177,6 +177,19 @@ _UUID = re.compile(r"\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b", re.I)
 _MARKER = re.compile(r"\[((?:source|evidence)_[^\]\n]*)\]")
 
 
+class UnknownCitation(ValueError):
+    """The text cites a marker that does not exist (KI-026).
+
+    It is still rejected, never repaired by deleting the marker or adding real ones. The graph may ask
+    the model once to correct it; ``valid`` lists the source handles that do exist (only ones the model
+    was given, never handles created during finalization).
+    """
+
+    def __init__(self, message: str, valid: tuple[str, ...]):
+        super().__init__(message)
+        self.valid = valid
+
+
 @dataclass(frozen=True)
 class FinalizedAnswer:
     answer: str
@@ -214,11 +227,12 @@ def finalize_answer(
         )
     # An invented marker is not repaired by deleting it or appending real sources.
     if any(match.group(1) not in mapping for match in _MARKER.finditer(text)):
-        raise ValueError("unknown citation handle")
+        raise UnknownCitation("unknown citation handle", tuple(h.value for h in sources))
     if any(
         not 1 <= int(match.group(1)) <= len(citations) for match in re.finditer(r"\[(\d+)\]", text)
     ):
-        raise ValueError("unknown numeric citation")
+        # The model works with source_N handles; numbers are only what the user finally sees.
+        raise UnknownCitation("unknown numeric citation", tuple(h.value for h in sources))
     controlled = provenance_response(state)
     if controlled is not None:
         return FinalizedAnswer(answer=controlled, citations=())
