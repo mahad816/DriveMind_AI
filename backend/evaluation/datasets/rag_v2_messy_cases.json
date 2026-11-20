@@ -782,19 +782,19 @@
    "split": "dev"
   },
   {
-   "id": "vi06",
+   "id": "vi08",
    "category": "messy_not_found",
-   "question": "What discount was applied on invoice INV-0457?",
+   "question": "What is the VAT registration number shown on invoice INV-0457?",
    "language": "en",
    "expected_behavior": "not_found",
    "expected_files": [],
    "citation_mode": "all",
    "must_include": [],
    "must_not_include": [
-    "discount of",
-    "discount was applied"
+    "vat registration number is",
+    "vat number is"
    ],
-   "reference_answer": "The invoice shows no discount: it has a subtotal, VAT and a total.",
+   "reference_answer": "The invoice shows the VAT rate (23%) and the VAT amount but no VAT registration number.",
    "evidence_anchors": [],
    "computed": false,
    "split": "test"

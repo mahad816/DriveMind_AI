@@ -40,6 +40,13 @@ _SOCIAL = {
 }
 
 
+# The reply when a file-name lookup finds nothing. Shared with the evaluation, which must never score
+# it as a correct "not in the files" answer to a question about document content.
+FILE_NOT_FOUND_TEXT = (
+    "No eligible indexed file matches that name. Check the filename and preparation status."
+)
+
+
 def display_filename(name: str) -> str:
     # Metadata is data, never model instructions or Markdown links/citations.
     return re.sub(r"([\\`*_{}\[\]()<>#!|])", r"\\\1", name).replace("\n", " ").replace("\r", " ")
@@ -64,7 +71,7 @@ def without_content(state: AgentState) -> str:
                     "- " + display_filename(f.filename) for f in resolved.candidates
                 )
             if isinstance(resolved, NotFoundFileResult):
-                return "No eligible indexed file matches that name. Check the filename and preparation status."
+                return FILE_NOT_FOUND_TEXT
             if isinstance(resolved, ResolvedFileResult):
                 return (
                     "Found indexed file: "
