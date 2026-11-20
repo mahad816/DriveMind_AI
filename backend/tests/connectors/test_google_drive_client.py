@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httplib2
 import pytest
 from googleapiclient.errors import HttpError
 
@@ -21,6 +22,7 @@ from app.connectors.google_drive.client import (
     GoogleDriveClient,
 )
 from app.connectors.google_drive.constants import (
+    DOCX_MIME,
     GOOGLE_DOC_MIME,
     GOOGLE_FOLDER_MIME,
     PDF_MIME,
@@ -146,7 +148,7 @@ def test_requires_export_only_for_google_docs() -> None:
 
 
 def test_output_content_mime_type() -> None:
-    assert output_content_mime_type(GOOGLE_DOC_MIME) == "text/plain"
+    assert output_content_mime_type(GOOGLE_DOC_MIME) == DOCX_MIME
     assert output_content_mime_type(PDF_MIME) == PDF_MIME
 
 
@@ -329,13 +331,58 @@ def test_get_file_content_exports_google_docs() -> None:
     files_resource = FakeFilesResource()
     client = _client(files_resource)
 
-    with patch.object(client, "_read_media_bytes", return_value=b"doc text") as mock_read:
+    with patch.object(client, "_read_media_bytes", return_value=b"doc bytes") as mock_read:
         data, mime = client.get_file_content_with_type("doc-1", GOOGLE_DOC_MIME)
 
-    assert data == b"doc text"
-    assert mime == "text/plain"
-    assert files_resource.export_media_calls == [{"fileId": "doc-1", "mimeType": "text/plain"}]
+    assert data == b"doc bytes"
+    assert mime == DOCX_MIME
+    assert files_resource.export_media_calls == [{"fileId": "doc-1", "mimeType": DOCX_MIME}]
     mock_read.assert_called_once()
+
+
+def _http_error(status: int, reason: str) -> HttpError:
+    body = ('{"error": {"errors": [{"reason": "%s"}], "code": %d}}' % (reason, status)).encode()
+    return HttpError(httplib2.Response({"status": status}), body)
+
+
+def test_google_doc_too_large_for_docx_export_falls_back_to_plain_text() -> None:
+    files_resource = FakeFilesResource()
+    client = _client(files_resource)
+    answers = [_http_error(403, "exportSizeLimitExceeded"), b"plain text of a big doc"]
+
+    def read(request: Any) -> bytes:
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    with patch.object(client, "_read_media_bytes", side_effect=read):
+        data, mime = client.get_file_content_with_type("big-doc", GOOGLE_DOC_MIME)
+
+    assert (data, mime) == (b"plain text of a big doc", "text/plain")
+    assert [call["mimeType"] for call in files_resource.export_media_calls] == [
+        DOCX_MIME,
+        "text/plain",
+    ]
+
+
+def test_other_export_errors_are_not_retried_as_plain_text() -> None:
+    files_resource = FakeFilesResource()
+    client = _client(files_resource)
+
+    with (
+        patch.object(client, "_read_media_bytes", side_effect=_http_error(404, "notFound")),
+        pytest.raises(DriveClientError),
+    ):
+        client.get_file_content_with_type("gone", GOOGLE_DOC_MIME)
+
+    assert len(files_resource.export_media_calls) == 1
+
+
+def test_get_file_content_still_returns_only_the_bytes() -> None:
+    client = _client(FakeFilesResource())
+    with patch.object(client, "_read_media_bytes", return_value=b"x"):
+        assert client.get_file_content("doc-1", GOOGLE_DOC_MIME) == b"x"
 
 
 def test_get_file_content_rejects_unsupported_mime() -> None:

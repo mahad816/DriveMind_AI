@@ -66,6 +66,10 @@ async def world(owner_engine, keys, qdrant_client, monkeypatch):
             seen.append(("content", self.owner, provider_id))
             return f"Synthetic owner {self.owner} answer-bearing text.".encode()
 
+        def get_file_content_with_type(self, provider_id, mime):
+            # Delegates so tests that replace get_file_content (to block or fail it) still apply.
+            return self.get_file_content(provider_id, mime), mime
+
         def get_start_page_token(self):
             return str(self.owner) + "-cursor"
 

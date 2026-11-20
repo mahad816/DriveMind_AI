@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.mixins import TimestampMixin
+from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
 
 
 class Document(TimestampMixin, Base):
@@ -29,6 +30,12 @@ class Document(TimestampMixin, Base):
     extracted_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     extracted_text_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Extraction pipeline that produced extracted_text (see app/ingestion/pipeline_version.py).
+    # Rows that existed before the column was added hold 1 (server default); new rows get the
+    # current version from the application.
+    pipeline_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=EXTRACTION_PIPELINE_VERSION, server_default="1"
+    )
 
     drive_file = relationship("DriveFile", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document")

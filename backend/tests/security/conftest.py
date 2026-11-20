@@ -23,6 +23,7 @@ USER_B = UUID(int=102)
 DEMO_USER = UUID(int=103)
 BASE_REVISION = "20260708_1400"
 SESSION_REVISION = "20261009_1200"
+PIPELINE_VERSION_REVISION = "20261120_1200"  # documents.pipeline_version
 BACKEND = Path(__file__).resolve().parents[2]
 
 
@@ -90,6 +91,7 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
                 ],
             )
             await connection.run_sync(apply_revision, SESSION_REVISION)
+            await connection.run_sync(apply_revision, PIPELINE_VERSION_REVISION)
         yield engine
     finally:
         try:

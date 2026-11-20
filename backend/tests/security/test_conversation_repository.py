@@ -632,7 +632,7 @@ async def test_actual_alembic_populated_upgrade_and_downgrade(pg_engine):
                 )
                 for table in ("users", "query_history", "google_oauth_tokens", "indexing_jobs")
             }
-        code, output = await alembic("upgrade", "head")
+        code, output = await alembic("upgrade", REVISION)
         assert code == 0, output
         async with engine.begin() as db:
             after = {

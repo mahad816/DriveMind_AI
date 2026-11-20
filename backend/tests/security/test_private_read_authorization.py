@@ -81,7 +81,10 @@ async def private_reads(final_engine, keys, monkeypatch):
         )
         await db.commit()
     provider = MagicMock()
-    provider.get_file_content.return_value = b"synthetic authorized download"
+    provider.get_file_content_with_type.return_value = (
+        b"synthetic authorized download",
+        "text/plain",
+    )
     build = MagicMock(return_value=provider)
     monkeypatch.setattr(DriveContentService, "_build_drive_client", build)
     async with AsyncClient(
@@ -180,7 +183,7 @@ async def test_foreign_and_absent_resources_have_identical_404(private_reads, re
     assert responses[0].json() == responses[1].json()
     assert "private text" not in responses[0].text
     r.build.assert_not_called()
-    r.provider.get_file_content.assert_not_called()
+    r.provider.get_file_content_with_type.assert_not_called()
 
 
 async def test_authorized_download_uses_session_owner(private_reads):
@@ -192,7 +195,9 @@ async def test_authorized_download_uses_session_owner(private_reads):
     assert response.content == b"synthetic authorized download"
     snapshot = r.build.call_args.args[0]
     assert snapshot.record.user_id == USER_A
-    r.provider.get_file_content.assert_called_once_with(f"synthetic-{USER_A}", "text/plain")
+    r.provider.get_file_content_with_type.assert_called_once_with(
+        f"synthetic-{USER_A}", "text/plain"
+    )
 
 
 @pytest.mark.parametrize(

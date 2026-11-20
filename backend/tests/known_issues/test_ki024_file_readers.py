@@ -22,7 +22,6 @@ from evaluation.rag_eval.corpus import MIME
 
 from . import known_issue
 
-DOCX_FIX = known_issue("KI-024", "DOCX tables, headings and bullets are lost (fixed by A2)")
 PPTX_FIX = known_issue("KI-024", "PPTX is not read (fixed by A3)")
 PDF_FIX = known_issue("KI-024", "PDF page furniture and ruled tables (fixed by A4)")
 XLSX_FIX = known_issue("KI-024", "XLSX is not read (fixed by A5)")
@@ -88,17 +87,15 @@ def position(text: str, needle: str) -> int:
     return index
 
 
-# ---- DOCX (A2) -------------------------------------------------------------------------------------------------
+# ---- DOCX (fixed in A2, kept as regression tests) -------------------------------------------------------------------------------------------------
 
 
-@DOCX_FIX
 def test_docx_tables_are_read_as_markdown_tables():
     text = read("customer_rollout_plan.docx")
     assert_table(text, mf.ROLLOUT_PACKAGES)
     assert_table(text, mf.ROLLOUT_OWNERS)
 
 
-@DOCX_FIX
 def test_docx_headings_and_bullets_keep_their_markers():
     lines = read("customer_rollout_plan.docx").splitlines()
     assert "# Customer rollout packages" in lines
@@ -107,7 +104,6 @@ def test_docx_headings_and_bullets_keep_their_markers():
     assert "- Sessions are held on Wednesdays." in lines
 
 
-@DOCX_FIX
 def test_docx_paragraph_after_a_table_keeps_its_place():
     text = read("customer_rollout_plan.docx")
     after_table = position(text, "Setup fees are invoiced once, at contract signature.")
