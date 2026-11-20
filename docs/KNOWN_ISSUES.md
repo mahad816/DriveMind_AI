@@ -36,6 +36,16 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Not fixed on purpose:** changing the threshold or the keyword mode changes retrieval for everything and needs its own evaluation. The corpus here has many whole-file chunks, which probably makes the effect stronger than on long documents (unmeasured).
 - **Suggested direction:** make keyword matching tolerant (any-term ranking instead of all-terms), and compare a lower or relative vector threshold on the same cases before and after.
 
+### KI-024 — File readers lose tables and slide notes, repeat page headers, and skip PPTX and XLSX  *(ingestion quality, backend, tests in `tests/known_issues/test_ki024_file_readers.py`)*
+
+The readers return plain text only. Measured on the generated fixtures in `backend/evaluation/corpus/messy/`:
+
+- **DOCX**: tables are dropped completely (a fee table in a Word file cannot be found), and headings and bullets lose their markers.
+- **PPTX and XLSX**: no reader exists, so these files are never ingested.
+- **PDF**: the running header and page number are repeated in the text of every page, and ruled tables come out as one cell per line, with no row structure.
+
+Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A2 DOCX (also Google Docs), A3 PPTX (also Google Slides, with speaker notes), A4 PDF header/footer removal and ruled tables, A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
+
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 

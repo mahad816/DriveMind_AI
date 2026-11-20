@@ -33,6 +33,9 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "basedpyright>=1.39.9",
+    "python-pptx>=1.0.2",
+    "openpyxl>=3.1.5",
+    "reportlab>=5.1.0",
 ]
 
 [build-system]

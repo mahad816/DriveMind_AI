@@ -15,13 +15,15 @@ MIME = {
     ".txt": "text/plain",
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 
 
 @dataclass(frozen=True)
 class CorpusFile:
     path: str  # relative to CORPUS_DIR, e.g. "synthetic/budget_2026.txt"
-    kind: str  # "synthetic" | "public"
+    kind: str  # "synthetic" | "public" | "messy"
     sha256: str
     meta: dict[str, Any]
 
@@ -49,6 +51,19 @@ def synthetic_files() -> list[CorpusFile]:
     ]
 
 
+def messy_files() -> list[CorpusFile]:
+    """Generated DOCX/PPTX/XLSX/PDF test documents (``messy_fixtures.py``), committed with a manifest.
+
+    Kept out of the default corpus until the readers can handle them: add them to a run explicitly.
+    """
+    manifest = CORPUS_DIR / "messy_manifest.json"
+    recorded = json.loads(manifest.read_text())["files"] if manifest.exists() else {}
+    return [
+        CorpusFile(f"messy/{name}", "messy", digest, {})
+        for name, digest in sorted(recorded.items())
+    ]
+
+
 def public_manifest() -> list[dict[str, Any]]:
     path = CORPUS_DIR / "public_manifest.json"
     return json.loads(path.read_text())["documents"] if path.exists() else []
@@ -67,9 +82,9 @@ def public_files(*, require_present: bool = True) -> list[CorpusFile]:
 
 
 def verify(files: list[CorpusFile]) -> None:
-    """Fail loudly if any public document changed upstream or was edited locally."""
+    """Fail loudly if any public or generated document changed upstream or was edited locally."""
     for file in files:
-        if file.kind == "public" and sha256_file(file.absolute) != file.sha256:
+        if file.kind in {"public", "messy"} and sha256_file(file.absolute) != file.sha256:
             raise ValueError(f"{file.path} does not match its recorded SHA-256")
 
 
