@@ -112,6 +112,23 @@ async def post(app, w, owner=USER_A, stage="chunk", auth=None):
         )
 
 
+async def post_until_answered(app, w, owner=USER_A, stage="chunk", *, seconds=15.0):
+    """POST until the gate gives a definitive answer.
+
+    A 503 from the admission gate means "a dependency answered too slowly just now, try again": the gate
+    probes PostgreSQL and Qdrant within a short deadline and refuses that one request (see
+    ``authorize_admission``). On a busy machine one probe can be that slow, so a test that expects a
+    definitive answer (accepted, or a 409 conflict) must retry instead of reading one 503 as the answer.
+    Tests that expect 503 (a dependency really is down) keep using ``post``.
+    """
+    deadline = asyncio.get_running_loop().time() + seconds
+    while True:
+        response = await post(app, w, owner, stage)
+        if response.status_code != 503 or asyncio.get_running_loop().time() > deadline:
+            return response
+        await asyncio.sleep(0.1)
+
+
 async def test_default_off_ignores_app_state_runtime_override(world, monkeypatch):
     app, settings, r = await normal_app(world, monkeypatch)
     settings.indexing_enabled = False
@@ -316,7 +333,7 @@ async def test_normal_restart_preserves_live_claim_and_uncertain_build(world, mo
         assert (await job(w, live_id)).status == IndexingJobStatus.RUNNING
         row = await job(w, uncertain)
         assert row.status == IndexingJobStatus.FAILED and row.recovery_required
-        assert (await post(app, w, USER_B)).status_code == 409
+        assert (await post_until_answered(app, w, USER_B)).status_code == 409
         assert (await w.client.count(w.settings.qdrant_collection, exact=True)).count == 0
 
 

@@ -2,6 +2,39 @@
 
 Short, dated records of engineering decisions with the evidence behind them. Newest first.
 
+## 2026-11-20 — `gpt-5.4-nano` also has a shutdown date; plan to move to `gpt-6-luna`
+
+**New fact** (official [deprecations page](https://developers.openai.com/api/docs/deprecations) and
+[model page](https://developers.openai.com/api/docs/models/gpt-5.4-nano), read 2026-11-20): `gpt-5.4-nano` is marked
+deprecated and shuts down on **2027-04-01**; the suggested replacement is `gpt-6-luna`. `gpt-4o-mini`
+(`gpt-4o-mini-2024-07-18`) shuts down 2027-01-14. `gpt-5.4-mini` has no model shutdown listed. The 2026-11-19 entry
+below said nano was "not deprecated"; that is no longer true.
+
+**Official numbers** (per 1M tokens, standard processing; all from the OpenAI model pages):
+
+| | gpt-5.4-nano | gpt-5.4-mini | gpt-6-luna |
+|---|---|---|---|
+| Input / cached input / output | $0.20 / $0.02 / $1.25 | $0.75 / $0.075 / $4.50 | $0.10 / $0.01 / $0.50 |
+| Context window | 400,000 | 400,000 | 1,050,000 |
+| Max input / max output | 272,000 / 128,000 | 272,000 / 128,000 | 922,000 / 128,000 |
+| Knowledge cutoff | 2025-08-31 | 2025-08-31 | 2026-05-18 |
+| Reasoning effort | none (default) .. xhigh | none (default) .. xhigh | none .. max, **medium by default** |
+| Function calling on Chat Completions | works with defaults | works with defaults | only with `reasoning_effort: none` |
+| Described as | low-cost, fast: classification, extraction, ranking, sub-agents | strongest mini model: coding, computer use, sub-agents | most efficient model for focused, high-volume tasks |
+
+Luna is 2x cheaper than nano on input and 2.5x on output (7.5x / 9x cheaper than mini). The model page gives no
+intelligence or speed rating, so quality versus nano or mini is **unknown until measured**; third-party comparison sites
+disagree and were not used. The code already sends `reasoning_effort: none` for `gpt-6*` (`completion_options`).
+
+**Our own measurements (2026-11-19, see below and `docs/EVALUATION_RESULTS.md`):** Luna scored 98.7% on the intent gate
+with 1.2 s median latency in one run, but in another run 19 requests failed (HTTP 500 and timeouts, about 10 s). Nano was
+6/6 at about 0.8 s. So the open question about Luna is reliability, not capability.
+
+**Decision:** use `gpt-6-luna` as the candidate chat model in the chat-model evaluation (Step 5), next to `gpt-5.4-nano`
+and `gpt-5.4-mini`, with repeats on different days, a per-run request-failure count, and a retry policy decided from the
+measured error rate. The production default must be changed before 2027-04-01 and Railway's `CHAT_MODEL` must be set
+explicitly. No change to the default today.
+
 ## 2026-11-19 — Default chat model: `gpt-5.4-nano` (not `gpt-6-luna`)
 
 **Why change at all:** the old default `gpt-4o-mini` shuts down on **2027-01-14**
