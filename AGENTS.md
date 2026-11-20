@@ -2,16 +2,16 @@
 
 ## Project
 
-DriveMind / InfoVault is a single-user Google Drive knowledge assistant. It syncs read-only Drive content, builds a hybrid search index, and answers questions with source citations.
+DriveMind / InfoVault is a Google Drive knowledge assistant. Private reads are owner-scoped per user through application sessions; some older service paths still assume a single user (see Known Important Constraints). It syncs read-only Drive content, builds a hybrid search index, and answers questions with source citations.
 
 Main stack: Next.js 15, React 19, TypeScript, FastAPI, SQLAlchemy/asyncpg, PostgreSQL, Qdrant, Google Drive OAuth/API, OpenAI embeddings and chat completions, LangGraph, and Tesseract OCR.
 
 ## Architecture
 
-- The Next.js frontend calls only the FastAPI REST API through the `/api/v1` rewrite in `frontend/next.config.ts`. Browser conversation history is stored in `localStorage`.
+- The Next.js frontend calls only the FastAPI REST API through the `/api/v1` rewrite in `frontend/next.config.ts`. Conversations are persisted server-side through the `/conversations` API (`backend/app/services/conversation_repository.py`); the browser still uses `localStorage` for session-scope and transition state (`frontend/lib/conversations/`).
 - PostgreSQL stores users/OAuth state, Drive metadata, extracted document text, chunks and full-text vectors, indexing jobs, and query history. Qdrant stores embeddings keyed by PostgreSQL chunk UUID.
 - Google Drive access is read-only. Sync stores metadata; ingestion later exports/downloads content. Chat reads the local PostgreSQL/Qdrant index and does not query Drive directly.
-- `RagService` routes every question first. Chitchat and inventory have dedicated paths; named files use direct file-target retrieval. General grounded queries use the linear hybrid pipeline unless `AGENT_GRAPH_ENABLED` enables the LangGraph retrieval/rewrite workflow. Preserve both grounded paths.
+- `RagService` routes every question first. Chitchat and inventory have dedicated paths; named files use direct file-target retrieval. General grounded queries use the linear hybrid pipeline unless `AGENT_GRAPH_ENABLED` enables the LangGraph retrieval/rewrite workflow. Preserve both grounded paths. When `TOOL_RAG_AGENT_ENABLED` is true (default false), `RagService.ask` hands the question to the tool-calling agent in `backend/app/agents/tool_rag/` instead; that is the path the evaluation harness measures.
 
 ## Important Directories
 
@@ -67,7 +67,7 @@ Relevant stabilization commits on `main`:
 - Quoted-file handling, `FILE_INVENTORY`, `FILE_TARGET`, and grounded linear/LangGraph execution retain their prior precedence and behavior.
 - The existing ambiguity where unquoted `Tell me about CoreChain` routes to `FILE_TARGET` is intentional and remains out of scope pending routing evaluation.
 
-At this stabilization checkpoint, focused and full backend verification passed (`562 passed`) together with Ruff, Ruff formatting, mypy, basedpyright, and `git diff --check`.
+At that stabilization checkpoint (historical), the full backend run passed with `562 passed`. That count is outdated and is kept only as history. For the current figures see "Latest recorded verification" below.
 
 ## Development
 
@@ -117,12 +117,18 @@ npm run build
 
 ## Known Important Constraints
 
-- This is a single-user MVP: services commonly resolve the first stored Google OAuth token when no explicit user ID is supplied. Do not assume multi-user isolation exists.
+- Authentication and ownership are in a mixed state. Verified in code: `/chat` and the conversation routes require an application-session principal (`require_resource_user` / `require_application_principal`, unless `DEMO_MODE`), and the tool-agent file tools filter on `DriveFile.user_id` and `status == INDEXED`. Application sessions are gated by `GOOGLE_APPLICATION_SESSIONS_ENABLED`, which defaults to false. Sync, ingestion and chunking services (`drive_sync_service.py`, `drive_content_service.py`, `chunking_service.py`) still fall back to the first stored `GoogleOAuthToken` when no explicit user ID is given. Do not assume full multi-user isolation of indexing jobs without checking the tests in `backend/tests/security/`. `backend/app/security/README.md` still says the session foundation is inactive and may be outdated.
 - Drive access must remain read-only unless a task explicitly changes the product security model.
-- Supported ingestion types are Google Docs, TXT, PDF text extraction, DOCX paragraph extraction, and image OCR; scanned PDFs have no OCR fallback.
+- Supported ingestion types are Google Docs (exported as DOCX), Google Sheets and Slides, TXT, Markdown, CSV, PDF text extraction (headers/footers removed, page markers, ruled tables), DOCX with tables and headings, PPTX, XLSX, and image OCR; scanned PDFs have no OCR fallback. `EXTRACTION_PIPELINE_VERSION` (`backend/app/ingestion/pipeline_version.py`, currently 3) must be raised when a change alters extracted text; the stored `documents.pipeline_version` triggers a re-read.
 - Chunk text is authoritative in PostgreSQL; embeddings are in Qdrant. Keep their shared chunk UUID and per-file reconciliation behavior intact.
 - File lifecycle is `discovered -> indexing -> indexed`, with `failed` and `skipped` states. Index build is the stage that marks a file indexed.
 - Index jobs run inside the FastAPI process, and `/index/status` reports the latest job for the connected user.
 - Hybrid retrieval and LangGraph are independently controlled by `HYBRID_RETRIEVAL_ENABLED` and `AGENT_GRAPH_ENABLED`; LangGraph applies only to grounded RAG after top-level routing.
 - Chitchat and file-inventory responses intentionally have no citations. Grounded and file-target citations use PostgreSQL chunk IDs and must remain compatible with the source endpoint and frontend source viewer.
-- `backend/app/evaluation/` currently has no implemented runner or metrics; evaluation methodology is documented as planned work.
+- `backend/app/evaluation/` holds only a trace helper. The evaluation harness is `backend/evaluation/rag_eval/` (datasets in `backend/evaluation/datasets/`, results in the Git-ignored `backend/evaluation/results/`); methodology and numbers are in `docs/EVALUATION_RESULTS.md`.
+
+## Latest recorded verification
+
+- **Latest measured full backend run:** `2924 passed, 3 skipped` in 17 min 24 s, run on 2026-11-21 on the KI-026 code just before its commit (`b0cc552`), with the disposable PostgreSQL and Qdrant test containers. Ruff, Ruff format, mypy and basedpyright were clean at that time.
+- **Since then:** one test file changed (`fix/ki026-test-types`, merged as `bf15b20`). Only `tests/agents/tool_rag/test_citation_retry.py` was re-run (8 passed).
+- **Not yet done:** a fresh full backend run on `bf15b20` (HEAD at the time of writing), and any frontend `npm test`, `npm run lint` or `npm run build` in this period. Re-run them before relying on the figures above. Which 3 tests were skipped was not recorded.
