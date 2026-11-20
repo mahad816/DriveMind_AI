@@ -65,7 +65,10 @@ class ToolContract:
 INITIAL_TOOLS = (
     ToolContract(
         "files_query",
-        "Inspect indexed file inventory: list, count, or select the newest/oldest file. Not for document-content questions.",
+        "Answer questions about the files themselves, from metadata only: how many files there are, "
+        "list file names, or which file is newest or oldest by modified date. It cannot read document "
+        "text. Never use it when the answer is written inside a document (amounts, dates, names, rules, "
+        "versions), even if the question mentions a year or says latest; use search_knowledge for that.",
         c.FilesQueryArguments,
         c.FilesQueryResult,
     ),
@@ -77,7 +80,8 @@ INITIAL_TOOLS = (
     ),
     ToolContract(
         "search_knowledge",
-        "Search indexed document content for evidence needed to answer a knowledge question.",
+        "Search the text inside the user's indexed documents and return the best-matching passages. "
+        "Use it for any question whose answer is written in the documents.",
         c.SearchKnowledgeArguments,
         c.SearchKnowledgeResult,
     ),

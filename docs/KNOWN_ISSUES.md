@@ -36,16 +36,16 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Not fixed on purpose:** changing the threshold or the keyword mode changes retrieval for everything and needs its own evaluation. The corpus here has many whole-file chunks, which probably makes the effect stronger than on long documents (unmeasured).
 - **Suggested direction:** make keyword matching tolerant (any-term ranking instead of all-terms), and compare a lower or relative vector threshold on the same cases before and after.
 
-### KI-023 — A content question is answered with only "Latest indexed file: X"  *(agent behaviour, reproduced, needs a paid call to test)*
-- **Symptom:** "How much was spent in the first half of 2026, and how much of the total budget is left?" is answered with `Latest indexed file: security_policy.txt`. It passed in all 6 earlier runs and failed in 13 of 13 runs on 2026-11-20 with unchanged retrieval code, so the chat model's choice changed.
-- **Cause (measured with a tool trace):** the model's first tool call is `files_query` with operation `LATEST`, not `search_knowledge`. Any `files_query` result forces metadata-only rendering of the whole answer (`provenance_response` / `without_content`), so the question is never searched.
-- **Reproduce:** `cd backend && uv run python -m evaluation.rag_eval.cli run --split all --dataset rag_v2_cases.json --ids ca03` (needs the evaluation store and an OpenAI key). No unit test: it depends on the live model.
-- **Suggested direction:** Step 2 of `docs/IMPROVEMENT_PLAN.md` (tool-use rules and `tool_choice`), and a clearer description of when `files_query LATEST` applies.
-
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 
 ## Fixed
+### KI-023 — A content question was answered with only "Latest indexed file: X"  *(fixed on branch `fix/agent-tools-and-refusals`, Step 1c)*
+- **Was:** "How much was spent in the first half of 2026, and how much of the total budget is left?" was answered with `Latest indexed file: security_policy.txt`. The model's first tool call was the file-listing tool (`files_query LATEST`) in about half of identical calls (3 of 6 at temperature 0), and any listing result forces metadata-only output, so the question was never searched.
+- **Fix:** `app/agents/tool_rag/registry.py`: the `files_query` description now says it works from file metadata only, cannot read document text, and must not be used when the answer is written inside a document, even if the question mentions a year or "latest". `search_knowledge` describes itself as the tool for any question answered by document text.
+- **Evidence:** first-step probe, 20 repeats of this question: 20 of 20 search (before: about half). Agent level, 13 multi-file cases twice: 21 -> 24 of 26 pass, `ca03` 0 of 2 -> 2 of 2. Test split: 0 wrong-tool runs in 106. Details: `docs/EVALUATION_RESULTS.md`, "Step 1c".
+- **Tests:** `backend/tests/agents/tool_rag/test_initial_messages.py` (the boundary wording and the 500-character limit), `backend/tests/evaluation/test_first_step_probe.py` (the probe that measures it). Whether the live model obeys cannot be unit-tested: use `python -m evaluation.rag_eval.first_step_probe --ids ca03 --repeats 20`.
+
 ### KI-001 — Greetings and small talk got the "no document evidence" refusal  *(fixed on branch `feat/conversation-reply-tool`)*
 - **Was:** "Hello, can you hear me?", "Hi there", "Thanks a lot", "What can you do?" etc. were refused because the tool agent only recognised 10 exact phrases.
 - **Fix:** `backend/app/agents/tool_rag/conversation.py` classifies the *meaning* of the message with one small model call (enum output only, any wording / order / Roman Urdu). Conversational intents get server-owned reply text, never model prose, and skip the agent, embeddings and SQL. Anything uncertain, malformed, slow, failing, over 300 characters or in demo mode falls back to the normal grounded agent.
