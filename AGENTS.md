@@ -132,3 +132,17 @@ npm run build
 - **Latest measured full backend run:** `2924 passed, 3 skipped` in 17 min 24 s, run on 2026-11-21 on the KI-026 code just before its commit (`b0cc552`), with the disposable PostgreSQL and Qdrant test containers. Ruff, Ruff format, mypy and basedpyright were clean at that time.
 - **Since then:** one test file changed (`fix/ki026-test-types`, merged as `bf15b20`). Only `tests/agents/tool_rag/test_citation_retry.py` was re-run (8 passed).
 - **Not yet done:** a fresh full backend run on `bf15b20` (HEAD at the time of writing), and any frontend `npm test`, `npm run lint` or `npm run build` in this period. Re-run them before relying on the figures above. Which 3 tests were skipped was not recorded.
+
+## Agent skills
+
+### Issue tracker
+
+Version-controlled Markdown, no external tracker: specs in `docs/specs/<feature>.md`, tickets in `docs/tickets/<feature>/NN-<slug>.md`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles, recorded as a `Status:` line in each ticket. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. `docs/DECISIONS.md` keeps engineering and evaluation history. See `docs/agents/domain.md`.

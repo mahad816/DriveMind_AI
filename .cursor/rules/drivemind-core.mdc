@@ -5,90 +5,38 @@ alwaysApply: true
 
 # DriveMind AI — Project Rules
 
+`AGENTS.md` is the source of truth for project instructions. Read it first. This file only keeps the short summary below in line with it; if they disagree, `AGENTS.md` and the code win.
+
 ## What This Project Is
 
-A **LangGraph-powered agentic RAG system** for personal Google Drive — not a simple PDF chatbot.
+A Google Drive knowledge assistant: it syncs read-only Drive content, builds a hybrid (vector + keyword + metadata) index, and answers questions with source citations. Not a simple PDF chatbot, not a ChatGPT clone, not a file manager.
 
-- Single-user MVP, read-only Google Drive access
-- Hybrid retrieval: metadata + keyword + vector
-- Grounded answers with citations from retrieved chunks
-- LangGraph orchestrates flow; LangChain provides components
+- Stack: Next.js 15 / React 19 / TypeScript, FastAPI, SQLAlchemy/asyncpg, PostgreSQL, Qdrant, OpenAI, LangGraph, Tesseract OCR.
+- Drive access is read-only. The model never reads Drive; it receives retrieved chunks only.
+- Chunk text is authoritative in PostgreSQL; embeddings live in Qdrant under the same chunk UUID.
+- Answer paths (all must keep working): the linear hybrid path (default), the optional LangGraph path (`AGENT_GRAPH_ENABLED`), and the tool-calling agent (`TOOL_RAG_AGENT_ENABLED`, default false), which is the path the evaluation harness measures.
+- Authentication and ownership are in a mixed state: chat, files, sources and conversations use application sessions; sync, ingestion and chunking still fall back to the first stored OAuth token. Do not assume full multi-user isolation. Details: `AGENTS.md`, "Known Important Constraints".
 
-## Priority Order
+## Where Things Are
 
-1. Correct architecture
-2. Clean codebase
-3. Reliable retrieval
-4. Good LangGraph workflow
-5. Professional documentation
-6. Good UI
-7. Additional features
+- `backend/app/`: `api/` routes only, `services/` business logic, `retrieval/`, `ingestion/`, `agents/` (`tool_rag/`, `drive_graph/`), `connectors/google_drive/`, `llm/`, `embeddings/`, `db/`, `core/` config.
+- `frontend/`: Next.js, calls only the FastAPI REST API (`/api/v1`).
+- Supported file types: Google Docs, Sheets and Slides, TXT, Markdown, CSV, PDF (text only, no scanned-PDF OCR), DOCX, PPTX, XLSX, images (Tesseract). See `docs/ARCHITECTURE.md`.
 
-## Architecture Constraints
+## Rules
 
-- **Backend** (`backend/app/`): FastAPI, ingestion, retrieval, LangGraph agent, Drive connector
-- **Frontend** (`frontend/`): Next.js — consumes backend API only; no direct Drive/Qdrant/LLM access
-- **PostgreSQL**: metadata, chunk text, indexing state, query history
-- **Qdrant**: embeddings and vector IDs only — never original files
-- **LLM never reads Google Drive directly** — only retrieved chunks
-
-## Module Layout
-
-```
-api/          routes only — no business logic
-agents/       LangGraph state, nodes, graph
-connectors/   Google Drive client and sync
-core/         config, logging
-db/           models, session, migrations
-embeddings/   embedding service, Qdrant
-evaluation/   retrieval and answer quality
-ingestion/    extractors, chunking pipeline
-jobs/         background sync/index tasks
-retrieval/    metadata, keyword, vector, hybrid
-schemas/      Pydantic models
-services/     domain business logic
-```
-
-## Coding Rules
-
-- Modular, single-responsibility modules
-- Dependency injection over global state
-- Config via environment variables — no hardcoded secrets
-- Proper typing (Python 3.11+, TypeScript strict)
-- Async where appropriate
-- Business logic in `services/`, not in `api/` routes
-- Build incrementally — one phase at a time
-- No monolithic files, no unnecessary abstractions
-
-## What NOT To Build (MVP)
-
-- Multi-user SaaS
-- Write/delete Drive files
-- ChatGPT clone UI
-- Autonomous file manager
-- Scaffold everything at once
-
-## Git Rules
-
-- Conventional commits: `feat(scope): description`
-- Never commit `.env`, tokens, credentials, Drive downloads, DB volumes
-- One logical change per commit
-- Do not commit unless user explicitly asks
-- Show diff summary before committing
-
-## Phase Discipline
-
-Work one roadmap phase at a time. See `docs/ROADMAP.md`.
-
-Before implementing a phase: propose files and steps → get approval → implement → review → commit.
-
-## Supported File Types (MVP)
-
-Google Docs, PDF (text-only), TXT, DOCX, Images (Tesseract OCR). Audio deferred. No EasyOCR or PDF OCR fallback in Phase 4.
+- Coding and review rules: `CODING_STANDARDS.md`. Commands and constraints: `AGENTS.md`.
+- Keep changes scoped. Add or update tests with every behavior change. Preserve the public API, citation contracts and status semantics.
+- Never commit `.env`, tokens, credentials, Drive downloads or database volumes.
+- Do not commit, push or deploy unless the owner explicitly asks.
 
 ## Key Docs
 
-- `docs/PROJECT_CONTEXT.md` — full context
-- `docs/ROADMAP.md` — phases
-- `docs/ARCHITECTURE.md` — system design
-- `docs/GIT_WORKFLOW.md` — commit rules
+- `docs/HANDOFF_2026-11-21.md`: current state and open work
+- `docs/RETRIEVAL_FOUNDATIONS_PLAN.md`: current plan (Stages A to F, then Steps 2 to 5)
+- `docs/KNOWN_ISSUES.md`: open defects with tests
+- `docs/DECISIONS.md`: engineering and evaluation decisions
+- `docs/EVALUATION_RESULTS.md`: measured results
+- `docs/ARCHITECTURE.md`: system design (parts of it predate the session and conversation work; see `AGENTS.md`)
+- `docs/GIT_WORKFLOW.md`: commit rules
+- `docs/specs/`, `docs/tickets/`, `docs/adr/`: specifications, tickets and architectural decisions
