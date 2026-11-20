@@ -37,7 +37,7 @@ from app.retrieval.hybrid import HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import EligibleCollectionScope
 
-from .corpus import public_files, synthetic_files, verify
+from .corpus import messy_files, public_files, synthetic_files, verify
 from .dataset import load_cases, validate
 from .meter import BudgetExceeded, CostMeter
 from .runner import prepare_case
@@ -46,6 +46,7 @@ from .target import EVAL_USER_ID, eval_settings, session_factory
 
 CANDIDATE_LIMIT = 20  # the search_knowledge tool's default
 DATASETS = ("rag_v2_cases.json", "rag_v2_trap_cases.json")
+MESSY_DATASETS = ("rag_v2_messy_cases.json",)
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 ANSWERABLE = {"answer", "partial"}
 REFUSAL = {"not_found", "decline_or_not_found", "correct_premise"}
@@ -196,12 +197,17 @@ def make_search(retriever: HybridRetriever) -> Search:
 
 async def run(args: argparse.Namespace) -> None:
     files = synthetic_files() + public_files()
+    if args.messy:
+        files += messy_files()  # the store must hold them too: cli setup --with-messy
     verify(files)
     total = len(files)
+    # The messy questions only name messy documents; checking them against those alone avoids reading
+    # (and slowly extracting) every public PDF just to validate.
+    checked = messy_files() if args.messy else files
     cases: list[dict[str, Any]] = []
-    for name in DATASETS:
+    for name in MESSY_DATASETS if args.messy else DATASETS:
         dataset = load_cases(name)
-        problems = validate(dataset, files)
+        problems = validate(dataset, checked)
         if problems:
             raise SystemExit(f"{name} is invalid:\n" + "\n".join(problems))
         cases += [prepare_case(c, total) for c in dataset["cases"]]
@@ -271,6 +277,11 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--split", choices=["dev", "test", "all"], default="all")
+    parser.add_argument(
+        "--messy",
+        action="store_true",
+        help="probe the messy question set instead (the store needs cli setup --with-messy)",
+    )
     parser.add_argument(
         "--phrasings", action="store_true", help="also test the three lead-in wordings"
     )
