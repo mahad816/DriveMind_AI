@@ -268,14 +268,63 @@ case-runs pass, new 22 of 26. The two that fail either way have other causes: `m
 searches once (Step 1c/2), `ca05` never searches (Step 2). So 1b makes retrieval cleaner and more robust to
 wording, but this small corpus does not turn that into more correct answers yet.
 
-**A finding about the evaluation itself (model drift).** A full dev run after 1b showed 77 passing against 79
-after 1a. Investigation: one of the three "new failures", `ca03` (a budget question), answers "Latest indexed file:
-security_policy.txt" because the agent's first move is to call the file-listing tool. It did this in 6 of 6 runs of
-the **old** Step 1a code run today, after passing 6 of 6 the evening before, so the cause is the chat model's
-behaviour changing over time, not 1b (the first move happens before any search). Another, `tr19` (an invention
-trap), invents "reports to the CEO" in 2 of 5 repeats of the same code, 3 of 5 refuse correctly. Lessons: single
-runs of the whole set cannot show a 2-case change; compare old and new on the same day, on the cases that differ,
-with repeats; yesterday's numbers cannot be reused as a baseline without re-running them.
+**A finding about the evaluation itself (the model is not deterministic).** A full dev run after 1b showed 77 passing
+against 79 after 1a. Investigation: one of the three "new failures", `ca03` (a budget question), answered "Latest
+indexed file: security_policy.txt" because the agent's first move was to call the file-listing tool. This happened
+with the old Step 1a code too (6 of 6 runs the next morning). The first explanation written here was "the model
+changed overnight"; **that was not proven**. Step 1c measured it properly: the same question with identical input
+at temperature 0 chose the listing tool in 3 of 6 calls and the search tool in the other 3. So the first move is
+a coin flip for this wording, and the earlier clean runs were luck. Another case, `tr19` (an invention trap),
+invents "reports to the CEO" in 2 of 5 repeats of the same code. Lessons: single runs of the whole set cannot
+show a 2-case change; compare old and new on the same day, on the cases that differ, with repeats.
+
+## Step 1c: tool descriptions (2026-11-20)
+
+**In plain words.** The agent's first decision is which tool to call. Three things could go wrong there, and I
+measured each with a new cheap test (`first_step_probe`: send the question to the real model with the real tool
+descriptions, record the first call, and run the search query the model wrote through the real search; no answer
+is generated, so it costs about 0.0003 USD per question):
+
+| What could go wrong | Measured on all 135 questions, before any change | Verdict |
+|---|---|---|
+| A content question goes to the file-listing tool | 2 of 270 runs, both `ca03` | **fixed** |
+| The model's search query misses the right file | 2 of 174 runs, both `sf07` (a ranking case) | no problem: no query advice needed |
+| A follow-up forgets the topic of the earlier turn | 4 of 5 follow-ups wrote the earlier topic into the query; the fifth (`fu02`) already names INC-211 in the question | no problem: no follow-up advice needed |
+| A two-topic question is searched once, with one mixed query | 24 of 30 multi-file runs found all files (misses: `mx07`, `ag05`, `td01`) | **not fixable by wording** (see below) |
+
+**Example (`ca03`).** Question: "How much was spent in the first half of 2026, and how much of the total budget is
+left?" Before: in about half of the calls the model asked the file-listing tool for the newest file, and the user
+got `Latest indexed file: security_policy.txt`. Now the tool says it only knows file metadata and "cannot read
+document text", so the model searches: 20 of 20 calls search, and the answer is the budget figures from `budget_2026.txt`.
+
+**What changed.** Only the two tool descriptions (`registry.py`): the listing tool must not be used when the answer
+is written inside a document, even if the question mentions a year or "latest"; `search_knowledge` is the tool for
+any question answered by document text. Both stay under the 500-character limit.
+
+**Numbers (agent level, 13 multi-file cases plus `ca03`, two runs each, same day, same model):** baseline 21 of 26
+pass; final wording 24 of 26. `ca03` 0 -> 2, `ag05` 1 -> 2; `mx07` still 0 (below). Held-out test split, first
+step: 0 wrong-tool runs in 106 (also 0 before), right file found in 64 of 66 searches (before: 62 of 64); the only miss is `sf07` both times.
+
+**What did not work, and why it was left out.** I also tried telling the model "search one topic per call; if the
+results do not contain the answer, search again with different wording", in the tool description and as a system
+prompt line. `gpt-5.4-nano` never sent a second search: 0 multi-search runs in either variant, and traces of
+`mx07`/`ag05` show one search then an answer every time. The single gain under that wording (`mx07` 0 -> 1) was one
+lucky query, and a stray `pb05` refusal showed up under it that came from the claim check, not the tools (identical
+tool calls as the passing runs). Text that does not change behaviour is clutter, so it is not in the code. It is a
+Step 5 candidate: a larger answering model may follow it.
+
+**Two decisions that changed the plan.**
+1. *The "dead grade" is kept.* I had called `grade_evidence` dead. Measured over 133 questions: the score-based checks
+   never fire, and the only rejection is "nothing was returned at all" (3 cases). But the "weak vector and no keyword
+   hit" check can fire for gibberish queries, each branch has its own test, and the LangGraph path reads
+   `sufficient` to decide whether to rewrite the query. Removing it would change the LangGraph and legacy paths
+   for no measured gain, so it stays. The plan entry was wrong and is corrected.
+2. *"Sources consulted" on refusals (1d) moves to Step 4.* On dev, 6 of 22 refusal-type answers end with that
+   footer but only 1 of 59 real answers does, so it is a refusal artifact. But in 12 more refusals the model writes
+   its own citation markers, so fixing the footer alone would fix a third of the problem. The proper signal is
+   "this answer asserts document facts: yes or no", which the claim check (it already reads answer and evidence) can
+   return in the same call. Step 4 extends that checker anyway. A list of English refusal phrases would break on
+   Roman Urdu answers, so it was not built.
 
 ## Intent gate — `intent_v1` (live)
 

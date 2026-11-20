@@ -77,16 +77,20 @@ with it first and confirmed with one paid run. Test: unit test on a fake retriev
    "is" matched "n-is-t"), plus at most 3 of the 8 results from one file. The idea of stopping the metadata search
    from adding newest files was **tested and rejected** (it made ranking worse). Retrieval: plain questions 56/56
    (dev) and 33/33 (test) incl. `sf07`, `mx07`; agent level: neutral on this corpus. Details: `docs/EVALUATION_RESULTS.md`, "Step 1b".
-3. Remove the dead grade, or make it honest. Honest means: keep it only if it can reject; the probes say no
-   score can, so the plan is to **delete the dead check** and rely on Step 4. Why: dead code that looks like
-   a safety net is worse than none. (Legacy path tests must be updated in the same commit.)
-4. **(1d, new, found in 1a)** A refusal with no citation markers gets "Sources consulted:" followed by every file the
-   search returned (`finalize_answer`), e.g. 8 files, unrelated NIST PDFs included, on "release 1.4". Decide what a
-   "not found" answer should show (recommended: no source list, or only files the answer actually names), then fix
-   in `finalization.py` with a test. Before this step 15 of 29 refusals already carried citations.
-5. Tool description and agent prompt: tell the model to search with short keyword queries (names, numbers,
-   IDs, the topic), to run a second differently-worded search if the first returns nothing useful, and to
-   include the topic from earlier turns when the user's message is a follow-up.
+3. **(1c, DONE 2026-11-20) The "dead grade" is kept.** Measured over 133 questions: the score checks never fire;
+   the only rejection is an empty result. But the "weak vector and no keyword hit" check can fire for gibberish,
+   each branch has a test, and the LangGraph path reads `sufficient` to rewrite the query, so removing it would
+   change two other paths for no measured gain. My earlier "dead" claim was too strong.
+4. **(1c, DONE 2026-11-20) Tool descriptions.** The file-listing tool now says it only knows file metadata and must not
+   be used when the answer is inside a document: `ca03` 0 -> 2 of 2, 20 of 20 searches on that question (before:
+   about half). The planned "short keyword query" and "follow-up topic" advice was **not built**: measured
+   unnecessary (the model's own queries find the right file in 172 of 174 runs; 4 of 5 follow-ups already carry
+   the topic). "Search one topic per call / search again" was tried and **did nothing for `gpt-5.4-nano`** (never a
+   second search), so it is left out and moved to Step 5. New test tool: `first_step_probe`.
+5. **(1d, MOVED to Step 4)** "Sources consulted" on refusals: 6 of 22 refusal-type answers end with the footer, 12
+   more carry model-written markers. The language-independent fix is one extra answer from the claim check ("does
+   this answer assert document facts?"), so it is done together with Step 4.
+
 `sf07` ("Who is the Security Lead?") is a 1b case: `team_directory.txt` scores 0.43 by vector but ranks below 8 behind
 public NIST chunks, and the keyword path puts `security_policy.txt` first only because the word "security" is in its
 file name. Expected: right file found 81 % -> 88-90 % at agent level. Risk: more weak chunks reach the model on
@@ -107,13 +111,17 @@ must still get the old value).
 Today it asks "is this fact in the evidence?". The traps need two more questions: "is the sentence about the
 same subject and scope as the evidence it relies on?" (CloudHost vs Larkspur, contractor vs employee, private
 car vs company car) and "does the sentence say something is absent where the evidence is merely silent?".
-Add both to the checker's prompt with the question given. Guard: planted test must keep 0 / 41 true
+Add both to the checker's prompt with the question given. Also (from 1d): have the checker say whether the answer
+asserts any document fact at all; when it does not (a refusal), drop its citations and the "Sources consulted"
+footer. Guard: planted test must keep 0 / 41 true
 sentences removed, and the 18 control cases (below) must still pass.
 
 ### Step 5 - Experiment: a larger answering model
 Run the traps on `gpt-5.4-mini` instead of `gpt-5.4-nano`. If invention drops a lot, the model is a better
 fix than more checking code. The larger model is tested, not assumed (FaithEval, arXiv 2410.03727, found
-bigger models are not always more faithful). Decide with data.
+bigger models are not always more faithful). Decide with data. Also re-test, with the larger model, the wording
+that did nothing for nano ("search one topic per call; search again if the results lack the answer"): `mx07`,
+`ag05` and `td01` need more than one search, and nano never sends a second one.
 
 ### Step 6 - Only if still needed
 An optional re-ranker over the top 20 (a cross-encoder is about 45 ms, an LLM re-rank about 700 ms per the
@@ -174,7 +182,7 @@ that is the first paid run (dev split, about 0.10 USD) so the "before" number ex
 
 ## 7. Budget (balance 1.56 USD, ceiling 1.50 USD)
 
-Spent so far (meter totals): about 0.89 USD = 0.06 analysis probes + 0.44 for the two Step 1a agent runs + 0.26 for the Step 1b dev run + 0.12 for the Step 1b investigation (repeats, old-vs-new on the 13 changed cases) + about 0.02 for tool traces. About 0.6 USD remains under the 1.50 ceiling. Lesson from 1b: a full-set run cannot show a 2-case change and model behaviour drifts day to day, so later steps compare old and new code on the same day, only on the cases the step can change, with repeats. Steps 0, 1.1-1.3 are free to tune.
+Spent so far (meter totals): about 0.89 USD = 0.06 analysis probes + 0.44 for the two Step 1a agent runs + 0.26 for the Step 1b dev run + 0.12 for the Step 1b investigation (repeats, old-vs-new on the 13 changed cases) + about 0.02 for tool traces. About 0.6 USD remains under the 1.50 ceiling. Step 1c then cost about 0.47 (three same-day agent comparisons 0.17, probe runs 0.11, wording tests 0.15, traces 0.03), leaving about 0.14, which is not enough for Steps 2 to 5: more budget is needed before Step 2. Lesson from 1b: a full-set run cannot show a 2-case change and the model is not deterministic even at temperature 0, so later steps compare old and new code on the same day, only on the cases the step can change, with repeats. Steps 0, 1.1-1.3 are free to tune.
 Estimates, not measurements: a full run of 94 + 49 cases is about 0.35-0.40 USD; a dev-only run about half.
 Plan: baseline of the new traps (dev) 0.10, Step 1 confirm 0.20, Step 2 0.10, Step 3 0.10,
 Step 4 + planted re-check 0.25, Step 5 (mini model, traps only) 0.15, final full run 0.35 = about 1.25 USD.
