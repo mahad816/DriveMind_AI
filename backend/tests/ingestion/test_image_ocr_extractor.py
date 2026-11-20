@@ -12,7 +12,7 @@ from PIL import Image, UnidentifiedImageError
 from pytesseract import TesseractNotFoundError
 
 from app.connectors.google_drive.constants import (
-    GOOGLE_DOC_MIME,
+    GOOGLE_EXPORT_MIME,
     IMAGE_MIME_TYPES,
     PDF_MIME,
     SUPPORTED_MIME_TYPES,
@@ -112,7 +112,8 @@ def test_image_ocr_registration_covers_all_image_mime_types() -> None:
 def test_builtin_registration_covers_all_supported_mime_types() -> None:
     """Every supported Drive file is read by the extractor for the bytes it produces.
 
-    Google Docs are exported (DOCX, or plain text when too large), so they are read by those types.
+    Google Docs and Slides are exported (DOCX and PPTX, or plain text when too large), so they are
+    read by those types.
     """
     clear_extractors()
     reset_builtin_extractors()
@@ -120,7 +121,7 @@ def test_builtin_registration_covers_all_supported_mime_types() -> None:
 
     readable = {output_content_mime_type(mime) for mime in SUPPORTED_MIME_TYPES} | {TXT_MIME}
     assert registered_mime_types() == readable
-    assert SUPPORTED_MIME_TYPES - {GOOGLE_DOC_MIME} <= registered_mime_types()
+    assert SUPPORTED_MIME_TYPES - set(GOOGLE_EXPORT_MIME) <= registered_mime_types()
     assert get_extractor(TXT_MIME) is not None
     assert get_extractor("image/png") is not None
 

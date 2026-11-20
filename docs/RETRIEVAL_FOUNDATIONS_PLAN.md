@@ -308,3 +308,14 @@ Google Docs are exported as DOCX; if Drive answers `exportSizeLimitExceeded` (ab
 `documents.pipeline_version` (migration `20261120_1200`, existing rows = 1; code constant `EXTRACTION_PIPELINE_VERSION = 2` in `app/ingestion/pipeline_version.py`). Indexed files whose document is older are listed by ingest and counted in `to_ingest` through one shared SQL condition (`app/services/ingestion_queries.py`), re-read once, and: identical text means only the version is stamped (file stays indexed, chunks untouched); different text means the normal path (file becomes INDEXING, then chunk and build). A failed re-read marks the file FAILED like any other failure.
 
 Not verified yet: a real Google Doc exported as DOCX (needs a real Drive file; the fixture DOCX was made with python-docx, which is not the same producer).
+
+
+## A3 as built (2026-11-20)
+
+PPTX reader (`app/ingestion/extractors/pptx.py`): each slide with content is `## Slide N: title` (slide numbers count every slide, an empty slide is simply left out; no title gives `## Slide N`; hidden slides get ` (hidden)`). Content placeholders give `- ` bullets with two spaces per level; text boxes give plain paragraphs unless the paragraph has an explicit bullet; a bullet switched off wins. Shapes are read in reading order (top to bottom in 0.3 inch bands, left to right inside a band), groups are entered, tables become Markdown tables (merged cells keep their text once), speaker notes become one `Notes:` line after the slide. Footer, date and slide-number placeholders are skipped because they repeat on every slide. Not read: charts, SmartArt, pictures (no OCR), comments, animations.
+
+Google Slides are exported as PPTX (same plain-text fallback as Docs when Drive reports `exportSizeLimitExceeded`). The export mapping is now one dictionary (`GOOGLE_EXPORT_MIME`), so Sheets in A5 is one new entry. Table and block formatting shared by the Office readers moved to `light_markdown.py` (DOCX uses it too). `python-pptx` moved from dev to runtime dependencies. Frontend: PowerPoint and Slides are in the single-file supported list, get a "Presentation" label and icon; spreadsheets are no longer mislabelled "Document". `EXTRACTION_PIPELINE_VERSION` is unchanged: no existing document was produced by a PPTX reader, so nothing is stale.
+
+Discovery: an incremental sync only reports changed files, so decks that already sit in Drive are found by one full scan (`fullScan` in the app).
+
+Not verified yet: a real PowerPoint or Google Slides export with unusual layouts (python-pptx built the test deck).

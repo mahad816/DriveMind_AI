@@ -25,7 +25,9 @@ from app.connectors.google_drive.constants import (
     DOCX_MIME,
     GOOGLE_DOC_MIME,
     GOOGLE_FOLDER_MIME,
+    GOOGLE_SLIDES_MIME,
     PDF_MIME,
+    PPTX_MIME,
     TXT_MIME,
     is_supported_mime_type,
     output_content_mime_type,
@@ -364,6 +366,42 @@ def test_google_doc_too_large_for_docx_export_falls_back_to_plain_text() -> None
         DOCX_MIME,
         "text/plain",
     ]
+
+
+def test_google_slides_are_exported_as_pptx_and_fall_back_to_plain_text_when_too_large() -> None:
+    files_resource = FakeFilesResource()
+    client = _client(files_resource)
+    with patch.object(client, "_read_media_bytes", return_value=b"pptx bytes"):
+        assert client.get_file_content_with_type("deck", GOOGLE_SLIDES_MIME) == (
+            b"pptx bytes",
+            PPTX_MIME,
+        )
+
+    answers: list[Any] = [_http_error(403, "exportSizeLimitExceeded"), b"slide text"]
+
+    def read(request: Any) -> bytes:
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    with patch.object(client, "_read_media_bytes", side_effect=read):
+        assert client.get_file_content_with_type("big-deck", GOOGLE_SLIDES_MIME) == (
+            b"slide text",
+            "text/plain",
+        )
+    assert [c["mimeType"] for c in files_resource.export_media_calls] == [
+        PPTX_MIME,
+        PPTX_MIME,
+        "text/plain",
+    ]
+
+
+def test_slides_and_pptx_are_supported_and_only_google_native_files_need_export() -> None:
+    assert is_supported_mime_type(GOOGLE_SLIDES_MIME) and is_supported_mime_type(PPTX_MIME)
+    assert requires_export(GOOGLE_SLIDES_MIME) and not requires_export(PPTX_MIME)
+    assert output_content_mime_type(GOOGLE_SLIDES_MIME) == PPTX_MIME
+    assert output_content_mime_type(PPTX_MIME) == PPTX_MIME
 
 
 def test_other_export_errors_are_not_retried_as_plain_text() -> None:

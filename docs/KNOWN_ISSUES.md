@@ -41,15 +41,20 @@ something known without a test (or say plainly that it is *unreproduced*).
 Measured on the generated fixtures in `backend/evaluation/corpus/messy/`:
 
 - **DOCX: fixed in A2** (see Fixed below). Tables, headings and bullets are read; Google Docs are exported as DOCX.
-- **PPTX and XLSX**: no reader exists, so these files are never ingested (A3 and A5).
+- **PPTX: fixed in A3** (see Fixed below).
+- **XLSX**: no reader exists, so these files are never ingested (A5).
 - **PDF**: the running header and page number are repeated in the text of every page, and ruled tables come out as one cell per line, with no row structure (A4).
 
-Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A3 PPTX (also Google Slides, with speaker notes), A4 PDF header/footer removal and ruled tables, A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
+Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A4 PDF header/footer removal and ruled tables, A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 
 ## Fixed
+### KI-024 (PPTX part) — PowerPoint files were not read at all  *(fixed on branch `feat/extraction-a3-pptx`, Stage A3)*
+
+PPTX and Google Slides were not a supported type, so decks were never indexed. They are now read slide by slide as light Markdown with tables and speaker notes (decisions and numbers often live only in the notes). Google Slides are exported as PPTX (plain text when Google refuses the export as too large). Tests: `tests/ingestion/test_pptx_extractor.py` (mutation-checked), `tests/connectors/test_google_drive_client.py`, `tests/known_issues/test_ki024_file_readers.py` (PPTX tests now ordinary regression tests). Existing decks need one full Drive scan to be discovered.
+
 ### KI-024 (DOCX part) — Word tables, headings and bullets were dropped  *(fixed on branch `feat/extraction-a2-docx`, Stage A2)*
 
 The DOCX reader returned paragraph text only, so a fee table in a Word file could not be found. It now returns light Markdown in document order (headings, bullets, tables with a header row; merged cells keep their text once; nested tables are flattened). Google Docs are exported as DOCX instead of plain text (plain text only when Google refuses the DOCX export as too large). Documents now carry a `pipeline_version`; indexed files read by the older pipeline are read again once. Tests: `tests/ingestion/test_docx_structure.py`, `tests/known_issues/test_ki024_file_readers.py` (DOCX tests now ordinary regression tests), `tests/security/test_document_pipeline_version_pg.py`.

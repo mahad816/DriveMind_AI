@@ -10,7 +10,13 @@ import pytest
 
 from tests.credential_fixtures import synthetic_oauth_row
 
-from app.connectors.google_drive.constants import DOCX_MIME, GOOGLE_DOC_MIME, PDF_MIME, TXT_MIME
+from app.connectors.google_drive.constants import (
+    DOCX_MIME,
+    GOOGLE_DOC_MIME,
+    PDF_MIME,
+    PPTX_MIME,
+    TXT_MIME,
+)
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
@@ -398,8 +404,8 @@ async def test_ingest_files_unexpected_exception_fails_job_with_error(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("delivered", "expected_reader"),
-    [(DOCX_MIME, DOCX_MIME), (TXT_MIME, TXT_MIME)],
-    ids=["google doc exported as docx", "big google doc exported as plain text"],
+    [(DOCX_MIME, DOCX_MIME), (PPTX_MIME, PPTX_MIME), (TXT_MIME, TXT_MIME)],
+    ids=["exported as docx", "slides exported as pptx", "big file exported as plain text"],
 )
 async def test_a_google_doc_is_read_by_the_type_of_the_bytes_it_arrived_as(
     service: IngestionService,

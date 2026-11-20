@@ -1,6 +1,6 @@
 import { DEMO_MODE } from "@/lib/demo";
 import type { DriveFileRead } from "@/lib/api/types";
-import { FileImage, FileSpreadsheet, FileText, FileType } from "lucide-react";
+import { FileImage, FileSpreadsheet, FileText, FileType, Presentation } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 export function driveFileUrl(driveFileId: string): string {
@@ -20,8 +20,10 @@ export function formatFileDate(value: string | null | undefined): string {
 
 export function fileTypeLabel(mimeType: string): string {
   if (mimeType === "application/pdf") return "PDF";
-  if (mimeType.includes("document")) return "Document";
+  // Spreadsheet and presentation first: their Office MIME types also contain "document".
   if (mimeType.includes("spreadsheet")) return "Spreadsheet";
+  if (mimeType.includes("presentation")) return "Presentation";
+  if (mimeType.includes("document")) return "Document";
   if (mimeType.startsWith("image/")) return "Image";
   if (mimeType.startsWith("text/")) return "Text";
   return "File";
@@ -29,6 +31,7 @@ export function fileTypeLabel(mimeType: string): string {
 
 export function fileTypeIcon(mimeType: string): LucideIcon {
   if (mimeType.includes("spreadsheet")) return FileSpreadsheet;
+  if (mimeType.includes("presentation")) return Presentation;
   if (mimeType.startsWith("image/")) return FileImage;
   if (mimeType === "application/pdf" || mimeType.includes("document") || mimeType.startsWith("text/")) {
     return FileText;
