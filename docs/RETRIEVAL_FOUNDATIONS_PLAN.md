@@ -319,3 +319,20 @@ Google Slides are exported as PPTX (same plain-text fallback as Docs when Drive 
 Discovery: an incremental sync only reports changed files, so decks that already sit in Drive are found by one full scan (`fullScan` in the app).
 
 Not verified yet: a real PowerPoint or Google Slides export with unusual layouts (python-pptx built the test deck).
+
+
+## A4 as built (2026-11-20)
+
+PDF reader (`app/ingestion/extractors/pdf.py`, with `pdf_furniture.py` and `pdf_tables.py`). pypdf still produces the page text, now through one pass that also records where every text chunk sits; pdfplumber (MIT, new runtime dependency, which also brings `pdfminer.six` and `pypdfium2`) finds ruled tables.
+
+- **Pages** are separated by a line holding only a form-feed character (`\f`); empty pages still count, trailing empty pages and a document with no text at all leave nothing. `normalize_extracted_text` was changed to keep such a line (plain `rstrip` erased it, which would also have shifted chunk offsets).
+- **Headers and footers**: text in the top or bottom 8% of the page is a candidate. A bare page number ("3", "Page 3 of 12", "- 3 -") is removed on any document. A line that repeats (digits ignored) in the bands of at least 40% of the pages of a document of at least 5 pages is removed from every page except the first one it appears on (usually the title). Only band lines are removed, only as many times as seen on that page, so body text that repeats a header is kept; a header that pypdf splits over several lines is still matched.
+- **Tables**: pdfplumber's detection is filtered (at least 2 rows and 2 columns after empty ones are dropped, at least 60% of cells containing a letter or digit, not a box covering more than 90% of the page in both directions, cells averaging at most 120 characters). An accepted table replaces the text chunks inside its box **only if** its characters and the replaced chunks' characters agree to 95% in both directions; otherwise the page keeps its flowing text. This check is what makes the replacement lossless, and it matters in practice: pypdf reports a wrong position for some chunks (on page 19 of NIST SP 800-146 a paragraph was placed inside a table's box), and without the check that paragraph would have been deleted. On the 33 public PDFs 62 tables were detected and 38 were used; the others stay flowing text. Tables are searched on the first 400 pages only.
+- **Speed**: 8.5 s per 100 pages on the 8 GB Mac with other work running (the plan's limit is 10 s); about 7 s of it is pdfminer parsing the pages for tables. A cheap pre-check that skips pages without drawn lines was measured and rejected: it would skip only 9 to 20% of pages and misses tables drawn inside embedded form objects. Extraction already runs in a worker thread, so it does not block the API. Peak memory 290 MB.
+- `EXTRACTION_PIPELINE_VERSION` is now 3: indexed PDFs are read again once on the next ingest.
+- The three Financial summary anchors of cases vr02 and vr03 were quoted as pipe rows, which no reader can produce for a table without lines; they now quote the figures.
+
+Known limits: tables without ruling lines stay flowing text (the report's Financial summary is one on purpose); a table whose position data is unreliable stays flowing text; rotated pages get no header removal and no tables; scanned pages have no text (OCR later); boxed callouts that look like two-column tables become small tables (their text is kept).
+
+Not verified yet: PDFs from producers not in the corpus (the public PDFs are NIST and arXiv; the generated ones come from ReportLab), and the effect on answer quality (measured once at the end of Stage A with the messy question set).
+

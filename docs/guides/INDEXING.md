@@ -23,7 +23,7 @@ The cursor is staged after metadata processing and committed with successful syn
 
 ## Stage 2: Ingest content
 
-`POST /api/v1/index/ingest` downloads or exports eligible Drive files, extracts and normalizes text, computes a content hash, and persists `Document` text in PostgreSQL. Supported types are Google Docs (exported as DOCX), Google Slides (exported as PPTX), TXT, DOCX and PPTX (headings, lists, tables and speaker notes kept as light Markdown), text-based PDF extraction, and images with Tesseract OCR. Scanned PDFs have no OCR fallback.
+`POST /api/v1/index/ingest` downloads or exports eligible Drive files, extracts and normalizes text, computes a content hash, and persists `Document` text in PostgreSQL. Supported types are Google Docs (exported as DOCX), Google Slides (exported as PPTX), TXT, DOCX and PPTX (headings, lists, tables and speaker notes kept as light Markdown), text-based PDF extraction (running headers, footers and page numbers removed; pages separated by a form-feed line; ruled tables as Markdown), and images with Tesseract OCR. Scanned PDFs have no OCR fallback.
 
 Every `Document` records the extraction pipeline version that produced its text (`app/ingestion/pipeline_version.py`). When a reader improves, the version is raised and indexed files with an older version are read again once: the pending counts report them as `to_ingest`, and the normal chunk and build steps follow only if the new text differs. Raise the version only when a change makes already-extracted text come out different.
 
