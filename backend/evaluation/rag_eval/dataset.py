@@ -2,7 +2,7 @@
 
 import json
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -39,10 +39,23 @@ def corpus_texts(files: list[CorpusFile]) -> dict[str, str]:
     return {f.path: extract_text(f) for f in files}
 
 
-def validate(dataset: dict[str, Any], files: list[CorpusFile] | None = None) -> list[str]:
-    """Return a list of problems (empty = valid). Never mutates anything."""
+def validate(
+    dataset: dict[str, Any],
+    files: list[CorpusFile] | None = None,
+    *,
+    texts: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Return a list of problems (empty = valid). Never mutates anything.
+
+    ``texts`` replaces what the product's readers extract, by corpus path. Use it to check cases against
+    an independent ground truth (the generated fixtures' own content description) while a reader is
+    still missing or being fixed; paths not given fall back to the readers.
+    """
     files = files if files is not None else synthetic_files() + public_files()
-    texts = corpus_texts(files)
+    texts = {
+        **corpus_texts([f for f in files if not texts or f.path not in texts]),
+        **(texts or {}),
+    }
     problems: list[str] = []
     ids = [c["id"] for c in dataset["cases"]]
     problems += [f"duplicate id {i}" for i, n in Counter(ids).items() if n > 1]
@@ -80,7 +93,7 @@ def validate(dataset: dict[str, Any], files: list[CorpusFile] | None = None) -> 
             if case["expected_behavior"] in {"not_found", "decline_or_not_found"} and any(
                 contains(t, claim)
                 for p, t in texts.items()
-                if p.startswith("synthetic/") and "smsgate" not in p
+                if p.startswith(("synthetic/", "messy/")) and "smsgate" not in p
             ):
                 problems.append(
                     f"{cid}: forbidden claim {claim!r} is actually present in the corpus"
