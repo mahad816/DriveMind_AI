@@ -94,6 +94,18 @@ async def started(network):
     assert await asyncio.to_thread(network.started.wait, 5)
 
 
+async def workers_drained(lifecycle, timeout=10.0):
+    """Wait until every refresh worker has deregistered.
+
+    A worker hands its result to the waiting caller first and removes itself from the count a moment
+    later, so the count read right after the result arrives can still be 1. Waiting here replaces
+    reading it at that instant; the assertion after the call still has to hold.
+    """
+    async with asyncio.timeout(timeout):
+        while lifecycle.active_workers:
+            await asyncio.sleep(0.01)
+
+
 @pytest.mark.asyncio
 async def test_real_lifespan_no_late_connection_after_disposal(runtime):
     await grant(runtime.factory, runtime.settings)
@@ -119,6 +131,7 @@ async def test_real_lifespan_no_late_connection_after_disposal(runtime):
             assert len(connections) == count
             assert runtime.engine.pool.checkedin() == 0
             assert runtime.lifecycle.active_callbacks == 0
+            await workers_drained(runtime.lifecycle)
             assert runtime.lifecycle.active_workers == 0
             with pytest.raises(DriveClientError):
                 await asyncio.to_thread(service._on_loop, service.load(USER_A))
@@ -146,6 +159,7 @@ async def test_shutdown_drains_matching_result_and_removes_worker(runtime):
             with pytest.raises(asyncio.CancelledError):
                 await task
             network.release.set()
+        await workers_drained(runtime.lifecycle)
         assert runtime.lifecycle.active_workers == 0
         assert runtime.lifecycle.active_callbacks == 0
     async with runtime.observer_factory() as db:
@@ -258,6 +272,7 @@ async def test_caller_budget_retains_worker_and_late_rotation(runtime):
                 workers = list(runtime.lifecycle._workers)
                 network.release.set()
                 await asyncio.gather(*(asyncio.wrap_future(worker) for worker in workers))
+                await workers_drained(runtime.lifecycle)
                 assert runtime.lifecycle.active_workers == 0
                 assert (await runtime.record()).credential_revision == 2
                 assert network.calls == 1
@@ -546,6 +561,7 @@ async def test_worker_capacity_rejects_untracked_work(runtime):
         release.set()
         await task
     await runtime.lifecycle.shutdown()
+    await workers_drained(runtime.lifecycle)
     assert runtime.lifecycle.active_workers == 0
 
 
@@ -584,6 +600,7 @@ async def test_shutdown_rejects_new_refresh_during_grace(runtime):
                 network.release.set()
             await shutdown
             await task
+            await workers_drained(runtime.lifecycle)
             assert runtime.lifecycle.active_workers == 0
 
 
