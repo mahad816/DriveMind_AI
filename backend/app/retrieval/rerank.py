@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
 
 from app.core.config import Settings, get_settings
@@ -14,8 +15,13 @@ def weighted_fusion_rerank(
     settings: Settings | None = None,
     *,
     question: str | None = None,
+    max_per_file: int = 0,
 ) -> list[RetrievedChunk]:
-    """Rerank merged candidates using normalized per-source weighted scores."""
+    """Rerank merged candidates using normalized per-source weighted scores.
+
+    ``max_per_file`` > 0 limits how many of the returned chunks may come from one file, so a long
+    document cannot fill every slot; 0 returns the plain top ``retrieval_top_k``.
+    """
     if not candidates:
         return []
 
@@ -57,7 +63,33 @@ def weighted_fusion_rerank(
         ),
         reverse=True,
     )
-    return reranked[: resolved.retrieval_top_k]
+    return limit_chunks_per_file(reranked, resolved.retrieval_top_k, max_per_file)
+
+
+def limit_chunks_per_file(
+    ranked: list[RetrievedChunk], top_k: int, max_per_file: int
+) -> list[RetrievedChunk]:
+    """The best ``top_k`` chunks with at most ``max_per_file`` per file, in their original order.
+
+    A soft limit: if too few other files have candidates, the best chunks over the limit refill
+    the remaining slots, so a question that really lives in one long file still gets its chunks.
+    """
+    if max_per_file <= 0:
+        return ranked[:top_k]
+    kept: list[RetrievedChunk] = []
+    overflow: list[RetrievedChunk] = []
+    taken: Counter[object] = Counter()
+    for chunk in ranked:
+        if len(kept) >= top_k:
+            break
+        if taken[chunk.drive_file_id] < max_per_file:
+            kept.append(chunk)
+            taken[chunk.drive_file_id] += 1
+        else:
+            overflow.append(chunk)
+    chosen = kept + overflow[: top_k - len(kept)]
+    position = {id(chunk): index for index, chunk in enumerate(ranked)}
+    return sorted(chosen, key=lambda chunk: position[id(chunk)])
 
 
 def _filename_priority(chunk: RetrievedChunk, targets: list[str]) -> int:

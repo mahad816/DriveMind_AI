@@ -10,7 +10,7 @@ import pytest
 
 from app.core.config import Settings
 from app.routing.intent_frame.execution import RetrievalRequest
-from app.routing.intent_frame.scope import EligibleCollectionScope
+from app.routing.intent_frame.scope import EligibleCollectionScope, ResolvedFileScope
 from pydantic import ValidationError
 from app.evaluation.trace import EvalTraceCollector
 from app.retrieval.hybrid import HybridRetriever
@@ -232,3 +232,87 @@ def _request(query: str) -> RetrievalRequest:
         candidate_limit=8,
         candidate_policy="LEGACY",
     )
+
+
+# ---- per-file limit: applied for open searches, skipped when the user chose the file(s) -------------
+
+
+def _file_chunk(
+    file_id: uuid.UUID, index: int, score: float, name: str = "doc.txt"
+) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        drive_file_id=file_id,
+        filename=name,
+        mime_type="text/plain",
+        modified_at=datetime.now(UTC),
+        chunk_index=index,
+        text="chunk text",
+        score=score,
+        primary_source="vector",
+        source_scores={"vector": score},
+    )
+
+
+def _limit_retriever(max_per_file: int) -> tuple[HybridRetriever, uuid.UUID, uuid.UUID]:
+    long_file, short_file = uuid.uuid4(), uuid.uuid4()
+    vector = AsyncMock()
+    vector.retrieve = AsyncMock(
+        return_value=[_file_chunk(long_file, i, 0.9 - i / 50, "long.pdf") for i in range(6)]
+        + [_file_chunk(short_file, 0, 0.6, "short.txt")]
+    )
+    empty = AsyncMock()
+    empty.retrieve = AsyncMock(return_value=[])
+    retriever = HybridRetriever(
+        db=AsyncMock(),
+        settings=Settings(
+            retrieval_top_k=3,
+            retrieval_max_chunks_per_file=max_per_file,
+            evidence_min_fusion_score=0.01,
+        ),
+        vector_retriever=vector,
+        keyword_retriever=empty,
+        metadata_retriever=empty,
+    )
+    return retriever, long_file, short_file
+
+
+def _scoped(query: str, scope) -> RetrievalRequest:
+    return RetrievalRequest(user_id=USER_ID, query=query, scope=scope, candidate_limit=20)
+
+
+@pytest.mark.asyncio
+async def test_open_search_limits_chunks_per_file_so_another_file_gets_a_slot() -> None:
+    retriever, long_file, short_file = _limit_retriever(max_per_file=2)
+    chunks = await retriever.retrieve(
+        _scoped("how do we handle incidents", EligibleCollectionScope())
+    )
+    assert sum(c.drive_file_id == long_file for c in chunks) == 2
+    assert any(c.drive_file_id == short_file for c in chunks)
+
+
+@pytest.mark.asyncio
+async def test_limit_is_off_when_the_setting_is_zero() -> None:
+    retriever, long_file, _ = _limit_retriever(max_per_file=0)
+    chunks = await retriever.retrieve(
+        _scoped("how do we handle incidents", EligibleCollectionScope())
+    )
+    assert [c.drive_file_id for c in chunks] == [long_file] * 3
+
+
+@pytest.mark.asyncio
+async def test_no_limit_when_the_search_is_restricted_to_chosen_files() -> None:
+    retriever, long_file, _ = _limit_retriever(max_per_file=2)
+    scope = ResolvedFileScope(file_ids=(long_file,))
+    chunks = await retriever.retrieve(_scoped("summarise this", scope))
+    assert [c.drive_file_id for c in chunks] == [long_file] * 3
+
+
+@pytest.mark.asyncio
+async def test_no_limit_when_the_question_names_a_file() -> None:
+    retriever, long_file, _ = _limit_retriever(max_per_file=2)
+    chunks = await retriever.retrieve(
+        _scoped('what does "long.pdf" say about incidents', EligibleCollectionScope())
+    )
+    assert sum(c.drive_file_id == long_file for c in chunks) == 3

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.evaluation.trace import EvalTraceCollector, elapsed_ms
+from app.retrieval.filename_targets import extract_filename_targets
 from app.retrieval.grade import EvidenceGrade, grade_evidence
 from app.retrieval.keyword import KeywordRetriever
 from app.retrieval.merge import reciprocal_rank_fusion_merge
@@ -17,6 +18,7 @@ from app.retrieval.owned import gather_owned
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.scope import require_request
 from app.routing.intent_frame.execution import RetrievalRequest
+from app.routing.intent_frame.scope import ResolvedFileScope
 from app.retrieval.vector import VectorRetriever
 
 
@@ -41,6 +43,13 @@ class HybridRetriever:
         """Return reranked chunks that pass evidence grading."""
         evidence = await self.retrieve_with_grade(request)
         return evidence.chunks
+
+    def _max_chunks_per_file(self, request: RetrievalRequest, question: str) -> int:
+        """No per-file limit when the user already chose the file(s): then many chunks of one file
+        is exactly what they want."""
+        if isinstance(request.scope, ResolvedFileScope) or extract_filename_targets(question):
+            return 0
+        return self.settings.retrieval_max_chunks_per_file
 
     async def retrieve_with_grade(
         self,
@@ -117,6 +126,7 @@ class HybridRetriever:
             merged,
             settings=self.settings,
             question=normalized,
+            max_per_file=self._max_chunks_per_file(request, normalized),
         )
         if trace is not None:
             trace.record_reranked(1, reranked)

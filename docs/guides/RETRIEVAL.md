@@ -48,6 +48,8 @@ This separation matters: Google Drive is accessed during sync/ingestion, while n
 | `RETRIEVAL_CANDIDATE_K` | `24` | Candidate pool per retriever |
 | `RETRIEVAL_TOP_K` | `8` | Retrieval result cap before prompt selection |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Vector score floor (lowered from 0.35 on 2026-11-20, see EVALUATION_RESULTS.md) |
+| `RETRIEVAL_NAME_TERM_MAX_FILES` | `2` | A question word (5+ letters) counts as naming a file, for the file-name search and the +0.2 bonus, only if it is in at most this many of the user's file names |
+| `RETRIEVAL_MAX_CHUNKS_PER_FILE` | `3` | At most this many of the final chunks from one file; not applied when the search is restricted to chosen files or the question names a file (`0` = no limit) |
 | `RETRIEVAL_RELATIVE_THRESHOLD` | `0.7` | Vector hits below this fraction of the best vector hit are dropped (`0` = off) |
 | `EVIDENCE_MIN_FUSION_SCORE` | `0.15` | Hybrid evidence grading threshold |
 | `RAG_MAX_CONTEXT_CHARS` | `12000` | Prompt context budget |

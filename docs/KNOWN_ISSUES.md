@@ -28,12 +28,19 @@ something known without a test (or say plainly that it is *unreproduced*).
 ## Open
 
 ### KI-022 — Wordy search queries find nothing (recall cliff)  *(retrieval quality, backend, reproduced by the evaluation, no unit test yet)*
+- **Progress (2026-11-20, Step 1b):** generic and tiny file-name words no longer boost files (a question word must be 5+ letters and in at most 2 file names), and one long document can no longer fill all 8 slots (limit 3 per file). `sf07` and `mx07` now find their file. Still open: the all-words keyword search and the agent's own query writing (Step 1c).
 - **Progress (2026-11-20, Step 1a):** the vector cut-off part is fixed: default `RETRIEVAL_SCORE_THRESHOLD` 0.35 -> 0.25, plus a new `RETRIEVAL_RELATIVE_THRESHOLD` 0.7. `sf01` now passes (dev, agent level), and the retrieval probe finds the right file for 98 % of plain questions (was 93 %). Still open: the all-words keyword search (Step 1b/1c) and generic file-name words that flood results (Step 1b). See `docs/EVALUATION_RESULTS.md`.
 - **Symptom:** "How many days of annual leave do employees get per year?" answers "I could not find relevant information" (3 of 3 tries, tool agent) although the handbook says "Annual leave is 22 working days per calendar year."
 - **Cause (measured):** the agent searches with the model's rewrite, `annual leave entitlement days per year employees get`. Vector retrieval returns 0 (all hits are below `retrieval_score_threshold = 0.35`) and keyword retrieval returns 0 (`websearch_to_tsquery` requires every word; "entitlement" and "get" are not in the file). `annual leave days per year` finds the file (keyword hit plus a 0.37 vector hit).
 - **Reproduce:** `cd backend && uv run python -m evaluation.rag_eval.cli setup` then run the question through `RagService` on the `drivemind_eval_v2` store (see `docs/EVALUATION_RESULTS.md`). It needs an OpenAI key, so it has no unit test; a deterministic test would need a stored-embedding fixture.
 - **Not fixed on purpose:** changing the threshold or the keyword mode changes retrieval for everything and needs its own evaluation. The corpus here has many whole-file chunks, which probably makes the effect stronger than on long documents (unmeasured).
 - **Suggested direction:** make keyword matching tolerant (any-term ranking instead of all-terms), and compare a lower or relative vector threshold on the same cases before and after.
+
+### KI-023 — A content question is answered with only "Latest indexed file: X"  *(agent behaviour, reproduced, needs a paid call to test)*
+- **Symptom:** "How much was spent in the first half of 2026, and how much of the total budget is left?" is answered with `Latest indexed file: security_policy.txt`. It passed in all 6 earlier runs and failed in 13 of 13 runs on 2026-11-20 with unchanged retrieval code, so the chat model's choice changed.
+- **Cause (measured with a tool trace):** the model's first tool call is `files_query` with operation `LATEST`, not `search_knowledge`. Any `files_query` result forces metadata-only rendering of the whole answer (`provenance_response` / `without_content`), so the question is never searched.
+- **Reproduce:** `cd backend && uv run python -m evaluation.rag_eval.cli run --split all --dataset rag_v2_cases.json --ids ca03` (needs the evaluation store and an OpenAI key). No unit test: it depends on the live model.
+- **Suggested direction:** Step 2 of `docs/IMPROVEMENT_PLAN.md` (tool-use rules and `tool_choice`), and a clearer description of when `files_query LATEST` applies.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).

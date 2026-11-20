@@ -72,9 +72,11 @@ with it first and confirmed with one paid run. Test: unit test on a fake retriev
 1. **(1a, DONE 2026-11-20)** Vector cut-off 0.35 -> 0.25, plus a relative rule (a hit must score at least 70 % of
    the best hit). Chosen on dev with the probe, vetoed/confirmed on test; agent level, dev, 88 cases: 74 -> 79 pass,
    no case got worse (honest gain 2 to 3 cases, single runs). Details: `docs/EVALUATION_RESULTS.md`, "Step 1a".
-2. (1b) Ignore generic file-name words (words that occur in many file names, e.g. "policy", "report", "document")
-   in the "file name contains word" path, and stop the metadata search adding the newest files unless the
-   user said "latest/newest/recent". Why: finding 5.
+2. **(1b, DONE 2026-11-20)** A question word counts as naming a file only if it is 5+ letters and in at most 2 of the
+   user's file names (file-name search and the +0.2 bonus; the bonus used to count every word of 2+ letters, so
+   "is" matched "n-is-t"), plus at most 3 of the 8 results from one file. The idea of stopping the metadata search
+   from adding newest files was **tested and rejected** (it made ranking worse). Retrieval: plain questions 56/56
+   (dev) and 33/33 (test) incl. `sf07`, `mx07`; agent level: neutral on this corpus. Details: `docs/EVALUATION_RESULTS.md`, "Step 1b".
 3. Remove the dead grade, or make it honest. Honest means: keep it only if it can reject; the probes say no
    score can, so the plan is to **delete the dead check** and rely on Step 4. Why: dead code that looks like
    a safety net is worse than none. (Legacy path tests must be updated in the same commit.)
@@ -151,7 +153,7 @@ that is the first paid run (dev split, about 0.10 USD) so the "before" number ex
 | 6 | `tool_choice="auto"` plus "no tools needed" wording | Step 2 |
 | 7 | One-line tool description, no query guidance, no follow-up rule | Step 1.4 |
 | 8 | Claim check blind to subject/absence errors | Step 4 |
-| 9 | One full-suite test (`test_normal_restart_preserves_live_claim_and_uncertain_build`) failed once under a 15-minute load run and passed 3 of 3 alone: a timing-sensitive lease test | Note only; look at it if it fails again. |
+| 9 | Two timing-sensitive indexing tests fail intermittently: `test_normal_restart_preserves_live_claim_and_uncertain_build` (once in a full run) and `test_healthy_heartbeat_outlives_original_lease_then_joins` (once in a full run; in isolation 2 of 3 failed on the new code and 1 of 4 on the Step 1a code, so it is not caused by retrieval work) | Separate small fix later: make the waits in those tests deterministic. |
 | 10 | `retrieval_top_k=8` counts chunks, so one long PDF can fill all 8 slots (`mx07`) | Measure in Step 0 (distinct files in top 8); fix only if proven. |
 | 11 | No retrieval metrics in the eval harness | Step 0 |
 | 12 | Evaluation is small and synthetic; repeats show +/- 2-3 case noise | Real-Drive test at the end, as agreed. |
@@ -172,7 +174,7 @@ that is the first paid run (dev split, about 0.10 USD) so the "before" number ex
 
 ## 7. Budget (balance 1.56 USD, ceiling 1.50 USD)
 
-Spent so far: about 0.50 USD (0.06 analysis probes; 0.44 for the two Step 1a agent runs, 88 cases each, 0.22 per run, which also serve as the dev-split baseline for later steps). About 1.0 USD remains under the 1.50 ceiling, so later steps should run on the cases they can change, not on everything. Steps 0, 1.1-1.3 are free to tune.
+Spent so far (meter totals): about 0.89 USD = 0.06 analysis probes + 0.44 for the two Step 1a agent runs + 0.26 for the Step 1b dev run + 0.12 for the Step 1b investigation (repeats, old-vs-new on the 13 changed cases) + about 0.02 for tool traces. About 0.6 USD remains under the 1.50 ceiling. Lesson from 1b: a full-set run cannot show a 2-case change and model behaviour drifts day to day, so later steps compare old and new code on the same day, only on the cases the step can change, with repeats. Steps 0, 1.1-1.3 are free to tune.
 Estimates, not measurements: a full run of 94 + 49 cases is about 0.35-0.40 USD; a dev-only run about half.
 Plan: baseline of the new traps (dev) 0.10, Step 1 confirm 0.20, Step 2 0.10, Step 3 0.10,
 Step 4 + planted re-check 0.25, Step 5 (mini model, traps only) 0.15, final full run 0.35 = about 1.25 USD.

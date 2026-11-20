@@ -1,5 +1,8 @@
 """Tests for embedding-related settings."""
 
+import pytest
+from pydantic import ValidationError
+
 from app.core.config import Settings
 from app.embeddings.openai_service import DEFAULT_EMBEDDING_MODEL
 from app.embeddings.vector_store import DEFAULT_QDRANT_COLLECTION
@@ -94,3 +97,14 @@ def test_settings_accepts_custom_rag_env_values() -> None:
     assert settings.hybrid_weight_metadata == 0.2
     assert settings.evidence_min_fusion_score == 0.2
     assert settings.fts_language == "simple"
+
+
+def test_file_name_matching_settings_default_and_are_bounded() -> None:
+    fields = Settings.model_fields
+    assert fields["retrieval_name_term_max_files"].default == 2
+    assert fields["retrieval_max_chunks_per_file"].default == 3
+    assert Settings(retrieval_max_chunks_per_file=0).retrieval_max_chunks_per_file == 0
+    with pytest.raises(ValidationError):
+        Settings(retrieval_name_term_max_files=0)
+    with pytest.raises(ValidationError):
+        Settings(retrieval_max_chunks_per_file=-1)
