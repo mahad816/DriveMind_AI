@@ -22,6 +22,11 @@ from app.ingestion.extractors.pdf import (
     extract_pdf_text,
     register_pdf_extractor,
 )
+from app.ingestion.extractors.pptx import (
+    PptxTextExtractor,
+    extract_pptx_text,
+    register_pptx_extractor,
+)
 from app.ingestion.extractors.plain_text import (
     PlainTextExtractor,
     decode_plain_text_bytes,
@@ -42,6 +47,7 @@ __all__ = [
     "ExtractionError",
     "ExtractionResult",
     "PdfTextExtractor",
+    "PptxTextExtractor",
     "ImageOcrExtractor",
     "PlainTextExtractor",
     "TextExtractor",
@@ -51,6 +57,7 @@ __all__ = [
     "extract_docx_text",
     "extract_image_ocr_text",
     "extract_pdf_text",
+    "extract_pptx_text",
     "get_extractor",
     "normalize_extracted_text",
     "register_builtin_extractors",
@@ -58,6 +65,7 @@ __all__ = [
     "register_extractor",
     "register_image_ocr_extractors",
     "register_pdf_extractor",
+    "register_pptx_extractor",
     "register_plain_text_extractors",
     "registered_mime_types",
     "reset_builtin_extractors",

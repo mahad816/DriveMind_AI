@@ -24,8 +24,8 @@ from app.connectors.google_drive.constants import (
     DEFAULT_LIST_QUERY,
     DEFAULT_PAGE_SIZE,
     FILE_FIELDS,
-    GOOGLE_DOC_EXPORT_MIME,
-    GOOGLE_DOC_TEXT_EXPORT_MIME,
+    GOOGLE_EXPORT_MIME,
+    GOOGLE_TEXT_EXPORT_MIME,
     LIST_FILES_FIELDS,
     MAX_PAGE_SIZE,
     is_supported_mime_type,
@@ -368,8 +368,8 @@ class GoogleDriveClient:
     def get_file_content_with_type(self, file_id: str, source_mime_type: str) -> tuple[bytes, str]:
         """Return file bytes and the MIME type of the bytes actually returned.
 
-        Google Docs are exported as DOCX; if Drive says that export is too large, the plain-text
-        export is returned instead (and reported as ``text/plain``). Binary types (PDF, DOCX, TXT,
+        Google Docs and Slides are exported as DOCX and PPTX; if Drive says that export is too large,
+        the plain-text export is returned instead (and reported as ``text/plain``). Binary types (PDF, DOCX, TXT,
         images) are downloaded via the media endpoint.
         """
         if not file_id:
@@ -380,7 +380,7 @@ class GoogleDriveClient:
         service = self._get_service()
         try:
             if requires_export(source_mime_type):
-                return self._export_google_doc(service, file_id)
+                return self._export_google_file(service, file_id, source_mime_type)
             request = service.files().get_media(fileId=file_id)
             return self._read_media_bytes(request), output_content_mime_type(source_mime_type)
         except (HttpError, GoogleAuthError) as exc:
@@ -389,12 +389,15 @@ class GoogleDriveClient:
                 safe_failure(exc, f"Drive file {action} failed"), category=failure_category(exc)
             ) from None
 
-    def _export_google_doc(self, service: Any, file_id: str) -> tuple[bytes, str]:
+    def _export_google_file(
+        self, service: Any, file_id: str, source_mime_type: str
+    ) -> tuple[bytes, str]:
+        export_mime = GOOGLE_EXPORT_MIME[source_mime_type]
         try:
-            request = service.files().export_media(fileId=file_id, mimeType=GOOGLE_DOC_EXPORT_MIME)
-            return self._read_media_bytes(request), GOOGLE_DOC_EXPORT_MIME
+            request = service.files().export_media(fileId=file_id, mimeType=export_mime)
+            return self._read_media_bytes(request), export_mime
         except HttpError as exc:
             if not self._export_too_large(exc):
                 raise
-        request = service.files().export_media(fileId=file_id, mimeType=GOOGLE_DOC_TEXT_EXPORT_MIME)
-        return self._read_media_bytes(request), GOOGLE_DOC_TEXT_EXPORT_MIME
+        request = service.files().export_media(fileId=file_id, mimeType=GOOGLE_TEXT_EXPORT_MIME)
+        return self._read_media_bytes(request), GOOGLE_TEXT_EXPORT_MIME

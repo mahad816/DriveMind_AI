@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from io import BytesIO
-from typing import Literal, cast
+from typing import cast
 from zipfile import BadZipFile
 
 from docx import Document
@@ -29,14 +29,18 @@ from docx.text.paragraph import Paragraph
 
 from app.connectors.google_drive.constants import DOCX_MIME
 from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.light_markdown import (
+    Block,
+    join_blocks,
+    markdown_table,
+    one_line,
+    table_cell,
+)
 from app.ingestion.extractors.plain_text import normalize_extracted_text
 from app.ingestion.extractors.registry import register_extractor
 
 _HEADING_STYLE = re.compile(r"^heading\s*(\d)$", re.IGNORECASE)
-_SPACES = re.compile(r"\s+")
 _MAX_HEADING_LEVEL = 6
-
-BlockKind = Literal["heading", "list", "paragraph", "table"]
 
 
 def _body_elements(parent: BaseOxmlElement) -> Iterator[CT_P | CT_Tbl]:
@@ -99,10 +103,6 @@ def _list_level(paragraph: Paragraph) -> int | None:
     return None
 
 
-def _one_line(text: str) -> str:
-    return _SPACES.sub(" ", text).strip()
-
-
 def _cell_text(cell: BaseOxmlElement) -> str:
     """Text of a table cell on one line; a nested table is flattened into it."""
     parts: list[str] = []
@@ -112,7 +112,7 @@ def _cell_text(cell: BaseOxmlElement) -> str:
         else:
             for row in element.tr_lst:
                 parts.extend(_cell_text(tc) for tc in row.tc_lst)
-    return _one_line(" ".join(part for part in parts if part.strip())).replace("|", "\\|")
+    return table_cell(" ".join(part for part in parts if part.strip()))
 
 
 def _table_rows(table: CT_Tbl) -> list[list[str]]:
@@ -125,24 +125,14 @@ def _table_rows(table: CT_Tbl) -> list[list[str]]:
             cells.append("" if continuation else _cell_text(tc))
             cells.extend([""] * (tc.grid_span - 1))
         rows.append(cells)
-    width = max((len(row) for row in rows), default=0)
-    return [row + [""] * (width - len(row)) for row in rows]
+    return rows
 
 
-def _markdown_table(table: CT_Tbl) -> str:
-    rows = _table_rows(table)
-    if not rows or not any(cell for row in rows for cell in row):
-        return ""
-    lines = ["| " + " | ".join(row) + " |" for row in rows]
-    lines.insert(1, "| " + " | ".join(["---"] * len(rows[0])) + " |")
-    return "\n".join(lines)
-
-
-def _blocks(document: DocumentType) -> list[tuple[BlockKind, str]]:
-    blocks: list[tuple[BlockKind, str]] = []
+def _blocks(document: DocumentType) -> list[Block]:
+    blocks: list[Block] = []
     for element in _body_elements(document.element.body):
         if isinstance(element, CT_Tbl):
-            markdown = _markdown_table(element)
+            markdown = markdown_table(_table_rows(element))
             if markdown:
                 blocks.append(("table", markdown))
             continue
@@ -152,11 +142,11 @@ def _blocks(document: DocumentType) -> list[tuple[BlockKind, str]]:
             continue
         level = _heading_level(paragraph)
         if level is not None:
-            blocks.append(("heading", f"{'#' * level} {_one_line(text)}"))
+            blocks.append(("heading", f"{'#' * level} {one_line(text)}"))
             continue
         item_level = _list_level(paragraph)
         if item_level is not None:
-            blocks.append(("list", f"{'  ' * item_level}- {_one_line(text)}"))
+            blocks.append(("list", f"{'  ' * item_level}- {one_line(text)}"))
         else:
             blocks.append(("paragraph", text))
     return blocks
@@ -172,14 +162,8 @@ def extract_docx_text(data: bytes) -> str:
     except (PackageNotFoundError, BadZipFile, ValueError) as exc:
         raise ExtractionError("Failed to read DOCX content") from exc
 
-    pieces: list[str] = []
-    previous: BlockKind | None = None
-    for kind, text in _blocks(document):
-        if previous is not None:
-            pieces.append("\n" if previous == kind == "list" else "\n\n")
-        pieces.append(text)
-        previous = kind
-    return normalize_extracted_text("".join(pieces))
+    text = join_blocks(_blocks(document))
+    return normalize_extracted_text(text)
 
 
 class DocxTextExtractor:

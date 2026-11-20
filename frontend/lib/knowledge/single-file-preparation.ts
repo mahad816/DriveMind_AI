@@ -35,6 +35,8 @@ export type PreparationState = {
 const supported = new Set([
   "application/vnd.google-apps.document", "text/plain", "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.google-apps.presentation",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/tiff", "image/bmp",
 ]);
 /** Conservative beta policy: failures/skips need investigation, never a blind rebuild. */

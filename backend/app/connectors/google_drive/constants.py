@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 GOOGLE_DOC_MIME = "application/vnd.google-apps.document"
+GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation"
 GOOGLE_FOLDER_MIME = "application/vnd.google-apps.folder"
 
 PDF_MIME = "application/pdf"
 TXT_MIME = "text/plain"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 IMAGE_MIME_TYPES: frozenset[str] = frozenset(
     {
@@ -21,22 +23,29 @@ IMAGE_MIME_TYPES: frozenset[str] = frozenset(
     }
 )
 
-# MVP-supported source file types (Google Docs, PDF, TXT, DOCX, images for OCR).
+# Supported source file types (Google Docs and Slides, PDF, TXT, DOCX, PPTX, images for OCR).
 SUPPORTED_MIME_TYPES: frozenset[str] = frozenset(
     {
         GOOGLE_DOC_MIME,
+        GOOGLE_SLIDES_MIME,
         PDF_MIME,
         TXT_MIME,
         DOCX_MIME,
+        PPTX_MIME,
     }
     | set(IMAGE_MIME_TYPES)
 )
 
-# Google Docs are exported as DOCX so tables, headings and lists survive (the plain-text export
-# drops table structure). Google refuses exports over about 10 MB (image-heavy documents); the
-# plain-text export of the same document is then used instead of failing the file.
-GOOGLE_DOC_EXPORT_MIME = DOCX_MIME
-GOOGLE_DOC_TEXT_EXPORT_MIME = "text/plain"
+# Google-native files cannot be downloaded, only exported. Docs and Slides are exported in the Office
+# format so tables, headings, lists and speaker notes survive (the plain-text export drops them).
+# Google refuses exports over about 10 MB (image-heavy files); the plain-text export of the same
+# file is then used instead of failing it.
+GOOGLE_EXPORT_MIME: dict[str, str] = {
+    GOOGLE_DOC_MIME: DOCX_MIME,
+    GOOGLE_SLIDES_MIME: PPTX_MIME,
+}
+GOOGLE_DOC_EXPORT_MIME = GOOGLE_EXPORT_MIME[GOOGLE_DOC_MIME]
+GOOGLE_TEXT_EXPORT_MIME = "text/plain"
 
 # Fields requested from the Drive API for each file. Kept minimal and read-only.
 FILE_FIELDS = (
@@ -64,15 +73,14 @@ def is_supported_mime_type(mime_type: str | None) -> bool:
 
 def requires_export(mime_type: str) -> bool:
     """Return True when Drive export_media is required instead of get_media."""
-    return mime_type == GOOGLE_DOC_MIME
+    return mime_type in GOOGLE_EXPORT_MIME
 
 
 def output_content_mime_type(source_mime_type: str) -> str:
     """Return the usual MIME type of bytes produced when reading a supported file.
 
-    A Google Doc normally arrives as DOCX; ``GoogleDriveClient.get_file_content_with_type`` reports
-    the type that was really returned when the plain-text fallback had to be used.
+    A Google Doc normally arrives as DOCX and a Google Slides file as PPTX;
+    ``GoogleDriveClient.get_file_content_with_type`` reports the type that was really returned when
+    the plain-text fallback had to be used.
     """
-    if source_mime_type == GOOGLE_DOC_MIME:
-        return GOOGLE_DOC_EXPORT_MIME
-    return source_mime_type
+    return GOOGLE_EXPORT_MIME.get(source_mime_type, source_mime_type)

@@ -43,6 +43,7 @@ See the [Retrieval guide](guides/RETRIEVAL.md) for the [answer-flow diagram](gui
 | Google Docs | Drive export as DOCX, read like a DOCX (plain-text export only when Google refuses the DOCX export as too large) |
 | TXT | Text decode |
 | PDF | Text extraction; scanned PDFs have no OCR fallback |
+| Google Slides / PPTX | Slides in order (`## Slide N: title`), bullets, tables, text boxes and **speaker notes** (`Notes:`); footers, date and slide-number placeholders skipped; hidden slides marked. Google Slides are exported as PPTX. Charts, SmartArt and pictures are not read |
 | DOCX | Body in order as light Markdown: headings (`#`), bullets (`- `), tables (`| a | b |` with a header row). Headers, footers, text boxes and images are not read |
 | Images | Tesseract OCR |
 

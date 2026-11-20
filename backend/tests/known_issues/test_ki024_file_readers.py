@@ -22,7 +22,6 @@ from evaluation.rag_eval.corpus import MIME
 
 from . import known_issue
 
-PPTX_FIX = known_issue("KI-024", "PPTX is not read (fixed by A3)")
 PDF_FIX = known_issue("KI-024", "PDF page furniture and ruled tables (fixed by A4)")
 XLSX_FIX = known_issue("KI-024", "XLSX is not read (fixed by A5)")
 
@@ -111,10 +110,9 @@ def test_docx_paragraph_after_a_table_keeps_its_place():
     assert position(text, "| Network |") < after_table < position(text, "## Training")
 
 
-# ---- PPTX (A3) -------------------------------------------------------------------------------------------------
+# ---- PPTX (fixed in A3, kept as regression tests) -------------------------------------------------------------------------------------------------
 
 
-@PPTX_FIX
 def test_pptx_slides_are_sections_with_titles_bullets_and_a_table():
     text = read("board_update_q3.pptx")
     lines = text.splitlines()
@@ -126,7 +124,6 @@ def test_pptx_slides_are_sections_with_titles_bullets_and_a_table():
     assert_table(text, pipeline)
 
 
-@PPTX_FIX
 def test_pptx_speaker_notes_and_free_text_boxes_are_included():
     text = read("board_update_q3.pptx")
     notes = next((line for line in text.splitlines() if line.startswith("Notes:")), "")
