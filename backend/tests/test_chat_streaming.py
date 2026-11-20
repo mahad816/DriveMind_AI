@@ -68,8 +68,11 @@ def tool_stream():
     )
 
 
-async def agent_run(final_chunks, *, foreign=False):
+async def agent_run(final_chunks, *, foreign=False, retry_chunks=None):
+    """Two provider calls (tool call, final text); a third only when a corrective retry is scripted."""
     streams = [tool_stream(), ProviderStream(final_chunks)]
+    if retry_chunks is not None:
+        streams.append(ProviderStream(retry_chunks))  # KI-026: the one corrective turn
     create = AsyncMock(side_effect=streams)
     client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
     client.with_options = Mock(return_value=client)
@@ -91,8 +94,8 @@ async def agent_run(final_chunks, *, foreign=False):
         )
     finally:
         stream_sink.reset(token)
-    assert create.await_count == 2
-    assert client.with_options.call_count == 2
+    assert create.await_count == len(streams)
+    assert client.with_options.call_count == len(streams)
     client.with_options.assert_called_with(max_retries=0)
     assert all(call.kwargs["stream"] is True for call in create.await_args_list)
     assert all(s.closed for s in streams)
@@ -117,15 +120,36 @@ async def test_native_tools_then_progressive_text_and_verified_citations():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "marker", ["[source_999]", "[99]", "source_1", "00000000-0000-0000-0000-000000000001"]
-)
-async def test_invalid_citations_cannot_become_a_verified_answer(marker):
+@pytest.mark.parametrize("marker", ["source_1", "00000000-0000-0000-0000-000000000001"])
+async def test_a_leaked_handle_or_id_cannot_become_a_verified_answer(marker):
     result, events = await agent_run(
         [({"content": "Provisional text "}, None), ({"content": marker}, "stop")]
     )
     assert result["failure"] == "UNSAFE_FINAL_OUTPUT" and not result["citations"]
     assert marker not in json.dumps(events)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("marker", ["[source_999]", "[99]"])
+async def test_a_marker_that_does_not_exist_is_refused_even_after_the_one_correction(marker):
+    bad = [({"content": "Provisional text "}, None), ({"content": marker}, "stop")]
+    result, events = await agent_run(bad, retry_chunks=bad)
+    assert result["failure"] == "UNSAFE_FINAL_OUTPUT" and not result["citations"]
+    assert marker not in json.dumps(events)
+
+
+@pytest.mark.asyncio
+async def test_a_bad_marker_followed_by_a_valid_one_gives_a_verified_answer():
+    """KI-026: the corrected answer is verified like any other, and the bad text never reaches the user."""
+    bad = [({"content": "Approval is required. "}, None), ({"content": "[source_999]"}, "stop")]
+    good = [({"content": "Approval is required. "}, None), ({"content": "[source_1]"}, "stop")]
+    result, events = await agent_run(bad, retry_chunks=good)
+    assert result["failure"] is None
+    assert result["final_answer"] == "Approval is required. [1]"
+    assert len(result["citations"]) == 1
+    assert "source_999" not in json.dumps(events)
+    # the rejected prose is cleared on screen before the corrected answer streams
+    assert ("state", {"phase": "validating"}) in events
 
 
 @pytest.mark.asyncio

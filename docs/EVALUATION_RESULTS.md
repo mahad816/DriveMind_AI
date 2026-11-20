@@ -463,6 +463,17 @@ quotes its figures, which the not-found grader rule forbids. The rule is right (
 `dx08`'s fee), so the question was changed, not the grader. `vi08` asks for the VAT registration number, which the
 invoice does not contain.
 
+## KI-026: a bad citation marker gets one corrective turn (2026-11-20)
+
+| Measurement (`gpt-5.4-nano`) | Before | After |
+|---|---|---|
+| "Late payment fee on INV-0457", traced real runs ending in `ChatError` | 3 of 14 | **0 of 40** counted runs (bad marker appeared 2 times, both corrected) |
+| Messy set (39 questions), end to end | 34 (2 errors: `vi05`, `vi08`) | **36, 0 errors** ($0.108) |
+| `dx08`, `px03`, `xl04` | fail | fail (KI-028, KI-030, KI-029; unchanged) |
+
+The 2 questions that changed are exactly the 2 errors. The 3 remaining failures are the known model/retrieval ones.
+The 40 counted runs are two batches of 20, the second after the code review changed the retry note. A first batch (4 bad markers) is not counted: its error total was not recorded.
+
 ## Earlier baselines (pre-existing)
 
 See `backend/evaluation/analysis/baseline_v1_failure_analysis.md` (Gold v1, 24 cases, 2026-09-21: routing 20/24)
