@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     retrieval_score_threshold: float = 0.25
     # A vector hit must also score at least this fraction of the best vector hit (0 = off); measured, see EVALUATION_RESULTS.
     retrieval_relative_threshold: float = Field(default=0.7, ge=0.0, le=1.0, allow_inf_nan=False)
+    # A question word counts as naming a file only if it appears in at most this many file names.
+    retrieval_name_term_max_files: int = Field(default=2, ge=1)
+    # At most this many of the final chunks may come from one file (0 = no limit).
+    retrieval_max_chunks_per_file: int = Field(default=3, ge=0)
     hybrid_rrf_k: int = 60
     hybrid_weight_vector: float = 0.5
     hybrid_weight_keyword: float = 0.3

@@ -73,6 +73,19 @@ def settings() -> Settings:
     return Settings(retrieval_candidate_k=17)
 
 
+ORIGINAL_IDENTIFYING_TERMS = KeywordRetriever._identifying_terms
+
+
+async def _every_long_word(self: KeywordRetriever, question: str, request: object) -> list[str]:
+    """Stand-in for the file-count query in tests about paths and merging (old meaning)."""
+    return [t for t in self._query_terms(question) if len(t) >= 5]
+
+
+@pytest.fixture(autouse=True)
+def _stub_file_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(KeywordRetriever, "_identifying_terms", _every_long_word)
+
+
 @pytest.fixture
 def mock_db() -> AsyncMock:
     return AsyncMock()
@@ -460,3 +473,95 @@ async def test_candidate_policy_preserves_legacy_merge_and_bounded_tool_order(re
         second,
     ]
     assert [h.chunk_id for h in await retriever._search_hits(bounded.query, bounded)] == [second]
+
+
+# ---- which question words count as naming a file ---------------------------------------------------
+
+
+def _awaited_args(mock: AsyncMock) -> tuple[object, ...]:
+    assert mock.await_args is not None
+    return tuple(mock.await_args.args)
+
+
+class _Row:
+    def __init__(self, *counts: int) -> None:
+        self._counts = counts
+
+    def one(self) -> tuple[int, ...]:
+        return self._counts
+
+
+@pytest.mark.asyncio
+async def test_identifying_terms_keeps_words_found_in_few_names_only(
+    mock_db: AsyncMock, settings: Settings
+) -> None:
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    # candidates are the words of 5+ letters, in question order: company, policy, handbook, document
+    mock_db.execute = AsyncMock(return_value=_Row(0, 5, 1, 2))
+    found = await ORIGINAL_IDENTIFYING_TERMS(
+        retriever, "In the company policy handbook document, how?", _request("x")
+    )
+    assert found == ["handbook", "document"]  # 0 files: no match; 5 files: generic
+
+
+@pytest.mark.asyncio
+async def test_identifying_terms_makes_no_query_without_long_words(
+    mock_db: AsyncMock, settings: Settings
+) -> None:
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    mock_db.execute = AsyncMock()
+    assert await ORIGINAL_IDENTIFYING_TERMS(retriever, "Who is the lead?", _request("x")) == []
+    mock_db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_identifying_terms_limit_comes_from_settings(mock_db: AsyncMock) -> None:
+    mock_db.execute = AsyncMock(return_value=_Row(3))
+    strict = KeywordRetriever(db=mock_db, settings=Settings(retrieval_name_term_max_files=2))
+    loose = KeywordRetriever(db=mock_db, settings=Settings(retrieval_name_term_max_files=3))
+    assert await ORIGINAL_IDENTIFYING_TERMS(strict, "policy", _request("x")) == []
+    assert await ORIGINAL_IDENTIFYING_TERMS(loose, "policy", _request("x")) == ["policy"]
+
+
+@pytest.mark.asyncio
+async def test_identifying_terms_query_is_owner_scoped_and_counts_distinct_files(
+    mock_db: AsyncMock, settings: Settings
+) -> None:
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    mock_db.execute = AsyncMock(return_value=_Row(1))
+    await ORIGINAL_IDENTIFYING_TERMS(retriever, "handbook", _request("x"))
+    sql = str(mock_db.execute.await_args.args[0])
+    assert "count(DISTINCT drive_files.id) FILTER" in sql
+    assert "drive_files.user_id =" in sql and "drive_files.status =" in sql
+
+
+@pytest.mark.asyncio
+async def test_only_identifying_words_reach_the_name_boost_and_the_name_path(
+    mock_db: AsyncMock, settings: Settings
+) -> None:
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    retriever._identifying_terms = AsyncMock(return_value=["handbook"])  # type: ignore[method-assign]
+    retriever._fts_hits = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    retriever._filename_only_hits_for_terms = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    await retriever._search_hits("What is in the handbook policy?", _request("x"))
+    assert _awaited_args(retriever._fts_hits)[3] == ["handbook"]
+    retriever._filename_only_hits_for_terms.assert_awaited_once_with(["handbook"], _request("x"))
+
+
+@pytest.mark.asyncio
+async def test_no_name_path_and_no_boost_when_no_word_identifies_a_file(
+    mock_db: AsyncMock, settings: Settings
+) -> None:
+    retriever = KeywordRetriever(db=mock_db, settings=settings)
+    retriever._identifying_terms = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    retriever._fts_hits = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    retriever._filename_only_hits_for_terms = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    await retriever._search_hits("Who is the Security Lead?", _request("x"))
+    assert _awaited_args(retriever._fts_hits)[3] == []
+    retriever._filename_only_hits_for_terms.assert_not_awaited()
+
+
+def test_name_boost_expression_is_false_without_terms_and_uses_each_term() -> None:
+    assert str(KeywordRetriever._filename_match_expression([])) == "false"
+    sql = str(KeywordRetriever._filename_match_expression(["handbook", "roadmap"]))
+    assert sql.count("LIKE") == 2 and " OR " in sql

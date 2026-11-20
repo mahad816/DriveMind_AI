@@ -33,6 +33,8 @@ Question → embed → Qdrant search → Postgres chunk hydrate → LLM answer �
 | `RETRIEVAL_TOP_K` | `8` | Max chunks retrieved from Qdrant |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Minimum similarity score for retrieval |
 | `RETRIEVAL_RELATIVE_THRESHOLD` | `0.7` | A vector hit must also score at least this fraction of the best hit (`0` = off) |
+| `RETRIEVAL_NAME_TERM_MAX_FILES` | `2` | A question word counts as naming a file only if it is in at most this many file names |
+| `RETRIEVAL_MAX_CHUNKS_PER_FILE` | `3` | At most this many final chunks from one file in an open search (`0` = no limit) |
 | `RAG_MAX_CONTEXT_CHARS` | `12000` | Max context sent to the LLM |
 
 Requires `OPENAI_API_KEY`, a built Qdrant index (`POST /api/v1/index/build`), and Google OAuth connected.
@@ -66,6 +68,8 @@ Question -> vector + keyword + metadata retrieval -> RRF merge -> weighted reran
 | `RETRIEVAL_TOP_K` | `8` | Final reranked chunks sent downstream |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Vector score floor and evidence weak-signal rule |
 | `RETRIEVAL_RELATIVE_THRESHOLD` | `0.7` | Drop vector hits scoring below this fraction of the best vector hit (`0` = off) |
+| `RETRIEVAL_NAME_TERM_MAX_FILES` | `2` | A question word (5+ letters) counts as naming a file only if it is in at most this many file names |
+| `RETRIEVAL_MAX_CHUNKS_PER_FILE` | `3` | At most this many final chunks from one file, except when the user chose the file(s) (`0` = no limit) |
 | `HYBRID_RRF_K` | `60` | Reciprocal rank fusion denominator constant |
 | `HYBRID_WEIGHT_VECTOR` | `0.5` | Weighted rerank contribution for vector scores |
 | `HYBRID_WEIGHT_KEYWORD` | `0.3` | Weighted rerank contribution for keyword scores |

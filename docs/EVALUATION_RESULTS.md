@@ -230,6 +230,53 @@ appends "Sources consulted:" with every file the search returned, so any retriev
 makes refusals look more cited. This was already true before (15 of 29 refusals were not clean); it is a separate
 defect, planned as Step 1d, not patched here.
 
+## Step 1b: file-name matching and crowding (2026-11-20)
+
+**In plain words.** Search had two bugs that pushed the wrong files up:
+1. If a word of the question appeared *inside* a file name, that file got a bonus. This included tiny words:
+   the word "is" appears inside "n-**is**-t", so every public NIST PDF got a free bonus on almost every
+   question and outranked small company files (this is why "Who is the Security Lead?" missed the team directory).
+   Generic words such as "policy" or "report" had the same effect: one such word pulled in every policy file.
+2. One long document could fill all 8 result slots, leaving no room for other files.
+
+Fixes: (a) a question word counts as naming a file only if it is at least 5 letters long **and** appears in the
+names of at most 2 of the user's files (new setting `RETRIEVAL_NAME_TERM_MAX_FILES=2`); this applies to both the
+file-name search and the +0.2 bonus; (b) at most 3 of the 8 results may come from one file (new setting
+`RETRIEVAL_MAX_CHUNKS_PER_FILE=3`, 0 = off). The cap is not applied when the user restricted the search to chosen
+files or named a file, because then many chunks of one file is what they want.
+
+**What was tried (retrieval probe, dev split; "ranked first" is out of 52 questions in a lead-in wording):**
+
+| Variant | Plain question: right file found | "In the company policy document, ..." ranked first | Verdict |
+|---|---|---|---|
+| Before (Step 1a state) | 55 / 56 | 20 | |
+| Name words limited to 1 file | 55 / 56 | 31 | loses a rank-1 on test |
+| **Name words limited to 2 files** | 55 / 56 | **32** | **chosen** (3 files gives the same) |
+| Name path switched off completely | 55 / 56 | 22 | worse: the path is useful when limited |
+| Metadata search returns only real matches | 55 / 56 | 15 | **rejected**: it made things worse, metadata search stays as is |
+| Cap of 3 (or 2) chunks per file | **56 / 56** | 20 | chosen (fixes `mx07`; 3 is safer for long documents) |
+| + bonus uses only identifying words | 56 / 56 | 32 | chosen (this is what fixes `sf07` on test) |
+
+Chosen combination, real code, plain questions: dev **56 / 56**, test **33 / 33** (was 55 / 56 and 32 / 33;
+`sf07`, missed in every earlier setting, is now found). In the lead-in wordings, "ranked first" for the
+policy-document wording goes 20 -> 32 of 52 (dev) and 10 -> 19 of 32 (test); quality score (MRR) 0.55 -> 0.75 (dev),
+0.52 -> 0.72 (test).
+
+**Agent level (does the answer improve?): no measurable change, and that is the honest result.** On the 13 cases
+whose retrieved files actually differ between the old and new code, run twice each, the same day: old 22 of 26
+case-runs pass, new 22 of 26. The two that fail either way have other causes: `mx07` needs two files and the agent
+searches once (Step 1c/2), `ca05` never searches (Step 2). So 1b makes retrieval cleaner and more robust to
+wording, but this small corpus does not turn that into more correct answers yet.
+
+**A finding about the evaluation itself (model drift).** A full dev run after 1b showed 77 passing against 79
+after 1a. Investigation: one of the three "new failures", `ca03` (a budget question), answers "Latest indexed file:
+security_policy.txt" because the agent's first move is to call the file-listing tool. It did this in 6 of 6 runs of
+the **old** Step 1a code run today, after passing 6 of 6 the evening before, so the cause is the chat model's
+behaviour changing over time, not 1b (the first move happens before any search). Another, `tr19` (an invention
+trap), invents "reports to the CEO" in 2 of 5 repeats of the same code, 3 of 5 refuse correctly. Lessons: single
+runs of the whole set cannot show a 2-case change; compare old and new on the same day, on the cases that differ,
+with repeats; yesterday's numbers cannot be reused as a baseline without re-running them.
+
 ## Intent gate — `intent_v1` (live)
 
 Question: can the small model call that runs before the document agent recognise greetings, thanks,

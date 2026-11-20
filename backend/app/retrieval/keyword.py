@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import case, false, func, or_, select
@@ -33,8 +34,8 @@ _FILENAME_EXT_RE = re.compile(
 # when vector search returns nothing.
 _FILENAME_ONLY_SCORE = 0.85
 
-# Minimum term length for the always-on filename ILIKE pass.  Shorter terms (e.g.
-# "me", "of", "tell") would match thousands of files — only scan with longer tokens.
+# Minimum term length for a question word to count as naming a file.  Shorter words (e.g.
+# "me", "of", "is") are substrings of countless names ("nist" contains "is").
 _MIN_FILENAME_TERM_LEN = 5
 
 # ── Phrase search constants ────────────────────────────────────────────────────
@@ -127,15 +128,17 @@ class KeywordRetriever:
     async def _search_hits(self, question: str, request: RetrievalRequest) -> list[KeywordHit]:
         """Return scored hits by merging FTS, filename-only, and phrase-search results.
 
-        Five paths (highest to lowest priority):
+        Five paths (highest to lowest priority).  A question word counts as naming a file
+        (filename-always path and the FTS name boost) only if it is long enough and appears in
+        the names of at most ``retrieval_name_term_max_files`` of the user's files, so generic
+        words such as "policy" or "report" cannot pull in every file that happens to contain them:
         - **Quoted-target path**: ``DriveFile.name ILIKE %target%`` for each quoted
           token in the question (e.g. ``Tell me about "HI"``).  Runs regardless of
           token length so even single-letter filenames are found.
         - **FTS path**: ``search_vector @@ ts_query`` ranking via ``websearch_to_tsquery``.
         - **Filename-explicit path**: ``DriveFile.name ILIKE %term%`` — activated when the
           question names a file with an extension (e.g. ``Resume_2024.pdf``).
-        - **Filename-always path**: same ILIKE search using tokens ≥ _MIN_FILENAME_TERM_LEN
-          chars to avoid false positives on common words ("me", "of", "tell").
+        - **Filename-always path**: same ILIKE search using only the identifying words.
         - **Phrase-search path**: ``Chunk.text ILIKE '%exact phrase%'`` — activated when
           the question contains a quoted phrase or a phrase-cue prefix.
         """
@@ -158,9 +161,11 @@ class KeywordRetriever:
         for hit in await self._date_hits(question, request):
             hits_by_id[hit.chunk_id] = hit
 
+        name_terms = await self._identifying_terms(question, request)
+
         # FTS path
         if ts_query is not None:
-            for hit in await self._fts_hits(question, ts_query, request):
+            for hit in await self._fts_hits(question, ts_query, request, name_terms):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
@@ -172,10 +177,9 @@ class KeywordRetriever:
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
 
-        # Filename-always path — use long tokens regardless of extension presence.
-        long_terms = [t for t in self._query_terms(question) if len(t) >= _MIN_FILENAME_TERM_LEN]
-        if long_terms and not has_filename:
-            for hit in await self._filename_only_hits_for_terms(long_terms, request):
+        # Filename-always path — words that identify a file by name, no extension needed.
+        if name_terms and not has_filename:
+            for hit in await self._filename_only_hits_for_terms(name_terms, request):
                 existing = hits_by_id.get(hit.chunk_id)
                 if existing is None or hit.score > existing.score:
                     hits_by_id[hit.chunk_id] = hit
@@ -213,14 +217,40 @@ class KeywordRetriever:
             KeywordHit(chunk_id=chunk_id, score=_FILENAME_ONLY_SCORE) for chunk_id in result.all()
         ]
 
+    async def _identifying_terms(self, question: str, request: RetrievalRequest) -> list[str]:
+        """Question words that name a file: long enough, and found in few of the user's file names.
+
+        One query counts, per candidate word, the eligible files whose name contains it. The same
+        ``%word%`` pattern is used by the searches that follow, so the count matches what they
+        would return.
+        """
+        candidates = [t for t in self._query_terms(question) if len(t) >= _MIN_FILENAME_TERM_LEN]
+        if not candidates:
+            return []
+        counts = (
+            await self.db.execute(
+                select(
+                    *[
+                        func.count(DriveFile.id.distinct()).filter(
+                            DriveFile.name.ilike(f"%{term}%")
+                        )
+                        for term in candidates
+                    ]
+                ).where(*eligibility(request))
+            )
+        ).one()
+        limit = self.settings.retrieval_name_term_max_files
+        return [term for term, count in zip(candidates, counts, strict=True) if 0 < count <= limit]
+
     async def _fts_hits(
         self,
         question: str,
         ts_query: ColumnElement[object],
         request: RetrievalRequest,
+        name_terms: Sequence[str] = (),
     ) -> list[KeywordHit]:
         """Run PostgreSQL full-text search and return ranked hits."""
-        filename_match = self._filename_match_expression(question)
+        filename_match = self._filename_match_expression(name_terms)
         keyword_rank = self._ts_rank_expression(ts_query)
         combined_score = keyword_rank + case((filename_match, 0.2), else_=0.0)
 
@@ -366,11 +396,11 @@ class KeywordRetriever:
     def _ts_rank_expression(self, ts_query: ColumnElement[object]) -> ColumnElement[float]:
         return func.ts_rank_cd(Chunk.search_vector, ts_query)
 
-    def _filename_match_expression(self, question: str) -> ColumnElement[bool]:
-        query_terms = self._query_terms(question)
-        if not query_terms:
+    @staticmethod
+    def _filename_match_expression(name_terms: Sequence[str]) -> ColumnElement[bool]:
+        if not name_terms:
             return false()
-        return or_(*[DriveFile.name.ilike(f"%{term}%") for term in query_terms])
+        return or_(*[DriveFile.name.ilike(f"%{term}%") for term in name_terms])
 
     @staticmethod
     def _query_terms(question: str) -> list[str]:
