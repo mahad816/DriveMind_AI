@@ -22,7 +22,6 @@ from evaluation.rag_eval.corpus import MIME
 
 from . import known_issue
 
-PDF_FIX = known_issue("KI-024", "PDF page furniture and ruled tables (fixed by A4)")
 XLSX_FIX = known_issue("KI-024", "XLSX is not read (fixed by A5)")
 
 _SEPARATOR = re.compile(r"^:?-{3,}:?$")
@@ -153,7 +152,6 @@ def test_xlsx_every_sheet_is_a_titled_table():
 # ---- PDF (A4) --------------------------------------------------------------------------------------------------
 
 
-@PDF_FIX
 def test_pdf_ruled_tables_become_markdown_tables():
     invoice = read("invoice_0457.pdf")
     assert_table(invoice, mf.INVOICE_ITEMS)
@@ -161,13 +159,11 @@ def test_pdf_ruled_tables_become_markdown_tables():
     assert_table(read("annual_report_2025.pdf"), mf.CLINICS_BY_COUNTRY)
 
 
-@PDF_FIX
 def test_pdf_running_header_is_not_repeated_on_every_page():
     text = read("annual_report_2025.pdf")
     assert text.count(mf.REPORT_HEADER) <= 1, "the running header is in every chunk's text"
 
 
-@PDF_FIX
 def test_pdf_page_numbers_are_not_part_of_the_text():
     """Single-digit values (clinic counts, ...) live inside table rows, so a bare digit line is a page number."""
     bare = [

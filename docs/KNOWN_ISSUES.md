@@ -43,14 +43,18 @@ Measured on the generated fixtures in `backend/evaluation/corpus/messy/`:
 - **DOCX: fixed in A2** (see Fixed below). Tables, headings and bullets are read; Google Docs are exported as DOCX.
 - **PPTX: fixed in A3** (see Fixed below).
 - **XLSX**: no reader exists, so these files are never ingested (A5).
-- **PDF**: the running header and page number are repeated in the text of every page, and ruled tables come out as one cell per line, with no row structure (A4).
+- **PDF: fixed in A4** (see Fixed below).
 
-Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A4 PDF header/footer removal and ruled tables, A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
+Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 
 ## Fixed
+### KI-024 (PDF part) — PDF headers, footers and page numbers repeated on every page; ruled tables lost their rows  *(fixed on branch `feat/extraction-a4-pdf`, Stage A4)*
+
+Running headers, footers and bare page numbers are removed (the first copy of a repeating header is kept as the title), pages are separated by a form-feed line, and tables drawn with ruling lines become Markdown tables, but only when the table's characters match the page text it replaces (otherwise the page keeps its flowing text, so nothing is lost or added). Tables drawn without lines stay flowing text. Measured on the 33 public PDFs: repeated header/footer lines removed on 982 of 982 page occurrences, 38 of 62 detected tables used, none of the 4 PDF evidence quotes of the old cases lost. Tests: `tests/ingestion/test_pdf_reader.py`, `test_pdf_furniture.py`, `test_pdf_tables.py` (ten deliberate breakages of the code were each caught) and the three former known-issue tests in `tests/known_issues/test_ki024_file_readers.py`. Existing PDFs are read again once because `EXTRACTION_PIPELINE_VERSION` is now 3.
+
 ### KI-024 (PPTX part) — PowerPoint files were not read at all  *(fixed on branch `feat/extraction-a3-pptx`, Stage A3)*
 
 PPTX and Google Slides were not a supported type, so decks were never indexed. They are now read slide by slide as light Markdown with tables and speaker notes (decisions and numbers often live only in the notes). Google Slides are exported as PPTX (plain text when Google refuses the export as too large). Tests: `tests/ingestion/test_pptx_extractor.py` (mutation-checked), `tests/connectors/test_google_drive_client.py`, `tests/known_issues/test_ki024_file_readers.py` (PPTX tests now ordinary regression tests). Existing decks need one full Drive scan to be discovered.

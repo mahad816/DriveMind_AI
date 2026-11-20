@@ -65,7 +65,7 @@ def test_extract_pdf_text_joins_multi_page_content(mock_reader_cls: MagicMock) -
 
     text, page_count = extract_pdf_text(b"%PDF-1.4 fake")
 
-    assert text == "Page one\n\nPage two"
+    assert text == "Page one\n\n\f\n\nPage two"
     assert page_count == 2
 
 

@@ -7,7 +7,8 @@ only the version is updated, and if it differs the normal chunk and embedding st
 
 History:
     1  every reader before the table-aware readers (legacy rows get this value in the migration)
-    2  DOCX keeps headings, lists and tables; Google Docs are exported as DOCX
+    2  DOCX keeps headings, lists and tables; Google Docs are exported as DOCX; PPTX and Google Slides
+    3  PDF: running headers, footers and page numbers removed; form-feed page separators; ruled tables
 """
 
-EXTRACTION_PIPELINE_VERSION = 2
+EXTRACTION_PIPELINE_VERSION = 3

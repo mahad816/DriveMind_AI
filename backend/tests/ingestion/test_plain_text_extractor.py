@@ -122,3 +122,15 @@ def test_normalize_extracted_text_drops_nul_but_keeps_everything_else() -> None:
 def test_plain_text_extractor_result_never_contains_nul() -> None:
     result = PlainTextExtractor().extract(b"before\x00after", mime_type=TXT_MIME, filename="a.txt")
     assert result.text == "beforeafter"
+
+
+def test_normalization_keeps_a_line_that_holds_only_a_form_feed_but_trims_other_trailing_space():
+    """PDF text separates pages with a form-feed line; plain rstrip would erase it (and shift offsets)."""
+    from app.ingestion.extractors.plain_text import normalize_extracted_text
+
+    assert normalize_extracted_text("page one  \n\f\npage two \t\n") == "page one\n\f\npage two"
+    assert normalize_extracted_text("a\n \f \nb") == "a\n\f\nb"
+    assert normalize_extracted_text("a\n\f\n\f\nb") == "a\n\f\n\f\nb"
+    assert normalize_extracted_text("a  \n   \nb") == "a\n\nb"  # ordinary blank lines are unchanged
+    once = normalize_extracted_text("x\n\f\ny")
+    assert normalize_extracted_text(once) == once  # the chunker normalizes again: must be stable

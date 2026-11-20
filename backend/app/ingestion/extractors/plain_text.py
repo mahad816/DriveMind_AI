@@ -17,6 +17,15 @@ def decode_plain_text_bytes(data: bytes) -> str:
         return data.decode("latin-1")
 
 
+def _trim_line(line: str) -> str:
+    """Trailing whitespace removed, except that a line holding a form-feed stays a form-feed.
+
+    A line with only ``\\f`` is the page separator of PDF text, and plain ``rstrip`` would erase it.
+    """
+    stripped = line.rstrip()
+    return "\f" if not stripped and "\f" in line else stripped
+
+
 def normalize_extracted_text(text: str) -> str:
     """Normalize line endings, drop NUL characters and trim trailing whitespace per line.
 
@@ -24,7 +33,7 @@ def normalize_extracted_text(text: str) -> str:
     emit it for large brackets, and one such character made the whole document unstorable.
     """
     normalized = text.replace("\x00", "").replace("\r\n", "\n").replace("\r", "\n")
-    lines = [line.rstrip() for line in normalized.split("\n")]
+    lines = [_trim_line(line) for line in normalized.split("\n")]
     while lines and lines[-1] == "":
         lines.pop()
     return "\n".join(lines)

@@ -875,7 +875,7 @@
    "evidence_anchors": [
     {
      "file": "messy/annual_report_2025.pdf",
-     "quote": "Revenue (USD) | 1,210,000 | 1,840,000"
+     "quote": "1,840,000"
     }
    ],
    "computed": false,
@@ -903,11 +903,11 @@
    "evidence_anchors": [
     {
      "file": "messy/annual_report_2025.pdf",
-     "quote": "Revenue (USD) | 1,210,000 | 1,840,000"
+     "quote": "1,840,000"
     },
     {
      "file": "messy/annual_report_2025.pdf",
-     "quote": "Operating costs (USD) | 1,150,000 | 1,520,000"
+     "quote": "1,520,000"
     }
    ],
    "computed": true,
