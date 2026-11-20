@@ -297,3 +297,14 @@ Needs your word:
 - LLM vs cross-encoder re-ranking (vendor benchmark): https://zeroentropy.dev/articles/should-you-use-llms-for-reranking-a-deep-dive-into-pointwise-listwise-and-cross-encoders
 - OpenAI embedding v3 figures (via Pinecone): https://www.pinecone.io/learn/openai-embeddings-v3/
 - PDF extractor comparison (blogs): https://unstract.com/blog/extract-tables-from-pdf-python/
+
+
+## A2 as built (2026-11-20)
+
+DOCX reader (`app/ingestion/extractors/docx.py`) returns light Markdown in document order: `Title`/`Heading N` styles become `#`..`######`; list items (paragraph numbering, or a list style such as "List Bullet", with numbering switched off honoured) become `- ` with two spaces per level; tables become `| a | b |` rows with a header row and separator; a merged cell keeps its text once and the cells it covers are empty; nested tables are flattened into their cell; `|` in a cell is escaped; empty tables are dropped; content controls are read. Headers, footers, text boxes, footnotes, comments and images are not read; numbered lists lose their numbers. Blocks are separated by a blank line (list items by a single newline), which is what the chunker prefers to cut at.
+
+Google Docs are exported as DOCX; if Drive answers `exportSizeLimitExceeded` (about 10 MB, image-heavy documents) the plain-text export is used instead, so such a Doc is not turned into a failure. The reader is chosen by the type of the bytes actually received (`DriveFileContent.mime_type`), not by the Drive type; no extractor is registered for the Google Docs type any more.
+
+`documents.pipeline_version` (migration `20261120_1200`, existing rows = 1; code constant `EXTRACTION_PIPELINE_VERSION = 2` in `app/ingestion/pipeline_version.py`). Indexed files whose document is older are listed by ingest and counted in `to_ingest` through one shared SQL condition (`app/services/ingestion_queries.py`), re-read once, and: identical text means only the version is stamped (file stays indexed, chunks untouched); different text means the normal path (file becomes INDEXING, then chunk and build). A failed re-read marks the file FAILED like any other failure.
+
+Not verified yet: a real Google Doc exported as DOCX (needs a real Drive file; the fixture DOCX was made with python-docx, which is not the same producer).

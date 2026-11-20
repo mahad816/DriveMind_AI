@@ -38,18 +38,22 @@ something known without a test (or say plainly that it is *unreproduced*).
 
 ### KI-024 — File readers lose tables and slide notes, repeat page headers, and skip PPTX and XLSX  *(ingestion quality, backend, tests in `tests/known_issues/test_ki024_file_readers.py`)*
 
-The readers return plain text only. Measured on the generated fixtures in `backend/evaluation/corpus/messy/`:
+Measured on the generated fixtures in `backend/evaluation/corpus/messy/`:
 
-- **DOCX**: tables are dropped completely (a fee table in a Word file cannot be found), and headings and bullets lose their markers.
-- **PPTX and XLSX**: no reader exists, so these files are never ingested.
-- **PDF**: the running header and page number are repeated in the text of every page, and ruled tables come out as one cell per line, with no row structure.
+- **DOCX: fixed in A2** (see Fixed below). Tables, headings and bullets are read; Google Docs are exported as DOCX.
+- **PPTX and XLSX**: no reader exists, so these files are never ingested (A3 and A5).
+- **PDF**: the running header and page number are repeated in the text of every page, and ruled tables come out as one cell per line, with no row structure (A4).
 
-Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A2 DOCX (also Google Docs), A3 PPTX (also Google Slides, with speaker notes), A4 PDF header/footer removal and ruled tables, A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
+Fix plan (`docs/RETRIEVAL_FOUNDATIONS_PLAN.md`): A3 PPTX (also Google Slides, with speaker notes), A4 PDF header/footer removal and ruled tables, A5 XLSX (also Google Sheets). Each step removes its own `@known_issue` markers. Out of scope for now: scanned documents (OCR) and complex layouts.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
 
 ## Fixed
+### KI-024 (DOCX part) — Word tables, headings and bullets were dropped  *(fixed on branch `feat/extraction-a2-docx`, Stage A2)*
+
+The DOCX reader returned paragraph text only, so a fee table in a Word file could not be found. It now returns light Markdown in document order (headings, bullets, tables with a header row; merged cells keep their text once; nested tables are flattened). Google Docs are exported as DOCX instead of plain text (plain text only when Google refuses the DOCX export as too large). Documents now carry a `pipeline_version`; indexed files read by the older pipeline are read again once. Tests: `tests/ingestion/test_docx_structure.py`, `tests/known_issues/test_ki024_file_readers.py` (DOCX tests now ordinary regression tests), `tests/security/test_document_pipeline_version_pg.py`.
+
 ### KI-023 — A content question was answered with only "Latest indexed file: X"  *(fixed on branch `fix/agent-tools-and-refusals`, Step 1c)*
 - **Was:** "How much was spent in the first half of 2026, and how much of the total budget is left?" was answered with `Latest indexed file: security_policy.txt`. The model's first tool call was the file-listing tool (`files_query LATEST`) in about half of identical calls (3 of 6 at temperature 0), and any listing result forces metadata-only output, so the question was never searched.
 - **Fix:** `app/agents/tool_rag/registry.py`: the `files_query` description now says it works from file metadata only, cannot read document text, and must not be used when the answer is written inside a document, even if the question mentions a year or "latest". `search_knowledge` describes itself as the tool for any question answered by document text.

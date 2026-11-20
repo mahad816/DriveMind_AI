@@ -13,7 +13,7 @@ import pytest
 from tests.credential_fixtures import synthetic_oauth_row
 
 from app.connectors.google_drive.client import DriveClientError
-from app.connectors.google_drive.constants import GOOGLE_DOC_MIME, PDF_MIME
+from app.connectors.google_drive.constants import DOCX_MIME, GOOGLE_DOC_MIME, PDF_MIME
 from app.db.enums import DriveFileStatus
 from app.db.models.drive_file import DriveFile
 from app.db.models.user import User
@@ -72,7 +72,7 @@ async def test_fetch_file_content_returns_bytes(
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
-    mock_client.get_file_content.return_value = b"%PDF-1.4"
+    mock_client.get_file_content_with_type.return_value = (b"%PDF-1.4", PDF_MIME)
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
         result = await service.fetch_file_content(file_id=FILE_ID)
@@ -82,7 +82,7 @@ async def test_fetch_file_content_returns_bytes(
     assert result.filename == "resume.pdf"
     assert result.drive_file_id == "gdrive-file-1"
     assert result.grant_id == TOKEN_ROW.id and result.grant_epoch == TOKEN_ROW.grant_epoch
-    mock_client.get_file_content.assert_called_once_with("gdrive-file-1", PDF_MIME)
+    mock_client.get_file_content_with_type.assert_called_once_with("gdrive-file-1", PDF_MIME)
     # Reads must not commit writes accumulated by the caller (managed ingestion
     # additionally supplies an independent download session).
     mock_db.commit.assert_not_awaited()
@@ -106,13 +106,39 @@ async def test_fetch_file_content_exports_google_doc(
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
-    mock_client.get_file_content.return_value = b"Hello from doc"
+    mock_client.get_file_content_with_type.return_value = (b"docx bytes", DOCX_MIME)
+
+    with patch.object(service, "_build_drive_client", return_value=mock_client):
+        result = await service.fetch_file_content(file_id=FILE_ID)
+
+    assert result.mime_type == DOCX_MIME
+    assert result.data == b"docx bytes"
+
+
+@pytest.mark.asyncio
+async def test_fetch_file_content_reports_the_type_that_was_really_returned(
+    service: DriveContentService,
+    mock_db: AsyncMock,
+) -> None:
+    """A big Google Doc comes back as plain text; the caller must read it as text, not DOCX."""
+    google_doc = DriveFile(
+        id=FILE_ID,
+        user_id=USER_ID,
+        drive_file_id="gdrive-doc",
+        name="Big notes",
+        mime_type=GOOGLE_DOC_MIME,
+        modified_at=datetime.now(UTC),
+        status=DriveFileStatus.DISCOVERED,
+    )
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, google_doc, TOKEN_ROW])
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_client = MagicMock()
+    mock_client.get_file_content_with_type.return_value = (b"just text", "text/plain")
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
         result = await service.fetch_file_content(file_id=FILE_ID)
 
     assert result.mime_type == "text/plain"
-    assert result.data == b"Hello from doc"
 
 
 @pytest.mark.asyncio
@@ -146,7 +172,9 @@ async def test_fetch_file_content_propagates_drive_error(
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
-    mock_client.get_file_content.side_effect = DriveClientError("Drive file download failed")
+    mock_client.get_file_content_with_type.side_effect = DriveClientError(
+        "Drive file download failed"
+    )
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
         with pytest.raises(DriveClientError, match="download failed"):

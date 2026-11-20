@@ -48,12 +48,12 @@ def _fresh_registry() -> Generator[None, None, None]:
 
 def test_extract_docx_text_reads_paragraphs() -> None:
     text = extract_docx_text(_docx_bytes("Intro paragraph", "Details paragraph"))
-    assert text == "Intro paragraph\nDetails paragraph"
+    assert text == "Intro paragraph\n\nDetails paragraph"
 
 
 def test_extract_docx_text_normalizes_trailing_whitespace() -> None:
     text = extract_docx_text(_docx_bytes("Heading  ", "Body line  "))
-    assert text == "Heading\nBody line"
+    assert text == "Heading\n\nBody line"
 
 
 def test_extract_docx_text_returns_empty_string_for_blank_document() -> None:
@@ -97,7 +97,10 @@ def test_builtin_registration_includes_plain_pdf_and_docx_extractors() -> None:
     register_builtin_extractors()
 
     registered = registered_mime_types()
-    assert {TXT_MIME, GOOGLE_DOC_MIME, PDF_MIME, DOCX_MIME}.issubset(registered)
+    assert {TXT_MIME, PDF_MIME, DOCX_MIME}.issubset(registered)
+    assert (
+        GOOGLE_DOC_MIME not in registered
+    )  # Google Docs are exported, then read by their real type
 
     docx_result = get_extractor(DOCX_MIME).extract(
         _docx_bytes("DriveMind DOCX test"),

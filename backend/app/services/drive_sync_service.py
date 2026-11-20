@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 
@@ -31,6 +31,7 @@ from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
 from app.demo.service import DemoCorpusService
+from app.services.ingestion_queries import stale_pipeline_clause
 from app.services.user_resolution import resolve_active_user
 
 SyncMode = Literal["full", "incremental"]
@@ -457,7 +458,8 @@ class DriveSyncService:
         The frontend uses this to skip steps that have no pending work, making
         routine "one new file" syncs dramatically faster.
 
-        - ``to_ingest``: files in DISCOVERED / FAILED state (need download + extract)
+        - ``to_ingest``: files in DISCOVERED / FAILED state (need download + extract), and indexed
+          files whose text came from an older extraction pipeline (read again once)
         - ``to_chunk``:  files in INDEXING that have a Document but no matching chunks
         - ``to_build``:  files in INDEXING whose chunks haven't been embedded into Qdrant yet
         """
@@ -474,7 +476,10 @@ class DriveSyncService:
             await self.db.scalar(
                 select(func.count(DriveFile.id)).where(
                     DriveFile.user_id == uid,
-                    DriveFile.status.in_([DriveFileStatus.DISCOVERED, DriveFileStatus.FAILED]),
+                    or_(
+                        DriveFile.status.in_([DriveFileStatus.DISCOVERED, DriveFileStatus.FAILED]),
+                        stale_pipeline_clause(),
+                    ),
                 )
             )
             or 0

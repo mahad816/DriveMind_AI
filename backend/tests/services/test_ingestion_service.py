@@ -10,12 +10,13 @@ import pytest
 
 from tests.credential_fixtures import synthetic_oauth_row
 
-from app.connectors.google_drive.constants import PDF_MIME, TXT_MIME
+from app.connectors.google_drive.constants import DOCX_MIME, GOOGLE_DOC_MIME, PDF_MIME, TXT_MIME
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
+from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
 from app.ingestion.extractors.base import ExtractionError, ExtractionResult
 from app.ingestion.hash_util import compute_extracted_text_hash
 from app.services.drive_content_service import DriveFileContent
@@ -127,6 +128,7 @@ async def test_ingest_files_skips_when_text_hash_unchanged(
         extracted_text="hello world",
         extracted_text_hash=compute_extracted_text_hash("hello world"),
         page_count=None,
+        pipeline_version=EXTRACTION_PIPELINE_VERSION,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
@@ -391,3 +393,34 @@ async def test_ingest_files_unexpected_exception_fails_job_with_error(
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
     assert job.error == "ingestion job failed (unexpected_failure)."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("delivered", "expected_reader"),
+    [(DOCX_MIME, DOCX_MIME), (TXT_MIME, TXT_MIME)],
+    ids=["google doc exported as docx", "big google doc exported as plain text"],
+)
+async def test_a_google_doc_is_read_by_the_type_of_the_bytes_it_arrived_as(
+    service: IngestionService,
+    mock_db: AsyncMock,
+    mock_content_service: AsyncMock,
+    delivered: str,
+    expected_reader: str,
+) -> None:
+    drive_file = _drive_file(mime_type=GOOGLE_DOC_MIME)
+    mock_db.get = AsyncMock(return_value=USER)
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_content_service.fetch_file_content = AsyncMock(
+        return_value=DriveFileContent(
+            data=b"bytes", mime_type=delivered, filename="Notes", drive_file_id="gdrive-file-1"
+        )
+    )
+
+    with patch("app.services.ingestion_service.get_extractor") as mock_get_extractor:
+        mock_get_extractor.return_value.extract.return_value = ExtractionResult(text="text")
+        result = await service.ingest_files(file_id=FILE_ID)
+
+    assert result.ingested == 1
+    mock_get_extractor.assert_called_once_with(expected_reader)
+    assert mock_get_extractor.return_value.extract.call_args.kwargs["mime_type"] == expected_reader

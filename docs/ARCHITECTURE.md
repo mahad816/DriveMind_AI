@@ -40,10 +40,10 @@ See the [Retrieval guide](guides/RETRIEVAL.md) for the [answer-flow diagram](gui
 
 | Type | Extraction |
 |------|------------|
-| Google Docs | Drive export to plain text |
+| Google Docs | Drive export as DOCX, read like a DOCX (plain-text export only when Google refuses the DOCX export as too large) |
 | TXT | Text decode |
 | PDF | Text extraction; scanned PDFs have no OCR fallback |
-| DOCX | Paragraph extraction |
+| DOCX | Body in order as light Markdown: headings (`#`), bullets (`- `), tables (`| a | b |` with a header row). Headers, footers, text boxes and images are not read |
 | Images | Tesseract OCR |
 
 Drive retains the original files. PostgreSQL retains extracted text and chunks; Qdrant retains vector-search representations.

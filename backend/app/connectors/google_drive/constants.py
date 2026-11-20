@@ -32,8 +32,11 @@ SUPPORTED_MIME_TYPES: frozenset[str] = frozenset(
     | set(IMAGE_MIME_TYPES)
 )
 
-# Default export target when reading Google Docs content for ingestion.
-GOOGLE_DOC_EXPORT_MIME = "text/plain"
+# Google Docs are exported as DOCX so tables, headings and lists survive (the plain-text export
+# drops table structure). Google refuses exports over about 10 MB (image-heavy documents); the
+# plain-text export of the same document is then used instead of failing the file.
+GOOGLE_DOC_EXPORT_MIME = DOCX_MIME
+GOOGLE_DOC_TEXT_EXPORT_MIME = "text/plain"
 
 # Fields requested from the Drive API for each file. Kept minimal and read-only.
 FILE_FIELDS = (
@@ -65,7 +68,11 @@ def requires_export(mime_type: str) -> bool:
 
 
 def output_content_mime_type(source_mime_type: str) -> str:
-    """Return the MIME type of bytes produced when reading a supported file."""
+    """Return the usual MIME type of bytes produced when reading a supported file.
+
+    A Google Doc normally arrives as DOCX; ``GoogleDriveClient.get_file_content_with_type`` reports
+    the type that was really returned when the plain-text fallback had to be used.
+    """
     if source_mime_type == GOOGLE_DOC_MIME:
         return GOOGLE_DOC_EXPORT_MIME
     return source_mime_type

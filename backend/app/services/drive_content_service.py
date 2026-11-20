@@ -13,7 +13,7 @@ from app.connectors.google_drive.client import (
     DriveClientError,
     GoogleDriveClient,
 )
-from app.connectors.google_drive.constants import is_supported_mime_type, output_content_mime_type
+from app.connectors.google_drive.constants import is_supported_mime_type
 from app.services.google_credential_service import GoogleCredentialService
 from app.services.google_credential_repository import CredentialSnapshot
 from app.core.config import Settings, get_settings
@@ -105,8 +105,8 @@ class DriveContentService:
         # never commit unrelated writes accumulated by its caller.
 
         try:
-            data = await asyncio.to_thread(
-                client.get_file_content,
+            data, content_mime_type = await asyncio.to_thread(
+                client.get_file_content_with_type,
                 drive_file.drive_file_id,
                 drive_file.mime_type,
             )
@@ -115,7 +115,7 @@ class DriveContentService:
 
         return DriveFileContent(
             data=data,
-            mime_type=output_content_mime_type(drive_file.mime_type),
+            mime_type=content_mime_type,
             filename=drive_file.name,
             drive_file_id=drive_file.drive_file_id,
             grant_id=token_row.record.id,

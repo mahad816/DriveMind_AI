@@ -15,7 +15,7 @@ from app.ingestion.extractors import (
     register_plain_text_extractors,
     reset_builtin_extractors,
 )
-from app.ingestion.extractors.base import ExtractionError
+from app.ingestion.extractors.base import ExtractionError, UnsupportedMimeTypeError
 
 
 @pytest.fixture(autouse=True)
@@ -75,16 +75,11 @@ def test_extract_txt_file_returns_normalized_text() -> None:
     assert result.metadata["source_mime_type"] == TXT_MIME
 
 
-def test_extract_google_doc_export_bytes() -> None:
+def test_a_google_doc_type_is_not_read_as_plain_text() -> None:
+    """Google Docs arrive as DOCX bytes; reading those as text would store zip garbage."""
     extractor = PlainTextExtractor()
-    result = extractor.extract(
-        b"Google Doc export\r\nSecond paragraph",
-        mime_type=GOOGLE_DOC_MIME,
-        filename="meeting-notes",
-    )
-
-    assert result.text == "Google Doc export\nSecond paragraph"
-    assert result.metadata["source_mime_type"] == GOOGLE_DOC_MIME
+    with pytest.raises(ExtractionError, match="does not support MIME type"):
+        extractor.extract(b"PK\x03\x04", mime_type=GOOGLE_DOC_MIME, filename="notes")
 
 
 def test_extract_empty_txt_file_returns_empty_string() -> None:
@@ -99,7 +94,7 @@ def test_extract_rejects_unsupported_mime_type() -> None:
         extractor.extract(b"%PDF", mime_type=PDF_MIME, filename="file.pdf")
 
 
-def test_builtin_registration_exposes_txt_and_google_doc_extractors() -> None:
+def test_builtin_registration_exposes_the_txt_extractor_but_not_one_for_google_docs() -> None:
     clear_extractors()
     reset_builtin_extractors()
     register_builtin_extractors()
@@ -109,14 +104,10 @@ def test_builtin_registration_exposes_txt_and_google_doc_extractors() -> None:
         mime_type=TXT_MIME,
         filename="a.txt",
     )
-    doc_result = get_extractor(GOOGLE_DOC_MIME).extract(
-        b"hello doc",
-        mime_type=GOOGLE_DOC_MIME,
-        filename="a-doc",
-    )
 
     assert txt_result.text == "hello txt"
-    assert doc_result.text == "hello doc"
+    with pytest.raises(UnsupportedMimeTypeError):
+        get_extractor(GOOGLE_DOC_MIME)
 
 
 def test_normalize_extracted_text_drops_nul_but_keeps_everything_else() -> None:

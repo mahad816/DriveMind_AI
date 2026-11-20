@@ -104,7 +104,7 @@ async def test_migrations_preserve_password_and_do_not_leak(migration_database, 
         assert code == 0, "Migration failed; output withheld to protect credentials"
         async with engine.connect() as db:
             assert (
-                await db.scalar(text("SELECT version_num FROM alembic_version")) == "20261015_1200"
+                await db.scalar(text("SELECT version_num FROM alembic_version")) == "20261120_1200"
             )
             assert await db.scalar(text("SELECT count(*) FROM conversations")) == 0
             assert await db.scalar(text("SELECT count(*) FROM conversation_turns")) == 0

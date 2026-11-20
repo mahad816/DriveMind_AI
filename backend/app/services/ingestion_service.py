@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.google_drive.client import DriveClientError
@@ -28,6 +28,8 @@ from app.ingestion.extractors import (
     get_extractor,
 )
 from app.ingestion.hash_util import compute_extracted_text_hash
+from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
+from app.services.ingestion_queries import stale_pipeline_clause
 from app.services.drive_content_service import DriveContentService, DriveFileContent
 
 
@@ -93,18 +95,22 @@ class IngestionService:
 
         INDEXED files whose content hasn't changed are skipped — the sync step
         already resets them to DISCOVERED when their Drive modified_at changes.
-        This avoids re-downloading hundreds of unchanged files on every run.
+        This avoids re-downloading hundreds of unchanged files on every run. The exception is
+        an INDEXED file whose text came from an older extraction pipeline: it is read again once.
         """
         result = await self.db.scalars(
             select(DriveFile)
             .where(
                 DriveFile.user_id == user_id,
-                DriveFile.status.in_(
-                    [
-                        DriveFileStatus.DISCOVERED,
-                        DriveFileStatus.INDEXING,
-                        DriveFileStatus.FAILED,
-                    ]
+                or_(
+                    DriveFile.status.in_(
+                        [
+                            DriveFileStatus.DISCOVERED,
+                            DriveFileStatus.INDEXING,
+                            DriveFileStatus.FAILED,
+                        ]
+                    ),
+                    stale_pipeline_clause(),
                 ),
                 DriveFile.mime_type.in_(list(SUPPORTED_MIME_TYPES)),
             )
@@ -126,9 +132,12 @@ class IngestionService:
         """Return True if the document's extracted text is still fresh.
 
         Compares document.updated_at with drive_file.modified_at so we can skip
-        the expensive Google Drive download when neither has changed.
+        the expensive Google Drive download when neither has changed. A document read by an
+        older extraction pipeline is never current: its text may be missing tables or structure.
         """
         if not document.extracted_text.strip():
+            return False
+        if document.pipeline_version < EXTRACTION_PIPELINE_VERSION:
             return False
         doc_ts = document.updated_at
         file_ts = drive_file.modified_at
@@ -172,11 +181,13 @@ class IngestionService:
                 drive_file.id,
                 user_id=drive_file.user_id,
             )
-            extractor = get_extractor(drive_file.mime_type)
+            # Read the bytes by what they are, not by what Drive calls the file: a Google Doc
+            # arrives as DOCX (or as plain text when it was too large to export as DOCX).
+            extractor = get_extractor(content.mime_type)
             extraction = await asyncio.to_thread(
                 extractor.extract,
                 content.data,
-                mime_type=drive_file.mime_type,
+                mime_type=content.mime_type,
                 filename=drive_file.name,
             )
         except (ValueError, DriveClientError, UnsupportedMimeTypeError, ExtractionError):
@@ -197,14 +208,18 @@ class IngestionService:
         text_hash = compute_extracted_text_hash(extraction.text)
 
         if existing is not None and existing.extracted_text_hash == text_hash:
-            # Downloaded but hash still matches — content really hasn't changed.
-            drive_file.status = DriveFileStatus.INDEXING
+            # Downloaded but hash still matches — content really hasn't changed. Record that the
+            # current pipeline produced it; an indexed file stays indexed (chunks are still right).
+            existing.pipeline_version = EXTRACTION_PIPELINE_VERSION
+            if drive_file.status != DriveFileStatus.INDEXED:
+                drive_file.status = DriveFileStatus.INDEXING
             return "unchanged"
 
         if existing is not None:
             existing.extracted_text = extraction.text
             existing.extracted_text_hash = text_hash
             existing.page_count = extraction.page_count
+            existing.pipeline_version = EXTRACTION_PIPELINE_VERSION
         else:
             self.db.add(
                 Document(
@@ -212,6 +227,7 @@ class IngestionService:
                     extracted_text=extraction.text,
                     extracted_text_hash=text_hash,
                     page_count=extraction.page_count,
+                    pipeline_version=EXTRACTION_PIPELINE_VERSION,
                 )
             )
 
