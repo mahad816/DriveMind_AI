@@ -4,7 +4,7 @@
 **What to build:** The Owner knows what Preparation does end to end today, which of the v1 spec's Preparation and File-state requirements exist, are partial or are missing, whether Unsupported files are shown, and what could trigger expensive reprocessing, so M6 builds only what is missing.
 **Blocked by:** None (can start immediately).
 **Status:** ready-for-agent
-**Progress:** awaiting-owner-acceptance
+**Progress:** resolved
 
 ## Scope
 
@@ -127,3 +127,17 @@ Costs involved per file: a Drive download or export (Drive API, bandwidth), extr
 - Whether the "queue refuses indexed files" gap is intended beta policy ("Conservative beta policy" comment, `single-file-preparation.ts:45`) or a gap is an Owner decision for M6.
 
 ## Comments
+
+### Independent review (2026-11-21)
+
+Standards and Spec reviews were run by two separate sub-agents on commit `603c93c`. Corrections (button labels, the "may be out of date" string and its path, the folder-search nuance, the demo-loader wording, jargon, one more documentation contradiction, the invalid `Progress:` value) and one **missed reprocessing trigger** (a Drive check resets every `SKIPPED` file that Drive still lists to `DISCOVERED`; `INDEXING` files are also re-ingested) are in commit `35d1458`. The reviewers found no scope creep and no application code change. Two minor points were left as they are: caveats also appear inline next to the claims they qualify, in addition to section 6; and the scale estimate is "none" because no source count exists.
+
+### Owner decisions (2026-11-21)
+
+1. **Re-preparation restriction.** Refusing to re-prepare Prepared, Failed and Skipped files is a temporary, conservative beta policy, not the intended final behaviour.
+2. **M6 must provide** explicit, safe, user-initiated re-preparation and retry. Prepared files must be re-preparable; Failed and Skipped files must be retryable when the underlying cause allows it.
+3. **Manual initiation stays.** Page loading, ordinary navigation and a Drive check must never automatically trigger paid preparation or embedding.
+4. **M6 also addresses** persistent exclusions, visible Unsupported states, meaningful failure reasons and stale-file handling. Note for M6 from this audit: the single `skipped` value currently mixes several causes, and a Drive check resets skipped files.
+5. **Embedding compatibility.** Mixing embeddings from different model configurations is a correctness risk. The need for compatibility and version checks (record the embedding model and dimension per chunk or collection, and refuse or re-embed on mismatch) is to be recorded in the appropriate milestone (M6 or the milestone that owns indexing correctness; for the owner to assign when `docs/specs` is next updated). The embedding model is **not** changed in M0.
+6. **Reprocessing safety.** Reprocessing must prevent duplicate concurrent jobs (the one-unresolved-job-per-owner rule already does this at admission; keep it) and, where feasible, preserve the last usable indexed version until a replacement succeeds. Today an edited file leaves retrieval until re-prepared (section 3, row 15), which this decision asks M6 to improve.
+7. **No Railway restart and no cost estimates** from unavailable hosted data. The future beta deployment may be rebuilt cleanly after the audit.
