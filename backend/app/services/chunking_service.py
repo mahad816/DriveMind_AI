@@ -15,9 +15,9 @@ from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
 from app.db.models.drive_file import DriveFile
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
+from app.services.user_resolution import resolve_active_user
 from app.ingestion.chunking import ChunkingConfig, TextChunk, chunk_text
 
 
@@ -48,19 +48,7 @@ class ChunkingService:
         self.chunking_config = chunking_config or ChunkingConfig()
 
     async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
-        if user_id is not None:
-            user = await self.db.get(User, user_id)
-            if user is None:
-                raise ValueError("User not found")
-            return user
-
-        token_row = await self.db.scalar(select(GoogleOAuthToken).limit(1))
-        if token_row is None:
-            raise ValueError("No Google Drive connection found. Complete OAuth first.")
-        user = await self.db.get(User, token_row.user_id)
-        if user is None:
-            raise ValueError("Connected Google account has no user record")
-        return user
+        return await resolve_active_user(self.db, self.settings, user_id)
 
     async def _get_drive_file(self, user_id: uuid.UUID, file_id: uuid.UUID) -> DriveFile:
         drive_file = await self.db.scalar(

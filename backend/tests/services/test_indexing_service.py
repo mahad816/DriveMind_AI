@@ -9,8 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from tests.credential_fixtures import synthetic_oauth_row
-
 from app.core.config import Settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.chunk import Chunk
@@ -28,14 +26,6 @@ FILE_ID = uuid.uuid4()
 DOCUMENT_ID = uuid.uuid4()
 CHUNK_ID = uuid.uuid4()
 USER = User(id=USER_ID, email="user@example.com", google_id="gid-1")
-TOKEN_ROW = synthetic_oauth_row(
-    id=uuid.uuid4(),
-    user_id=USER_ID,
-    access_token="access",
-    refresh_token="refresh",
-    token_expiry=datetime.now(UTC),
-    scopes="https://www.googleapis.com/auth/drive.readonly",
-)
 
 
 def _drive_file(
@@ -164,12 +154,12 @@ async def test_build_index_embeds_new_chunks(
     document = _document()
     chunk = _chunk(text="hello world", text_hash=document.extracted_text_hash)
     mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[chunk])),
     )
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.embedded == 1
     assert result.unchanged == 0
@@ -198,7 +188,7 @@ async def test_build_index_skips_unchanged_vectors(
     document = _document()
     chunk = _chunk(text="hello world", text_hash=document.extracted_text_hash)
     mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[chunk])),
     )
@@ -206,7 +196,7 @@ async def test_build_index_skips_unchanged_vectors(
         return_value={CHUNK_ID: document.extracted_text_hash},
     )
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.embedded == 0
     assert result.unchanged == 1
@@ -222,9 +212,9 @@ async def test_build_index_skips_file_without_document(
 ) -> None:
     drive_file = _drive_file()
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.skipped == 1
     assert result.embedded == 0
@@ -246,12 +236,12 @@ async def test_build_index_explicit_skipped_file_does_not_index_stale_chunks(
         text_hash=stale_document.extracted_text_hash,
     )
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, stale_document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
     )
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.embedded == 0
     assert result.unchanged == 0
@@ -259,7 +249,7 @@ async def test_build_index_explicit_skipped_file_does_not_index_stale_chunks(
     assert result.failed == 0
     assert drive_file.status == DriveFileStatus.SKIPPED
     assert _added_jobs(mock_db)[0].status == IndexingJobStatus.COMPLETED
-    assert mock_db.scalar.await_count == 2
+    assert mock_db.scalar.await_count == 1
     mock_db.scalars.assert_not_awaited()
     mock_chunking.sync_document_chunks.assert_not_awaited()
     mock_embedding.embed_texts.assert_not_awaited()
@@ -285,19 +275,19 @@ async def test_build_index_explicit_non_indexing_file_does_not_index_stale_chunk
         text_hash=stale_document.extracted_text_hash,
     )
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, stale_document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
     )
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.embedded == 0
     assert result.unchanged == 0
     assert result.skipped == 1
     assert result.failed == 0
     assert drive_file.status == status
-    assert mock_db.scalar.await_count == 2
+    assert mock_db.scalar.await_count == 1
     mock_db.scalars.assert_not_awaited()
     mock_chunking.sync_document_chunks.assert_not_awaited()
     mock_embedding.embed_texts.assert_not_awaited()
@@ -336,13 +326,13 @@ async def test_build_index_reembeds_when_hash_changes(
     document = _document(text="updated content")
     chunk = _chunk(text="updated content", text_hash=document.extracted_text_hash)
     mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[chunk])),
     )
     mock_vector_store.get_stored_hashes = AsyncMock(return_value={CHUNK_ID: "stale-hash"})
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.embedded == 1
     assert result.unchanged == 0
@@ -357,7 +347,7 @@ async def test_build_index_batch_processes_documents(
     mock_embedding: AsyncMock,
 ) -> None:
     _configure_two_document_build(mock_db)
-    result = await service.build_index()
+    result = await service.build_index(user_id=USER_ID)
 
     assert result.total == 2
     assert result.embedded == 2
@@ -377,7 +367,7 @@ async def test_build_index_continues_after_document_failure(
         side_effect=[VectorStoreError("Qdrant rejected vector upsert"), None],
     )
 
-    result = await service.build_index()
+    result = await service.build_index(user_id=USER_ID)
 
     assert result.total == 2
     assert result.embedded == 1
@@ -394,12 +384,12 @@ async def test_build_index_zero_chunks_marks_indexing_file_skipped(
     drive_file = _drive_file(status=DriveFileStatus.INDEXING)
     document = _document(text="")
     mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[])),
     )
 
-    result = await service.build_index(file_id=FILE_ID)
+    result = await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.skipped == 1
     assert result.failed == 0
@@ -448,7 +438,6 @@ def _configure_two_document_build(
             drive_files[1],
         ]
     )
-    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
     mock_db.scalars = AsyncMock(
         side_effect=[
             MagicMock(all=MagicMock(return_value=documents)),
@@ -470,7 +459,7 @@ async def test_build_index_partial_embedding_error_fails_file_and_job(
         side_effect=[EmbeddingError("embedding unavailable"), [[0.1, 0.2, 0.3]]]
     )
 
-    result = await service.build_index()
+    result = await service.build_index(user_id=USER_ID)
 
     assert result.embedded == 1
     assert result.failed == 1
@@ -492,7 +481,7 @@ async def test_build_index_partial_vector_store_error_fails_file_and_job(
         side_effect=[VectorStoreError("Qdrant rejected vector upsert"), None]
     )
 
-    result = await service.build_index()
+    result = await service.build_index(user_id=USER_ID)
 
     assert result.embedded == 1
     assert result.failed == 1
@@ -514,7 +503,7 @@ async def test_build_index_all_document_failures_fail_job(
         side_effect=[EmbeddingError("first failure"), EmbeddingError("second failure")]
     )
 
-    result = await service.build_index()
+    result = await service.build_index(user_id=USER_ID)
 
     assert result.embedded == 0
     assert result.failed == 2
@@ -531,13 +520,12 @@ async def test_build_index_ensure_collection_failure_persists_failed_job(
     mock_vector_store: AsyncMock,
 ) -> None:
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
     mock_vector_store.ensure_collection = AsyncMock(
         side_effect=VectorStoreError("collection unavailable")
     )
 
     with pytest.raises(VectorStoreError, match="collection unavailable"):
-        await service.build_index()
+        await service.build_index(user_id=USER_ID)
 
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
@@ -552,10 +540,10 @@ async def test_build_index_unexpected_guarded_exception_fails_job(
     mock_db: AsyncMock,
 ) -> None:
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, RuntimeError("database unavailable")])
+    mock_db.scalar = AsyncMock(side_effect=[RuntimeError("database unavailable")])
 
     with pytest.raises(RuntimeError, match="database unavailable"):
-        await service.build_index(file_id=FILE_ID)
+        await service.build_index(file_id=FILE_ID, user_id=USER_ID)
 
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
@@ -569,3 +557,18 @@ def test_normal_payload_uses_postgres_owner_and_demo_keeps_original_format(servi
     assert service._chunk_payload(chunk, file)["user_id"] == str(USER_ID)
     service.settings.demo_mode = True
     assert "user_id" not in service._chunk_payload(chunk, file)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [None, "not-a-uuid"])
+async def test_build_index_refuses_a_missing_owner_without_a_query(
+    service: IndexingService,
+    mock_db: AsyncMock,
+    owner: object,
+) -> None:
+    with pytest.raises(ValueError, match="An explicit corpus owner is required"):
+        await service.build_index(user_id=owner)  # type: ignore[arg-type]
+
+    for method in (mock_db.scalar, mock_db.scalars, mock_db.execute, mock_db.get):
+        method.assert_not_awaited()
+    mock_db.add.assert_not_called()

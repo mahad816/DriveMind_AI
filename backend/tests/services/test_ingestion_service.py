@@ -8,8 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tests.credential_fixtures import synthetic_oauth_row
-
 from app.connectors.google_drive.constants import (
     DOCX_MIME,
     GOOGLE_DOC_MIME,
@@ -31,14 +29,6 @@ from app.services.ingestion_service import IngestionService
 USER_ID = uuid.uuid4()
 FILE_ID = uuid.uuid4()
 USER = User(id=USER_ID, email="user@example.com", google_id="gid-1")
-TOKEN_ROW = synthetic_oauth_row(
-    id=uuid.uuid4(),
-    user_id=USER_ID,
-    access_token="access",
-    refresh_token="refresh",
-    token_expiry=datetime.now(UTC),
-    scopes="https://www.googleapis.com/auth/drive.readonly",
-)
 
 
 def _drive_file(
@@ -76,7 +66,9 @@ def mock_content_service() -> AsyncMock:
 
 @pytest.fixture
 def service(mock_db: AsyncMock, mock_content_service: AsyncMock) -> IngestionService:
-    return IngestionService(db=mock_db, settings=MagicMock(), content_service=mock_content_service)
+    return IngestionService(
+        db=mock_db, settings=MagicMock(demo_mode=False), content_service=mock_content_service
+    )
 
 
 def _added_jobs(mock_db: AsyncMock) -> list[IndexingJob]:
@@ -93,7 +85,7 @@ async def test_ingest_files_creates_document_for_new_file(
 ) -> None:
     drive_file = _drive_file()
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"hello world",
@@ -108,7 +100,7 @@ async def test_ingest_files_creates_document_for_new_file(
     ) as mock_get_extractor:
         mock_get_extractor.return_value.extract.return_value = ExtractionResult(text="hello world")
 
-        result = await service.ingest_files(file_id=FILE_ID)
+        result = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.ingested == 1
     assert result.unchanged == 0
@@ -139,7 +131,7 @@ async def test_ingest_files_skips_when_text_hash_unchanged(
         updated_at=datetime.now(UTC),
     )
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, existing])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, existing])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"hello world",
@@ -154,7 +146,7 @@ async def test_ingest_files_skips_when_text_hash_unchanged(
     ) as mock_get_extractor:
         mock_get_extractor.return_value.extract.return_value = ExtractionResult(text="hello world")
 
-        result = await service.ingest_files(file_id=FILE_ID)
+        result = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.ingested == 0
     assert result.unchanged == 1
@@ -170,7 +162,7 @@ async def test_ingest_files_marks_failed_on_extraction_error(
 ) -> None:
     drive_file = _drive_file(mime_type=PDF_MIME)
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"%PDF",
@@ -185,7 +177,7 @@ async def test_ingest_files_marks_failed_on_extraction_error(
     ) as mock_get_extractor:
         mock_get_extractor.return_value.extract.side_effect = ExtractionError("bad pdf")
 
-        result = await service.ingest_files(file_id=FILE_ID)
+        result = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.failed == 1
     assert drive_file.status == DriveFileStatus.FAILED
@@ -202,7 +194,7 @@ async def test_ingest_files_batch_processes_all_ingestible_files(
 ) -> None:
     files = [_drive_file(file_id=uuid.uuid4()), _drive_file(file_id=uuid.uuid4())]
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None, None, None, None])
+    mock_db.scalar = AsyncMock(side_effect=[None, None, None, None])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=files)),
     )
@@ -220,7 +212,7 @@ async def test_ingest_files_batch_processes_all_ingestible_files(
     ) as mock_get_extractor:
         mock_get_extractor.return_value.extract.return_value = ExtractionResult(text="batch text")
 
-        result = await service.ingest_files()
+        result = await service.ingest_files(user_id=USER_ID)
 
     assert result.total == 2
     assert result.ingested == 2
@@ -236,7 +228,7 @@ async def test_ingest_files_partial_extraction_failure_fails_job_and_preserves_s
     successful = _drive_file(file_id=uuid.uuid4())
     failed = _drive_file(file_id=uuid.uuid4(), mime_type=PDF_MIME)
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None, None])
+    mock_db.scalar = AsyncMock(side_effect=[None, None])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[successful, failed])),
     )
@@ -254,7 +246,7 @@ async def test_ingest_files_partial_extraction_failure_fails_job_and_preserves_s
             ExtractionResult(text="searchable text"),
             ExtractionError("bad pdf"),
         ]
-        result = await service.ingest_files()
+        result = await service.ingest_files(user_id=USER_ID)
 
     assert result.ingested == 1
     assert result.failed == 1
@@ -273,7 +265,7 @@ async def test_ingest_files_all_extraction_failures_fail_job(
 ) -> None:
     files = [_drive_file(file_id=uuid.uuid4()), _drive_file(file_id=uuid.uuid4())]
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None, None])
+    mock_db.scalar = AsyncMock(side_effect=[None, None])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=files)),
     )
@@ -291,7 +283,7 @@ async def test_ingest_files_all_extraction_failures_fail_job(
             ExtractionError("first failure"),
             ExtractionError("second failure"),
         ]
-        result = await service.ingest_files()
+        result = await service.ingest_files(user_id=USER_ID)
 
     assert result.failed == 2
     assert all(drive_file.status == DriveFileStatus.FAILED for drive_file in files)
@@ -310,7 +302,7 @@ async def test_ingest_files_empty_content_is_skipped_without_failing_job(
 ) -> None:
     drive_file = _drive_file(status=DriveFileStatus.INDEXING)
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"empty",
@@ -322,7 +314,7 @@ async def test_ingest_files_empty_content_is_skipped_without_failing_job(
 
     with patch("app.services.ingestion_service.get_extractor") as mock_get_extractor:
         mock_get_extractor.return_value.extract.return_value = ExtractionResult(text=extracted_text)
-        result = await service.ingest_files(file_id=FILE_ID)
+        result = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.skipped == 1
     assert result.failed == 0
@@ -341,9 +333,7 @@ async def test_ingest_files_can_reprocess_skipped_file_after_rediscovery(
 ) -> None:
     drive_file = _drive_file()
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(
-        side_effect=[TOKEN_ROW, drive_file, None, TOKEN_ROW, drive_file, None]
-    )
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None, drive_file, None])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"content",
@@ -358,13 +348,13 @@ async def test_ingest_files_can_reprocess_skipped_file_after_rediscovery(
             ExtractionResult(text=""),
             ExtractionResult(text="now searchable"),
         ]
-        first = await service.ingest_files(file_id=FILE_ID)
+        first = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
         assert first.skipped == 1
         assert drive_file.status == DriveFileStatus.SKIPPED
 
         # Drive sync restores a modified skipped file to DISCOVERED.
         drive_file.status = DriveFileStatus.DISCOVERED
-        second = await service.ingest_files(file_id=FILE_ID)
+        second = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     assert second.ingested == 1
     assert second.failed == 0
@@ -381,7 +371,7 @@ async def test_ingest_files_unexpected_exception_fails_job_with_error(
 ) -> None:
     drive_file = _drive_file()
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"content",
@@ -394,7 +384,7 @@ async def test_ingest_files_unexpected_exception_fails_job_with_error(
     with patch("app.services.ingestion_service.get_extractor") as mock_get_extractor:
         mock_get_extractor.return_value.extract.side_effect = RuntimeError("unexpected failure")
         with pytest.raises(RuntimeError, match="unexpected failure"):
-            await service.ingest_files(file_id=FILE_ID)
+            await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     job = _added_jobs(mock_db)[0]
     assert job.status == IndexingJobStatus.FAILED
@@ -416,7 +406,7 @@ async def test_a_google_doc_is_read_by_the_type_of_the_bytes_it_arrived_as(
 ) -> None:
     drive_file = _drive_file(mime_type=GOOGLE_DOC_MIME)
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
     mock_content_service.fetch_file_content = AsyncMock(
         return_value=DriveFileContent(
             data=b"bytes", mime_type=delivered, filename="Notes", drive_file_id="gdrive-file-1"
@@ -425,8 +415,23 @@ async def test_a_google_doc_is_read_by_the_type_of_the_bytes_it_arrived_as(
 
     with patch("app.services.ingestion_service.get_extractor") as mock_get_extractor:
         mock_get_extractor.return_value.extract.return_value = ExtractionResult(text="text")
-        result = await service.ingest_files(file_id=FILE_ID)
+        result = await service.ingest_files(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.ingested == 1
     mock_get_extractor.assert_called_once_with(expected_reader)
     assert mock_get_extractor.return_value.extract.call_args.kwargs["mime_type"] == expected_reader
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [None, "not-a-uuid"])
+async def test_ingest_files_refuses_a_missing_owner_without_a_query(
+    service: IngestionService,
+    mock_db: AsyncMock,
+    owner: object,
+) -> None:
+    with pytest.raises(ValueError, match="An explicit corpus owner is required"):
+        await service.ingest_files(user_id=owner)  # type: ignore[arg-type]
+
+    for method in (mock_db.scalar, mock_db.scalars, mock_db.execute, mock_db.get):
+        method.assert_not_awaited()
+    mock_db.add.assert_not_called()

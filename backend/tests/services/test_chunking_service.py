@@ -10,8 +10,6 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.functions import Function
 
-from tests.credential_fixtures import synthetic_oauth_row
-
 from app.db.enums import DriveFileStatus
 from app.db.models.chunk import Chunk
 from app.db.models.document import Document
@@ -25,14 +23,6 @@ USER_ID = uuid.uuid4()
 FILE_ID = uuid.uuid4()
 DOCUMENT_ID = uuid.uuid4()
 USER = User(id=USER_ID, email="user@example.com", google_id="gid-1")
-TOKEN_ROW = synthetic_oauth_row(
-    id=uuid.uuid4(),
-    user_id=USER_ID,
-    access_token="access",
-    refresh_token="refresh",
-    token_expiry=datetime.now(UTC),
-    scopes="https://www.googleapis.com/auth/drive.readonly",
-)
 
 
 def _drive_file(*, status: DriveFileStatus = DriveFileStatus.INDEXING) -> DriveFile:
@@ -90,7 +80,7 @@ def mock_db() -> AsyncMock:
 
 @pytest.fixture
 def service(mock_db: AsyncMock) -> ChunkingService:
-    return ChunkingService(db=mock_db, settings=MagicMock())
+    return ChunkingService(db=mock_db, settings=MagicMock(demo_mode=False))
 
 
 @pytest.mark.asyncio
@@ -102,12 +92,12 @@ async def test_chunk_documents_creates_chunks_for_new_document(
     document = _document()
     # db.get called twice: once for User resolution, once for DriveFile in _replace_chunks
     mock_db.get = AsyncMock(side_effect=[USER, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[])),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 1
     assert result.unchanged == 0
@@ -133,12 +123,12 @@ async def test_chunk_documents_skips_when_hash_unchanged(
     document = _document()
     existing = [_existing_chunk(text="hello world", text_hash=document.extracted_text_hash)]
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=existing)),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 0
     assert result.unchanged == 1
@@ -158,12 +148,12 @@ async def test_chunk_documents_rechunks_when_text_hash_changes(
     old_hash = compute_extracted_text_hash("stale text")
     existing = [_existing_chunk(text="stale text", text_hash=old_hash)]
     mock_db.get = AsyncMock(side_effect=[USER, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=existing)),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 1
     assert result.unchanged == 0
@@ -181,9 +171,9 @@ async def test_chunk_documents_skips_file_without_document(
 ) -> None:
     drive_file = _drive_file()
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, None])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, None])
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 0
     assert result.unchanged == 0
@@ -203,18 +193,18 @@ async def test_chunk_documents_explicit_skipped_file_does_not_process_stale_docu
         text_hash=stale_document.extracted_text_hash,
     )
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, stale_document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 0
     assert result.unchanged == 0
     assert result.skipped == 1
     assert drive_file.status == DriveFileStatus.SKIPPED
-    assert mock_db.scalar.await_count == 2
+    assert mock_db.scalar.await_count == 1
     mock_db.scalars.assert_not_awaited()
     mock_db.execute.assert_not_awaited()
     added = [call.args[0] for call in mock_db.add.call_args_list]
@@ -235,18 +225,18 @@ async def test_chunk_documents_explicit_non_indexing_file_does_not_process_stale
         text_hash=stale_document.extracted_text_hash,
     )
     mock_db.get = AsyncMock(return_value=USER)
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, stale_document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, stale_document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[stale_chunk])),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 0
     assert result.unchanged == 0
     assert result.skipped == 1
     assert drive_file.status == status
-    assert mock_db.scalar.await_count == 2
+    assert mock_db.scalar.await_count == 1
     mock_db.scalars.assert_not_awaited()
     mock_db.execute.assert_not_awaited()
     added = [call.args[0] for call in mock_db.add.call_args_list]
@@ -280,12 +270,12 @@ async def test_chunk_documents_empty_text_without_existing_chunks_is_skipped(
     drive_file = _drive_file(status=DriveFileStatus.INDEXING)
     document = _document(text="")
     mock_db.get = AsyncMock(side_effect=[USER, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=[])),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.unchanged == 0
     assert result.chunked == 0
@@ -304,12 +294,12 @@ async def test_chunk_documents_empty_text_removes_stale_chunks(
     old_hash = compute_extracted_text_hash("previous content")
     existing = [_existing_chunk(text="previous content", text_hash=old_hash)]
     mock_db.get = AsyncMock(side_effect=[USER, drive_file])
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, drive_file, document])
+    mock_db.scalar = AsyncMock(side_effect=[drive_file, document])
     mock_db.scalars = AsyncMock(
         return_value=MagicMock(all=MagicMock(return_value=existing)),
     )
 
-    result = await service.chunk_documents(file_id=FILE_ID)
+    result = await service.chunk_documents(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.chunked == 0
     assert result.unchanged == 0
@@ -329,7 +319,6 @@ async def test_chunk_documents_batch_processes_all_documents(
     documents = [_document(text="doc one"), _document(text="doc two")]
     # db.get: once for User, then twice for DriveFile (once per document in _replace_chunks)
     mock_db.get = AsyncMock(side_effect=[USER, drive_file, drive_file])
-    mock_db.scalar = AsyncMock(return_value=TOKEN_ROW)
     mock_db.scalars = AsyncMock(
         side_effect=[
             MagicMock(all=MagicMock(return_value=documents)),
@@ -338,7 +327,7 @@ async def test_chunk_documents_batch_processes_all_documents(
         ],
     )
 
-    result = await service.chunk_documents()
+    result = await service.chunk_documents(user_id=USER_ID)
 
     assert result.total == 2
     assert result.chunked == 2
@@ -347,11 +336,15 @@ async def test_chunk_documents_batch_processes_all_documents(
 
 
 @pytest.mark.asyncio
-async def test_chunk_documents_raises_when_no_oauth_connection(
+@pytest.mark.parametrize("owner", [None, "not-a-uuid"])
+async def test_chunk_documents_refuses_a_missing_owner_without_a_query(
     service: ChunkingService,
     mock_db: AsyncMock,
+    owner: object,
 ) -> None:
-    mock_db.scalar = AsyncMock(return_value=None)
+    with pytest.raises(ValueError, match="An explicit corpus owner is required"):
+        await service.chunk_documents(user_id=owner)  # type: ignore[arg-type]
 
-    with pytest.raises(ValueError, match="No Google Drive connection"):
-        await service.chunk_documents()
+    for method in (mock_db.scalar, mock_db.scalars, mock_db.execute, mock_db.get):
+        method.assert_not_awaited()
+    mock_db.add.assert_not_called()

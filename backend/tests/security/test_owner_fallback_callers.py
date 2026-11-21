@@ -1,20 +1,20 @@
 """Protective census for the "first stored Google credential" fallbacks (M0 ticket 03, area A2).
 
-Three services (chunking, ingestion, indexing) still resolve ``user_id=None`` to an arbitrary
-credential owner (KI-031,
-``tests/known_issues/test_ki031_credential_owner_fallback.py``). That is harmless only while no
-caller leaves the owner out. These tests read the source (no database, no network) and fail if:
+Six services used to resolve ``user_id=None`` to an arbitrary credential owner (KI-031, fixed by
+M0-SEC tickets 01 and 02; ``tests/known_issues/test_ki031_credential_owner_fallback.py`` holds the
+behavioural regression tests). They now refuse an owner-less call, and these source-reading tests
+(no database, no network) keep the callers and the credential queries honest. They fail if:
 
 * a production call of a fallback-reaching entry method omits ``user_id`` or passes a literal ``None``;
 * ``resolve_active_user`` is called without an owner outside the two demo-only modules;
-* a seventh statement selects ``GoogleOAuthToken`` without filtering on its owner column.
+* a new statement selects ``GoogleOAuthToken`` without filtering on its owner column.
 
 Known limits: the entry-method check matches by method name and accepts only a ``user_id=`` keyword
 (a positional owner or ``**kwargs`` is not understood; an unrelated class with a same-named method
 would be flagged). They are tripwires, not proof: a call that passes a variable which is ``None`` at run time is not
 visible to them. The run-time side is covered by the route-dependency tests
 (``test_private_read_authorization.py``), the worker's non-UUID guard and the KI-031 guards.
-When KI-031 is fixed the third check only gets stricter (its allow-list may shrink, never grow).
+The third check's allow-list may shrink, never grow.
 """
 
 import ast
@@ -26,9 +26,8 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[2]
 SCANNED_ROOTS = (BACKEND / "app", BACKEND / "evaluation")
 
-# Entry methods of the services that take an owner. Sync and content now refuse an owner-less call
-# (ticket 01); only ingest_files, chunk_documents and build_index still reach a fallback. Kept whole
-# as a tripwire.
+# Entry methods of the services that take an owner. All now refuse an owner-less call (tickets 01
+# and 02); the list is kept whole so a caller that drops the owner is still caught by this test.
 ENTRY_METHODS = {
     "sync_metadata",
     "get_latest_sync_job",
@@ -46,13 +45,8 @@ ENTRY_METHODS = {
 # `settings.demo_mode` gates in api/index.py and api/dependencies.py).
 DEMO_ONLY_NO_OWNER = {"app/demo/load.py", "app/demo/service.py"}
 
-# The three fallbacks left (ticket 02 closes them) plus the demo "no credentials in storage" check.
-KNOWN_UNSCOPED_CREDENTIAL_SELECTS = {
-    "app/services/chunking_service.py",
-    "app/services/ingestion_service.py",
-    "app/services/indexing_service.py",
-    "app/demo/service.py",
-}
+# The only unscoped credential select left: the demo "no credentials in storage" existence check.
+KNOWN_UNSCOPED_CREDENTIAL_SELECTS = {"app/demo/service.py"}
 
 OWNER_FILTER = re.compile(r"GoogleOAuthToken\.user_id\s*==|\.filter_by\(\s*user_id")
 

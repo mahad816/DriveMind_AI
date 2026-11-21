@@ -3,8 +3,8 @@
 **Spec:** docs/specs/m0-sec-security-hardening.md
 **What to build:** The last three "first stored credential" fallbacks are removed. After this ticket no code in the application can act on an arbitrary Owner's Google credential, and KI-031 moves to Fixed.
 **Blocked by:** 01.
-**Status:** ready-for-agent
-**Progress:** open
+**Status:** done (local commit, not pushed)
+**Progress:** complete
 
 ## Scope
 
@@ -31,6 +31,12 @@ Three services changed; tests updated; KI-031 entry moved to Fixed; `## Comments
 
 Disposable PostgreSQL and Qdrant for the indexing and worker tests. No paid API, no network.
 
+## Comments` listing documentation for ticket 09.
+
+## Needs
+
+Disposable PostgreSQL and Qdrant for the indexing and worker tests. No paid API, no network.
+
 - [ ] Before the fix, the three KI-031 cases `[chunking]`, `[ingestion]`, `[indexing]` fail for their registered reason; after, they pass with markers removed. All six KI-031 tests are now ordinary tests.
 - [ ] `grep` for `select(GoogleOAuthToken)` in `backend/app` finds only owner-scoped uses and `demo/service.py`; the tripwire test enforces the allow-list `{demo/service.py}`.
 - [ ] Each of the three entry points raises `ValueError` for `None` and for a non-UUID and issues no credential query.
@@ -40,3 +46,16 @@ Disposable PostgreSQL and Qdrant for the indexing and worker tests. No paid API,
 - [ ] KI-031 is listed under Fixed with date, the six tests and the guard count.
 
 ## Comments
+
+**What changed.** `ChunkingService`, `IngestionService` and `IndexingService` `_resolve_user` now delegate to `resolve_active_user`, as ticket 01 did for sync and content. Normal mode refuses a missing or non-UUID owner with `ValueError("An explicit corpus owner is required")` before any read or job row. The three `select(GoogleOAuthToken).limit(1)` branches are deleted. Demo mode now also applies the demo-user rule in these three services (an explicit id that differs from `DEMO_USER_ID` raises `DemoIdentityError`); the demo loader passes the id it just resolved, and the evaluation harness runs with `demo_mode=False`, so both are unaffected.
+
+**Tests.** The three KI-031 cases were confirmed fixed first (strict xfail turned into XPASS), then `FIXED_SITES` and the conditional marker were removed: 18 ordinary tests (6 sites + 12 guards). The tripwire allow-list is `{app/demo/service.py}`. Unit tests in `tests/services/test_{chunking,ingestion,indexing}_service.py` pass an explicit owner (`settings=MagicMock(demo_mode=False)`; the credential-query mock entries were dropped; the "does not load the stale document" assertions count 1 scalar call instead of 2). Each service has a new test that `None` and `"not-a-uuid"` raise and issue no query. The four security test files named in Scope already passed an owner (positionally), so they needed no change. Run on disposable PostgreSQL and Qdrant, no `OPENAI_API_KEY`: known-issues, services, indexing/worker/recovery/vector-reconciliation, pipeline-version, SDK construction, tripwire and demo-corpus suites: 559 passed, 7 xfailed (other known issues). `ruff` and `mypy app` clean; `basedpyright` still 48 errors, all in `tests/`. The evaluation harness was not run. See the commit message for the full-suite result.
+
+**Left as is on purpose.** Signatures still read `user_id: uuid.UUID | None = None`; tightening the type and deleting the unused entry points are M10.
+
+**Ticket 09 must update in documentation** (not touched here):
+- `AGENTS.md` "Known Important Constraints" (the KI-031 sentence, "six services") and "Latest recorded verification".
+- `docs/ARCHITECTURE.md` (~line 73), `docs/specs/drivemind-v1-product-definition.md` (~line 352).
+- `backend/app/security/README.md` line 8 ("services fall back to the first stored credential ... KI-031").
+- `docs/audits/m0-system-audit.md` and `docs/tickets/m0-system-audit/03-credential-fallbacks-and-ownership.md` where they describe KI-031 as open.
+- `docs/KNOWN_ISSUES.md` line 24 and the "Pinned by"/"6 strict expected failures" wording are already resolved by the Fixed entry.
