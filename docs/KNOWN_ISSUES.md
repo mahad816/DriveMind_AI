@@ -21,7 +21,7 @@ cd backend  && uv run pytest tests/known_issues -rxX      # expect "passed, N xf
 cd frontend && npx vitest run lib/knowledge/known-issues.test.tsx   # only while a frontend issue is open
 ```
 
-The KI-022 tests need the disposable PostgreSQL (`SESSION_TEST_DATABASE_URL`, see `backend/app/security/README.md`) and are reported as skipped without it; everything else in that folder runs without containers.
+The KI-022, KI-031 and KI-032 tests need the disposable PostgreSQL (`SESSION_TEST_DATABASE_URL`, see `backend/app/security/README.md`) and are reported as skipped without it; everything else in that folder runs without containers.
 
 Rule for new entries: reproduce first, assert only what a user would call correct, add a
 passing "guard" test for any neighbouring behaviour a fix must not break, and never mark
@@ -69,6 +69,13 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Pinned by an existing test:** `tests/services/test_user_resolution.py::test_normal_mode_preserves_first_oauth_token_resolution` asserts the fallback (including the `LIMIT 1`). The fix must replace it, and about 60 service unit tests that call the owner-less path (`ingest_files()`, `build_index()`, `chunk_documents()` and similar) must pass an owner.
 - **Not fixed on purpose:** M0 only audits. The fix is the proposed M0-SEC (see the ticket): make the owner mandatory in the six places, then delete the dead owner-less entry points.
 - **Direction:** `user_id: uuid.UUID` (required), raise `ValueError("An explicit corpus owner is required")` as `RagService._resolve_user` already does; remove `select(GoogleOAuthToken).limit(1)`; shrink the allow-lists in `test_owner_fallback_callers.py`; remove the marker from the six tests.
+
+### KI-032 — An abandoned Google login attempt is never removed by the running application  *(security hygiene / availability, backend, found by M0 ticket 04; reachable only while `GOOGLE_APPLICATION_SESSIONS_ENABLED` is on, hosted value unverified)*
+- **Test (M0 ticket 04, 2026-11-21):** `tests/known_issues/test_ki032_pending_login_state_growth.py` (needs the disposable PostgreSQL; skipped without `SESSION_TEST_DATABASE_URL`). Three login attempts are started and never finished, their ten minutes pass, then a fourth login starts: the three expired rows are still in `oauth_pending_states` (1 strict expected failure). One passing guard: starting a login does not remove another browser's still-valid attempt, so a fix must not do that. The test was also run against a temporary one-line prune in `start()` and passed, so it is satisfiable.
+- **Cause:** `POST /api/v1/auth/session/google` with intent `LOGIN` needs no session, only a matching `Origin` header and `X-DriveMind-Auth: 1` (plain request headers, so any HTTP client can send them). Each call commits one `OAuthPendingState` row. A row is deleted only when its callback consumes it (`google_session_auth_service.py` `_consume`). The only sweep of expired rows is `GoogleOAuthService._cleanup_expired_pending_states`, called from the legacy `handle_callback`, which belongs to the unmounted router `app/api/auth.py`. No rate limit exists for this endpoint (see ticket 04, "Abuse protection").
+- **Impact:** one small row per request, growing without limit. A row holds a PKCE verifier, a nonce and hashes; it cannot be redeemed after it expires, so this is storage growth, not an authentication or data-isolation weakness.
+- **Not fixed on purpose:** M0 only audits.
+- **Direction:** delete expired rows when a login starts (the legacy callback did it at callback time), or sweep on a schedule; plus a request limit on this endpoint (Owner decision, ticket 04). If the fix is a scheduled sweeper, rewrite the test to call it instead of `start()`.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - A real Google Doc exported as DOCX, a real Google Sheet and a file saved by Excel itself have not been read by the new readers; only generated fixtures were.
