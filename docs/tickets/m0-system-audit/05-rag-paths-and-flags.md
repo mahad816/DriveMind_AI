@@ -160,3 +160,20 @@ Not added: a conversation-turn failure test (exists, needs PostgreSQL), an inten
 - The developer's local `.env` was not read, so "local defaults" are the code defaults.
 
 ## Comments
+
+### Owner decisions on the audit (2026-11-21)
+
+The Owner accepted this ticket and its commit `2bf7789`. The findings above are unchanged and the audit is not redone. No application code is changed by these decisions.
+
+1. **Single production answering path (decision).** The tool-calling RAG agent is the intended single production answering path, subject to passing the M1 evaluation and the release gates. This confirms ADR 0001 step 1 as the direction. The linear and LangGraph paths are **not** switched off or removed during M0; disabling normal production access stays in M9 and physical removal in a later cleanup, as ADR 0001 sequences it. The `AGENTS.md` rule to preserve both legacy grounded paths therefore still stands.
+2. **Local evaluation configuration (decision).** Every future local RAG evaluation explicitly enables the tool-agent path (`TOOL_RAG_AGENT_ENABLED=true`), so it measures what the intended deployment runs rather than the code default (`False`, section 1). An evaluation report states the flag values it ran with.
+3. **Claim-check provider failure (decision: must not silently publish an unchecked answer; proposal only).** In the intended production path, a claim-check provider failure must not silently publish an unchecked answer. This answers O1: the fail-open behaviour recorded in section 4 is not acceptable for release. **Proposal, for M3** ("Grounding and honest answers ... Supported-answer checking", `docs/specs/drivemind-v1-product-definition.md`), not implemented now:
+   - **Behaviour:** when the claim check cannot run on an answer that has evidence (provider error, timeout, malformed reply, or a checker that cannot be built while `CLAIM_CHECK_ENABLED` is on), the turn fails closed in the same way as an answering-model failure: no answer is published or saved, `/chat` returns 503, and a conversation turn ends `FAILED` with a distinct, fixed error category (for example `CLAIM_CHECK_UNAVAILABLE`) so logs can tell it apart from a generation failure.
+   - **User-facing handling:** a clear, retryable message that says the answer could not be verified and nothing was saved, not a generic error. In streaming, any provisional text is cleared exactly as on other failures. The exact wording, and whether a retry is offered automatically or by the user, is decided in M3.
+   - **Open points for M3:** the cost and latency of failing closed (the claim check adds about 1.4 s median per answer, KI-002); whether `CLAIM_CHECK_ENABLED=false` stays a supported production setting or becomes evaluation-only, since it produces the same unchecked output; and whether demo mode, which skips the claim check today, follows the same rule.
+   - **Tests:** turn `test_provider_failure_paths.py::test_claim_check_model_failure_publishes_the_unchecked_answer` into a strict expected failure registered in `docs/KNOWN_ISSUES.md` (or replace it with the fail-closed test when the fix lands); add the fail-closed cases (provider error, timeout, malformed reply, checker not buildable) through `/chat` and through a conversation turn, including streaming. All with faked providers.
+   - Registering the known issue and its strict expected-failure test is left to M3 or ticket 09. This comment changes only this ticket, as instructed.
+4. **Documentation inconsistencies (decision).** Ticket 09 owns the eight contradictions in section 5, together with the `HYBRID_RETRIEVAL_ENABLED` code fact from section 1 that it relates to (contradiction 2).
+5. **Workflow (decision).** Keep the existing `/implement` workflow: independent Standards and Spec review, then commit to the current branch. Owner acceptance follows as a separate step, as for this ticket.
+
+**Status:** ticket 05 is closed (`Progress: resolved`). These decisions are recorded in a separate documentation commit.
