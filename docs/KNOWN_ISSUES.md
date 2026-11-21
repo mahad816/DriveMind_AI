@@ -21,7 +21,7 @@ cd backend  && uv run pytest tests/known_issues -rxX      # expect "passed, N xf
 cd frontend && npx vitest run lib/knowledge/known-issues.test.tsx   # only while a frontend issue is open
 ```
 
-The KI-022, KI-031 and KI-032 tests need the disposable PostgreSQL (`SESSION_TEST_DATABASE_URL`, see `backend/app/security/README.md`) and are reported as skipped without it; everything else in that folder runs without containers.
+The KI-022, KI-031, KI-032 and KI-033 tests need the disposable PostgreSQL (`SESSION_TEST_DATABASE_URL`, see `backend/app/security/README.md`) and are reported as skipped without it; everything else in that folder runs without containers.
 
 Rule for new entries: reproduce first, assert only what a user would call correct, add a
 passing "guard" test for any neighbouring behaviour a fix must not break, and never mark
@@ -76,6 +76,13 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Impact:** one small row per request, growing without limit. A row holds a PKCE verifier, a nonce and hashes; it cannot be redeemed after it expires, so this is storage growth, not an authentication or data-isolation weakness.
 - **Not fixed on purpose:** M0 only audits.
 - **Direction:** delete expired rows when a login starts (the legacy callback did it at callback time), or sweep on a schedule; plus a request limit on this endpoint (Owner decision, ticket 04). If the fix is a scheduled sweeper, rewrite the test to call it instead of `start()`.
+
+### KI-033 — An owner who has submitted a question cannot be deleted from `users`  *(data lifecycle, backend, found by M0 ticket 07; not reachable today, blocks a future Delete stored data)*
+- **Test (M0 ticket 07, 2026-11-21):** `tests/known_issues/test_ki033_user_delete_blocked_by_turns.py` (needs the disposable PostgreSQL; skipped without `SESSION_TEST_DATABASE_URL`). `DELETE FROM users` for an owner with one conversation turn, answered or unanswered, is refused with a foreign-key violation and rolled back: 2 strict expected failures. The passing guard (`tests/security/test_conversation_deletion_privacy.py::test_deleting_a_user_who_never_asked_a_question_cascades_to_every_owner_table`) shows the cascade empties all ten per-owner tables for an owner with no turn, and leaves another owner untouched.
+- **Cause:** `conversation_turns` has two foreign keys with no `ON DELETE` rule: `fk_turns_session_owner` (to `application_sessions`) and `fk_turns_result_owner` (to `query_history`). The cascade from `users` reaches those two tables while a turn still points at them, so PostgreSQL refuses (`alembic/versions/20261015_1200_conversations.py`, `db/models/conversation_turn.py`).
+- **Why it is not reachable:** no application code deletes a `users` row (ticket 07 route and code search).
+- **Not fixed on purpose:** M0 only audits; a fix is a migration and belongs with Delete stored data (M7).
+- **Direction:** give both foreign keys `ON DELETE CASCADE` (or delete turns first) in a migration, then remove the marker from the two tests.
 
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - A real Google Doc exported as DOCX, a real Google Sheet and a file saved by Excel itself have not been read by the new readers; only generated fixtures were.
