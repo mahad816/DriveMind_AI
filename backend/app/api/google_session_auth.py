@@ -16,6 +16,7 @@ from app.api.session_dependencies import (
 )
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.security.login_start_limit import LoginStartLimiter, login_start_limiter
 from app.security.principal import ApplicationPrincipal
 from app.security.session_helpers import (
     InvalidApplicationSession,
@@ -54,6 +55,10 @@ def get_google_session_service(
     db: AsyncSession = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> GoogleSessionAuthService:
     return GoogleSessionAuthService(db, settings)
+
+
+def get_login_start_limiter() -> LoginStartLimiter:
+    return login_start_limiter
 
 
 def _uncached(response: Response) -> Response:
@@ -104,6 +109,7 @@ async def start_google_login(
     request: Request,
     body: LoginRequest,
     service: GoogleSessionAuthService = Depends(get_google_session_service),
+    limiter: LoginStartLimiter = Depends(get_login_start_limiter),
 ) -> Response:
     try:
         origins = request.headers.getlist("origin")
@@ -114,6 +120,9 @@ async def start_google_login(
             await require_session_mutation(
                 request, ApplicationSessionService(service.db, service.settings)
             )
+        if body.intent == GoogleAuthIntent.LOGIN:
+            # Unauthenticated path: limit before any state row is written (KI-032).
+            limiter.admit(service.settings)
         policy = session_cookie_policy(service.settings)
         started = await service.start(body.intent, request.cookies.get(policy.name))
         response = JSONResponse({"authorization_url": started.authorization_url})

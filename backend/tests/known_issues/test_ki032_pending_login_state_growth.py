@@ -1,4 +1,9 @@
-"""KI-032 (open): abandoned Google login attempts leave a row in ``oauth_pending_states`` forever.
+"""KI-032 (FIXED, M0-SEC ticket 07): abandoned Google login attempts used to stay in ``oauth_pending_states``.
+
+Fixed by pruning expired rows when a login starts, plus a global limit on the endpoint (tests in
+``tests/security/test_login_start_limit.py``). The marker is removed; both tests below are ordinary
+regression tests now. The text below is the historical description of the defect (it said "open" and "passes today"
+before the fix).
 
 M0 ticket 04 (audit area A2). ``POST /api/v1/auth/session/google`` with intent ``LOGIN`` needs no
 session, only a matching ``Origin`` header and ``X-DriveMind-Auth: 1`` (both are plain request headers,
@@ -31,7 +36,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from app.core.config import Settings
 from app.db.models.oauth_pending_state import OAuthPendingState
 from app.services.google_session_auth_service import GoogleAuthIntent, GoogleSessionAuthService
-from tests.known_issues import known_issue
 from tests.security.conftest import (
     pg_engine,  # noqa: F401  # pyright: ignore[reportUnusedImport]  (pytest fixture, by name)
     settings,  # noqa: F401  # pyright: ignore[reportUnusedImport]  (pytest fixture, by name)
@@ -59,7 +63,6 @@ async def _count(factory: async_sessionmaker, *, expired: bool) -> int:
         )
 
 
-@known_issue("KI-032", "an abandoned login attempt is never removed once it has expired")
 async def test_expired_unfinished_login_attempts_are_removed_when_a_new_login_starts(
     oauth_engine: AsyncEngine,
     login_settings: Settings,

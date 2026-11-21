@@ -47,6 +47,9 @@ from app.core.credential_diagnostics import OAuthCredentialFailure
 from app.services.google_oauth_service import GoogleOAuthService, _identity_scopes
 
 
+_PRUNE_BATCH = 500
+
+
 class GoogleAuthIntent(StrEnum):
     LOGIN = "LOGIN"
     CONNECT_DRIVE = "CONNECT_DRIVE"
@@ -198,7 +201,9 @@ class GoogleSessionAuthService(GoogleOAuthService):
             )
             if returned_state != state or not flow.code_verifier:
                 raise GoogleLoginRejected()
-            expires = datetime.now(UTC) + timedelta(minutes=10)
+            now = datetime.now(UTC)
+            expires = now + timedelta(minutes=10)
+            await self._prune_expired_states(now)
             self.db.add(
                 OAuthPendingState(
                     state=state,
@@ -216,6 +221,22 @@ class GoogleSessionAuthService(GoogleOAuthService):
         except SQLAlchemyError:
             await self.db.rollback()
             raise SessionStoreUnavailable() from None
+
+    async def _prune_expired_states(self, now: datetime) -> None:
+        """Delete expired pending states in the transaction that stores the new one (KI-032).
+
+        Only rows ``_consume`` would already refuse (``expires_at <= now``) are touched, so another
+        browser's valid attempt is never removed. The batch is bounded so an old backlog drains over
+        several logins instead of one long delete, and ``SKIP LOCKED`` keeps concurrent logins from
+        waiting on or deadlocking with each other.
+        """
+        expired = (
+            select(OAuthPendingState.state)
+            .where(OAuthPendingState.expires_at <= now)
+            .limit(_PRUNE_BATCH)
+            .with_for_update(skip_locked=True)
+        )
+        await self.db.execute(delete(OAuthPendingState).where(OAuthPendingState.state.in_(expired)))
 
     async def _consume(self, state: str | None, binding: str | None) -> PendingLogin:
         try:

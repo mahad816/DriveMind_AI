@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # Inactive until same-origin callback registration and authorization rollout are reviewed.
     google_application_sessions_enabled: bool = False
     google_session_redirect_uri: str = ""
+    # Global, process-local request limit for the unauthenticated LOGIN start (M0-SEC ticket 07,
+    # KI-032): 429 with Retry-After before any state row is written. A flood above it can delay the
+    # Owner's own sign-in; it resets on restart and each worker has its own window. Trade-offs and
+    # the M9 per-IP/edge decision: app/security/login_start_limit.py.
+    google_login_start_rate_limit: int = Field(default=30, ge=1, le=10000)
+    google_login_start_rate_window_seconds: int = Field(default=60, ge=1)
     # Application-level sign-in allow-list (M0-SEC ticket 03): the Owner's authorization model.
     # Comma-separated verified Google e-mail addresses, trimmed, case-insensitive, blanks ignored.
     # Unset or empty means NOBODY can sign in or keep a session (fail closed; demo mode is exempt).
