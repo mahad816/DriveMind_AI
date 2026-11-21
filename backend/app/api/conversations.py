@@ -191,7 +191,12 @@ def get_conversation_chat_service(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> ConversationChatService:
-    return ConversationChatService(db, settings)
+    return ConversationChatService(
+        db,
+        settings,
+        generation_timeout=settings.conversation_generation_timeout,
+        execution_seconds=settings.conversation_execution_seconds,
+    )
 
 
 @router.post(

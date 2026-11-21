@@ -4,7 +4,7 @@
 **What to build:** A small PostgreSQL-backed allowance that admits or refuses a paid question per Owner: 20 per rolling hour, 50 per rolling day, 1 concurrent, all configurable and provisional. It is built and tested on its own here; ticket 06 wires it into the routes. The daily limit survives restarts because it lives in the database, with no Redis or other new infrastructure. Owner decisions D4-2 and the 2026-11-21 approval.
 **Blocked by:** 04.
 **Status:** ready-for-agent
-**Progress:** open
+**Progress:** implemented and committed locally (2026-11-21): model, migration `20261121_1200`, settings with validator, `PaidQuestionQuota` service, `PaidExecutionMarker` and the five chokepoint calls, tests; two read-only reviews (standards; spec/correctness/security) found no blocking issues and are addressed; no route wired (ticket 06); not pushed
 
 ## Design (decided; the review of 2026-11-21 found the earlier key-based design unsafe)
 
@@ -59,3 +59,24 @@ Disposable PostgreSQL. No Qdrant, no provider, no network.
 - [ ] No route, API response schema or existing test changes; the only edits to provider modules are the one-line marker calls, with unchanged behavior and call counts (`tests/test_paid_call_counts.py` still passes). Static checks no worse than the baseline (clean on `app`, 48 baseline errors in `tests/`).
 
 ## Comments
+
+**Where things are.** `app/core/paid_execution.py` (marker), `app/services/paid_question_quota.py` (`admit`, `finish`, `release`, `settle`, `prune`), `app/db/models/paid_question_attempt.py`, settings in `app/core/config.py`. Tests: `tests/test_paid_execution_marker.py`, `tests/test_paid_question_settings.py`, `tests/security/test_paid_question_quota.py`.
+
+**Decisions taken while building.**
+- `chat_execution_seconds` (default 180) is added now because the lease validator must relate to it; nothing reads it until ticket 06.
+- `ConversationChatService` is now built with `conversation_generation_timeout` and `conversation_execution_seconds` from settings (same defaults 120 and 180).
+- When several limits refuse at once, the one that clears last is reported (waiting less cannot help).
+- Timestamps come from the application clock (injectable), not the database; this is why the multi-replica checklist includes clock agreement.
+- `settle` shields the cleanup, bounds it to 10 s, logs failures by exception category and swallows them; on caller cancellation it waits for the cleanup, then re-raises.
+- `install_marker` tolerates being closed from another context (a torn-down stream): the reset error is swallowed so it cannot replace the original exit or skip `settle`.
+- `tests/security/test_alembic_url_credentials.py` asserts the new head; `conftest.py` applies the new revision; the cascade guard in `test_conversation_deletion_privacy.py` includes the table.
+
+**For ticket 06 (carry-over from the reviews).**
+- Call `prune()` at a bounded point (a failed `release` leaves an unstarted row counted in the hour and day windows until prune removes it at twice the lease).
+- `admit` is not shielded: a cancellation at the instant of commit can leave a committed row whose id the caller never receives. It blocks the slot until the lease and is pruned later; accepted, like a crash orphan, and worth one test in 06.
+- A crashed attempt that had started paid execution stops counting in the windows once pruned (2x lease). This is the specified behaviour.
+- No test yet for the "file-target not found" zero-call route; only conversation-history recall is covered. Add it in 06 where the full path is exercised.
+
+**M7 / Delete-stored-data note.** The ledger holds Owner id and timestamps only (no question text). Finished rows are kept at least 25 hours, then pruned; deleting a user cascades to its rows. A future "delete my data" feature must include this table.
+
+**For ticket 09 documentation.** Settings `PAID_QUESTION_HOUR_LIMIT`, `_DAY_LIMIT`, `_CONCURRENT_LIMIT`, `_LEASE_SECONDS`, `_RETENTION_HOURS`, `CONVERSATION_EXECUTION_SECONDS`, `CONVERSATION_GENERATION_TIMEOUT`, `CHAT_EXECUTION_SECONDS` are not yet in `.env.example`. Values are provisional (M9 recalibration). Multi-replica checklist is in the `config.py` comment.

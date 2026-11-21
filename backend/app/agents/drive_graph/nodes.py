@@ -13,6 +13,7 @@ from openai import APIError, AsyncOpenAI
 from app.agents.drive_graph.state import DriveGraphState
 from app.agents.drive_graph.types import QueryIntent, RetrievalPlan, RetrieverName
 from app.core.config import Settings
+from app.core.paid_execution import mark_paid_started
 from app.agents.drive_graph.prompts import REWRITE_QUERY_SYSTEM_PROMPT
 from app.evaluation.trace import AbstentionReason, EvalTraceCollector, elapsed_ms
 from app.llm.base import ChatService
@@ -528,6 +529,7 @@ async def _rewrite_with_openai(
     )
 
     try:
+        mark_paid_started()
         response = await client.chat.completions.create(
             model=settings.chat_model,
             messages=[

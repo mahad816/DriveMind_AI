@@ -10,6 +10,7 @@ from app.db.models.drive_sync_state import DriveSyncState
 from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.oauth_pending_state import OAuthPendingState
+from app.db.models.paid_question_attempt import PaidQuestionAttempt
 from app.db.models.query_history import QueryHistory
 from app.db.models.user import User
 
@@ -24,6 +25,7 @@ __all__ = [
     "GoogleOAuthToken",
     "IndexingJob",
     "OAuthPendingState",
+    "PaidQuestionAttempt",
     "QueryHistory",
     "User",
 ]

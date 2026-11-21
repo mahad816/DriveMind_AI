@@ -5,6 +5,7 @@ from __future__ import annotations
 from openai import APIError, AsyncOpenAI
 
 from app.core.config import Settings, get_settings
+from app.core.paid_execution import mark_paid_started
 from app.embeddings.base import EmbeddingConfigurationError, EmbeddingError
 
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
@@ -74,6 +75,7 @@ class OpenAIEmbeddingService:
 
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         client = self._get_client()
+        mark_paid_started()
         try:
             response = await client.embeddings.create(
                 input=texts,

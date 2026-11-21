@@ -7,6 +7,7 @@ from typing import cast
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from app.llm.openai_service import OpenAIChatService, completion_options
 from app.llm.base import ChatError
+from app.core.paid_execution import mark_paid_started
 from app.agents.tool_rag.agent_models import (
     AgentMessage,
     AgentStepResult,
@@ -79,6 +80,7 @@ class OpenAIAgentChatService(OpenAIChatService):
         try:
             if self._client is None:
                 self._client = super()._get_client()
+            mark_paid_started()
             response = await self._client.chat.completions.create(
                 model=self.model_name,
                 temperature=0,
@@ -133,6 +135,7 @@ class OpenAIAgentChatService(OpenAIChatService):
             self._client = super()._get_client()
         response = None
         try:
+            mark_paid_started()
             response = await self._client.with_options(max_retries=0).chat.completions.create(
                 model=self.model_name,
                 temperature=0,

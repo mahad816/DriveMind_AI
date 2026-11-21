@@ -40,6 +40,7 @@ from app.services.ingestion_service import IngestionService
 from .conftest import (
     BACKEND,
     BASE_REVISION,
+    PAID_QUESTION_REVISION,
     PIPELINE_VERSION_REVISION,
     SESSION_REVISION,
     USER_A,
@@ -126,6 +127,7 @@ async def full_schema(pg_engine):
     already = set(order[: order.index(BASE_REVISION) + 1]) | {
         SESSION_REVISION,
         PIPELINE_VERSION_REVISION,
+        PAID_QUESTION_REVISION,
     }
     async with pg_engine.begin() as connection:
         for revision in order:

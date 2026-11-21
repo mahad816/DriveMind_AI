@@ -30,6 +30,7 @@ from app.db.models import (
     DriveSyncState,
     GoogleOAuthToken,
     IndexingJob,
+    PaidQuestionAttempt,
     QueryHistory,
 )
 from app.main import create_app
@@ -65,6 +66,7 @@ PER_OWNER_TABLES = (
     "drive_sync_states",
     "indexing_jobs",
     "application_sessions",
+    "paid_question_attempts",
 )
 
 
@@ -78,6 +80,7 @@ async def seed_owner(w, owner, label, *, turns="answered"):
         )
         db.add(DriveSyncState(user_id=owner, changes_page_token="token"))
         db.add(IndexingJob(user_id=owner))
+        db.add(PaidQuestionAttempt(owner_id=owner, started_at=datetime.now(UTC)))
         file = DriveFile(
             user_id=owner,
             drive_file_id=f"drive-{label}",
@@ -141,6 +144,7 @@ async def counts(w, owner):
             "drive_sync_states": "SELECT count(*) FROM drive_sync_states WHERE user_id = :o",
             "indexing_jobs": "SELECT count(*) FROM indexing_jobs WHERE user_id = :o",
             "application_sessions": "SELECT count(*) FROM application_sessions WHERE user_id = :o",
+            "paid_question_attempts": "SELECT count(*) FROM paid_question_attempts WHERE owner_id = :o",
         }
         assert set(queries) == set(PER_OWNER_TABLES)
         return {name: await db.scalar(text(sql), {"o": owner_id}) for name, sql in queries.items()}

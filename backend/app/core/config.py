@@ -4,10 +4,13 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_ROOT.parent
+# The lease starts at admission, a turn deadline at reservation: the margin covers the gap, cleanup
+# and the result publication that run outside the execution budget.
+PAID_QUESTION_LEASE_MARGIN_SECONDS = 60
 
 
 class Settings(BaseSettings):
@@ -112,7 +115,45 @@ class Settings(BaseSettings):
     claim_check_model: str = "gpt-5.4-mini"
     agent_max_rewrite_attempts: int = 2
 
+    # Owner-mode paid-question quota (M0-SEC tickets 05 and 06). PROVISIONAL and unmeasured: the
+    # values are a guess to be recalibrated from M1 data (M9 gate). A count is a number of admitted
+    # questions, not a dollar amount and not a count of provider calls (one question may make
+    # several). Windows are rolling. Admission relies on PostgreSQL, so it is correct across
+    # processes; before running more than one worker or replica re-check: the lease against the
+    # execution bounds below, the connection pool size (admit, finish and release each take a pooled
+    # connection beside the request's own), clock agreement between hosts (timestamps are taken
+    # from the application clock), and that the login-start counter (ticket 07) is process-local.
+    paid_question_hour_limit: int = Field(default=20, ge=1)
+    paid_question_day_limit: int = Field(default=50, ge=1)
+    paid_question_concurrent_limit: int = Field(default=1, ge=1)
+    # An unfinished attempt stops blocking after this long (a crash leaves such a row). Must exceed
+    # the longest execution bound by at least PAID_QUESTION_LEASE_MARGIN_SECONDS; see the validator.
+    paid_question_lease_seconds: int = Field(default=300, ge=1)
+    # Finished attempts are kept this long before pruning; never below the 24-hour window.
+    paid_question_retention_hours: int = Field(default=25, ge=25)
+    # Execution bounds the lease must outlast. The conversation values used to be constructor
+    # defaults of ConversationChatService; the chat bound is used by Owner-mode POST /chat (ticket 06).
+    conversation_execution_seconds: int = Field(default=180, ge=1, le=600)
+    conversation_generation_timeout: float = Field(
+        default=120.0, ge=0.01, le=120, allow_inf_nan=False
+    )
+    chat_execution_seconds: int = Field(default=180, ge=1, le=600)
+
     frontend_url: str = "http://localhost:3000"
+
+    @model_validator(mode="after")
+    def _execution_bounds_and_lease(self) -> "Settings":
+        if not self.conversation_generation_timeout < self.conversation_execution_seconds:
+            raise ValueError(
+                "CONVERSATION_GENERATION_TIMEOUT must be below CONVERSATION_EXECUTION_SECONDS"
+            )
+        longest = max(self.conversation_execution_seconds, self.chat_execution_seconds)
+        if self.paid_question_lease_seconds < longest + PAID_QUESTION_LEASE_MARGIN_SECONDS:
+            raise ValueError(
+                "PAID_QUESTION_LEASE_SECONDS must be at least the longest execution bound "
+                f"plus {PAID_QUESTION_LEASE_MARGIN_SECONDS} seconds"
+            )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=(

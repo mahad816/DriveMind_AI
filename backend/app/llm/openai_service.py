@@ -8,6 +8,7 @@ import re
 from openai import APIError, AsyncOpenAI, omit
 
 from app.core.config import Settings, get_settings
+from app.core.paid_execution import mark_paid_started
 from app.llm.base import ChatCitationValidationError, ChatConfigurationError, ChatError
 from app.llm.prompts import (
     CHITCHAT_SYSTEM_PROMPT,
@@ -68,6 +69,7 @@ class OpenAIChatService:
     ) -> str:
         """Shared completion helper — one system + one user message."""
         client = self._get_client()
+        mark_paid_started()
         try:
             response = await client.chat.completions.create(
                 model=self.model_name,
