@@ -146,9 +146,13 @@ async def chat_reads(owner_engine, settings):
 
 
 def authenticate(r, owner):
+    """Cookie plus the Origin and CSRF token that POST /chat now requires (M0-SEC ticket 08)."""
+    session = r.sessions[owner]
     r.client.cookies.set(
-        session_cookie_policy(r.settings).name, r.sessions[owner].credential.get_secret_value()
+        session_cookie_policy(r.settings).name, session.credential.get_secret_value()
     )
+    r.client.headers["Origin"] = r.settings.frontend_url
+    r.client.headers["X-CSRF-Token"] = session.csrf_token.get_secret_value()
 
 
 @pytest.mark.parametrize("state", ["missing", "invalid", "expired", "revoked", "wrong_kind"])

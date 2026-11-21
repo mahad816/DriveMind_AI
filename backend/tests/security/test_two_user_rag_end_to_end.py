@@ -673,10 +673,15 @@ async def test_parallel_authenticated_users_have_independent_context(corpus):
     cookie = session_cookie_policy(c.r.settings).name
 
     async def ask(owner):
-        token = c.r.sessions[owner].credential.get_secret_value()
+        session = c.r.sessions[owner]
+        token = session.credential.get_secret_value()
         return await c.r.client.post(
             "/api/v1/chat",
-            headers={"Cookie": f"{cookie}={token}"},
+            headers={
+                "Cookie": f"{cookie}={token}",
+                "Origin": c.r.settings.frontend_url,
+                "X-CSRF-Token": session.csrf_token.get_secret_value(),
+            },
             json={"question": QUESTION},
         )
 

@@ -43,6 +43,7 @@ AUTH_DEPENDENCIES = frozenset(
     {
         "require_normal_mode",
         "require_resource_user",
+        "require_chat_user",
         "require_demo_index",
         "require_index_user",
         "require_index_read_user",
@@ -55,8 +56,10 @@ AUTH_DEPENDENCIES = frozenset(
 )
 
 PUBLIC = frozenset[str]()
-# /files, /chat and /sources: a session principal in normal mode; anonymous (synthetic corpus) in demo.
+# /files and /sources: a session principal in normal mode; anonymous (synthetic corpus) in demo.
 RESOURCE = frozenset({"require_resource_user", "require_demo_index"})
+# POST /chat: the resource check plus Origin and CSRF in normal mode (M0-SEC ticket 08).
+CHAT = frozenset({"require_chat_user", "require_resource_user", "require_demo_index"})
 INDEX_MUTATION = frozenset({"require_index_user", "require_normal_mode"})
 INDEX_READ = frozenset({"require_index_read_user"})
 CONVERSATION_READ = frozenset({"require_application_principal", "require_normal_mode"})
@@ -84,7 +87,7 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/index/pending"): INDEX_READ,
     ("GET", "/files"): RESOURCE,
     ("GET", "/files/{file_id}/content"): RESOURCE,
-    ("POST", "/chat"): RESOURCE,
+    ("POST", "/chat"): CHAT,
     ("GET", "/sources/{chunk_id}"): RESOURCE,
     ("POST", "/conversations"): CONVERSATION_MUTATION,
     ("GET", "/conversations"): CONVERSATION_READ,

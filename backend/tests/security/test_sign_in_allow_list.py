@@ -240,7 +240,7 @@ def protected_calls(settings: Settings, csrf: str):
         ("GET", "/index/status", {}),
         ("GET", "/index/pending", {}),
         ("GET", f"/sources/{some}", {}),
-        ("POST", "/chat", {"json": {"question": "hi"}}),
+        ("POST", "/chat", {"headers": origin, "json": {"question": "hi"}}),
         ("POST", "/conversations", {"headers": origin, "json": {}}),
         ("DELETE", f"/conversations/{some}", {"headers": origin}),
         ("POST", "/index/sync", {"headers": origin}),

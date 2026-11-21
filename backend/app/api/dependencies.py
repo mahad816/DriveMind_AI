@@ -71,3 +71,20 @@ async def require_resource_user(
         request, ApplicationSessionService(db, settings)
     )
     return principal.corpus_user_id
+
+
+async def require_chat_user(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    db: AsyncSession = Depends(get_db),
+    user_id: UUID = Depends(require_resource_user),
+) -> UUID:
+    """``POST /chat``: the private-read check, plus Origin and CSRF in normal mode (M0-SEC 08).
+
+    ``require_resource_user`` runs first, so a missing or invalid session stays 401 and only an
+    authenticated request is then checked for exactly one trusted ``Origin`` and a session-bound
+    ``X-CSRF-Token`` (403), the same as every other mutation. Demo mode is anonymous and unchanged.
+    """
+    if not settings.demo_mode:
+        await require_session_mutation(request, ApplicationSessionService(db, settings))
+    return user_id

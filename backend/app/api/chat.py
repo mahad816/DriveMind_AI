@@ -13,7 +13,7 @@ from app.llm.base import ChatConfigurationError, ChatError
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.paid_question_quota import PaidQuestionQuota
 from app.services.rag_service import RagResult, RagService
-from app.api.dependencies import require_resource_user
+from app.api.dependencies import require_chat_user
 from app.api.paid_question import admit_or_refuse, get_paid_question_quota
 from app.core.config import Settings, get_settings
 from app.core.public_safety import DemoChatLimits, public_error_detail
@@ -42,7 +42,7 @@ async def _ask(payload: ChatRequest, service: RagService, user_id: UUID) -> RagR
 async def ask_grounded_question(
     payload: ChatRequest,
     request: Request,
-    user_id: UUID = Depends(require_resource_user),
+    user_id: UUID = Depends(require_chat_user),
     service: RagService = Depends(get_rag_service),
     settings: Settings = Depends(get_settings),
     quota: PaidQuestionQuota | None = Depends(get_paid_question_quota),
