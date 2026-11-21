@@ -8,7 +8,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.session_dependencies import require_application_principal, require_session_mutation
+from app.api.session_dependencies import (
+    LogoutAuthorization,
+    require_application_principal,
+    require_session_logout,
+    require_session_mutation,
+)
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.security.principal import ApplicationPrincipal
@@ -196,7 +201,7 @@ async def inspect_session(
 @router.post("/logout")
 async def logout(
     request: Request,
-    principal: ApplicationPrincipal = Depends(require_session_mutation),
+    _authorized: LogoutAuthorization = Depends(require_session_logout),
     service: GoogleSessionAuthService = Depends(get_google_session_service),
 ) -> Response:
     try:

@@ -6,8 +6,8 @@
 > four `/auth/session/*` endpoints); with it off every private route answers 401, so it
 > means "locked" (apart from sessions already in the database), not "single-user". Credentials are stored encrypted-only. Still open: six
 > services fall back to the first stored credential when no owner is given (latent, KI-031);
-> there is no sign-in allow-list, so with sessions on any Google account that Google lets
-> through gets a session; Owner mode has no rate limit; there is no Disconnect, Revoke or
+> a fail-closed sign-in allow-list (`GOOGLE_SIGN_IN_ALLOWED_EMAILS`, M0-SEC ticket 03) now gates
+> login and every private request, and logout is revoke-only; Owner mode has no rate limit; there is no Disconnect, Revoke or
 > Delete stored data.
 
 # Application session foundation (historical: written while inactive)

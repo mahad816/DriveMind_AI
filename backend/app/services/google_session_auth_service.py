@@ -27,6 +27,7 @@ from app.core.config import Settings
 from app.db.models.application_session import ApplicationSession
 from app.db.models.oauth_pending_state import OAuthPendingState
 from app.db.models.user import User
+from app.security.allow_list import is_sign_in_allowed
 from app.security.principal import VerifiedGoogleIdentity
 from app.security.session_helpers import (
     InvalidApplicationSession,
@@ -321,6 +322,10 @@ class GoogleSessionAuthService(GoogleOAuthService):
                 credentials, identity, email = await asyncio.to_thread(
                     self._exchange_and_verify, code, pending
                 )
+            # Authorization precedes every lookup, row creation and session issuance, for both
+            # intents. Same generic rejection as any failed login; the address is never logged.
+            if not is_sign_in_allowed(self.settings, email):
+                raise GoogleLoginRejected()
             # Serialize rotation against logout or another successful login. Locks
             # are acquired only AFTER Google I/O, never while waiting on Google.
             if pending.session_id is not None:

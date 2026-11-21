@@ -176,7 +176,7 @@ service variables/approved secret storage, never Docker build arguments.
 | Frontend runtime | `PORT`, `BACKEND_URL` (private backend origin), `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` |
 | Frontend build | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_DEMO_MODE`: this normal image fixes `/api/v1` and `false`. Next public variables are compiled at build time; runtime changes cannot change the bundle. No secret is public. |
 | Backend | `PORT`, `APP_ENV`, `DEBUG`, `LOG_LEVEL`, `API_PREFIX`, `DEMO_MODE`, `FRONTEND_URL` |
-| Backend sessions | `GOOGLE_APPLICATION_SESSIONS_ENABLED`, `GOOGLE_SESSION_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Backend sessions | `GOOGLE_APPLICATION_SESSIONS_ENABLED`, `GOOGLE_SIGN_IN_ALLOWED_EMAILS` (required: empty means nobody can sign in), `GOOGLE_SESSION_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Backend Drive | `GOOGLE_DRIVE_SCOPES`; LOGIN uses fixed OpenID/email/profile scopes; CONNECT_DRIVE additionally requests configured read-only Drive scopes |
 | Backend encryption | `GOOGLE_CREDENTIAL_ENCRYPTION_KEYRING`, `GOOGLE_CREDENTIAL_ENCRYPTION_ACTIVE_KEY_ID`; accepted keyring JSON contract and active key must agree; preserve keys for restoring grants |
 | Backend SQL | `DATABASE_URL` in `postgresql+asyncpg` format, private host/5432, percent-encoded credentials; `INDEXING_DATABASE_SCHEMA` |

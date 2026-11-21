@@ -24,6 +24,11 @@ DEMO_USER = UUID(int=103)
 BASE_REVISION = "20260708_1400"
 SESSION_REVISION = "20261009_1200"
 PIPELINE_VERSION_REVISION = "20261120_1200"  # documents.pipeline_version
+# The shared sign-in allow-list for every test that completes a sign-in or holds a session
+# (M0-SEC ticket 03). An unset list denies everyone, so nothing may rely on a default.
+TEST_ALLOWED_EMAILS = (
+    "a@example.invalid,b@example.invalid,new@example.invalid,owner@example.invalid"
+)
 BACKEND = Path(__file__).resolve().parents[2]
 
 
@@ -48,6 +53,7 @@ def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
         debug=False,
         frontend_url="https://app.example.invalid",
         demo_user_id=str(DEMO_USER),
+        google_sign_in_allowed_emails=TEST_ALLOWED_EMAILS,
     )
 
 

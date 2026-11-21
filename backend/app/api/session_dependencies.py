@@ -1,4 +1,7 @@
-"""Reusable dependencies, deliberately NOT attached to any current route."""
+"""Session dependencies for the private routes and the /auth/session routes."""
+
+from dataclasses import dataclass
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +64,42 @@ async def require_session_mutation(
         if len(csrf_tokens) != 1:
             raise InvalidSessionRequest()
         return await service.verify_csrf(request.cookies.get(policy.name), csrf_tokens[0])
+    except (
+        InvalidApplicationSession,
+        InvalidSessionRequest,
+        SessionStoreUnavailable,
+        SessionSecurityConfigurationError,
+    ) as exc:
+        raise _safe_error(exc) from None
+
+
+@dataclass(frozen=True)
+class LogoutAuthorization:
+    """Proof that a session may be revoked. Deliberately not an ApplicationPrincipal."""
+
+    session_id: UUID
+
+
+async def require_session_logout(
+    request: Request,
+    service: ApplicationSessionService = Depends(get_application_session_service),
+) -> LogoutAuthorization:
+    """Same Origin, cookie and CSRF checks as require_session_mutation, without the allow-list.
+
+    Keep the two in step: only the allow-list may differ.
+    """
+    try:
+        origins = request.headers.getlist("origin")
+        if len(origins) != 1:
+            raise InvalidSessionRequest()
+        verify_origin(origins[0], service.settings)
+        policy = session_cookie_policy(service.settings)
+        csrf_tokens = request.headers.getlist("x-csrf-token")
+        if len(csrf_tokens) != 1:
+            raise InvalidSessionRequest()
+        return LogoutAuthorization(
+            await service.authorize_logout(request.cookies.get(policy.name), csrf_tokens[0])
+        )
     except (
         InvalidApplicationSession,
         InvalidSessionRequest,

@@ -4,7 +4,7 @@
 **What to build:** Only Google accounts the Owner has listed can sign in or keep using a session. Everyone else gets the same generic refusal as any other failed login and never holds a usable session. Removing an address ends its access on its next request. DriveMind stays a private single-Owner beta with no public registration (Owner decisions D4-1 and the 2026-11-21 approval).
 **Blocked by:** None (can start immediately).
 **Status:** ready-for-agent
-**Progress:** open
+**Progress:** implemented and committed locally (2026-11-21); two read-only reviews addressed; not pushed
 
 ## Scope
 
@@ -35,17 +35,27 @@ Setting, check, tests; `## Comments` with the documentation items for ticket 09 
 
 Disposable PostgreSQL. Fake Google identity as the existing tests do. No network.
 
-- [ ] Tests written first fail today: an unlisted verified account gets a user row and a session, and a session of a no-longer-listed address still works.
-- [ ] Unlisted verified account: no `users`, `application_sessions` or credential row is created; the response equals the existing generic rejection; the address appears in no captured log line or response body.
-- [ ] Unset list and empty list: every completion is refused, no rows created.
-- [ ] A listed account signs in as before, with any letter case in the list or in the Google claim; a returning user (matching Google subject) still resolves to the same user row.
-- [ ] Logout regression: for a removed address with a valid session, `GET` and mutating protected routes answer 401, while logout with a valid `Origin` and CSRF token succeeds and revokes the session row (a later request is 401 even after the address is re-added); logout with a missing or wrong `Origin` or CSRF token, or with an invalid cookie, is refused as today; the logout resolution path is not usable as a principal by any other route (route inventory dependency check).
-- [ ] Re-adding a removed address whose session was not revoked restores access (documented behavior).
-- [ ] Revocation: with a valid session for a listed address, removing it from the list (or unsetting the list) makes the next request 401 on every private route class in the route inventory (conversations, files, index, sources, chat, session inspection), and on mutations; a demo-mode session is unaffected.
-- [ ] The Drive-connect intent is covered: an unlisted account cannot get a credential stored.
-- [ ] An unverified e-mail is still rejected (existing behavior preserved).
-- [ ] Two-owner isolation tests (`test_two_user_rag_end_to_end.py`, `test_private_read_authorization.py`) pass; test fixtures that sign in set the list explicitly, nothing relies on a global default.
-- [ ] Because an unset list now denies every session, one shared test helper (fixture) sets the list; the ticket's `## Comments` lists every existing test file that creates a session or completes a sign-in and that it uses the helper. No test depends on a default.
-- [ ] The route inventory (48 tests) passes; it is updated only for the logout route's changed dependency and the new allow-list dependency, and the update is named in the ticket's `## Comments`. Static checks no worse than the baseline.
+- [x] Tests written first fail today: an unlisted verified account gets a user row and a session, and a session of a no-longer-listed address still works.
+- [x] Unlisted verified account: no `users`, `application_sessions` or credential row is created; the response equals the existing generic rejection; the address appears in no captured log line or response body.
+- [x] Unset list and empty list: every completion is refused, no rows created.
+- [x] A listed account signs in as before, with any letter case in the list or in the Google claim; a returning user (matching Google subject) still resolves to the same user row.
+- [x] Logout regression: for a removed address with a valid session, `GET` and mutating protected routes answer 401, while logout with a valid `Origin` and CSRF token succeeds and revokes the session row (a later request is 401 even after the address is re-added); logout with a missing or wrong `Origin` or CSRF token, or with an invalid cookie, is refused as today; the logout resolution path is not usable as a principal by any other route (route inventory dependency check).
+- [x] Re-adding a removed address whose session was not revoked restores access (documented behavior).
+- [x] Revocation: with a valid session for a listed address, removing it from the list (or unsetting the list) makes the next request 401 on every private route class in the route inventory (conversations, files, index, sources, chat, session inspection), and on mutations; a demo-mode session is unaffected.
+- [x] The Drive-connect intent is covered: an unlisted account cannot get a credential stored.
+- [x] An unverified e-mail is still rejected (existing behavior preserved).
+- [x] Two-owner isolation tests (`test_two_user_rag_end_to_end.py`, `test_private_read_authorization.py`) pass; test fixtures that sign in set the list explicitly, nothing relies on a global default.
+- [x] Because an unset list now denies every session, one shared test helper (fixture) sets the list; the ticket's `## Comments` lists every existing test file that creates a session or completes a sign-in and that it uses the helper. No test depends on a default.
+- [x] The route inventory (48 tests) passes; it is updated only for the logout route's changed dependency and the new allow-list dependency, and the update is named in the ticket's `## Comments`. Static checks no worse than the baseline.
 
 ## Comments
+
+Implementation (2026-11-21). Setting `GOOGLE_SIGN_IN_ALLOWED_EMAILS` (`Settings.google_sign_in_allowed_emails`); helper `backend/app/security/allow_list.py`; login check in `GoogleSessionAuthService.callback` right after Google verification; principal check in `ApplicationSessionService._principal` (so `resolve_principal`, `verify_csrf` and `csrf_token` all apply it); logout uses `require_session_logout` -> `ApplicationSessionService.authorize_logout`, which returns a `LogoutAuthorization(session_id)`, never a principal. The stored `users.email` was already available in the resolution step, so no new query shape was needed beyond selecting it. Tests: `backend/tests/security/test_sign_in_allow_list.py` (18). Verified the new tests fail without the app change (8 of 16 at that point).
+
+**Route inventory change (named):** `require_session_logout` added to `AUTH_DEPENDENCIES`, new `SESSION_LOGOUT` set, and `POST /auth/session/logout` now expects it instead of `require_session_mutation`. No other entry changed. The allow-list lives inside the session service, so there is no separate allow-list dependency name.
+
+**Shared test helper:** `TEST_ALLOWED_EMAILS` in `backend/tests/security/conftest.py`, set explicitly by the shared `settings` fixture (synthetic `*@example.invalid` addresses). Every test that creates a session or completes a sign-in through that fixture uses it: `test_application_session_postgres.py`, `test_google_session_postgres.py`, `test_google_session_auth.py`, `test_session_security.py`, `test_conversation_api.py`, `test_conversation_deletion_privacy.py`, `test_owner_scoped_drive_identity.py`, `test_indexing_lifecycle.py`, `test_indexing_admission.py`, `test_private_read_authorization.py`, `test_chat_file_evidence_authorization.py`, `test_sign_in_allow_list.py` (and `test_two_user_rag_end_to_end.py`, `test_conversation_chat.py` via the same fixtures). No test depends on a default.
+
+**For ticket 09 (`docs/guides/GOOGLE_OAUTH.md`):** the allow-list is the authorization model; Google's consent-screen test-user list is an outer control only. Document the matching rule (verified e-mail of the ID token, not the subject), fail-closed default, immediate effect of removal, reactivation on re-adding within 7 days unless revoked, and logout as the explicit revocation. Limitation: a removed address cannot fetch a fresh CSRF token (the session-inspection endpoint passes the allow-list), so logout works only for a client already holding one; otherwise the session ends by expiry. Deployment: `infra/railway/backend.env.example` and `docs/guides/RAILWAY_PRIVATE_BETA.md` now list the variable; a deployment without it lets nobody sign in.
+
+**Deferred (residual risks, not guarantees):** (a) a running conversation turn may publish after removal within its bounded window; (b) queued indexing jobs are not cancelled, per-job check assigned to M6 and re-verified at M9; (c) the stored e-mail refreshes only at sign-in, so a Google-side e-mail change is not seen until the next sign-in. Also noted by review: the unmounted legacy `/auth/google` router has no allow-list; it is unreachable (inventory tests pin that it stays unmounted).

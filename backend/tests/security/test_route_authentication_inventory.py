@@ -48,6 +48,7 @@ AUTH_DEPENDENCIES = frozenset(
         "require_index_read_user",
         "require_application_principal",
         "require_session_mutation",
+        "require_session_logout",
         "require_conversation_mutation",
         "require_session_login_enabled",
     }
@@ -63,6 +64,7 @@ CONVERSATION_MUTATION = frozenset({"require_conversation_mutation", "require_nor
 LOGIN_FLAG = frozenset({"require_session_login_enabled"})
 SESSION_READ = frozenset({"require_session_login_enabled", "require_application_principal"})
 SESSION_MUTATION = frozenset({"require_session_login_enabled", "require_session_mutation"})
+SESSION_LOGOUT = frozenset({"require_session_login_enabled", "require_session_logout"})
 
 CONVERSATION = "/conversations/{conversation_id}"
 # (method, path under /api/v1) -> the authentication dependencies the route must carry.
@@ -73,7 +75,7 @@ EXPECTED: dict[tuple[str, str], frozenset[str]] = {
     ("POST", "/auth/session/google"): LOGIN_FLAG,
     ("GET", "/auth/session/google/callback"): LOGIN_FLAG,
     ("GET", "/auth/session"): SESSION_READ,
-    ("POST", "/auth/session/logout"): SESSION_MUTATION,
+    ("POST", "/auth/session/logout"): SESSION_LOGOUT,
     ("POST", "/index/sync"): INDEX_MUTATION,
     ("POST", "/index/ingest"): INDEX_MUTATION,
     ("POST", "/index/chunk"): INDEX_MUTATION,

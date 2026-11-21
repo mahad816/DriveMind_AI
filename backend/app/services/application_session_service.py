@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.db.enums import ApplicationSessionKind
 from app.db.models.application_session import ApplicationSession
 from app.db.models.user import User
+from app.security.allow_list import is_sign_in_allowed
 from app.security.principal import ApplicationPrincipal, ConversationOwner, VerifiedGoogleIdentity
 from app.security.session_helpers import (
     InvalidApplicationSession,
@@ -75,6 +76,12 @@ class ApplicationSessionService:
     async def _require_user(self, user_id: UUID) -> None:
         existing = await self.db.scalar(select(User.id).where(User.id == user_id))
         if existing != user_id:
+            raise InvalidApplicationSession()
+
+    async def _require_allow_listed_user(self, user_id: UUID) -> None:
+        """Stateless, current check: a removed or unlisted address loses access immediately."""
+        email = await self.db.scalar(select(User.email).where(User.id == user_id))
+        if not is_sign_in_allowed(self.settings, email):
             raise InvalidApplicationSession()
 
     async def _demo_user(self) -> UUID:
@@ -156,7 +163,7 @@ class ApplicationSessionService:
         else:
             if row.user_id is None or row.kind != ApplicationSessionKind.GOOGLE_ACCOUNT:
                 raise InvalidApplicationSession()
-            await self._require_user(row.user_id)
+            await self._require_allow_listed_user(row.user_id)
             corpus_user_id = row.user_id
             owner = ConversationOwner("USER", row.user_id)
         return ApplicationPrincipal(
@@ -190,6 +197,17 @@ class ApplicationSessionService:
             row = await self._lookup(credential)
             verify_csrf_secret(row.csrf_secret, csrf_token)
             return await self._principal(row)
+        except SQLAlchemyError:
+            raise SessionStoreUnavailable() from None
+
+    async def authorize_logout(self, credential: str | None, csrf_token: str | None) -> UUID:
+        """Revoke-only resolution: cookie and session-bound CSRF as for any mutation, but NOT the
+        allow-list, so a removed address can still end its own session. Returns only a session id,
+        never a principal, so no other route can accept it."""
+        try:
+            row = await self._lookup(credential)
+            verify_csrf_secret(row.csrf_secret, csrf_token)
+            return row.id
         except SQLAlchemyError:
             raise SessionStoreUnavailable() from None
 

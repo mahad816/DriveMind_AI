@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     # Inactive until same-origin callback registration and authorization rollout are reviewed.
     google_application_sessions_enabled: bool = False
     google_session_redirect_uri: str = ""
+    # Application-level sign-in allow-list (M0-SEC ticket 03): the Owner's authorization model.
+    # Comma-separated verified Google e-mail addresses, trimmed, case-insensitive, blanks ignored.
+    # Unset or empty means NOBODY can sign in or keep a session (fail closed; demo mode is exempt).
+    # Matching uses the e-mail of Google's verified ID token, never the Google subject, so an
+    # e-mail change on the Google side changes who matches. The same check runs on every private
+    # request (stateless, the session row is not rewritten): removing an address ends its access on
+    # its next request, but re-adding it within the old session's remaining lifetime (7 days at
+    # most) reactivates that session unless it was revoked. Revoke explicitly with logout
+    # (POST /auth/session/logout, Origin + CSRF token), which still works for a removed address
+    # that holds a CSRF token; otherwise the session ends by expiry.
+    google_sign_in_allowed_emails: str = ""
     # Optional, backend-only; parsed only when the inactive crypto component is invoked.
     google_credential_encryption_keyring: SecretStr | None = Field(
         default=None, repr=False, exclude=True
