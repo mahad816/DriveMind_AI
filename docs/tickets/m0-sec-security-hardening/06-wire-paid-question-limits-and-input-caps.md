@@ -94,3 +94,18 @@ Disposable PostgreSQL and Qdrant as `AGENTS.md` describes for the conversation t
 
 **Verification (2026-11-21).** New route tests: see the commit message for counts. Focused regression (`test_conversation_chat`, `test_conversation_api`, `test_public_safety`, `test_chat_api`, streaming, tool agent API, demo guard, provider failure paths, route authentication inventory, chat schema, conversation diagnostics): 308 passed, 3 skipped without the S2B Qdrant; the 3 real-RAG-mode tests (linear, graph, tool) pass against a disposable Qdrant at `127.0.0.1:61448`. ruff and format clean, mypy clean, basedpyright 48 errors (baseline).
 
+## Ownership of remaining issues (documentation follow-up, 2026-11-21)
+
+"Bug" means it must be fixed before the beta is reopened; "accepted" means a known limitation with a stated bound. Each also appears in `docs/specs/m0-sec-security-hardening.md` (Deferred table) so it is not lost.
+
+| # | Issue | Class | Owner | Tracking |
+|---|---|---|---|---|
+| 1 | Owner-mode 429 shows "The public demo is busy"; `Retry-After` unused | **Bug, before beta** | M8 | New: spec Deferred table, `docs/KNOWN_ISSUES.md` (unregistered list), v1 spec M8 row |
+| 2 | Frontend handling of stream non-200 starts (404, 401, 429, 503) and in-stream error events for reservation-time 409 and the replay-vanished abort | **Unverified; fix before beta if mishandled** | M8 (verify first) | New: same places |
+| 3 | Stream disconnect before the body starts leaves the reservation until the lease (300 s) | Accepted (single Owner, bounded by the lease) | Revisit in M7 with per-user quotas and at the M9 gate | Already tracked: ticket 04 finding M6, spec "Residual risk after M0-SEC", this ticket |
+| 4 | Concurrent-limit `Retry-After` up to the lease although the slot frees in seconds | Accepted (safe) | M8 (short client wait) and M9 (lease recalibration) | New: spec Deferred table |
+| 5a | Database pool sizing (admit, finish, release take a second connection per request) | Pre-deploy check | M9 gate | Already tracked: ticket 04 finding M7, `config.py` checklist, spec multi-replica checklist; now explicit in ticket 09's M9 list |
+| 5b | No body-read timeout before authentication (slow-drip client, bounded memory) | Accepted until deployed | M9 (edge and proxy limits) | New: spec Deferred table |
+| 6 | Quota settings missing from `.env.example`; migration `20261121_1200` and the lease validator unverified on the host | **Required before beta** | Ticket 09 (document), M9 gate (verify on the host) | Settings gap noted in ticket 05 Comments; now explicit in ticket 09 scope and checklist, spec Deferred table, v1 spec M9 row |
+| 7 | Demo-mode provider `TimeoutError` on `/chat` is now a safe 503, not a 500 | Accepted (an improvement) | None | This ticket only |
+

@@ -104,6 +104,11 @@ No file paths or code snippets in this section. Evidence pointers are in the tic
 | Demo spend cap | ADR 0002 | M9 |
 | Preparation and embedding-compatibility issues | Not security | M6 |
 | CI hosted run; four deselected tests | Not security | M9 |
+| **Added after ticket 06 (2026-11-21):** Owner-mode HTTP 429 shows the demo wording in the frontend ("The public demo is busy") and ignores `Retry-After` | Wrong message, no security effect; ticket 06 may not change the frontend. **Bug to fix before beta** | M8 |
+| **Added after ticket 06:** frontend handling of the stream route's new behavior (a non-200 start: 404, 401, 429, 503; reservation-time 409 and replay-vanished abort arriving as an SSE `error` event on a 200) is unverified | Needs a frontend check; **fix before beta if the client mishandles any of them** | M8 (verify first) |
+| **Added after ticket 06:** the concurrent-limit `Retry-After` is the time until the lease would expire (up to 300 s) although the slot normally frees in seconds | Safe (waiting longer never fails). **Accepted limitation**; shorten or recalibrate with the lease | M8 (client uses a short wait) and M9 (lease recalibration) |
+| **Added after ticket 06:** the body-size middleware buffers up to the cap before authentication and has no read timeout of its own (slow-drip client holds a connection) | No memory risk (bounded); a server or proxy concern. **Accepted until deployed** | M9 (edge and proxy limits, the deployment-only row) |
+| **Added after ticket 06:** quota settings absent from `.env.example`; migration `20261121_1200` and the lease validator not yet verified on the host | Documentation and hosted verification. **Required before beta** | Ticket 09 (document) and the M9 gate (verify on the host) |
 
 ## Testing Decisions
 

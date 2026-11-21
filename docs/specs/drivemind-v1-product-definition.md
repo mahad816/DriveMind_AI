@@ -312,8 +312,8 @@ Milestones M0 to M10 are **provisional**. They will be revised after the M0 audi
 | M5 | Verified calculations (KI-029), if M1 confirms the need | M1 |
 | M6 | Preparation and ingestion: real-format verification, selection and exclusions, queue recovery, file states, 200 to 300 file test | M0 |
 | M7 | Security and data control: session validation, isolation tests, Disconnect, Revoke and live deletion | M0 |
-| M8 | Application experience | M3, M4, M6 |
-| M9 | Release and demo: expanded CI, model selection and pinned identifiers, hosting verification and migrations, promotion to `main`, disable normal production access to legacy paths, demo with spend cap, basic logging and cost | M1 to M8 |
+| M8 | Application experience (includes, from M0-SEC ticket 06: Owner-mode HTTP 429 wording and use of `Retry-After`; stream client handling of a non-200 start and of in-stream error events; **fix before beta**) | M3, M4, M6 |
+| M9 | Release and demo: expanded CI, model selection and pinned identifiers, hosting verification and migrations, promotion to `main`, disable normal production access to legacy paths, demo with spend cap, basic logging and cost; from M0-SEC: quota settings, migration `20261121_1200` and lease validation verified on the host, database pool size, request-body read timeout at the edge | M1 to M8 |
 | M10 | Controlled cleanup: physically remove unused legacy code | M9 |
 
 Priority 6 items are unscheduled. A checkpoint for the `gpt-5.4-nano` replacement belongs inside M9 and must fall well before 2027-04-01.

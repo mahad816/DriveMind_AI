@@ -85,6 +85,8 @@ Not registry entries, because the registry rule is "never mark something known w
 - **Four container-free tests fail on a clean checkout** (`tests/evaluation/test_agent_smoke.py::test_frozen_sixteen_case_gold_and_identities`, three in `tests/evaluation/test_cli_corpus.py`); the CI workflow deselects them. They should skip when their inputs are absent.
 - **A vacuous guard test:** `tests/security/test_session_security.py::test_existing_application_routes_do_not_use_session_dependencies` checks nothing under the pinned FastAPI; the route inventory test supersedes it.
 
+- **Owner-mode HTTP 429 shows the demo message in the frontend** (`frontend/lib/api/errors.ts` maps every 429 to "The public demo is busy right now"; the backend now sends a limit-specific message and `Retry-After` in Owner mode, M0-SEC ticket 06). **Bug, fix before beta: M8.** Also M8, verify first: the stream client's handling of a non-200 stream start and of in-stream `error` events for reservation-time 409s (ticket 06 Comments). Accepted limitations (stream disconnect before the body starts, long concurrent `Retry-After`, body-read timeout) and their owners are in `docs/specs/m0-sec-security-hardening.md`, "Deferred", and ticket 06 Comments. No reproducing backend test exists for the frontend items (the registry rule), so they are listed here, not as KI entries.
+
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - A real Google Doc exported as DOCX, a real Google Sheet and a file saved by Excel itself have not been read by the new readers; only generated fixtures were.
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).
