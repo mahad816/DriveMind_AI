@@ -17,7 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.chat import get_rag_service
 from app.api.dependencies import require_demo_index, require_resource_user
 from app.core.config import Settings, get_settings
+from app.api.paid_question import get_paid_question_quota
 from app.db.session import get_db
+from tests.paid_quota_fakes import AdmitAllQuota
 from app.llm.base import ChatError
 from app.main import create_app
 from app.retrieval.hybrid import HybridRetriever
@@ -104,6 +106,7 @@ async def api(
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[require_demo_index] = lambda: None
     app.dependency_overrides[require_resource_user] = lambda: USER
+    app.dependency_overrides[get_paid_question_quota] = lambda: AdmitAllQuota()  # no database here
     # Exercise the existing get_db async-with implementation and cleanup boundary.
     monkeypatch.setattr("app.db.session.SessionLocal", lambda: db)
 

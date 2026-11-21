@@ -15,6 +15,7 @@ from app.core.config import Settings, get_settings
 from app.core.public_safety import DemoChatLimits, PUBLIC_ERROR
 from app.llm.base import ChatError
 from app.main import create_app
+from app.services.paid_question_quota import PaidAdmission, PaidQuestionQuota, QuotaRefused
 from app.services.rag_service import RagResult, RagService
 
 
@@ -176,19 +177,42 @@ async def test_intentional_http_errors_unchanged(demo: tuple[AsyncClient, MagicM
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("debug", [False, True])
-async def test_non_demo_limits_disabled_and_production_errors_safe(
-    demo: tuple[AsyncClient, MagicMock], debug: bool
+async def test_owner_mode_is_limited_and_production_errors_safe(
+    demo: tuple[AsyncClient, MagicMock], debug: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Owner mode no longer bypasses limits (M0-SEC ticket 06); the demo limiter stays unused."""
     client, service = demo
     settings = get_settings()
     settings.demo_mode = False
     settings.debug = debug
+    admitted: list[uuid.UUID] = []
+    settled: list[bool] = []
+
+    async def admit_attempt(self: PaidQuestionQuota, owner: uuid.UUID) -> PaidAdmission:
+        if len(admitted) >= 4:
+            raise QuotaRefused("hour", 60)
+        admitted.append(owner)
+        return PaidAdmission(self, uuid.uuid4())
+
+    async def settle(self: PaidQuestionQuota, attempt_id: uuid.UUID, marker: object) -> None:
+        settled.append(bool(getattr(marker, "started", None)))
+
+    monkeypatch.setattr(PaidQuestionQuota, "admit_attempt", admit_attempt)
+    monkeypatch.setattr(PaidQuestionQuota, "settle", settle)
     for _ in range(4):
         assert (await client.post("/api/v1/chat", json={"question": "q" * 100})).status_code == 200
+    assert len(admitted) == 4 and settled == [False] * 4  # the fake service made no provider call
+    limited = await client.post("/api/v1/chat", json={"question": "hello"})
+    assert limited.status_code == 429
+    assert limited.headers["retry-after"] == "60"
+    assert service.ask.await_count == 4  # refused before the service was reached
+    admitted.clear()
     service.ask.side_effect = ChatError("private provider detail")
     response = await client.post("/api/v1/chat", json={"question": "hello"})
     assert response.status_code == 503
     assert response.json()["detail"] == PUBLIC_ERROR
+    assert "private provider detail" not in response.text
+    assert len(settled) == 5  # a failed question's attempt is settled too
 
 
 @pytest.mark.asyncio

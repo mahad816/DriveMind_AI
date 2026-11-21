@@ -17,9 +17,11 @@ from app.api.session_dependencies import (
     require_session_mutation,
 )
 from app.db.session import get_db
-from app.core.public_safety import public_error_detail
+from app.api.paid_question import admit_turn, get_paid_question_quota
+from app.core.public_safety import PUBLIC_ERROR, public_error_detail
 from app.core.config import Settings, get_settings
-from app.services.conversation_chat_service import ConversationChatService
+from app.services.conversation_chat_service import AdmissionRequired, ConversationChatService
+from app.services.paid_question_quota import PaidQuestionQuota
 from app.services.chat_stream import emit, event_stream
 from app.schemas.conversation import (
     ConversationCreate,
@@ -210,8 +212,17 @@ async def submit_conversation_turn(
     response: Response,
     principal: ApplicationPrincipal = Depends(require_conversation_mutation),
     service: ConversationChatService = Depends(get_conversation_chat_service),
+    quota: PaidQuestionQuota | None = Depends(get_paid_question_quota),
 ) -> ConversationSubmission:
-    result, status = await service.submit(principal, conversation_id, body)
+    # Replay pre-check, then admission (429 / 503), then reserve and answer inside submit, which
+    # owns the attempt's end (M0-SEC ticket 06). A replay has no attempt and never executes.
+    admission = await admit_turn(service, quota, principal, conversation_id, body)
+    try:
+        result, status = await service.submit(
+            principal, conversation_id, body, admission=admission, replay_only=admission is None
+        )
+    except AdmissionRequired:
+        raise HTTPException(503, PUBLIC_ERROR, headers={"Retry-After": "1"}) from None
     response.status_code = status
     if status == 202:
         response.headers["Location"] = (
@@ -226,14 +237,22 @@ async def stream_conversation_turn(
     body: ConversationSubmit,
     principal: ApplicationPrincipal = Depends(require_conversation_mutation),
     service: ConversationChatService = Depends(get_conversation_chat_service),
+    quota: PaidQuestionQuota | None = Depends(get_paid_question_quota),
 ) -> StreamingResponse:
     if not service.settings.chat_streaming_enabled:
         raise HTTPException(404, "Not found")
     if not service.settings.tool_rag_agent_enabled:
         raise HTTPException(409, "Streaming requires the native tool agent.")
+    # Admission happens here, before the stream is built, so a refusal is a real 429. The attempt
+    # is settled inside submit, which runs in the stream's producer task that the stream machinery
+    # joins even when the client disconnects. A client that disconnects before the stream body
+    # starts leaves the attempt held until the lease expires (accepted, tested).
+    admission = await admit_turn(service, quota, principal, conversation_id, body)
 
     async def run() -> None:
-        result, code = await service.submit(principal, conversation_id, body)
+        result, code = await service.submit(
+            principal, conversation_id, body, admission=admission, replay_only=admission is None
+        )
         event = (
             "complete"
             if result.turn.status == "COMPLETED"

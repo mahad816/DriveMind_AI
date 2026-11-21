@@ -1,6 +1,7 @@
 """Bounded single-process demo chat admission and public error handling."""
 
 import logging
+import re
 from collections import deque
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,6 +17,11 @@ from app.core.credential_diagnostics import log_safe_failure
 
 logger = logging.getLogger(__name__)
 PUBLIC_ERROR = "The service is temporarily unavailable. Please try again later."
+# Owner-mode request-body caps (M0-SEC ticket 06). The largest legal POST /chat request is 8 history
+# turns of 8000 characters plus a 4000-character question, under about 170 KiB even with every
+# character escaped; a legal turn request is a 4000-character question plus two small fields.
+CHAT_MAX_BODY_BYTES = 512 * 1024
+TURN_MAX_BODY_BYTES = 64 * 1024
 
 
 def public_error_detail(exc: Exception) -> str:
@@ -55,20 +61,35 @@ class DemoChatLimits:
             self.active -= 1
 
 
-class DemoChatBodyLimit:
-    """Bound chat bytes before FastAPI parses JSON, including chunked requests."""
+class ChatBodyLimit:
+    """Bound request bytes before FastAPI parses JSON, including chunked requests.
+
+    Demo mode caps ``POST /chat`` at its own configured size. Owner mode caps ``POST /chat`` at
+    ``CHAT_MAX_BODY_BYTES`` and turn creation and streaming (``/conversations/<id>/turns[/stream]``,
+    a path with an identifier in it) at ``TURN_MAX_BODY_BYTES``. It is middleware, so a 413 can
+    precede the 401 of a request that is both oversized and unauthenticated.
+    """
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        settings = get_settings()
-        if (
-            not settings.demo_mode
-            or scope["type"] != "http"
-            or scope["method"] != "POST"
-            or scope["path"].rstrip("/") != f"{settings.api_prefix}/chat"
+    @staticmethod
+    def limit_for(settings: Settings, scope: Scope) -> int | None:
+        if scope["type"] != "http" or scope["method"] != "POST":
+            return None
+        path = scope["path"].rstrip("/")
+        prefix = settings.api_prefix
+        if path == f"{prefix}/chat":
+            return settings.demo_chat_max_body_bytes if settings.demo_mode else CHAT_MAX_BODY_BYTES
+        if not settings.demo_mode and re.fullmatch(
+            rf"{re.escape(prefix)}/conversations/[^/]+/turns(?:/stream)?", path
         ):
+            return TURN_MAX_BODY_BYTES
+        return None
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        limit = self.limit_for(get_settings(), scope)
+        if limit is None:
             await self.app(scope, receive, send)
             return
         body = bytearray()
@@ -77,7 +98,7 @@ class DemoChatBodyLimit:
             if message["type"] == "http.disconnect":
                 return
             data = message.get("body", b"")
-            if len(body) + len(data) > settings.demo_chat_max_body_bytes:
+            if len(body) + len(data) > limit:
                 await JSONResponse({"detail": "Chat request is too large."}, status_code=413)(
                     scope, receive, send
                 )

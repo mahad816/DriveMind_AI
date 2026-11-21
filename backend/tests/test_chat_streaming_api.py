@@ -10,6 +10,8 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.conversations import router, get_conversation_chat_service
+from app.api.paid_question import get_paid_question_quota
+from tests.paid_quota_fakes import AdmitAllQuota
 from app.api.session_dependencies import get_application_session_service
 from app.core.config import Settings, get_settings
 from app.schemas.conversation import ConversationSubmission
@@ -45,9 +47,15 @@ def mounted():
         resolve_principal=AsyncMock(return_value=SimpleNamespace()),
         verify_csrf=AsyncMock(return_value=SimpleNamespace()),
     )
-    service = SimpleNamespace(settings=settings, submit=AsyncMock())
+    # A known request id is a replay: no admission is needed, so these route-orchestration tests
+    # need no quota (admission has its own PostgreSQL tests).
+    service = SimpleNamespace(
+        settings=settings,
+        submit=AsyncMock(),
+        has_turn_for_request=AsyncMock(return_value=True),
+    )
 
-    async def submit(*args):
+    async def submit(*args, **kwargs):
         await emit("state", {"phase": "searching"})
         return ConversationSubmission.model_validate(DTO["submission"]), 200
 
@@ -57,6 +65,7 @@ def mounted():
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_application_session_service] = lambda: session
     app.dependency_overrides[get_conversation_chat_service] = lambda: service
+    app.dependency_overrides[get_paid_question_quota] = lambda: AdmitAllQuota()
     return app, settings, session, service
 
 

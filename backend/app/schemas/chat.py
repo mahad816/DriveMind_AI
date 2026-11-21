@@ -11,6 +11,10 @@ from app.schemas.common import SchemaBase
 from app.core.config import get_settings
 from app.schemas.query import CitationItem
 
+# Owner-mode cap on POST /chat, the same as the conversation endpoints (M0-SEC ticket 06). Demo
+# mode keeps its own, smaller configured cap.
+CHAT_QUESTION_MAX_CHARS = 4_000
+
 
 class ChatHistoryTurn(SchemaBase):
     """Untrusted prior message supplied by the current chat client."""
@@ -42,6 +46,8 @@ class ChatRequest(SchemaBase):
         settings = get_settings()
         if settings.demo_mode and len(value) > settings.demo_chat_max_question_chars:
             raise ValueError("Question exceeds the demo character limit")
+        if not settings.demo_mode and len(value) > CHAT_QUESTION_MAX_CHARS:
+            raise ValueError("Question exceeds the 4,000-character limit")
         normalized = value.strip()
         if not normalized:
             raise ValueError("Question must not be empty")

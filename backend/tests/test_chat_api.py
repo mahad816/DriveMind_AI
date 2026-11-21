@@ -14,6 +14,8 @@ from app.embeddings.base import EmbeddingConfigurationError
 from app.llm.base import ChatError
 from app.main import app
 from app.api.dependencies import require_resource_user
+from app.api.paid_question import get_paid_question_quota
+from tests.paid_quota_fakes import AdmitAllQuota
 from app.schemas.query import CitationItem
 from app.services.rag_service import RagResult
 
@@ -26,6 +28,8 @@ DRIVE_FILE_ID = uuid.uuid4()
 @pytest.fixture(autouse=True)
 def clear_dependency_overrides() -> Generator[None, None, None]:
     app.dependency_overrides[require_resource_user] = lambda: USER_ID
+    # These tests fake the service and have no database; the quota has its own PostgreSQL tests.
+    app.dependency_overrides[get_paid_question_quota] = lambda: AdmitAllQuota()
     yield
     app.dependency_overrides.clear()
 

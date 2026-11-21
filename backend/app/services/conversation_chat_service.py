@@ -35,6 +35,7 @@ from app.services.conversation_service import (
     ConversationSessionExpired,
     serialize_turn,
 )
+from app.services.paid_question_quota import PaidAdmission
 from app.services.rag_service import RagService, RagResult
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,10 @@ logger = logging.getLogger(__name__)
 
 class CitationAuthorityLost(Exception):
     pass
+
+
+class AdmissionRequired(Exception):
+    """A submission treated as a replay would have created a new turn; retry, never execute."""
 
 
 def _log_attempt_failure(turn_id: UUID, stage: str, exc: Exception) -> None:
@@ -240,8 +245,55 @@ class ConversationChatService:
         if any(lineage.get(c.chunk_id) != c.drive_file_id for c in result.citations):
             raise CitationAuthorityLost()
 
-    async def submit(
+    async def has_turn_for_request(
         self, principal: ApplicationPrincipal, cid: UUID, body: ConversationSubmit
+    ) -> bool:
+        """The replay pre-check (M0-SEC ticket 06): is this client request id already a turn?
+
+        Also proves the conversation exists and belongs to the Owner (ConversationNotFound
+        otherwise), before any quota is spent. The turn table, not the quota ledger, decides replay.
+        """
+        async with ConversationService(self.db).transaction(principal, write=False):
+            owner = principal.corpus_user_id
+            repo = ConversationRepository(self.db)
+            await repo.get(owner, cid)
+            known = await repo.has_request(owner, body.client_request_id)
+            await ConversationService(self.db)._live_session(principal, lock=False)
+        return known
+
+    async def submit(
+        self,
+        principal: ApplicationPrincipal,
+        cid: UUID,
+        body: ConversationSubmit,
+        *,
+        admission: PaidAdmission | None = None,
+        replay_only: bool = False,
+    ) -> tuple[ConversationSubmission, int]:
+        """Reserve the turn and, when it is new, answer it.
+
+        ``admission`` is the paid-question attempt the route admitted (ticket 06). When given, the
+        whole body runs inside ``admission.running()``: the attempt ends in one ``finally``, finished
+        if a provider request began and released otherwise, so every failure before the first
+        provider request (a reservation error, a replay, history loading, a cancellation) frees the
+        slot without counting, and nothing after it can release. ``replay_only`` is the route's
+        claim that the pre-check found this request id already stored: there is no attempt, so a
+        reservation that nevertheless creates a new turn is rolled back and refused before any
+        provider call. With neither (direct service use: evaluation, tests) nothing is metered.
+        """
+        if admission is not None and replay_only:
+            raise ValueError("A replay has no admitted attempt")
+        if admission is None:
+            return await self._submit(principal, cid, body, replay_only)
+        async with admission.running():
+            return await self._submit(principal, cid, body, replay_only=False)
+
+    async def _submit(
+        self,
+        principal: ApplicationPrincipal,
+        cid: UUID,
+        body: ConversationSubmit,
+        replay_only: bool,
     ) -> tuple[ConversationSubmission, int]:
         async with ConversationService(self.db).transaction(principal, write=True):
             reserved = await ConversationRepository(self.db).reserve(
@@ -253,6 +305,8 @@ class ConversationChatService:
                 expected_content_version=body.expected_content_version,
                 execution_seconds=self.execution_seconds,
             )
+            if replay_only and not reserved.replayed:
+                raise AdmissionRequired()  # rolled back with the transaction: no turn, no call
             turn = reserved.turn
             tid, execution_id, boundary = turn.id, turn.execution_id, turn.history_end_sequence
             response = ConversationSubmission(

@@ -159,7 +159,10 @@ async def test_concurrent_replay_conflict_busy_and_foreign_reads(api, chat):
     tid = replay.json()["turn"]["id"]
     assert replay.headers["location"].endswith(tid)
     assert (await submit(api, cid, key | {"question": "Changed"})).status_code == 409
-    assert (await submit(api, cid)).status_code == 409
+    # One concurrent paid question per Owner (M0-SEC ticket 06): a second question while one runs
+    # is refused with 429 where it used to get 409 (the busy 409 needs a higher concurrent limit).
+    busy = await submit(api, cid)
+    assert busy.status_code == 429 and int(busy.headers["retry-after"]) >= 1
     assert (await submit(api, cid, owner=USER_B)).status_code == 404
     foreign = await api.client.get(f"{BASE}/{cid}/turns/{tid}", headers=api.headers[USER_B])
     assert foreign.status_code == 404
@@ -412,6 +415,8 @@ async def test_commit_acknowledgement_lost_returns_verified_durable_result(api, 
 
 @pytest.mark.parametrize("second_owner", [USER_A, USER_B])
 async def test_independent_owners_and_conversations(api, chat, second_owner):
+    # Two concurrent questions of one Owner need a concurrent limit of 2 (M0-SEC ticket 06).
+    api.settings.paid_question_concurrent_limit = 2
     a = (await create(api.world)).id
     b = (await create(api.world, second_owner)).id
     chat.release = asyncio.Event()

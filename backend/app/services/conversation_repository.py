@@ -118,6 +118,18 @@ class ConversationRepository:
             raise ConversationNotFound()
         return row
 
+    async def has_request(self, owner: UUID, request_id: UUID) -> bool:
+        """Whether this Owner already has a turn with this client request id (the replay test)."""
+        self._transaction(owner)
+        with self.db.no_autoflush:
+            found = await self.db.scalar(
+                select(ConversationTurn.id).where(
+                    ConversationTurn.owner_id == owner,
+                    ConversationTurn.client_request_id == request_id,
+                )
+            )
+        return found is not None
+
     async def _lock(self, owner: UUID, conversation_id: UUID) -> Conversation:
         self._transaction(owner)
         with self.db.no_autoflush:

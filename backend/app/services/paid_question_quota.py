@@ -17,7 +17,9 @@ Every operation opens its own short session from the engine, never the request's
 import asyncio
 import logging
 import math
-from collections.abc import Awaitable, Callable
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4
@@ -26,7 +28,7 @@ from sqlalchemy import CursorResult, delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.core.paid_execution import PaidExecutionMarker
+from app.core.paid_execution import PaidExecutionMarker, install_marker
 from app.db.models.paid_question_attempt import PaidQuestionAttempt as Attempt
 
 logger = logging.getLogger(__name__)
@@ -36,6 +38,10 @@ HOUR = timedelta(hours=1)
 DAY = timedelta(hours=24)
 CLEANUP_TIMEOUT_SECONDS = 10
 CANCEL_WAIT_SECONDS = 15
+PRUNE_INTERVAL_SECONDS = 3600
+# Process-local throttle for ``prune_if_due`` (monotonic seconds). A lost value after a restart only
+# means one extra prune, which is harmless: pruning is idempotent and bounded to expired rows.
+_next_prune_at = 0.0
 
 
 class QuotaRefused(Exception):
@@ -43,7 +49,7 @@ class QuotaRefused(Exception):
 
     def __init__(self, reason: Reason, retry_after_seconds: int) -> None:
         super().__init__(f"Paid-question limit reached: {reason}")
-        self.reason = reason
+        self.reason: Reason = reason
         self.retry_after_seconds = retry_after_seconds
 
 
@@ -62,6 +68,30 @@ def _utc_now() -> datetime:
 
 def _seconds_until(moment: datetime, now: datetime) -> int:
     return max(1, math.ceil((moment - now).total_seconds()))
+
+
+class PaidAdmission:
+    """One admitted attempt, handed to the work function that owns the paid execution.
+
+    ``running()`` is the only way to use it: it installs a fresh ``PaidExecutionMarker`` for the work
+    (inside the work function itself, so child tasks and a stream's producer task inherit it) and,
+    in one ``finally``, settles the attempt: finished if a provider request began, released if none
+    did. Because the end is decided by the marker alone, nothing after the first provider request
+    can release the attempt, and nothing before it can leave the attempt counted.
+    """
+
+    def __init__(self, quota: "PaidQuestionQuota", attempt_id: UUID) -> None:
+        self.quota = quota
+        self.attempt_id = attempt_id
+
+    @asynccontextmanager
+    async def running(self) -> AsyncIterator[PaidExecutionMarker]:
+        marker = PaidExecutionMarker()
+        try:
+            with install_marker(marker):
+                yield marker
+        finally:
+            await self.quota.settle(self.attempt_id, marker)
 
 
 class PaidQuestionQuota:
@@ -106,6 +136,11 @@ class PaidQuestionQuota:
             if admission.done() and not admission.cancelled() and admission.exception() is None:
                 await self.settle(admission.result(), PaidExecutionMarker())  # idempotent
             raise
+
+    async def admit_attempt(self, owner: UUID) -> PaidAdmission:
+        """``prune_if_due`` then ``admit``, returning the attempt for the work function to run."""
+        await self.prune_if_due()
+        return PaidAdmission(self, await self.admit(owner))
 
     def _release_if_admitted(self, admission: "asyncio.Future[UUID]") -> None:
         self._background.discard(admission)
@@ -240,3 +275,21 @@ class PaidQuestionQuota:
                 )
             )
             return cast(CursorResult[Any], result).rowcount
+
+    async def prune_if_due(self) -> None:
+        """Prune at most once per ``PRUNE_INTERVAL_SECONDS`` per process, inline, never raising.
+
+        Called before admission (never while an attempt is held), so a slow or failed prune cannot
+        strand an attempt; it is bounded to 10 seconds and failures are logged by category only.
+        There is no background worker: the allowance is only ever read at admission, so pruning at
+        admission is enough to keep the table bounded.
+        """
+        global _next_prune_at
+        now = time.monotonic()
+        if now < _next_prune_at:
+            return
+        _next_prune_at = now + PRUNE_INTERVAL_SECONDS
+        try:
+            await asyncio.wait_for(self.prune(), CLEANUP_TIMEOUT_SECONDS)
+        except Exception as exc:
+            logger.warning("Paid-question prune failed (%s)", type(exc).__name__)

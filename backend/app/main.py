@@ -19,7 +19,7 @@ from app.db.session import SessionLocal, engine, google_refresh_lifecycle
 from app.demo.readiness_client import DemoReadinessClient
 from app.core.public_safety import (
     public_error_detail,
-    DemoChatBodyLimit,
+    ChatBodyLimit,
     DemoChatLimits,
     PUBLIC_ERROR,
 )
@@ -191,7 +191,7 @@ def create_app(*, indexing_test_runtime: DisposableIndexingRuntime | None = None
     # Default closed. Explicit normal target validation and both executor
     # handshakes must finish before this becomes true.
     app.state.indexing_admission_ready = False
-    app.add_middleware(DemoChatBodyLimit)
+    app.add_middleware(ChatBodyLimit)
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception) -> JSONResponse:
