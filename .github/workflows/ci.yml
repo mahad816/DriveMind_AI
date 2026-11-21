@@ -1,0 +1,109 @@
+# Lightweight CI (M0 ticket 08). Fast, free checks only.
+#
+# Deliberately NOT here: PostgreSQL/Qdrant tests (the ~24 min container suite runs locally at
+# checkpoints), RAG evaluations, secrets, API keys, deployment. See AGENTS.md "Development".
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Only superseded pull-request runs are cancelled; every push to main keeps its own result.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      # One test (test_http_graph_strategy_plans) fails if a model key is present. CI has none;
+      # fail early if one ever appears so a false failure is not mistaken for a regression.
+      - name: Ensure no model key is set
+        run: |
+          if [ -n "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI_API_KEY must not be set in CI" >&2
+            exit 1
+          fi
+
+      # Same package the backend Dockerfile installs; makes the OCR integration test run.
+      - name: Install Tesseract
+        working-directory: .
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version-file: backend/.python-version # 3.12, same as backend/Dockerfile
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --dev --frozen
+
+      - name: Ruff check
+        run: uv run ruff check app tests
+
+      - name: Ruff format check
+        run: uv run ruff format --check app tests
+
+      - name: Mypy
+        run: uv run mypy app
+
+      # `tests/` has 48 known basedpyright errors (the preserved baseline, AGENTS.md), so the
+      # gate covers app/ only, which is clean.
+      - name: Basedpyright (app only)
+        run: uv run basedpyright app
+
+      # No container variables are set, so the PostgreSQL/Qdrant tests skip themselves.
+      # -rs prints each skip reason so a green run is not read as "everything passed".
+      #
+      # Four tests are deselected because a clean checkout cannot satisfy them (found by running
+      # this workflow on a clean export, ticket 08): three need the git-ignored public PDFs
+      # (fetched by `python -m evaluation.rag_eval.fetch_public`), and one runs `git show` on
+      # commit 8eb48e3, which is not in this branch's history. They pass on the author's Mac.
+      - name: Container-free tests
+        run: >
+          uv run pytest -q -rs
+          --deselect tests/evaluation/test_agent_smoke.py::test_frozen_sixteen_case_gold_and_identities
+          --deselect tests/evaluation/test_cli_corpus.py::test_messy_documents_are_not_in_the_default_corpus_and_join_on_request
+          --deselect tests/evaluation/test_cli_corpus.py::test_the_messy_question_set_is_only_valid_with_the_messy_documents
+          --deselect tests/evaluation/test_cli_corpus.py::test_files_to_check_skips_public_files_nobody_references
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22 # same major as frontend/Dockerfile
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      # Downloads the Geist fonts from Google Fonts (public assets, no credentials).
+      - name: Build
+        run: npm run build
