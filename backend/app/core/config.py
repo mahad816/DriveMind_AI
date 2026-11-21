@@ -52,7 +52,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     database_url: str = "postgresql+asyncpg://drivemind:drivemind@localhost:5432/drivemind"
 
-    # Inactive until same-origin callback registration and authorization rollout are reviewed.
+    # Gates only ISSUING sessions (the /auth/session endpoints answer 404 when false). Existing
+    # sessions stay valid and every private route requires a principal whatever this says.
     google_application_sessions_enabled: bool = False
     google_session_redirect_uri: str = ""
     # Global, process-local request limit for the unauthenticated LOGIN start (M0-SEC ticket 07,
@@ -72,7 +73,7 @@ class Settings(BaseSettings):
     # (POST /auth/session/logout, Origin + CSRF token), which still works for a removed address
     # that holds a CSRF token; otherwise the session ends by expiry.
     google_sign_in_allowed_emails: str = ""
-    # Optional, backend-only; parsed only when the inactive crypto component is invoked.
+    # Optional, backend-only; parsed only when the credential crypto component is invoked.
     google_credential_encryption_keyring: SecretStr | None = Field(
         default=None, repr=False, exclude=True
     )

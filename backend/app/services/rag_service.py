@@ -70,7 +70,9 @@ class RagResult:
 class RagService:
     """Orchestrate retrieval, grounded answer generation, and query history.
 
-    Query routing applies to ALL execution paths (linear and LangGraph agent):
+    When ``TOOL_RAG_AGENT_ENABLED`` is true (default false) ``ask`` hands the question to the
+    tool-calling agent before any routing; ``HYBRID_RETRIEVAL_ENABLED`` and ``AGENT_GRAPH_ENABLED``
+    are then ignored. Otherwise, on the legacy paths, query routing applies (linear and LangGraph):
 
     1. CONVERSATION_HISTORY → deterministic prior-message recall, no document retrieval.
     2. CHITCHAT       → generate_direct_answer(), no retrieval, no citations.
@@ -120,7 +122,8 @@ class RagService:
     ) -> RagResult:
         """Answer for an explicit corpus owner and persist query history.
 
-        Routing runs first regardless of agent_graph_enabled:
+        With ``tool_rag_agent_enabled`` the tool agent answers and no routing happens. Otherwise
+        routing runs first regardless of agent_graph_enabled:
           CONVERSATION_HISTORY → deterministic prior-message recall, no sources.
           CHITCHAT       → direct reply, no retrieval, no sources shown.
           FILE_INVENTORY → SQL file search, no chunk retrieval, no sources shown.

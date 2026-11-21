@@ -3,8 +3,8 @@
 Protective tests: all of them pass today and fail when someone adds, removes or re-wires a route
 without updating ``EXPECTED``, so the route table below is a reviewed, executable inventory.
 
-Why this file exists: ``tests/security/test_session_security.py::
-test_existing_application_routes_do_not_use_session_dependencies`` loops over ``app.routes`` looking
+Why this file exists: a former test in ``tests/security/test_session_security.py`` (removed by M0-SEC
+ticket 09) looped over ``app.routes`` looking
 for ``APIRoute`` objects. With the pinned FastAPI (0.139) ``app.routes`` holds only the documentation
 routes and one lazy ``_IncludedRouter``, so that loop checks nothing. This file enumerates the routers
 through their public ``APIRouter.routes`` and cross-checks the result against ``app.openapi()``, and

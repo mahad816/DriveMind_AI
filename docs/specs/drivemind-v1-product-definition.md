@@ -122,11 +122,11 @@ No file paths or code snippets appear in this section; they go stale. Current-st
 
 ### Ownership and security (Q12)
 - Single-Owner reliability comes first.
-- Remove every fallback that picks "the first stored credential" when no Owner is given. Require explicit ownership and authorization everywhere.
+- Every service that acts on a Google credential requires an explicit Owner; the first-stored-credential fallbacks are removed (KI-031, fixed by M0-SEC).
 - Keep and improve the security tests. Session and authentication validation is a separate security milestone.
 - No public signup, subscriptions, payments, billing or full onboarding.
 - Before implementing, separate real current vulnerabilities from future scalability concerns. Address critical security risks early rather than waiting for the security milestone.
-- The Owner-mode rate limit and abuse protection need a security-triage decision.
+- Owner-mode abuse protection (decided and built in M0-SEC): a fail-closed sign-in allow-list, a persistent paid-question quota (20 per hour, 50 per day, 1 concurrent per Owner; provisional until M1 measures cost), input caps, an `Origin` and CSRF requirement on normal-mode `/chat`, and a rate limit on the login start. Practical provider spending safeguards (a usage budget and alerts in the provider dashboard) are verified by the Owner at the M9 gate; they are safeguards, never guaranteed hard caps.
 
 ### Privacy, retention, backups (Q14, Q22)
 - Disconnect, Revoke and Delete stored data are three separate actions (see glossary).
@@ -241,7 +241,6 @@ Measured as: time from the submit action to the first rendered server-originated
 ### Open design questions carried forward
 - How the demo is throttled without per-Visitor tracking (ADR 0002).
 - Whether the prepared index is shared across Visitors.
-- Whether the Owner-mode rate limit is needed and in what form (security triage).
 
 ## Testing Decisions
 
@@ -304,17 +303,31 @@ Milestones M0 to M10 are **provisional**. They will be revised after the M0 audi
 
 | M | Scope | Depends on |
 |---|---|---|
+| M0-SEC | **Complete (2026-11-22).** Minimal security hardening that the M0 audit proposed and the Owner approved: Owner mandatory in every credential service (KI-031), fail-closed sign-in allow-list with immediate effect on removal, persistent paid-question quota and input caps, login-start prune and limit (KI-032), `Origin` and CSRF on normal-mode `/chat`. Spec `docs/specs/m0-sec-security-hardening.md`, tickets `docs/tickets/m0-sec-security-hardening/`. Deferrals are owned below and in the M9 gate | M0 |
 | M0 | Read-only audits (execution paths, flags and deployed configuration; privacy implementation; conversation sufficiency; preparation and file-state UI; security triage that separates real vulnerabilities from scalability concerns) plus a small early continuous-integration foundation (backend and frontend checks). Fix critical security findings promptly (for example the first-credential fallbacks) rather than waiting. | none |
 | M1 | Evaluation foundation: frozen set, real-format files, held-out split, grader validation, baseline of the tool agent as configured for production | M0 |
 | M2 | Retrieval quality (KI-022, KI-027, KI-030; verbose queries; identifiers) | M1 |
 | M3 | Grounding and honest answers: Missing information versus Retrieval failure, named-file rule (KI-028), Supported-answer checking, citation correctness, prompt-injection resistance | M1 |
 | M4 | Conversations and follow-ups | M0, M1 |
 | M5 | Verified calculations (KI-029), if M1 confirms the need | M1 |
-| M6 | Preparation and ingestion: real-format verification, selection and exclusions, queue recovery, file states, 200 to 300 file test | M0 |
-| M7 | Security and data control: session validation, isolation tests, Disconnect, Revoke and live deletion | M0 |
-| M8 | Application experience (includes, from M0-SEC ticket 06: Owner-mode HTTP 429 wording and use of `Retry-After`; stream client handling of a non-200 start and of in-stream error events; **fix before beta**) | M3, M4, M6 |
-| M9 | Release and demo: expanded CI, model selection and pinned identifiers, hosting verification and migrations, promotion to `main`, disable normal production access to legacy paths, demo with spend cap, basic logging and cost; from M0-SEC: quota settings, migration `20261121_1200` and lease validation verified on the host, database pool size, request-body read timeout at the edge | M1 to M8 |
+| M6 | Preparation and ingestion: real-format verification, selection and exclusions, queue recovery, file states, 200 to 300 file test; **from M0-SEC ticket 03: the worker check that a queued indexing job's account is still on the sign-in allow-list when the job runs** (a deferral, not a guarantee; re-verified at the M9 gate) | M0 |
+| M7 | Security and data control: session validation, isolation tests, Disconnect, Revoke and live deletion (the paid-question ledger table is covered by Delete stored data). Per-user quota management for future beta testers (smaller individual allowances, overrides, admin) starts only after ownership isolation is verified here | M0 |
+| M8 | Application experience (includes, from M0-SEC ticket 06: Owner-mode HTTP 429 wording and use of `Retry-After`; stream client handling of a non-200 start (404, 401, 429, 503) and of in-stream error events (a reservation-time 409 or the replay-vanished abort arrives as an SSE `error` on a 200), verify first; a short client wait instead of the long concurrent-limit `Retry-After`; **fix before beta**) | M3, M4, M6 |
+| M9 | Release and demo: expanded CI, model selection and pinned identifiers, hosting verification and migrations, promotion to `main`, disable normal production access to legacy paths, demo with spend cap, basic logging and cost (including the deferred log-text items: unhandled-exception text, provider error text in the offline indexing log, `/docs` exposure); **the M9 gate from M0-SEC (below) before any redeploy with sign-in on** | M1 to M8 |
 | M10 | Controlled cleanup: physically remove unused legacy code | M9 |
+
+#### The M9 gate (from M0-SEC, recorded 2026-11-22)
+
+Before any redeploy with sign-in on, all of these hold. None can be checked from the repository; each is an Owner or hosted check, and each stays **Unverified** until done.
+
+1. **Limits recalibrated from M1 data:** 20 per hour, 50 per day, 1 concurrent, the 300 s lease, the execution bounds and the body caps are provisional guesses. A request count is not a dollar amount and not a count of provider calls.
+2. **Deployment-only list verified:** Google consent-screen state and test users (an outer control; the allow-list is the authorization model); hosted flag values; encryption keys and backups; `FRONTEND_URL` and cookie settings matching the real hosts (the exact public origin, a `__Host-` prefixed cookie, a host with no untrusted sibling subdomains or apps, a proxy rewrite that is the only path to the backend and adds no CORS headers, no cross-origin caller of `/chat`); proxy and edge limits, including a read timeout for slow request bodies and per-IP limiting of the login start; migration `20261121_1200` applied on the hosted database; the quota settings present and the application starting with the lease validator accepting them; the database connection pool size checked against admit, finish and release each taking a connection beside the request's own; the claim-check setting; platform logs and retention.
+3. **Practical provider spending safeguards verified:** a project usage budget and usage alerts in the provider dashboard. They are safeguards, never guaranteed hard spending caps. The demo spend cap (ADR 0002) is separate.
+4. **Deferred logging items done in M9** (listed in the M9 row).
+
+Also re-verified at the gate: the allow-list deferrals of M0-SEC ticket 03, as **deferrals, never guarantees**: (a) a turn already running when an address is removed may finish within its bounded execution window; (b) queued indexing jobs are not cancelled when an address is removed, the worker check being assigned to M6 and re-verified here; (c) the stored e-mail is refreshed only at sign-in. And, if more than one worker or replica is planned, the multi-replica checklist: lease against the execution bounds, connection pool size, clock agreement between hosts (the ledger uses the application clock), and that the login-start limiter is process-local.
+
+Future requirement, not built: per-user quota management for beta testers (M7 first).
 
 Priority 6 items are unscheduled. A checkpoint for the `gpt-5.4-nano` replacement belongs inside M9 and must fall well before 2027-04-01.
 
@@ -336,11 +349,11 @@ Priority 6 items are unscheduled. A checkpoint for the `gpt-5.4-nano` replacemen
 | Single conversations can be deleted through the API, but the delete only hides the conversation (`deleted_at`); turns and the linked query history remain | Code: `backend/app/api/conversations.py`; test: `tests/security/test_conversation_deletion_privacy.py::test_conversation_delete_keeps_every_row_today` (M0 ticket 07) |
 | One free CI workflow exists, `.github/workflows/ci.yml`, verified only by running its commands locally; it has not run on GitHub. It runs no PostgreSQL or Qdrant tests and deselects four tests that fail on a clean checkout | Code: `.github/workflows/ci.yml`; local run (M0 ticket 08) |
 | The container start script runs no migrations | Code: `backend/deploy/start.sh` (comment and content) |
-| The latest migration file is `20261120_1200` and `EXTRACTION_PIPELINE_VERSION` is 3 | Code: `backend/alembic/versions/`, `backend/app/ingestion/pipeline_version.py`. Hosted database revision: Unverified |
+| The latest migration file is `20261121_1200` (the paid-question ledger, M0-SEC ticket 05) and `EXTRACTION_PIPELINE_VERSION` is 3 | Code: `backend/alembic/versions/`, `backend/app/ingestion/pipeline_version.py`. Hosted database revision: Unverified |
 | `feature/v2-state-performance` was 164 commits ahead of `main` when M0 ticket 01 checked (2026-11-21; the count grows with each commit), and `main` is its ancestor. A fast-forward is possible by history alone; whether it is safe is a separate audit | Git comparison, M0 ticket 01 |
 | The demo configuration has a global request-rate limit and a concurrency limit. A spend cap and a per-Visitor limit were not found in the configuration or by name search; the interview reported the limiter as in-memory. Absence is not proven | Code (configuration only, not a full code audit) |
 | Default chat model `gpt-5.4-nano`, claim-check model `gpt-5.4-mini`, embedding model `text-embedding-3-small` | Code: `backend/app/core/config.py`. Hosted values: Unverified |
-| M0 baseline on commit `7197af4`: backend 2927 tests, `2923 passed, 1 failed, 3 skipped` in one full run; the failure and the skips were test-environment problems, and all 2927 pass in the right environment (qualified baseline). Frontend 876 passed, lint and build pass | Local run, M0 ticket 02; details in `AGENTS.md` ("Latest recorded verification"). Later M0 tickets added tests and ran only partial suites |
+| M0-SEC verification (2026-11-22, `d117df0` plus ticket 09): backend 3245 tests, one full run `5 failed, 3233 passed, 1 skipped, 6 xfailed` (one fixed test defect and four indexing probe timeouts under machine load; the three affected files rerun alone: 125 passed); container-free subset `2313 passed, 929 skipped, 2 xfailed`; frontend 876 passed, lint and build pass; basedpyright 48 errors in `tests/`, none in `app/`. The qualified baseline: pass in the right environment, not one clean run | Local run, M0-SEC ticket 09; details in `AGENTS.md` ("Latest recorded verification"). The earlier M0 baseline on `7197af4` (2927 tests) is in `docs/tickets/m0-system-audit/02-test-baseline-and-classification.md` |
 | Baseline: tool agent 75/94 and legacy pipeline 74/94 on the 2026-11-19 set (statistically tied). Sequential latency on 20 cases: tool agent median 4.4 s, 90th percentile 8.05 s. With the claim check on, over 94 cases: median 5.2 s, 90th percentile 7.8 s | Historical measurement, `docs/EVALUATION_RESULTS.md`: one corpus, one model, an earlier build; not production figures |
 
 **Defects** (registered in `docs/KNOWN_ISSUES.md` unless noted)
@@ -349,10 +362,10 @@ Priority 6 items are unscheduled. A checkpoint for the `gpt-5.4-nano` replacemen
 - KI-028: a named thing that does not exist is answered from a similar thing that does.
 - KI-029: sums over table rows can be wrong (for example 33,100 or 33,200 instead of 34,900).
 - KI-030: a small multi-slide deck becomes one chunk and loses in search.
-- KI-031: **six** services pick the first stored Google credential when no Owner is given (user resolution, Drive sync, Drive content, chunking, ingestion, indexing). Latent: every production caller passes an Owner, so no request, job or script reaches it today. Fix: M0-SEC.
-- KI-032: abandoned Google login attempts are never removed, and `POST /auth/session/google` is unlimited.
+- KI-031: fixed by M0-SEC tickets 01 and 02 (2026-11-21): every service that acts on a Google credential requires an explicit Owner. See the registry, Fixed.
+- KI-032: fixed by M0-SEC ticket 07 (2026-11-21): expired login attempts are pruned at login start and the endpoint is rate-limited (global, process-local). See the registry, Fixed.
 - KI-033: an owner who has submitted a question cannot be deleted from `users`.
-- Found by the M0 audit, no registry entry yet (no reproducing test): the claim check fails open; Owner mode has no rate limit or spend cap; `POST /chat` needs no CSRF token. See `docs/audits/m0-system-audit.md`.
+- Found by the M0 audit, no registry entry (no reproducing test): the claim check fails open (M3). The Owner-mode limits and `/chat` CSRF items were closed by M0-SEC (registry, Fixed). Frontend items for Owner-mode 429 wording and stream handling are M8, fix before beta.
 
 **Unverified (do not state as fact)**
 - Hosted state: nothing is deployed (all services offline, Owner-reported as intentional). Hosted flags are Owner-reported only; the deployed commit, branch, migration revision and managed-backup status of the removed deployment were not read (the environment will be rebuilt).

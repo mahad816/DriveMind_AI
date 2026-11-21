@@ -77,7 +77,9 @@ def test_valid_google_verification(oidc, settings: Settings) -> None:
         {"aud": "other-client"},
         {"iss": "https://attacker.invalid"},
         {"exp": 1},
-        {"iat": int(time.time()) + 600},
+        {
+            "iat": "FUTURE"
+        },  # resolved when the test runs, not at import (a long suite outlives 600 s)
         {"nonce": "incorrect"},
         {"sub": None},
         {"sub": "demo:foreign"},
@@ -91,6 +93,8 @@ def test_valid_google_verification(oidc, settings: Settings) -> None:
     ],
 )
 def test_invalid_signed_claims_rejected(oidc, settings: Settings, claims: dict) -> None:
+    if claims.get("iat") == "FUTURE":
+        claims = {"iat": int(time.time()) + 600}
     with pytest.raises(GoogleLoginRejected, match="could not be verified"):
         verify_google_token(oidc(**claims), "expected-nonce", settings)
 

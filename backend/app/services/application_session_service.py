@@ -1,4 +1,8 @@
-"""Inactive shared session issuance and fresh database-backed validation."""
+"""Shared session issuance and fresh database-backed validation.
+
+Every validation re-reads the session and its user, and in normal mode applies the sign-in
+allow-list, so removing an address ends its access on the next request.
+"""
 
 import hashlib
 import secrets

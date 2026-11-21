@@ -177,6 +177,8 @@ service variables/approved secret storage, never Docker build arguments.
 | Frontend build | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_DEMO_MODE`: this normal image fixes `/api/v1` and `false`. Next public variables are compiled at build time; runtime changes cannot change the bundle. No secret is public. |
 | Backend | `PORT`, `APP_ENV`, `DEBUG`, `LOG_LEVEL`, `API_PREFIX`, `DEMO_MODE`, `FRONTEND_URL` |
 | Backend sessions | `GOOGLE_APPLICATION_SESSIONS_ENABLED`, `GOOGLE_SIGN_IN_ALLOWED_EMAILS` (required: empty means nobody can sign in), `GOOGLE_SESSION_REDIRECT_URI`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Backend login-start limit | `GOOGLE_LOGIN_START_RATE_LIMIT` (30), `GOOGLE_LOGIN_START_RATE_WINDOW_SECONDS` (60): global and process-local; see the section below |
+| Backend paid-question quota | `PAID_QUESTION_HOUR_LIMIT` (20), `PAID_QUESTION_DAY_LIMIT` (50), `PAID_QUESTION_CONCURRENT_LIMIT` (1), `PAID_QUESTION_LEASE_SECONDS` (300), `PAID_QUESTION_RETENTION_HOURS` (25), `CONVERSATION_EXECUTION_SECONDS` (180), `CONVERSATION_GENERATION_TIMEOUT` (120), `CHAT_EXECUTION_SECONDS` (180). Provisional values; see the section below |
 | Backend Drive | `GOOGLE_DRIVE_SCOPES`; LOGIN uses fixed OpenID/email/profile scopes; CONNECT_DRIVE additionally requests configured read-only Drive scopes |
 | Backend encryption | `GOOGLE_CREDENTIAL_ENCRYPTION_KEYRING`, `GOOGLE_CREDENTIAL_ENCRYPTION_ACTIVE_KEY_ID`; accepted keyring JSON contract and active key must agree; preserve keys for restoring grants |
 | Backend SQL | `DATABASE_URL` in `postgresql+asyncpg` format, private host/5432, percent-encoded credentials; `INDEXING_DATABASE_SCHEMA` |
@@ -185,6 +187,28 @@ service variables/approved secret storage, never Docker build arguments.
 | Backend executor | `INDEXING_ENABLED`, `INDEXING_ACTIVATION_TARGET`, `INDEXING_POLL_SECONDS`, `INDEXING_CLASSIFIER_SECONDS`, `INDEXING_DEPENDENCY_SECONDS`, `INDEXING_DEPENDENCY_TIMEOUT`, `INDEXING_STARTUP_TIMEOUT`, `INDEXING_DRAIN_SECONDS`, `INDEXING_CLEANUP_SECONDS` |
 | PostgreSQL | built-in service generates `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`, `DATABASE_URL`; preserve its volume/`PGDATA` configuration and strong generated credentials; no public TCP proxy |
 | Qdrant | `QDRANT__SERVICE__HOST=0.0.0.0`, `QDRANT__LOG_LEVEL=WARN`, `RAILWAY_DEPLOYMENT_DRAINING_SECONDS`; fixed image port 6333 |
+
+## Sign-in allow-list, paid-question limits and input caps (M0-SEC)
+
+**Sign-in allow-list.** `GOOGLE_SIGN_IN_ALLOWED_EMAILS` (comma-separated verified Google e-mails, case-insensitive) is the authorization model. Unset or empty: nobody can sign in and no session works. It is checked at login completion and on every private request, so removing an address ends that session's access on its next request; re-adding it within the session's remaining life (7 days at most) revives the session unless it was revoked through logout. A refused account gets the generic login refusal and no user, session or credential row. Not covered, and not guaranteed: a turn already running when an address is removed may finish within its execution bound; queued indexing jobs are not cancelled (the worker check is assigned to M6 and re-verified at the M9 gate); the stored e-mail changes only at sign-in.
+
+**Paid-question limits (provisional, not measured).** Per Owner, rolling windows, stored in PostgreSQL (migration `20261121_1200`, so the daily count survives restarts): 20 per hour, 50 per day, 1 concurrent. One count is one admitted question that reaches paid execution, whatever number of model calls it makes. It is a request count, not a dollar amount. A replay, retry or stream reconnection of an existing turn is neither counted nor refused. Set the limits with the `PAID_QUESTION_*_LIMIT` variables. They apply to `POST /chat`, conversation turns and streaming, on every answer path. Demo mode keeps its own limiter.
+
+The quota covers questions only. Embedding spend from Owner-queued indexing jobs is not counted by it (indexing is off unless `INDEXING_ENABLED`), so a provider-dashboard budget and alerts remain the practical safeguard.
+
+**Lease rule.** An unfinished attempt (a crash leaves one) stops blocking after `PAID_QUESTION_LEASE_SECONDS`. The lease must be at least the longest of `CONVERSATION_EXECUTION_SECONDS` and `CHAT_EXECUTION_SECONDS` plus 60 seconds, and `CONVERSATION_GENERATION_TIMEOUT` must be below `CONVERSATION_EXECUTION_SECONDS`. The application refuses to start otherwise. If you raise an execution bound, raise the lease with it.
+
+**Order of checks** on a paid request: authentication (session, allow-list), `Origin` and CSRF token (`/chat` included), body size and schema validation (the body-size check is middleware and may answer 413 before authentication), existing preconditions (404, 409), replay read, admission, reservation, paid work, finish or release in a `finally`. For streaming, admission happens before the stream starts, so a refusal is a real HTTP status.
+
+**Refusal contract.** Over a limit: HTTP 429, a fixed message naming the limit (hourly, daily, or "another question is still being answered") and a `Retry-After` header, with no turn, no query history and no provider call. Ledger or lock failure: HTTP 503 with the public error text and `Retry-After: 5` (fail closed, never mistaken for 429). With 1 concurrent allowed, a second question during a running one is 429 (it used to be 409 busy; 409 now appears only when the concurrent limit is above 1). The concurrent-limit `Retry-After` is the time until the lease would expire (up to 300 s) although the slot normally frees in seconds: safe, not precise.
+
+**Input caps.** `POST /chat` `question`: 4000 characters (422 above). Request bodies: 512 KiB for `/chat`, 64 KiB for turn creation and streaming (413 above). The cap buffers up to its size before authentication and has no read timeout of its own, so a slow client holds a connection: set a read timeout at the proxy or edge (M9).
+
+**`POST /chat` in normal mode** requires the same `Origin` (exact `FRONTEND_URL`) and `X-CSRF-Token` as every other mutation. Demo `/chat` stays anonymous. No normal-mode frontend caller of `/chat` exists.
+
+**Login start limit.** `POST /auth/session/google` (login start) is limited globally (30 per 60 s by default, 429 with `Retry-After`) and removes expired pending login states when a new login starts. The limit is process-local and resets on restart; each worker has its own window. A sustained flood can delay the Owner's own sign-in but cannot read or change anything. Per-IP limiting is an edge decision (M9).
+
+**Before more than one worker or replica**, re-check: the lease against the execution bounds, the database connection pool (admit, finish and release each take a pooled connection beside the request's own; default 5 plus 10 overflow), clock agreement between hosts (the ledger uses the application clock), and that the login-start limiter is per process.
 
 The encryption keyring is a JSON object mapping approved key IDs to canonical
 URL-safe base64 Fernet keys (32 decoded bytes / 44 encoded characters); the active

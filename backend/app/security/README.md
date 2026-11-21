@@ -1,14 +1,27 @@
-> **Current status (M0 audit, 2026-11-21; see `docs/audits/m0-system-audit.md`).** The text
-> below is historical and parts of it are no longer true. Today: every private route
-> (`/chat`, `/files`, `/sources`, `/index/*`, `/conversations`) requires an application
-> session principal (or the demo user in demo mode), and the legacy `/auth/google` router is
-> unmounted (404). `GOOGLE_APPLICATION_SESSIONS_ENABLED` gates only **issuing** sessions (the
-> four `/auth/session/*` endpoints); with it off every private route answers 401, so it
-> means "locked" (apart from sessions already in the database), not "single-user". Credentials are stored encrypted-only. Still open: six
-> services fall back to the first stored credential when no owner is given (latent, KI-031);
-> a fail-closed sign-in allow-list (`GOOGLE_SIGN_IN_ALLOWED_EMAILS`, M0-SEC ticket 03) now gates
-> login and every private request, and logout is revoke-only; Owner mode has no rate limit; there is no Disconnect, Revoke or
-> Delete stored data.
+> **Current status (M0-SEC closeout, 2026-11-22; see `docs/specs/m0-sec-security-hardening.md`
+> and `docs/audits/m0-system-audit.md`, a dated snapshot).** The text below is historical and
+> parts of it are no longer true. Today:
+>
+> - Every private route (`/chat`, `/files`, `/sources`, `/index/*`, `/conversations`) requires an
+>   application session principal (or the demo user in demo mode). The legacy `/auth/google`
+>   router is unmounted (404). `GOOGLE_APPLICATION_SESSIONS_ENABLED` gates only **issuing**
+>   sessions (the four `/auth/session/*` endpoints); with it off every private route answers 401,
+>   so it means "locked" (apart from sessions already in the database), not "single-user".
+>   Credentials are stored encrypted-only.
+> - **Owner is mandatory** (KI-031 fixed): every service that acts on a Google credential raises
+>   unless the caller names the Owner; only the demo existence check selects a credential unscoped.
+> - **Sign-in allow-list** (`GOOGLE_SIGN_IN_ALLOWED_EMAILS`, fail closed) is the authorization
+>   model, checked at login and on every private request; logout is revoke-only and skips it.
+> - **Paid-question quota** (20/hour, 50/day, 1 concurrent per Owner, provisional) in PostgreSQL
+>   on `/chat`, turns and streaming, with a 429/503 contract and input caps.
+> - **`POST /chat`** requires `Origin` and a CSRF token in normal mode. **Login start** is
+>   globally rate-limited and prunes expired states (KI-032 fixed).
+> - **Deferrals (not guarantees):** a turn already running when an address is removed may finish
+>   within its bound; queued indexing jobs are not cancelled (per-job check assigned to M6,
+>   re-verified at the M9 gate); the stored e-mail is refreshed only at sign-in; the login-start
+>   limiter is per process; there is no Disconnect, Revoke or Delete stored data (M7). Everything
+>   deployment-only (consent screen, hosted flags, keys, cookie hosts, edge limits, provider spending
+>   safeguards) is Unverified until the M9 gate.
 
 # Application session foundation (historical: written while inactive)
 

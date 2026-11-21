@@ -1,4 +1,8 @@
-"""Inactive-by-default session login endpoints; existing private APIs are untouched."""
+"""Application-session login, session inspection, CSRF and logout endpoints (``/auth/session``).
+
+Issuing sessions is gated by ``GOOGLE_APPLICATION_SESSIONS_ENABLED`` (default off, 404 when off);
+validating an existing session is not. Every private route already requires a session principal.
+"""
 
 from datetime import datetime
 

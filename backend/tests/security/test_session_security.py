@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import Depends, FastAPI
-from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from sqlalchemy.exc import OperationalError
@@ -18,7 +17,6 @@ from app.api.session_dependencies import (
     require_session_mutation,
 )
 from app.core.config import Settings
-from app.main import app
 from app.security.principal import ApplicationPrincipal, ConversationOwner, VerifiedGoogleIdentity
 from app.security.session_helpers import (
     InvalidApplicationSession,
@@ -249,18 +247,10 @@ async def test_future_dependencies_map_errors_safely_without_public_issuance(
         assert response.status_code == 503 and TOKEN not in response.text
 
 
-def test_existing_application_routes_do_not_use_session_dependencies() -> None:
-    def calls(dependant):
-        return [dependant.call] + [
-            call for child in dependant.dependencies for call in calls(child)
-        ]
-
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            assert require_application_principal not in calls(route.dependant)
-            assert require_session_mutation not in calls(route.dependant)
-    paths = {route.path for route in app.routes if isinstance(route, APIRoute)}
-    assert "/api/v1/auth/session" not in paths and "/api/v1/visitor-session" not in paths
+def test_demo_mode_and_tool_agent_default_off() -> None:
+    """Fail-safe defaults. Which routes require which dependency is pinned by
+    ``test_route_authentication_inventory.py`` (the former route-loop test here checked nothing
+    under the pinned FastAPI, where ``app.routes`` holds no ``APIRoute``)."""
     assert Settings.model_fields["demo_mode"].default is False
     assert Settings.model_fields["tool_rag_agent_enabled"].default is False
 

@@ -14,6 +14,20 @@ DriveMind **never** writes, deletes, or modifies Drive files.
 
 ---
 
+## Who may sign in: the allow-list is the authorization model
+
+Google's consent screen decides which accounts Google lets through. DriveMind does not rely on it. Since M0-SEC (ticket 03) the **application allow-list** `GOOGLE_SIGN_IN_ALLOWED_EMAILS` (comma-separated verified Google e-mail addresses, case-insensitive, never committed) decides who may sign in and who keeps a session. The consent screen's **test-user list is only a temporary outer control**.
+
+- Matching uses the e-mail in Google's verified ID token (not the Google subject). An unverified e-mail is refused.
+- Fail closed: unset or empty means nobody can sign in and no existing session works (demo mode is exempt).
+- A refused account sees the same generic refusal as any failed login and leaves no user, session or credential row. Both login intents (sign-in and Drive connect) are covered.
+- The check also runs on every private request. Removing an address ends that session's access on its next request. Re-adding it within the old session's remaining life (7 days at most) revives the session unless it was revoked by logout (`POST /auth/session/logout`, which still works for a removed address that already holds a CSRF token; otherwise the session ends by expiry).
+- Not guaranteed: a turn already running may finish within its bound; queued indexing jobs are not cancelled (worker check assigned to M6, re-verified at the M9 gate); the stored e-mail updates only at sign-in.
+
+The live sign-in flow is `/api/v1/auth/session/google` and its callback (`GOOGLE_SESSION_REDIRECT_URI`, enabled by `GOOGLE_APPLICATION_SESSIONS_ENABLED`, which gates only the issuing of sessions). The older `/auth/google` router and `GOOGLE_REDIRECT_URI` described in the steps below are not mounted; treat the Console steps below as the consent-screen and credential setup only, and register the session callback URI instead.
+
+---
+
 ## Google Cloud Console steps
 
 ### 1. Create a project
@@ -122,9 +136,10 @@ Restart the backend after changing OAuth env vars.
 ## Production checklist
 
 - [ ] Add production redirect URI in Google Console
-- [ ] Set `GOOGLE_REDIRECT_URI` to production backend callback
+- [ ] Legacy: set `GOOGLE_REDIRECT_URI` to the production backend callback (the live flow uses `GOOGLE_SESSION_REDIRECT_URI`)
 - [ ] Set `FRONTEND_URL` to production frontend (e.g. Vercel URL)
-- [ ] Move OAuth app from **Testing** to **Published** (or keep test users)
+- [ ] Set `GOOGLE_SIGN_IN_ALLOWED_EMAILS` to exactly the accounts that may sign in (without it nobody can)
+- [ ] Consent screen: keep the app in **Testing** with the Owner as test user, or **Published**: either way the allow-list decides, and the Console state is an Owner dashboard check at the M9 gate
 - [ ] Never commit `.env`, client secret, or token files
 - [ ] Use platform secret managers (Vercel env, Railway secrets, etc.)
 
@@ -143,8 +158,9 @@ The Settings page disconnect action opens Google permissions for manual revocati
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `redirect_uri_mismatch` | URI doesn't match Console | Copy exact callback URL |
-| `access_denied` | User declined or not a test user | Add account to test users |
-| `503` on `/auth/google` | Missing client ID/secret | Fill `.env`, restart backend |
+| `access_denied` | User declined or not a Console test user | Add account to test users |
+| Generic sign-in refusal after Google approves | Address not in `GOOGLE_SIGN_IN_ALLOWED_EMAILS` (or the list is empty) | Add the verified address to the allow-list, restart |
+| `503` on `/auth/google` (legacy, unmounted: use `/auth/session/google`) | Missing client ID/secret | Fill `.env`, restart backend |
 | Connected but sync fails | Token not persisted | Check Postgres; re-run OAuth |
 
 ---

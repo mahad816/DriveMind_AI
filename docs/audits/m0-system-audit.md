@@ -150,6 +150,8 @@ No exploit was run against any hosted system. No hotfix was needed, and no chang
 
 ## 4. Proposed M0-SEC
 
+> **Addendum (2026-11-22).** This section is kept as written on 2026-11-21: a dated proposal. The Owner approved it (with changes) as the milestone `docs/specs/m0-sec-security-hardening.md`, tickets in `docs/tickets/m0-sec-security-hardening/`. What was built and verified, and what remains deferred, is recorded in that spec and in ticket 09 (`## Findings`). Where this section says a fallback, limit or CSRF gap is open, it describes the code as audited, not as it is now.
+
 This section is a **proposal**. The Owner decides scope and timing. It merges ticket 03's fallback items with ticket 04's items and the Owner decisions on both.
 
 **Urgency.** None is a hotfix: nothing is reachable and nothing is deployed. The spec's rule puts *latent but unsafe* items (the six fallbacks, KI-031) before substantial M1 implementation; that ordering is the spec's, not an Owner decision. The Owner decided only that the allow-list (D4-1) and the Owner-mode limits (D4-2) are M0-SEC requirements. The spec has no "dormant" category: the allow-list, limits and KI-032 matter only once the backend runs again with sessions on. Ticket 04 said that if sign-up is closed the limit is "cleanup, not urgent", and the Owner-reported consent screen (Testing, 4 listed users) is closed-ish; I still propose them before M1 because the Owner made them requirements, the fixes are small, and a redeploy would otherwise carry them unprotected. Items 6 and 7 (logging, test debt) are cheap hygiene that I propose to batch here; they could wait without risk. Item 5's values need M1 data (marked).
