@@ -124,7 +124,7 @@ async def test_sync_construction_failure_persists_failed_job(
         ),
     ):
         with pytest.raises(DriveClientError) as caught:
-            await service.sync_metadata()
+            await service.sync_metadata(uuid4())
     job = db.add.call_args.args[0]
     assert job.status == IndexingJobStatus.FAILED
     assert job.completed_at is not None

@@ -1,19 +1,21 @@
-"""KI-031 (open): six services pick an arbitrary owner's Google credential when no owner is given.
+"""KI-031 (open, partly fixed): services pick an arbitrary owner's Google credential with no owner.
 
-M0 ticket 03 (audit area A2). Each of the six sites below runs ``select(GoogleOAuthToken).limit(1)``
-(no owner filter, no ordering) when called with ``user_id=None``, and then acts as the owner of
-whichever credential row PostgreSQL returned first. With one owner that is "the" owner; with two it
-is an arbitrary one.
+M0 ticket 03 (audit area A2) found six sites that ran ``select(GoogleOAuthToken).limit(1)`` (no
+owner filter, no ordering) when called with ``user_id=None`` and then acted as the owner of
+whichever credential row PostgreSQL returned first. M0-SEC ticket 01 fixed three of them
+(``user_resolution``, ``drive_sync``, ``drive_content``): their cases below now run as ordinary
+passing tests. The other three (``chunking``, ``ingestion``, ``indexing``) remain strict expected
+failures until ticket 02, which must also delete ``FIXED_SITES`` and the conditional marker.
 
-No production path reaches this today (every route, the indexing worker, the demo loader and the
-evaluation harness pass an explicit owner; ``tests/security/test_owner_fallback_callers.py`` pins
-that), so this is a latent defect, not a reachable vulnerability. The tests state the correct
-behaviour: with no owner given, the call must be refused (``ValueError``), never resolved to
-somebody's account. They do not depend on WHICH owner PostgreSQL happens to return, so they are
+No production path reaches the remaining fallbacks (every route, the indexing worker, the demo
+loader and the evaluation harness pass an explicit owner;
+``tests/security/test_owner_fallback_callers.py`` pins that), so the defect is latent. The tests
+state the correct behaviour: with no owner given, the call must be refused (``ValueError``), never
+resolved to somebody's account. They do not depend on WHICH owner PostgreSQL returns, so they are
 deterministic.
 
-The guards pass today: an explicit owner resolves to exactly that owner even when a second owner
-with a credential exists, so a fix that makes the owner mandatory cannot break the explicit path.
+The guards pass: an explicit owner resolves to exactly that owner even when a second owner with a
+credential exists.
 
 Needs the disposable PostgreSQL (``SESSION_TEST_DATABASE_URL``); skipped without it. No Google, Qdrant
 or OpenAI call is made: the embedding service and vector store are stubs and are never used.
@@ -84,8 +86,15 @@ SITES: dict[str, Resolver] = {
 }
 
 SUMMARY = "resolves to an arbitrary owner's credential when no owner is given"
+# Ticket 01 fixed these three; ticket 02 fixes the other three and removes the markers.
+FIXED_SITES = {"user_resolution", "drive_sync", "drive_content"}
 DEFECT_CASES = [
-    pytest.param(name, id=name, marks=known_issue("KI-031", f"{name} {SUMMARY}")) for name in SITES
+    pytest.param(
+        name,
+        id=name,
+        marks=[] if name in FIXED_SITES else known_issue("KI-031", f"{name} {SUMMARY}"),
+    )
+    for name in SITES
 ]
 
 

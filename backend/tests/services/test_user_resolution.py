@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tests.credential_fixtures import synthetic_oauth_row
-
 from app.core.config import Settings
 from app.db.models.user import User
 from app.services.user_resolution import DemoIdentityError, resolve_active_user
@@ -24,20 +22,22 @@ def isolate_demo_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("demo_user_id", ["", "invalid-unused-id"])
-async def test_normal_mode_preserves_first_oauth_token_resolution(demo_user_id: str) -> None:
+@pytest.mark.parametrize("owner", [None, "not-a-uuid", str(OWNER_ID), 42])
+async def test_normal_mode_without_a_uuid_owner_is_refused_before_any_read(
+    demo_user_id: str, owner: object
+) -> None:
     db = AsyncMock()
-    owner = User(id=OWNER_ID, email="owner@example.test", google_id="normal-user")
-    db.scalar.return_value = synthetic_oauth_row(user_id=OWNER_ID, access_token="test-token")
-    db.get.return_value = owner
 
-    result = await resolve_active_user(db, Settings(demo_mode=False, demo_user_id=demo_user_id))
+    with pytest.raises(ValueError, match="An explicit corpus owner is required"):
+        await resolve_active_user(
+            db,
+            Settings(demo_mode=False, demo_user_id=demo_user_id),
+            owner,  # type: ignore[arg-type]  # deliberately not a UUID
+        )
 
-    assert result is owner
-    db.scalar.assert_awaited_once()
-    statement = db.scalar.await_args.args[0]
-    assert "google_oauth_tokens" in str(statement)
-    assert statement.compile().params["param_1"] == 1
-    db.get.assert_awaited_once_with(User, OWNER_ID)
+    db.get.assert_not_awaited()
+    db.scalar.assert_not_awaited()
+    db.execute.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -52,29 +52,15 @@ async def test_normal_explicit_user_needs_no_oauth_token() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "explicit, token_exists, message",
-    [
-        (True, False, "User not found"),
-        (False, False, "No Google Drive connection found. Complete OAuth first."),
-        (False, True, "Connected Google account has no user record"),
-    ],
-)
-async def test_normal_errors_are_preserved(
-    explicit: bool, token_exists: bool, message: str
-) -> None:
+async def test_normal_unknown_owner_is_reported() -> None:
     db = AsyncMock()
     db.get.return_value = None
-    db.scalar.return_value = (
-        synthetic_oauth_row(user_id=OWNER_ID, access_token="test-token") if token_exists else None
-    )
 
     with pytest.raises(ValueError) as exc_info:
-        await resolve_active_user(db, Settings(demo_mode=False), OWNER_ID if explicit else None)
+        await resolve_active_user(db, Settings(demo_mode=False), OWNER_ID)
 
-    assert str(exc_info.value) == message
-    if explicit:
-        db.scalar.assert_not_awaited()
+    assert str(exc_info.value) == "User not found"
+    db.scalar.assert_not_awaited()
 
 
 @pytest.mark.asyncio

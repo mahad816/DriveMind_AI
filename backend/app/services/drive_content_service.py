@@ -18,7 +18,6 @@ from app.services.google_credential_service import GoogleCredentialService
 from app.services.google_credential_repository import CredentialSnapshot
 from app.core.config import Settings, get_settings
 from app.db.models.drive_file import DriveFile
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 from app.demo.service import DemoCorpusService
 from app.services.user_resolution import resolve_active_user
@@ -44,19 +43,7 @@ class DriveContentService:
         self.settings = settings or get_settings()
 
     async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
-        if user_id is not None:
-            user = await self.db.get(User, user_id)
-            if user is None:
-                raise ValueError("User not found")
-            return user
-
-        token_row = await self.db.scalar(select(GoogleOAuthToken).limit(1))
-        if token_row is None:
-            raise ValueError("No Google Drive connection found. Complete OAuth first.")
-        user = await self.db.get(User, token_row.user_id)
-        if user is None:
-            raise ValueError("Connected Google account has no user record")
-        return user
+        return await resolve_active_user(self.db, self.settings, user_id)
 
     async def _load_oauth_token(self, user_id: uuid.UUID) -> CredentialSnapshot:
         self._credential_service = GoogleCredentialService(self.db, self.settings)
@@ -80,7 +67,10 @@ class DriveContentService:
         file_id: uuid.UUID,
         user_id: uuid.UUID | None = None,
     ) -> DriveFileContent:
-        """Export or download content for a synced Drive file."""
+        """Export or download content for a synced Drive file.
+
+        The owner is required: ``user_id`` of ``None`` raises ``ValueError``.
+        """
         if self.settings.demo_mode:
             user = await resolve_active_user(self.db, self.settings, user_id)
             files, documents, _ = await DemoCorpusService(self.db, self.settings).inspect_database(

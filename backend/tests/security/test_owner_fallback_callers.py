@@ -1,6 +1,7 @@
 """Protective census for the "first stored Google credential" fallbacks (M0 ticket 03, area A2).
 
-Six services still resolve ``user_id=None`` to an arbitrary credential owner (KI-031,
+Three services (chunking, ingestion, indexing) still resolve ``user_id=None`` to an arbitrary
+credential owner (KI-031,
 ``tests/known_issues/test_ki031_credential_owner_fallback.py``). That is harmless only while no
 caller leaves the owner out. These tests read the source (no database, no network) and fail if:
 
@@ -25,7 +26,9 @@ import pytest
 BACKEND = Path(__file__).resolve().parents[2]
 SCANNED_ROOTS = (BACKEND / "app", BACKEND / "evaluation")
 
-# Entry methods of the five services whose owner-less path reaches a fallback.
+# Entry methods of the services that take an owner. Sync and content now refuse an owner-less call
+# (ticket 01); only ingest_files, chunk_documents and build_index still reach a fallback. Kept whole
+# as a tripwire.
 ENTRY_METHODS = {
     "sync_metadata",
     "get_latest_sync_job",
@@ -43,11 +46,8 @@ ENTRY_METHODS = {
 # `settings.demo_mode` gates in api/index.py and api/dependencies.py).
 DEMO_ONLY_NO_OWNER = {"app/demo/load.py", "app/demo/service.py"}
 
-# The six known fallbacks plus the demo "storage must hold no credentials" existence check.
+# The three fallbacks left (ticket 02 closes them) plus the demo "no credentials in storage" check.
 KNOWN_UNSCOPED_CREDENTIAL_SELECTS = {
-    "app/services/user_resolution.py",
-    "app/services/drive_sync_service.py",
-    "app/services/drive_content_service.py",
     "app/services/chunking_service.py",
     "app/services/ingestion_service.py",
     "app/services/indexing_service.py",

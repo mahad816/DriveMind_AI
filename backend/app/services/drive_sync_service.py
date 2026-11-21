@@ -27,7 +27,6 @@ from app.core.config import Settings, get_settings
 from app.db.enums import DriveFileStatus, IndexingJobStatus
 from app.db.models.drive_file import DriveFile
 from app.db.models.drive_sync_state import DriveSyncState
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
 from app.demo.service import DemoCorpusService
@@ -59,21 +58,7 @@ class DriveSyncService:
         self.settings = settings or get_settings()
 
     async def _resolve_user(self, user_id: uuid.UUID | None) -> User:
-        if self.settings.demo_mode:
-            return await resolve_active_user(self.db, self.settings, user_id)
-        if user_id is not None:
-            user = await self.db.get(User, user_id)
-            if user is None:
-                raise ValueError("User not found")
-            return user
-
-        token_row = await self.db.scalar(select(GoogleOAuthToken).limit(1))
-        if token_row is None:
-            raise ValueError("No Google Drive connection found. Complete OAuth first.")
-        user = await self.db.get(User, token_row.user_id)
-        if user is None:
-            raise ValueError("Connected Google account has no user record")
-        return user
+        return await resolve_active_user(self.db, self.settings, user_id)
 
     async def _load_oauth_token(self, user_id: uuid.UUID) -> CredentialSnapshot:
         self._credential_service = GoogleCredentialService(self.db, self.settings)
@@ -354,7 +339,10 @@ class DriveSyncService:
         *,
         full: bool = False,
     ) -> DriveSyncResult:
-        """Sync Drive metadata using full scan or incremental Changes API."""
+        """Sync Drive metadata using full scan or incremental Changes API.
+
+        The owner is required: ``user_id`` of ``None`` raises ``ValueError``.
+        """
         user = await self._resolve_user(user_id)
         token_row = await self._load_oauth_token(user.id)
         sync_state = await self._get_sync_state(user.id)
@@ -415,7 +403,7 @@ class DriveSyncService:
         )
 
     async def get_latest_sync_job(self, user_id: uuid.UUID | None = None) -> IndexingJob | None:
-        """Return the most recent indexing job for the resolved user."""
+        """Return the most recent indexing job for the owner (required; ``ValueError`` otherwise)."""
         user = await self._resolve_user(user_id)
         job = await self.db.scalar(
             select(IndexingJob)
@@ -426,7 +414,7 @@ class DriveSyncService:
         return job
 
     async def list_synced_files(self, user_id: uuid.UUID | None = None) -> list[DriveFile]:
-        """Return all drive_files rows for the resolved user."""
+        """Return all drive_files rows for the owner (required; ``ValueError`` otherwise)."""
         user = await self._resolve_user(user_id)
         if self.settings.demo_mode:
             files, _, _ = await DemoCorpusService(self.db, self.settings).inspect_database(user.id)
@@ -439,7 +427,10 @@ class DriveSyncService:
         return list(result.all())
 
     async def is_connected(self, user_id: uuid.UUID | None = None) -> bool:
-        """Return True when the user has a stored Google OAuth token."""
+        """Return True when the owner has a stored Google OAuth token.
+
+        A missing or non-UUID owner returns False without any credential query.
+        """
         if self.settings.demo_mode:
             return False
         try:
@@ -462,6 +453,8 @@ class DriveSyncService:
           files whose text came from an older extraction pipeline (read again once)
         - ``to_chunk``:  files in INDEXING that have a Document but no matching chunks
         - ``to_build``:  files in INDEXING whose chunks haven't been embedded into Qdrant yet
+
+        The owner is required: ``user_id`` of ``None`` raises ``ValueError``.
         """
         from app.db.models.chunk import Chunk
         from app.db.models.document import Document

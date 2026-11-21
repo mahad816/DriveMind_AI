@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Generator
+from collections.abc import Awaitable, Callable, Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -190,9 +190,10 @@ async def test_sync_metadata_no_connection_raises(
     service: DriveSyncService, mock_db: AsyncMock
 ) -> None:
     mock_db.scalar = AsyncMock(return_value=None)
+    mock_db.get = AsyncMock(return_value=USER)
 
-    with pytest.raises(ValueError, match="No Google Drive connection"):
-        await service.sync_metadata()
+    with pytest.raises(DriveClientError, match="No Google Drive connection"):
+        await service.sync_metadata(USER_ID)
 
 
 @pytest.mark.asyncio
@@ -206,7 +207,7 @@ async def test_sync_metadata_full_mode_success(
     ]
     mock_client.get_start_page_token.return_value = "changes-token"
 
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, None])
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None])
     mock_db.get = AsyncMock(return_value=USER)
 
     async def always_create(
@@ -227,7 +228,7 @@ async def test_sync_metadata_full_mode_success(
         ) as reconcile,
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as mock_save_state,
     ):
-        result = await service.sync_metadata()
+        result = await service.sync_metadata(USER_ID)
 
     assert result.mode == "full"
     assert result.created == 2
@@ -383,7 +384,7 @@ async def test_sync_metadata_incremental_applies_changes(
         "new-token",
     )
 
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, sync_state])
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, sync_state])
     mock_db.get = AsyncMock(return_value=USER)
 
     with (
@@ -395,7 +396,7 @@ async def test_sync_metadata_incremental_applies_changes(
         patch.object(service, "_build_folder_lookup", return_value={}),
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as mock_save_state,
     ):
-        result = await service.sync_metadata()
+        result = await service.sync_metadata(USER_ID)
 
     assert result.mode == "incremental"
     assert result.removed == 1
@@ -545,7 +546,7 @@ async def test_sync_metadata_force_full_even_with_sync_state(
     mock_client.list_files.return_value = []
     mock_client.get_start_page_token.return_value = "fresh-token"
 
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, sync_state])
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, sync_state])
     mock_db.get = AsyncMock(return_value=USER)
 
     with (
@@ -556,7 +557,7 @@ async def test_sync_metadata_force_full_even_with_sync_state(
         ) as reconcile,
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
-        result = await service.sync_metadata(full=True)
+        result = await service.sync_metadata(USER_ID, full=True)
 
     assert result.mode == "full"
     reconcile.assert_awaited_once_with(USER_ID, set())
@@ -570,7 +571,7 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
     service: DriveSyncService,
     mock_db: AsyncMock,
 ) -> None:
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, None])
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None])
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
@@ -586,7 +587,7 @@ async def test_sync_metadata_marks_job_failed_on_drive_error(
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
         with pytest.raises(DriveClientError, match="synthetic-access-918"):
-            await service.sync_metadata()
+            await service.sync_metadata(USER_ID)
 
     mock_client.get_start_page_token.assert_called_once_with()
     reconcile.assert_not_awaited()
@@ -614,7 +615,7 @@ async def test_full_sync_does_not_reconcile_when_upsert_fails(
     service: DriveSyncService,
     mock_db: AsyncMock,
 ) -> None:
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, TOKEN_ROW, None])
+    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None])
     mock_db.get = AsyncMock(return_value=USER)
     mock_client = MagicMock()
     mock_client.get_start_page_token.return_value = "early-token"
@@ -633,7 +634,7 @@ async def test_full_sync_does_not_reconcile_when_upsert_fails(
         patch.object(service, "_save_sync_state", new_callable=AsyncMock) as save_state,
     ):
         with pytest.raises(DriveClientError, match="Drive metadata sync failed"):
-            await service.sync_metadata()
+            await service.sync_metadata(USER_ID)
 
     mock_client.get_start_page_token.assert_called_once_with()
     reconcile.assert_not_awaited()
@@ -799,3 +800,39 @@ async def test_upsert_file_restores_skipped_file(
     assert outcome == "updated"
     assert removed == 0
     assert existing.status == DriveFileStatus.DISCOVERED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [None, "not-a-uuid"])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda s, o: s.sync_metadata(o),
+        lambda s, o: s.get_latest_sync_job(o),
+        lambda s, o: s.list_synced_files(o),
+        lambda s, o: s.get_pending_counts(o),
+    ],
+    ids=["sync_metadata", "get_latest_sync_job", "list_synced_files", "get_pending_counts"],
+)
+async def test_entry_points_refuse_a_missing_owner_without_a_query(
+    service: DriveSyncService,
+    mock_db: AsyncMock,
+    owner: object,
+    call: Callable[[DriveSyncService, object], Awaitable[object]],
+) -> None:
+    with pytest.raises(ValueError, match="An explicit corpus owner is required"):
+        await call(service, owner)
+
+    for method in (mock_db.scalar, mock_db.scalars, mock_db.execute, mock_db.get):
+        method.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [None, "not-a-uuid"])
+async def test_is_connected_is_false_without_an_owner_and_runs_no_query(
+    service: DriveSyncService, mock_db: AsyncMock, owner: object
+) -> None:
+    assert await service.is_connected(owner) is False  # type: ignore[arg-type]
+
+    for method in (mock_db.scalar, mock_db.scalars, mock_db.execute, mock_db.get):
+        method.assert_not_awaited()

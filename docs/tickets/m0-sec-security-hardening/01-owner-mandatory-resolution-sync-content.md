@@ -3,8 +3,8 @@
 **Spec:** docs/specs/m0-sec-security-hardening.md
 **What to build:** In normal mode, user resolution, Drive sync and Drive content refuse to act unless the caller names the Owner, instead of picking whichever Google credential PostgreSQL returns first. Nothing a user can see changes, because every production caller already passes an Owner.
 **Blocked by:** None (can start immediately).
-**Status:** ready-for-agent
-**Progress:** open
+**Status:** done (local commit, not pushed)
+**Progress:** complete
 
 ## Scope
 
@@ -39,3 +39,14 @@ Disposable PostgreSQL (the KI-031 tests skip without it). No paid API, no networ
 - [ ] No route, schema, status or citation contract changes. Backend suite, `ruff check`, `ruff format --check`, `mypy app` no worse than the recorded baseline; `basedpyright` clean on `app`, 48 errors in `tests/` unchanged.
 
 ## Comments
+
+**What changed.** `resolve_active_user` (normal mode) refuses a missing or non-UUID owner with `ValueError("An explicit corpus owner is required")` before any read; `DriveSyncService._resolve_user` and `DriveContentService._resolve_user` now delegate to it. `is_connected` returns `False` for an owner-less call without a credential query. No-connection with an explicit owner raises `DriveClientError` from the credential service (as before for explicit owners); the unit tests were updated for that.
+
+**Ticket 02 must also:** delete `FIXED_SITES` and the conditional marker in `tests/known_issues/test_ki031_credential_owner_fallback.py` (the three fixed cases now run as plain tests there); remove chunking, ingestion and indexing from the `test_owner_fallback_callers.py` allow-list; move KI-031 to Fixed; consider changing `user_id` to a required `uuid.UUID` in signatures (kept `| None` here because `is_connected` and demo mode accept it).
+
+**Ticket 09 must update in documentation** (not touched here, by design):
+- `docs/KNOWN_ISSUES.md` KI-031: "six services", "6 strict expected failures", cause line numbers (`user_resolution.py`, `drive_sync_service.py`, `drive_content_service.py` references) and the "Pinned by an existing test" line (the first-credential test was replaced).
+- `docs/ARCHITECTURE.md` (~line 73) "Six services still select the first stored OAuth token".
+- `docs/specs/drivemind-v1-product-definition.md` (~line 352) "six".
+- `AGENTS.md` "Known Important Constraints" KI-031 sentence (six services, KI-031) and the "Latest recorded verification" figures.
+- `docs/audits/m0-system-audit.md` and `docs/tickets/m0-system-audit/03-credential-fallbacks-and-ownership.md` if they restate the six.

@@ -68,14 +68,14 @@ def service(mock_db: AsyncMock) -> Generator[DriveContentService, None, None]:
 async def test_fetch_file_content_returns_bytes(
     service: DriveContentService, mock_db: AsyncMock
 ) -> None:
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, DRIVE_FILE, TOKEN_ROW])
+    mock_db.scalar = AsyncMock(side_effect=[DRIVE_FILE, TOKEN_ROW])
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
     mock_client.get_file_content_with_type.return_value = (b"%PDF-1.4", PDF_MIME)
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
-        result = await service.fetch_file_content(file_id=FILE_ID)
+        result = await service.fetch_file_content(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.data == b"%PDF-1.4"
     assert result.mime_type == PDF_MIME
@@ -102,14 +102,14 @@ async def test_fetch_file_content_exports_google_doc(
         modified_at=datetime.now(UTC),
         status=DriveFileStatus.DISCOVERED,
     )
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, google_doc, TOKEN_ROW])
+    mock_db.scalar = AsyncMock(side_effect=[google_doc, TOKEN_ROW])
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
     mock_client.get_file_content_with_type.return_value = (b"docx bytes", DOCX_MIME)
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
-        result = await service.fetch_file_content(file_id=FILE_ID)
+        result = await service.fetch_file_content(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.mime_type == DOCX_MIME
     assert result.data == b"docx bytes"
@@ -130,13 +130,13 @@ async def test_fetch_file_content_reports_the_type_that_was_really_returned(
         modified_at=datetime.now(UTC),
         status=DriveFileStatus.DISCOVERED,
     )
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, google_doc, TOKEN_ROW])
+    mock_db.scalar = AsyncMock(side_effect=[google_doc, TOKEN_ROW])
     mock_db.get = AsyncMock(return_value=USER)
     mock_client = MagicMock()
     mock_client.get_file_content_with_type.return_value = (b"just text", "text/plain")
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
-        result = await service.fetch_file_content(file_id=FILE_ID)
+        result = await service.fetch_file_content(file_id=FILE_ID, user_id=USER_ID)
 
     assert result.mime_type == "text/plain"
 
@@ -145,11 +145,11 @@ async def test_fetch_file_content_reports_the_type_that_was_really_returned(
 async def test_fetch_file_content_not_found(
     service: DriveContentService, mock_db: AsyncMock
 ) -> None:
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, None])
+    mock_db.scalar = AsyncMock(side_effect=[None])
     mock_db.get = AsyncMock(return_value=USER)
 
     with pytest.raises(ValueError, match="Synced file not found"):
-        await service.fetch_file_content(file_id=FILE_ID)
+        await service.fetch_file_content(file_id=FILE_ID, user_id=USER_ID)
 
 
 @pytest.mark.asyncio
@@ -157,10 +157,11 @@ async def test_fetch_file_content_no_oauth_connection(
     service: DriveContentService,
     mock_db: AsyncMock,
 ) -> None:
-    mock_db.scalar = AsyncMock(return_value=None)
+    mock_db.scalar = AsyncMock(side_effect=[DRIVE_FILE, None])
+    mock_db.get = AsyncMock(return_value=USER)
 
-    with pytest.raises(ValueError, match="No Google Drive connection"):
-        await service.fetch_file_content(file_id=FILE_ID)
+    with pytest.raises(DriveClientError, match="No Google Drive connection"):
+        await service.fetch_file_content(file_id=FILE_ID, user_id=USER_ID)
 
 
 @pytest.mark.asyncio
@@ -168,7 +169,7 @@ async def test_fetch_file_content_propagates_drive_error(
     service: DriveContentService,
     mock_db: AsyncMock,
 ) -> None:
-    mock_db.scalar = AsyncMock(side_effect=[TOKEN_ROW, DRIVE_FILE, TOKEN_ROW])
+    mock_db.scalar = AsyncMock(side_effect=[DRIVE_FILE, TOKEN_ROW])
     mock_db.get = AsyncMock(return_value=USER)
 
     mock_client = MagicMock()
@@ -178,4 +179,16 @@ async def test_fetch_file_content_propagates_drive_error(
 
     with patch.object(service, "_build_drive_client", return_value=mock_client):
         with pytest.raises(DriveClientError, match="download failed"):
-            await service.fetch_file_content(file_id=FILE_ID)
+            await service.fetch_file_content(file_id=FILE_ID, user_id=USER_ID)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", [None, "not-a-uuid"])
+async def test_fetch_file_content_refuses_a_missing_owner_without_a_query(
+    service: DriveContentService, mock_db: AsyncMock, owner: object
+) -> None:
+    with pytest.raises(ValueError, match="An explicit corpus owner is required"):
+        await service.fetch_file_content(file_id=FILE_ID, user_id=owner)  # type: ignore[arg-type]
+
+    for method in (mock_db.scalar, mock_db.scalars, mock_db.execute, mock_db.get):
+        method.assert_not_awaited()

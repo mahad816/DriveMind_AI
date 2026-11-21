@@ -2,11 +2,9 @@
 
 import uuid
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.google_oauth_token import GoogleOAuthToken
 from app.db.models.user import User
 
 
@@ -19,10 +17,11 @@ async def resolve_active_user(
     settings: Settings,
     user_id: uuid.UUID | None = None,
 ) -> User:
-    """Resolve only the configured demo user, or preserve normal single-user behavior.
+    """Resolve the configured demo user, or the explicitly named owner in normal mode.
 
-    This selects an identity; it does not provide corpus or multi-user isolation.
-    Demo storage must be isolated independently.
+    Normal mode never infers an owner: a missing or non-UUID ``user_id`` raises ``ValueError``
+    before any database read. This selects an identity; it does not provide corpus or
+    multi-user isolation. Demo storage must be isolated independently.
     """
     if settings.demo_mode:
         configured_id = settings.demo_user_id.strip()
@@ -45,16 +44,9 @@ async def resolve_active_user(
             )
         return user
 
-    if user_id is not None:
-        user = await db.get(User, user_id)
-        if user is None:
-            raise ValueError("User not found")
-        return user
-
-    token_row = await db.scalar(select(GoogleOAuthToken).limit(1))
-    if token_row is None:
-        raise ValueError("No Google Drive connection found. Complete OAuth first.")
-    user = await db.get(User, token_row.user_id)
+    if not isinstance(user_id, uuid.UUID):
+        raise ValueError("An explicit corpus owner is required")
+    user = await db.get(User, user_id)
     if user is None:
-        raise ValueError("Connected Google account has no user record")
+        raise ValueError("User not found")
     return user
