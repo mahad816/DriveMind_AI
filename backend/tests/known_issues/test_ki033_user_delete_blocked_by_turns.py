@@ -40,10 +40,14 @@ async def test_user_who_has_asked_a_question_can_be_deleted(world, turns):
     owner's rows are gone.
     """
     await seed_owner(world, USER_A, "a", turns=turns)
+    refused: str | None = None
     try:
         await delete_user(world, USER_A)
-        deleted = True
-    except IntegrityError:
-        deleted = False
-    assert deleted, "DELETE FROM users was refused by a conversation_turns foreign key"
+    except IntegrityError as exc:
+        refused = str(exc.orig)
+    # Only a refusal by one of the two named foreign keys is the known defect; any other
+    # IntegrityError is a different problem and must not hide behind the expected failure.
+    if refused is not None:
+        assert "fk_turns_session_owner" in refused or "fk_turns_result_owner" in refused, refused
+    assert refused is None, "DELETE FROM users was refused by a conversation_turns foreign key"
     assert set((await counts(world, USER_A)).values()) == {0}

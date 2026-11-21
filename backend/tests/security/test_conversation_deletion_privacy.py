@@ -12,6 +12,7 @@ Qdrant call is made.
 
 # ruff: noqa: F811  (fixtures are imported by name and then requested as arguments)
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -50,6 +51,8 @@ from tests.security.test_conversation_repository import (
     reserve,
     world,  # noqa: F401  # pyright: ignore[reportUnusedImport]  (pytest fixture, by name)
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 PER_OWNER_TABLES = (
     "conversations",
@@ -190,7 +193,7 @@ async def test_conversation_delete_keeps_every_row_today(world):
         assert history.citations_json == [{"snippet": "quoted a"}]
 
 
-async def test_conversation_delete_leaves_query_history_reachable_by_id_nowhere_in_the_api(world):
+async def test_deleted_conversation_result_is_no_longer_replayable(world):
     """FACT: the only owner-facing way to read a stored answer goes through a visible conversation.
 
     ``ConversationRepository.result`` (used to replay a request) refuses a deleted conversation, so
@@ -198,6 +201,11 @@ async def test_conversation_delete_leaves_query_history_reachable_by_id_nowhere_
     """
     conversation, turn = await seed_owner(world, USER_A, "a")
     assert turn is not None
+    async with world.sessions.begin() as db:  # positive control: visible before the delete
+        before = await ConversationRepository(db).result(
+            USER_A, conversation.id, turn.client_request_id
+        )
+        assert before is not None and before.answer == "private answer a"
     async with world.sessions.begin() as db:
         await ConversationRepository(db).delete(USER_A, conversation.id, expected_version=1)
     with pytest.raises(ConversationNotFound):
@@ -284,12 +292,15 @@ async def test_file_removed_in_drive_is_marked_skipped_and_nothing_is_deleted_to
     await seed_owner(world, USER_A, "a")
     before = await counts(world, USER_A)
     async with world.sessions.begin() as db:
+        # Private method on purpose: the public sync needs a Drive client, which this audit avoids.
         assert await DriveSyncService(db, settings)._mark_file_removed(USER_A, "drive-a") == 1
     assert await counts(world, USER_A) == before
     async with world.sessions() as db:
         file = await db.scalar(select(DriveFile).where(DriveFile.user_id == USER_A))
         assert file is not None and file.status == DriveFileStatus.SKIPPED
-        document = await db.scalar(select(Document))
+        document = await db.scalar(
+            select(Document).join(DriveFile).where(DriveFile.user_id == USER_A)
+        )
         assert document is not None and document.extracted_text == "secret text a"
 
 
@@ -316,10 +327,8 @@ def test_only_one_delete_route_exists_and_none_is_named_disconnect_revoke_or_pur
 
 def test_disconnect_help_text_is_a_link_to_google_not_a_backend_call():
     """The one place the frontend mentions Revoke points the Owner to Google (no backend call)."""
-    from pathlib import Path
-
-    text_ = (Path(__file__).resolve().parents[3] / "frontend/lib/user-language.ts").read_text()
-    assert "Opens Google Account permissions to revoke DriveMind access." in text_
+    source = (REPO_ROOT / "frontend/lib/user-language.ts").read_text()
+    assert "Opens Google Account permissions to revoke DriveMind access." in source
 
 
 # --- History the answering path receives (no database) --------------------------------------
