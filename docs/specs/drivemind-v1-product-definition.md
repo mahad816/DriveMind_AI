@@ -325,22 +325,22 @@ Priority 6 items are unscheduled. A checkpoint for the `gpt-5.4-nano` replacemen
 | Fact | Basis and evidence |
 |---|---|
 | The tool agent registers four tools: `files_query`, `resolve_file`, `search_knowledge`, `file_evidence` | Code: `backend/app/agents/tool_rag/registry.py` |
-| The tool agent is off by default in code; the hosted setting is not known | Code: `TOOL_RAG_AGENT_ENABLED` defaults to false in `backend/app/core/config.py`. Hosted value: Unverified |
+| The tool agent is off by default in code; the Owner reported it on in the (now offline) hosted environment | Code: `TOOL_RAG_AGENT_ENABLED` defaults to false in `backend/app/core/config.py`. Hosted value: Owner-reported on, 2026-11-21 (M0 ticket 01); nothing is deployed |
 | Three answer paths exist: linear hybrid (default), LangGraph (`AGENT_GRAPH_ENABLED`, default false), tool agent | Code (configuration defaults) and repo doc (`AGENTS.md`) |
 | Claim check, the one-retry citation fix (KI-026) and name-lookup recovery (KI-025) exist | Repo doc (`docs/KNOWN_ISSUES.md`, `docs/DECISIONS.md`), with tests named there; not re-run in this session |
 | The file-status enum is `discovered`, `indexing`, `indexed`, `failed`, `skipped`; it has no `unsupported`, `outdated` or `excluded` value. A name search for an exclusion feature found no persisted exclusion, which does not prove none exists | Code: `backend/app/db/enums.py` (enum); name search (limited) |
 | Modified date is exposed in the file and source schemas | Code: `backend/app/schemas/file.py`, `backend/app/schemas/source.py` |
 | Sync discovers the whole Drive for supported types; folder-level selection in the UI is unconfirmed | Repo doc (`AGENTS.md`); not re-checked |
-| An application-session logout that revokes the session exists; a credential-encryption module exists. Whether credentials are encrypted at rest by default is unconfirmed | Code: `backend/app/api/google_session_auth.py`; `backend/app/security/google_credential_crypto.py` |
+| An application-session logout that revokes the session exists; a credential-encryption module exists, and credentials are stored encrypted-only (no plaintext columns; unconfigured encryption fails closed) | Code and test: `backend/app/api/google_session_auth.py`; `backend/app/security/google_credential_crypto.py`; `tests/security/test_encrypted_only_credentials.py` (M0 ticket 04) |
 | The Settings page shows no Disconnect control and links to Google's permission page. This describes the frontend only. It does **not** show that no backend disconnect or delete-all-data implementation exists, and a name search of the backend routes found none by those names, which is not proof of absence | Test: `frontend/components/settings/settings-drive-section.test.tsx`; limited name search |
-| Single conversations can be deleted through the API | Code: `backend/app/api/conversations.py` |
-| No continuous integration configuration is in the repository | Code: no `.github/` directory. Whether CI runs elsewhere: Unverified |
+| Single conversations can be deleted through the API, but the delete only hides the conversation (`deleted_at`); turns and the linked query history remain | Code: `backend/app/api/conversations.py`; test: `tests/security/test_conversation_deletion_privacy.py::test_conversation_delete_keeps_every_row_today` (M0 ticket 07) |
+| One free CI workflow exists, `.github/workflows/ci.yml`, verified only by running its commands locally; it has not run on GitHub. It runs no PostgreSQL or Qdrant tests and deselects four tests that fail on a clean checkout | Code: `.github/workflows/ci.yml`; local run (M0 ticket 08) |
 | The container start script runs no migrations | Code: `backend/deploy/start.sh` (comment and content) |
 | The latest migration file is `20261120_1200` and `EXTRACTION_PIPELINE_VERSION` is 3 | Code: `backend/alembic/versions/`, `backend/app/ingestion/pipeline_version.py`. Hosted database revision: Unverified |
-| `feature/v2-state-performance` is 156 commits ahead of `main`, and `main` is its ancestor. A fast-forward is possible by history alone; whether it is safe is a separate audit | Git history, checked 2026-11-21 |
+| `feature/v2-state-performance` was 164 commits ahead of `main` when M0 ticket 01 checked (2026-11-21; the count grows with each commit), and `main` is its ancestor. A fast-forward is possible by history alone; whether it is safe is a separate audit | Git comparison, M0 ticket 01 |
 | The demo configuration has a global request-rate limit and a concurrency limit. A spend cap and a per-Visitor limit were not found in the configuration or by name search; the interview reported the limiter as in-memory. Absence is not proven | Code (configuration only, not a full code audit) |
 | Default chat model `gpt-5.4-nano`, claim-check model `gpt-5.4-mini`, embedding model `text-embedding-3-small` | Code: `backend/app/core/config.py`. Hosted values: Unverified |
-| Last recorded full backend run: 2924 passed, 3 skipped, on 2026-11-21 before the latest merge; the skipped tests were not recorded | Historical measurement, from `AGENTS.md` ("Latest recorded verification"); not re-run |
+| M0 baseline on commit `7197af4`: backend 2927 tests, `2923 passed, 1 failed, 3 skipped` in one full run; the failure and the skips were test-environment problems, and all 2927 pass in the right environment (qualified baseline). Frontend 876 passed, lint and build pass | Local run, M0 ticket 02; details in `AGENTS.md` ("Latest recorded verification"). Later M0 tickets added tests and ran only partial suites |
 | Baseline: tool agent 75/94 and legacy pipeline 74/94 on the 2026-11-19 set (statistically tied). Sequential latency on 20 cases: tool agent median 4.4 s, 90th percentile 8.05 s. With the claim check on, over 94 cases: median 5.2 s, 90th percentile 7.8 s | Historical measurement, `docs/EVALUATION_RESULTS.md`: one corpus, one model, an earlier build; not production figures |
 
 **Defects** (registered in `docs/KNOWN_ISSUES.md` unless noted)
@@ -349,20 +349,22 @@ Priority 6 items are unscheduled. A checkpoint for the `gpt-5.4-nano` replacemen
 - KI-028: a named thing that does not exist is answered from a similar thing that does.
 - KI-029: sums over table rows can be wrong (for example 33,100 or 33,200 instead of 34,900).
 - KI-030: a small multi-slide deck becomes one chunk and loses in search.
-- First-stored-credential fallbacks: four services pick the first stored Google credential when no Owner is given (user resolution, Drive sync, Drive content, chunking). Confirmed by code search in this session; **not yet in the registry**, so M0 should add it with a reproducing test.
+- KI-031: **six** services pick the first stored Google credential when no Owner is given (user resolution, Drive sync, Drive content, chunking, ingestion, indexing). Latent: every production caller passes an Owner, so no request, job or script reaches it today. Fix: M0-SEC.
+- KI-032: abandoned Google login attempts are never removed, and `POST /auth/session/google` is unlimited.
+- KI-033: an owner who has submitted a question cannot be deleted from `users`.
+- Found by the M0 audit, no registry entry yet (no reproducing test): the claim check fails open; Owner mode has no rate limit or spend cap; `POST /chat` needs no CSRF token. See `docs/audits/m0-system-audit.md`.
 
 **Unverified (do not state as fact)**
-- Hosted state: deployed commit, branch, flags, migration revision, and whether the hosting plan includes managed database backups.
-- Whether a backend Disconnect or delete-all-data flow exists. Only a frontend test (no Disconnect control in Settings) and limited name searches were used; neither proves absence. Check in the privacy audit (M0).
-- Whether credentials are encrypted at rest by default (the module exists; default-on status unconfirmed).
-- Google authorization status and review claims: OAuth user type and publishing status; whether the restricted read-only Drive scope needs verification and an annual third-party assessment; a 100-user cap; 7-day tokens in Testing mode. These came from unconfirmed research.
+- Hosted state: nothing is deployed (all services offline, Owner-reported as intentional). Hosted flags are Owner-reported only; the deployed commit, branch, migration revision and managed-backup status of the removed deployment were not read (the environment will be rebuilt).
+- Whether a backend Disconnect or delete-all-data flow exists: M0 ticket 07 searched the route list, the code, the migrations, the operator tools and the frontend and **found none**; a null search is not proof of absence.
+- Hosted encryption keys, their custody and backups, and plaintext in historical backups. (Credentials are stored encrypted-only in the code, and unconfigured encryption fails closed: Verified by M0 ticket 04.)
+- Google authorization status: the Owner reported External, Testing, 4 test users and 6 lifetime users (M0 ticket 01, Owner-reported). Whether the restricted read-only Drive scope needs verification and an annual third-party assessment, the 100-user cap and 7-day tokens in Testing mode still came from unconfirmed research.
 - The provider's data usage and retention policy; whether `text-embedding-3-small` is deprecated (not in the part of the deprecations page read verbatim); the `gpt-6-luna` model page.
 - Real cost per question and real latency through the deployed application. The figure of about $0.003 per question came from the interview and was not located in the repository documents during this review. The 5.2 s median is the claim-check-on median in `docs/EVALUATION_RESULTS.md`, a historical measurement. Neither is a production measurement.
 - Whether conversation history is sufficient for follow-ups.
-- Whether Unsupported files are reported in the current interface.
+- Whether the hosted demo uses a database separate from Owner data (the code relies on it; ADR 0002).
 - Real Google Doc, Google Sheet and Excel-saved file extraction (only generated fixtures were tested).
-- Whether continuous integration costs anything for this repository.
-- The full backend and frontend suites on the current HEAD.
+- The full container backend suite on the current HEAD (last run on `7197af4`) and the CI workflow on GitHub.
 - Whether the stream currently sends a first status event within 2 s.
 
 ### Workflow (Q28)

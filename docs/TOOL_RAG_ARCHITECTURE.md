@@ -1,6 +1,6 @@
 # Frozen decision: tool-orchestrated RAG
 
-Status: architecture decision only; no runtime integration is implemented by this document.
+Status: architecture decision only; no runtime integration is implemented by this document. **Historical record:** the four tools, the provider adapter and the `RagService` integration now exist (`backend/app/agents/tool_rag/`, `services/tool_agent_service.py`); see `docs/audits/m0-system-audit.md` (A1) for what runs today. Statements below that say the integration is still to be done are out of date.
 
 ## Baseline and experiment boundary
 

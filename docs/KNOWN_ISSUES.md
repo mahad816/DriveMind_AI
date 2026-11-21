@@ -84,6 +84,15 @@ something known without a test (or say plainly that it is *unreproduced*).
 - **Not fixed on purpose:** M0 only audits; a fix is a migration and belongs with Delete stored data (M7).
 - **Direction:** give both foreign keys `ON DELETE CASCADE` (or delete turns first) in a migration, then remove the marker from the two tests.
 
+## Found by the M0 audit, not yet registered (no reproducing test)
+
+Not registry entries, because the registry rule is "never mark something known without a test". Full evidence and the milestone each is assigned to: `docs/audits/m0-system-audit.md` (sections 2 and 5).
+- **The claim check fails open:** if its provider call fails, an unchecked answer is published. The Owner decided this is not acceptable for release (M0 ticket 05, Owner decision 3). `tests/test_provider_failure_paths.py::test_claim_check_model_failure_publishes_the_unchecked_answer` characterises today's behavior; M3 turns it into a strict expected failure or replaces it with the fail-closed tests.
+- **Owner mode has no rate limit, spend cap or request-body limit**, and `POST /chat` `question` is unbounded there (M0-SEC; the linear path's cost is not yet traced).
+- **`POST /chat` needs no `Origin` or CSRF token** (assessment first, M0-SEC).
+- **Four container-free tests fail on a clean checkout** (`tests/evaluation/test_agent_smoke.py::test_frozen_sixteen_case_gold_and_identities`, three in `tests/evaluation/test_cli_corpus.py`); the CI workflow deselects them. They should skip when their inputs are absent.
+- **A vacuous guard test:** `tests/security/test_session_security.py::test_existing_application_routes_do_not_use_session_dependencies` checks nothing under the pinned FastAPI; the route inventory test supersedes it.
+
 ## Not covered by tests (cannot be checked locally without paid or live services)
 - A real Google Doc exported as DOCX, a real Google Sheet and a file saved by Excel itself have not been read by the new readers; only generated fixtures were.
 - Real OpenAI answer quality, streaming timing through the Railway proxy, hosted deployment state. Measured separately (RAG evaluation phase).

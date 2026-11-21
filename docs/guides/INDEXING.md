@@ -27,7 +27,7 @@ The cursor is staged after metadata processing and committed with successful syn
 
 Every `Document` records the extraction pipeline version that produced its text (`app/ingestion/pipeline_version.py`). When a reader improves, the version is raised and indexed files with an older version are read again once: the pending counts report them as `to_ingest`, and the normal chunk and build steps follow only if the new text differs. Raise the version only when a change makes already-extracted text come out different.
 
-A newly supported file type (for example PowerPoint) is not stored by an incremental sync for files that already existed in Drive, because only changed files are reported. Run one full Drive scan (`POST /index/sync?full=true`, the "full scan" option in the app) after such a change so the existing files are discovered.
+A newly supported file type (for example PowerPoint) is not stored by an incremental sync for files that already existed in Drive, because only changed files are reported. Run one full Drive scan (`POST /index/sync?full=true`; no mounted screen sends it today, so it needs an API call) after such a change so the existing files are discovered.
 
 The service can skip unchanged content. Successful extraction with no searchable text sets the file to `SKIPPED`; a caught content or extraction failure sets that file to `FAILED`. Healthy files in the same batch can continue through later stages even if the ingestion job reports a partial failure.
 

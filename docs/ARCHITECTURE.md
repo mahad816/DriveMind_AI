@@ -10,7 +10,7 @@ DriveMind is a single-user application that prepares read-only Google Drive cont
 
 | Component | Responsibility |
 |-----------|----------------|
-| Browser and Next.js | Chat, file browser, settings, and preparation UI. Conversation history is stored in browser localStorage. |
+| Browser and Next.js | Chat, file browser, settings, and preparation UI. Conversations and their turns are stored server-side in PostgreSQL (the `/conversations` API); the browser keeps only session-scope and preparation-progress state in localStorage. |
 | Next.js `/api/v1` rewrite | Forwards same-origin API requests to FastAPI using `BACKEND_URL`. |
 | FastAPI | REST routes, Drive authorization callbacks, in-process preparation jobs, RAG orchestration, and citation source lookup. |
 | Google Drive | Read-only metadata and content source for sync and ingestion. Normal chat does not fetch Drive content. |
@@ -30,7 +30,7 @@ See the [Indexing guide](guides/INDEXING.md) for states and the detailed [sync a
 
 ## Question answering
 
-`POST /chat` calls `RagService.ask`. A top-level router selects conversation-history recall, chitchat, file inventory, named-file lookup, or general grounded RAG. Chitchat and inventory do not return document citations. Named-file questions use direct PostgreSQL chunk retrieval. General grounded questions use the linear path by default: Qdrant vector retrieval, plus PostgreSQL keyword and metadata candidates when `HYBRID_RETRIEVAL_ENABLED=true`. `AGENT_GRAPH_ENABLED=true` enables a separate LangGraph retrieval/rewrite path for general grounded questions only.
+`POST /chat` (the demo UI) and conversation turns (`/conversations/{id}/turns[/stream]`, the normal UI) call `RagService.ask`. On the legacy path a top-level router selects conversation-history recall, chitchat, file inventory, collection summary, named-file lookup, or general grounded RAG. With `TOOL_RAG_AGENT_ENABLED` on (the intended production path), the question goes to the tool-calling agent instead, before any routing (see `docs/TOOL_RAG_ARCHITECTURE.md`); this document otherwise describes the legacy path. Chitchat and inventory do not return document citations. Named-file questions use direct PostgreSQL chunk retrieval. General grounded questions use the linear path by default: Qdrant vector retrieval, plus PostgreSQL keyword and metadata candidates when `HYBRID_RETRIEVAL_ENABLED=true`. `AGENT_GRAPH_ENABLED=true` enables a separate LangGraph retrieval/rewrite path for general grounded questions only.
 
 Grounded evidence is selected within a context budget before OpenAI generation. Citation normalization ties returned references to selected prompt chunks. Query and answer records are persisted in PostgreSQL; `/sources/{chunk_id}` resolves a citation to indexed PostgreSQL text. Chat does not retrieve original content from Google Drive.
 
@@ -70,6 +70,6 @@ Evaluation tooling runs from the backend CLI; see the [Evaluation guide](guides/
 
 ## Security and scope
 
-Google OAuth authorizes read-only Drive access. It is not a separate application authentication or session protection boundary. This MVP uses single-user assumptions, including selecting the first stored OAuth token when no user ID is supplied; it does not provide multi-user isolation. Provider credentials belong in environment variables, never repository files. The backend reads Drive during sync/ingestion and uses the local index for normal answers.
+Google OAuth authorizes read-only Drive access; application sign-in and sessions are a separate mechanism (`/auth/session/*`), and every private route requires a session principal (or the demo user in demo mode). Six services still select the first stored OAuth token when no user ID is supplied (KI-031); this is latent, because every production caller passes an owner. There is no sign-in allow-list and no Owner-mode rate limit; see `docs/audits/m0-system-audit.md`. Provider credentials belong in environment variables, never repository files. The backend reads Drive during sync/ingestion and uses the local index for normal answers.
 
 For setup and deployment considerations, see [Local Setup](guides/SETUP.md) and [Deployment](guides/DEPLOYMENT.md).

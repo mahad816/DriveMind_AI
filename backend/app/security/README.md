@@ -1,6 +1,18 @@
-# Application session foundation (inactive)
+> **Current status (M0 audit, 2026-11-21; see `docs/audits/m0-system-audit.md`).** The text
+> below is historical and parts of it are no longer true. Today: every private route
+> (`/chat`, `/files`, `/sources`, `/index/*`, `/conversations`) requires an application
+> session principal (or the demo user in demo mode), and the legacy `/auth/google` router is
+> unmounted (404). `GOOGLE_APPLICATION_SESSIONS_ENABLED` gates only **issuing** sessions (the
+> four `/auth/session/*` endpoints); with it off every private route answers 401, so it
+> means "locked" (apart from sessions already in the database), not "single-user". Credentials are stored encrypted-only. Still open: six
+> services fall back to the first stored credential when no owner is given (latent, KI-031);
+> there is no sign-in allow-list, so with sessions on any Google account that Google lets
+> through gets a session; Owner mode has no rate limit; there is no Disconnect, Revoke or
+> Delete stored data.
 
-No existing route uses these dependencies and no public session issuer exists.
+# Application session foundation (historical: written while inactive)
+
+At the time of writing no existing route used these dependencies and no public session issuer existed.
 This does not enable secure multi-user operation: OAuth browser binding, verified
 login issuance, all data-access ownership filters and job isolation remain future work.
 
@@ -53,10 +65,10 @@ helpers remain intact. Browser login uses only the application-session flow;
 see `docs/guides/v2-frontend-sessions.md` for callback migration prerequisites.
 
 `GOOGLE_APPLICATION_SESSIONS_ENABLED=false` is the default. Existing
-`/auth/google` and its Drive callback retain their single-user behavior and do
-not issue application sessions. Existing chat/files/index/sources routes still
-have their existing authorization; this step does **not** make them multi-user
-safe. The new dependency is attached only to the opt-in session endpoints.
+`/auth/google` and its Drive callback (historical wording; the router is now unmounted)
+retained their single-user behavior and did not issue application sessions. Existing
+chat/files/index/sources routes then had their existing authorization (they now require a
+session principal); this step did **not** make them multi-user safe. (Then, the new dependency was attached only to the opt-in session endpoints.)
 
 The separate `/api/v1/auth/session` flow requires both the flag and an explicit
 `GOOGLE_SESSION_REDIRECT_URI` on the exact trusted `FRONTEND_URL` origin, with
