@@ -184,3 +184,10 @@ Per question: path (tool agent / linear / LangGraph / intent-only / zero-call ro
 - Not measurable without a live provider (stays **Unverified**): dollar cost, token counts, whether failed SDK retries are billed, real latency against the 120 s window.
 
 ## Comments
+
+**Owner decision (2026-11-21), quota counting boundary.** Resolves the ambiguity in Findings section 4.
+- A question consumes allowance only if paid provider execution began (the first chat or embedding request is about to be issued). Requests rejected in authentication, validation, preconditions, replay handling or turn reservation, and any failure before that first request (including after the reservation commit), are released and not counted.
+- Once a provider request began, the attempt counts exactly once even if the provider fails, times out or the user cancels. Internal calls (intent gate, claim check, rewrites, citation correction) and SDK retries are never counted separately.
+- Minimal design chosen (no billing system): a request-scoped `PaidExecutionMarker` set by one line at each of five provider-request chokepoints (`OpenAIChatService._complete`, `OpenAIAgentChatService.step` and `stream_step`, `OpenAIEmbeddingService._embed_batch`, graph `_rewrite_with_openai`); one `settle` call at the end finishes the attempt if the marker is set and releases it otherwise. Consequence: zero-call routes (history recall, file-not-found) are never counted, which replaces Findings section 2's note that they would be.
+- Carried into tickets 05 (marker, `settle`, chokepoint tests, counting rule) and 06 (release/finish boundary, acceptance tests). Not implemented in this session.
+
