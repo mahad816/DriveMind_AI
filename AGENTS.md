@@ -129,9 +129,19 @@ npm run build
 
 ## Latest recorded verification
 
-- **Latest measured full backend run:** `2924 passed, 3 skipped` in 17 min 24 s, run on 2026-11-21 on the KI-026 code just before its commit (`b0cc552`), with the disposable PostgreSQL and Qdrant test containers. Ruff, Ruff format, mypy and basedpyright were clean at that time.
-- **Since then:** one test file changed (`fix/ki026-test-types`, merged as `bf15b20`). Only `tests/agents/tool_rag/test_citation_retry.py` was re-run (8 passed).
-- **Not yet done:** a fresh full backend run on `bf15b20` (HEAD at the time of writing), and any frontend `npm test`, `npm run lint` or `npm run build` in this period. Re-run them before relying on the figures above. Which 3 tests were skipped was not recorded.
+Recorded by M0 ticket 02 on 2026-11-21, on commit `7197af4` (no application code differs from `bf15b20`; only docs and one test type fix came after the previous run). Details, timings and the dependency groups are in `docs/tickets/m0-system-audit/02-test-baseline-and-classification.md`.
+
+- **Backend full run (2927 tests), one run, as measured:** `2923 passed, 1 failed, 3 skipped` in 24 min 9 s on disposable PostgreSQL 18.7 and Qdrant 1.18.2 containers. Its failure and its skips were set-up problems of that run (next item); the full suite was **not** repeated.
+- **Focused re-runs on the same commit, recorded separately:**
+  - `tests/security/test_two_user_rag_end_to_end.py::test_http_graph_strategy_plans`, which holds the 1 failure (`[Show only txt-False]`), with `OPENAI_API_KEY` not exported: 3 passed. With a dummy key exported it failed 3 of 3. The test needs the variable **absent**: the graph rewrite node makes a model request when `settings.openai_api_key` is set, and the test asserts none.
+  - `tests/security/test_conversation_chat.py`, which holds the 3 skips (`test_real_rag_modes_owner_filtered_qdrant_and_citation_publication[linear|graph|tool]`), with a disposable Qdrant at exactly `http://127.0.0.1:61448` (the test body requires that URL): 32 passed, 0 skipped.
+  - **Qualified baseline:** the 2927 tests all pass in the right environment, shown by the full run plus these two focused re-runs, not by one clean full run. The run took 7 min longer than the previous one (17 min 24 s); the cause was not investigated.
+- **Container-free subset (no container variables set, no `OPENAI_API_KEY`):** `2174 passed, 753 skipped` in 3 min 35 s; all skipped tests need PostgreSQL. One test, `tests/evaluation/test_rag_eval_dataset.py::test_public_cases_validate_when_the_public_documents_are_downloaded`, takes 155 s because the git-ignored public PDFs exist locally (it skips on a clean checkout). With it deselected: `2173 passed, 753 skipped` in 53 s. **Limits of this subset:** it contains none of the 753 PostgreSQL/Qdrant tests, which include the ownership, session, indexing-job and vector-isolation tests in `tests/security` (judged from file names), so it does not guard those behaviours; those need the container suite (about 24 min).
+- **Static checks (backend):** `ruff check app tests` and `ruff format --check app tests` clean (342 files); `mypy app` clean (183 files); `basedpyright app tests` **48 errors, all in 9 files under `tests/`, none in `app/`**, so basedpyright is clean on `app/` only; the 48 are the preserved baseline, not a target.
+- **Frontend:** `npm test` 876 passed in 76 files (50 s, nothing skipped); `npm run lint` clean (`next lint` prints a deprecation notice); `npm run build` succeeded (18.6 s; it downloads the Geist fonts from Google Fonts).
+- **Added after the run:** two known-issue test files (KI-022, KI-030; 7 tests: 3 passing guards, 4 expected failures). `tests/known_issues` afterwards: `19 passed, 4 xfailed` with PostgreSQL; `18 passed, 3 skipped, 2 xfailed` without containers (the KI-022 tests need PostgreSQL). Ruff is clean (342 files) and the basedpyright error count is unchanged (48).
+- **Test environment:** `SESSION_TEST_DATABASE_URL` (loopback, database name starting `drivemind_session_test`), `QDRANT_TEST_URL` (loopback, not port 6333/6334), `CONVERSATION_TEST_QDRANT_URL=http://127.0.0.1:61448`; `OPENAI_API_KEY` must not be exported. No test reached OpenAI, Google or Railway.
+- **Not covered:** any test against a real Google Doc, Sheet or Excel-saved file (see `docs/KNOWN_ISSUES.md`).
 
 ## Agent skills
 
