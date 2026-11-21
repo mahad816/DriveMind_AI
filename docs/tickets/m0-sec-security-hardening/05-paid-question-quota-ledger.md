@@ -4,7 +4,7 @@
 **What to build:** A small PostgreSQL-backed allowance that admits or refuses a paid question per Owner: 20 per rolling hour, 50 per rolling day, 1 concurrent, all configurable and provisional. It is built and tested on its own here; ticket 06 wires it into the routes. The daily limit survives restarts because it lives in the database, with no Redis or other new infrastructure. Owner decisions D4-2 and the 2026-11-21 approval.
 **Blocked by:** 04.
 **Status:** ready-for-agent
-**Progress:** implemented and committed locally (2026-11-21): model, migration `20261121_1200`, settings with validator, `PaidQuestionQuota` service, `PaidExecutionMarker` and the five chokepoint calls, tests; two read-only reviews (standards; spec/correctness/security) found no blocking issues and are addressed; no route wired (ticket 06); not pushed
+**Progress:** implemented and committed locally (2026-11-21; cancellation-during-admit follow-up fixed and reviewed): model, migration `20261121_1200`, settings with validator, `PaidQuestionQuota` service, `PaidExecutionMarker` and the five chokepoint calls, tests; two read-only reviews (standards; spec/correctness/security) found no blocking issues and are addressed; no route wired (ticket 06); not pushed
 
 ## Design (decided; the review of 2026-11-21 found the earlier key-based design unsafe)
 
@@ -73,9 +73,11 @@ Disposable PostgreSQL. No Qdrant, no provider, no network.
 
 **For ticket 06 (carry-over from the reviews).**
 - Call `prune()` at a bounded point (a failed `release` leaves an unstarted row counted in the hour and day windows until prune removes it at twice the lease).
-- `admit` is not shielded: a cancellation at the instant of commit can leave a committed row whose id the caller never receives. It blocks the slot until the lease and is pruned later; accepted, like a crash orphan, and worth one test in 06.
+- Cancellation during `admit` is handled inside the service (see the next section); ticket 06 only has to call `settle` for the id it receives.
 - A crashed attempt that had started paid execution stops counting in the windows once pruned (2x lease). This is the specified behaviour.
 - No test yet for the "file-target not found" zero-call route; only conversation-history recall is covered. Add it in 06 where the full path is exercised.
+
+**Cancellation during admission (follow-up, 2026-11-21).** Reproduced: SQLAlchemy runs the commit of `begin()` in a shielded task, so a cancel arriving then raised `CancelledError` out of `admit` after the row was committed; the caller never got the id, the row blocked the slot until the lease and counted in the hour and day windows. Fix: `_admit` runs as its own task under `asyncio.shield`; on cancellation `admit` registers a done-callback that releases the attempt if one was committed (strong reference kept), waits up to 15 s, releases directly if done, then re-raises. A second cancellation or a stalled database cannot leak the row (the callback still releases it). Residual: only a process kill in that window leaves a row; it stops blocking after the lease, keeps counting in the hour and day windows until `prune`, like any crash orphan. Tests: cancel after commit, during the lock wait, before the lock timeout, a second cancellation, released attempts use no hour or day allowance, an orphan blocks only until the lease.
 
 **M7 / Delete-stored-data note.** The ledger holds Owner id and timestamps only (no question text). Finished rows are kept at least 25 hours, then pruned; deleting a user cascades to its rows. A future "delete my data" feature must include this table.
 

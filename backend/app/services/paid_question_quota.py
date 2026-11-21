@@ -35,6 +35,7 @@ Reason = Literal["hour", "day", "concurrent"]
 HOUR = timedelta(hours=1)
 DAY = timedelta(hours=24)
 CLEANUP_TIMEOUT_SECONDS = 10
+CANCEL_WAIT_SECONDS = 15
 
 
 class QuotaRefused(Exception):
@@ -78,13 +79,43 @@ class PaidQuestionQuota:
         self._lease = timedelta(seconds=settings.paid_question_lease_seconds)
         self._retention = timedelta(hours=settings.paid_question_retention_hours)
         self._clock = clock
+        self._background: set[asyncio.Future[Any]] = set()
 
     async def admit(self, owner: UUID) -> UUID:
         """Reserve one attempt and commit it before returning, or refuse.
 
         Raises ``QuotaRefused`` at a limit and ``QuotaUnavailable`` when the ledger cannot be used;
         neither ever admits.
+
+        Cancellation: the transaction runs as its own task, so a cancelled caller cannot interrupt
+        it half-way, and the caller never receives an id it cannot settle. On cancellation the
+        task gets a done-callback that releases the attempt if one was committed (a deleted row
+        never counts), and ``admit`` also waits briefly for it so the row is normally gone before
+        the cancellation propagates. A second cancellation, or a stalled database, therefore
+        cannot leak the row: the callback still releases it when the transaction ends. Only a
+        process kill in that window leaves a row, which stops blocking after the lease, counts in
+        the hour and day windows until ``prune`` removes it, like any crash orphan.
         """
+        admission = asyncio.ensure_future(self._admit(owner))
+        try:
+            return await asyncio.shield(admission)
+        except asyncio.CancelledError:
+            self._background.add(admission)  # a strong reference: the loop only holds weak ones
+            admission.add_done_callback(self._release_if_admitted)
+            await asyncio.wait({admission}, timeout=CANCEL_WAIT_SECONDS)
+            if admission.done() and not admission.cancelled() and admission.exception() is None:
+                await self.settle(admission.result(), PaidExecutionMarker())  # idempotent
+            raise
+
+    def _release_if_admitted(self, admission: "asyncio.Future[UUID]") -> None:
+        self._background.discard(admission)
+        if admission.cancelled() or admission.exception() is not None:
+            return
+        cleanup = asyncio.ensure_future(self.settle(admission.result(), PaidExecutionMarker()))
+        self._background.add(cleanup)
+        cleanup.add_done_callback(self._background.discard)
+
+    async def _admit(self, owner: UUID) -> UUID:
         attempt_id = uuid4()
         try:
             async with self._sessions.begin() as db:

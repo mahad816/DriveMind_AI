@@ -442,7 +442,133 @@ async def test_upgrade_and_downgrade_both_run(pg_engine):
         indexes = await connection.scalar(
             text(
                 "SELECT count(*) FROM pg_indexes WHERE tablename = 'paid_question_attempts' "
-                "AND indexname = 'ix_paid_question_attempts_owner_started'"
+                "AND indexname = 'ix_paid_question_attempts_owner_started' "
+                "AND schemaname = current_schema()"
             )
         )
         assert indexes == 1
+
+
+# --- cancellation during admission (follow-up to ticket 05 review) ----------------------------
+
+
+@pytest.fixture
+def slow_commit(monkeypatch):
+    """Make the admission commit succeed, then stall before control returns to ``admit``'s caller."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    original = AsyncSession.__aexit__
+    state = {"committed": asyncio.Event(), "go": asyncio.Event(), "active": True}
+
+    async def aexit(self, *args):
+        # Runs inside SQLAlchemy's shielded exit task, after the transaction has committed.
+        if state["active"]:
+            state["active"] = False  # only the admission's own session stalls
+            state["committed"].set()
+            await state["go"].wait()
+        await original(self, *args)
+
+    monkeypatch.setattr(AsyncSession, "__aexit__", aexit)
+    return state
+
+
+async def test_cancel_after_the_commit_succeeds_leaves_no_row_the_caller_cannot_settle(
+    pg_engine, slow_commit
+):
+    quota = make_quota(pg_engine)
+    task = asyncio.ensure_future(quota.admit(USER_A))
+    await slow_commit["committed"].wait()  # the row is committed; the caller has no id yet
+    assert len(await rows(pg_engine, USER_A)) == 1
+    task.cancel()
+    slow_commit["go"].set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert await rows(pg_engine, USER_A) == []  # released: never counted, slot free
+    await quota.admit(USER_A)
+
+
+async def test_cancel_while_waiting_for_the_owner_lock_leaves_no_row(pg_engine):
+    quota = make_quota(pg_engine)
+    holder_sessions = async_sessionmaker(pg_engine)
+    async with holder_sessions.begin() as holder:
+        await holder.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": lock_key(USER_A)}
+        )
+        task = asyncio.ensure_future(quota.admit(USER_A))
+        await asyncio.sleep(0.3)  # blocked on the lock
+        task.cancel()
+        await asyncio.sleep(0.3)
+    # The holder committed inside the lock timeout, so the cancelled admission may have gone on to
+    # insert; whatever it did, it must not leave a row behind.
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert await rows(pg_engine, USER_A) == []
+
+
+async def test_cancel_before_the_lock_timeout_expires_leaves_no_row(pg_engine):
+    quota = make_quota(pg_engine)
+    async with async_sessionmaker(pg_engine).begin() as holder:
+        await holder.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": lock_key(USER_A)}
+        )
+        task = asyncio.ensure_future(quota.admit(USER_A))
+        await asyncio.sleep(0.3)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task  # waits out the lock timeout (the holder stays), then raises
+    assert await rows(pg_engine, USER_A) == []
+
+
+async def test_a_cancelled_admission_that_was_released_uses_no_hour_or_day_allowance(
+    pg_engine, slow_commit
+):
+    quota = make_quota(pg_engine, paid_question_hour_limit=1, paid_question_day_limit=1)
+    task = asyncio.ensure_future(quota.admit(USER_A))
+    await slow_commit["committed"].wait()
+    task.cancel()
+    slow_commit["go"].set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await quota.finish(await quota.admit(USER_A))  # the one hourly and daily question is intact
+    assert (await refusal(quota, USER_A)).reason in {"hour", "day"}
+
+
+async def test_a_refused_admission_that_is_cancelled_leaves_nothing(pg_engine):
+    clock = Clock()
+    quota = make_quota(pg_engine, clock)
+    await quota.admit(USER_A)  # holds the only concurrent slot
+    task = asyncio.ensure_future(quota.admit(USER_A))
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises((asyncio.CancelledError, QuotaRefused)):
+        await task
+    assert len(await rows(pg_engine, USER_A)) == 1  # only the first attempt
+
+
+async def test_an_orphaned_attempt_blocks_only_until_the_lease_but_counts_until_pruned(pg_engine):
+    """A row whose id never reached the caller (a double cancellation or a crash)."""
+    clock = Clock()
+    quota = make_quota(pg_engine, clock, paid_question_hour_limit=2)
+    await quota.admit(USER_A)  # orphan: never settled
+    clock.advance(seconds=LEASE + 1)
+    await quota.finish(await quota.admit(USER_A))  # no longer blocks the concurrent slot
+    assert (await refusal(quota, USER_A)).reason == "hour"  # it still counts in the window
+    clock.advance(seconds=2 * LEASE)
+    assert await quota.prune() == 1  # pruned once past twice the lease
+
+
+async def test_a_second_cancellation_cannot_leak_the_committed_attempt(pg_engine, slow_commit):
+    quota = make_quota(pg_engine)
+    task = asyncio.ensure_future(quota.admit(USER_A))
+    await slow_commit["committed"].wait()
+    task.cancel()
+    await asyncio.sleep(0.05)  # now waiting for the admission to end
+    task.cancel()  # a second cancellation interrupts that wait
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    slow_commit["go"].set()  # the admission finishes after the caller has gone
+    for _ in range(50):
+        if not await rows(pg_engine, USER_A):
+            break
+        await asyncio.sleep(0.1)
+    assert await rows(pg_engine, USER_A) == []  # the done-callback released it
