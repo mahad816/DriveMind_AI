@@ -91,6 +91,26 @@ Shortfalls to fill (whole set): 99 cases, 28 non-answer, 30 Critical, 17 multi-f
 2. **Two older cases rest on anchors that occur in two documents:** `sv05` and `tr15` (near-duplicate synthetic documents). They are frozen and exempt from the v3 rule. A chunk-level citation check on them cannot tell the two documents apart; read their citation result with that in mind.
 3. **The `id10` correction cannot be given a full "before" checksum.** The identifier file was first committed already corrected (commit `fefb0a9`); the pre-correction checksum exists only as the prefix `1d9f4f05` in `docs/EVALUATION_RESULTS.md`, recorded as such, not completed.
 
+### Review fixes (M1-05-B, 2026-11-22)
+
+An independent review of `61d2736` found two P2 defects; both are fixed in the commit that follows it. Held-out protection, pools, the freeze, the amendment log and all case files are unchanged.
+
+1. **Strict score passed any non-question reply to a `clarify` case.**
+   - Root cause: `_strict` (`deep.py`) decided only by behaviour class. `clarify` fell into the "other" branch, where the only deterministic gates are no error, no forbidden value, no citation, integrity. The `?` rule lived only in `runner.judge_row`, the legacy pass, which strict deliberately does not read (ticket 03).
+   - Why tests missed it: the clarify tests of this ticket exercised the legacy pass and the validator, never `deep.extend_row`; no test asked strict anything about a clarify row.
+   - Fix: `deep.clarifying()`. No `?` in the reply, or a decline, is a strict fail. A question that names a reading (a word of an anchor quote that the question does not contain) is a pass. A question that names none ("How can I help you?") is undecided, never a pass. Stating a reading's value still fails through the forbidden-value check; a citation fails through the clean check.
+   - Permanent coverage: `test_a_clarify_case_passes_strict_only_for_a_real_clarifying_question` (8 replies, judge forced to pass), `test_a_clarifying_reply_that_cites_a_file_fails_strict`, `test_the_clarify_rule_leaves_every_other_behaviour_untouched`. Run before the fix, 5 of the 8 replies failed.
+   - Limit: a clarifying question that names no reading is left undecided for the judge and a person rather than failed.
+
+2. **A multi-file case did not need evidence in each of its files.**
+   - Root cause: "multi-file" was defined by `expected_files` alone (two or more files, all to be cited), in both the validator (`v3_field_problems`) and the counter (`case_types`). Nothing tied a listed file to an anchor, so a filler file inflated the gate. The explicit `multi_file` tag was also counted without checking the fields.
+   - Why tests missed it: the multi-file tests checked only the file count and `citation_mode`, and one test used an unanchored second file as its valid example.
+   - Fix: `schema_v3.lists_several_files` and `unanchored_files`. A v3 case that is multi-file by tag or by fields must have an anchor in every expected file. `case_types` counts multi-file only when every expected file is anchored, and ignores the tag otherwise, so the coverage count cannot be inflated even by an invalid case. The boundary is the validator; the count is a second line of defence.
+   - Permanent coverage: `test_a_multi_file_case_needs_an_evidence_anchor_in_every_expected_file` (valid case, unanchored case, same case untagged), `test_an_unanchored_second_file_does_not_count_as_multi_file_coverage`. Run before the fix, both failed.
+   - Compatibility: all 8 existing multi-file cases already anchor every listed file; coverage still reports 8.
+
+Verified after both fixes: `tests/evaluation` 560 passed, 4 skipped (548 + 12 new); `ruff check` and `ruff format --check` clean; `mypy` clean on the 11 touched modules; `freeze check` 0 problems; pools still 120 / 81; `git diff -- backend/app backend/evaluation/datasets` empty. `basedpyright` reports 2 errors in `test_rag_eval_deep_scoring.py` (an `asynccontextmanager` call at about line 846); they exist before this change.
+
 ### Caveats, limits and what was not tested
 
 - **No cases were written.** The ticket says so; tickets 06 and 07 write them. The session's title and prompt said "Evaluation Cases Implementation"; this ticket was followed, so coverage is SHORT everywhere it is short (exit code 1 is the correct state).

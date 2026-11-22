@@ -84,19 +84,30 @@ def evidence_formats(case: Mapping[str, Any]) -> list[str]:
     return sorted({PurePosixPath(p).suffix.lstrip(".").lower() for p in evidence_files(case)})
 
 
+def lists_several_files(case: Mapping[str, Any]) -> bool:
+    """An answer that must cite two or more files (``citation_mode: any`` lists alternatives, one suffices)."""
+    return (
+        case.get("expected_behavior") in {"answer", "partial"}
+        and case.get("citation_mode", "all") != "any"
+        and len(set(case.get("expected_files") or [])) >= 2
+    )
+
+
+def unanchored_files(case: Mapping[str, Any]) -> list[str]:
+    """Expected files that carry no evidence anchor: a file listed but never needed for the answer."""
+    anchored = {a["file"] for a in case.get("evidence_anchors") or []}
+    return [f for f in dict.fromkeys(case.get("expected_files") or []) if f not in anchored]
+
+
 def case_types(case: Mapping[str, Any]) -> set[str]:
     """Question-type tags: the explicit ``tags`` plus what the case's own fields already say."""
     behavior = case.get("expected_behavior")
     category = str(case.get("category", ""))
     found = set(case.get("tags") or [])
-    needs_all = (
-        case.get("citation_mode", "all") != "any"
-    )  # "any": the files are alternatives, one suffices
-    if (
-        behavior in {"answer", "partial"}
-        and needs_all
-        and len(set(case.get("expected_files") or [])) >= 2
-    ):
+    found.discard(
+        "multi_file"
+    )  # a tag is a claim; the fields decide whether the case really is multi-file
+    if lists_several_files(case) and not unanchored_files(case):
         found.add("multi_file")
     if category.startswith("table") or category in TABLE_CATEGORIES:
         found.add("table")
@@ -370,6 +381,11 @@ def v3_field_problems(
         problems.append(
             f"{cid}: tag multi_file needs at least two expected_files that must all be cited "
             "(citation_mode all)"
+        )
+    if ("multi_file" in tags or lists_several_files(case)) and unanchored_files(case):
+        problems.append(
+            f"{cid}: a multi-file case needs an evidence anchor in every expected file; "
+            f"none for {', '.join(unanchored_files(case))}"
         )
     if "follow_up" in tags and not case.get("history"):
         problems.append(f"{cid}: tag follow_up needs a history")

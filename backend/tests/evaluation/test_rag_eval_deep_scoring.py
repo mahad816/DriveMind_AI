@@ -322,6 +322,65 @@ def test_a_refusal_passes_strict_on_deterministic_criteria_only() -> None:
     assert bad["strict"]["deterministic"] is False
 
 
+def clarify_case_for_strict(**kw: Any) -> dict[str, Any]:
+    return make_case(
+        **{
+            "id": "cl1",
+            "category": "ambiguous",
+            "question": "Where is Sam Kerrigan based?",
+            "expected_behavior": "clarify",
+            "expected_files": [],
+            "must_include": [],
+            "must_not_include": ["Tollbridge", "Northgate"],
+            "evidence_anchors": [
+                {"file": HANDBOOK, "quote": "Sam Kerrigan the driver is based at Tollbridge."},
+                {"file": HANDBOOK, "quote": "Sam Kerrigan the customer contact is at Northgate."},
+            ],
+        }
+        | kw
+    )
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        ("Which Sam Kerrigan do you mean, the driver or the customer contact?", True),
+        ("", False),  # nothing said
+        ("Hello!", False),  # a greeting is not a question
+        ("That is not in your files.", False),  # an abstention is not a question
+        ("I could not find that in your files. Can you rephrase?", False),  # abstention plus a "?"
+        ("Sam Kerrigan the driver is based at Tollbridge.", False),  # picked a reading
+        ("Tollbridge, or did you mean Northgate?", False),  # states the values of the readings
+        (
+            "Hello! How can I help you?",
+            None,
+        ),  # a question that names no reading: undecided, never a pass
+    ],
+)
+def test_a_clarify_case_passes_strict_only_for_a_real_clarifying_question(
+    reply: str, expected: bool | None
+) -> None:
+    case = clarify_case_for_strict()
+    # judge=True: the refusal judge would pass every one of these, strict must not depend on it
+    row = run(case, make_row(case, reply, judge=True))
+    assert row["strict"]["deterministic"] is expected
+
+
+def test_a_clarifying_reply_that_cites_a_file_fails_strict() -> None:
+    case = clarify_case_for_strict()
+    reply = "Which Sam Kerrigan do you mean, the driver or the customer contact?"
+    row = run(case, make_row(case, reply, ((C1, HANDBOOK),), judge=True))
+    assert row["strict"]["deterministic"] is False
+
+
+def test_the_clarify_rule_leaves_every_other_behaviour_untouched() -> None:
+    case = make_case()
+    row = run(case, make_row(case, "22 days.", ((C1, HANDBOOK),), trace_=GOOD_TRACE))
+    assert row["strict"]["deterministic"] is True
+    refusal = refusal_case()
+    assert run(refusal, make_row(refusal, "I could not find that."))["strict"]["deterministic"]
+
+
 def test_retrieval_from_the_recorded_searches() -> None:
     case = make_case()
     row = run(case, make_row(case, "22 days.", ((C1, HANDBOOK),), trace_=GOOD_TRACE))

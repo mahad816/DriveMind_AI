@@ -206,6 +206,42 @@ def test_tags_are_a_closed_list_and_agree_with_the_case():
     assert problems(valid_case(history=history, tags=["table", "follow_up"])) == []
 
 
+def multi_file_case(**changes: Any) -> dict[str, Any]:
+    case = valid_case(
+        id="n03",
+        question="Which depot is MV-101 based at, and when does the open day start?",
+        expected_files=["v1/fleet.md", "v1/rota.md"],
+        must_include=[["Kessel Yard"], ["09:00"]],
+        evidence_anchors=[
+            {"file": "v1/fleet.md", "quote": "| MV-101 | Kessel Yard | 18 |"},
+            {"file": "v1/rota.md", "quote": "The open day starts at 09:00."},
+        ],
+        tags=["multi_file", "table"],
+    )
+    case.update(changes)
+    return case
+
+
+def test_a_multi_file_case_needs_an_evidence_anchor_in_every_expected_file():
+    assert problems(multi_file_case()) == []
+    unanchored = multi_file_case(
+        evidence_anchors=[{"file": "v1/fleet.md", "quote": "| MV-101 | Kessel Yard | 18 |"}]
+    )
+    found = problems(unanchored)
+    assert has(found, "v1/rota.md") and has(found, "evidence anchor")
+    # the same case without the tag is still a multi-file case by its fields, so it is checked too
+    assert has(problems({**unanchored, "tags": ["table"]}), "evidence anchor")
+
+
+def test_an_unanchored_second_file_does_not_count_as_multi_file_coverage():
+    assert "multi_file" in gate_groups(multi_file_case())
+    unanchored = multi_file_case(
+        evidence_anchors=[{"file": "v1/fleet.md", "quote": "| MV-101 | Kessel Yard | 18 |"}]
+    )
+    assert "multi_file" not in gate_groups(unanchored)
+    assert "multi_file" not in case_types({**unanchored, "tags": []})
+
+
 def test_format_tags_must_match_the_evidence_files():
     assert problems(valid_case(formats=["md"])) == []
     assert has(problems(valid_case(formats=["pdf"])), "do not match the evidence files")
@@ -462,7 +498,7 @@ def test_files_that_are_alternatives_do_not_make_a_multi_file_question():
     by_id = {c["id"]: c for c in pools.load_question_set()["cases"]}
     assert len(by_id["id10"]["expected_files"]) == 2 and by_id["id10"]["citation_mode"] == "any"
     assert "multi_file" not in case_types(by_id["id10"])
-    assert "multi_file" in case_types(valid_case(expected_files=["v1/fleet.md", "v1/rota.md"]))
+    assert "multi_file" in case_types(multi_file_case())
 
 
 def test_coverage_counts_the_current_pools():

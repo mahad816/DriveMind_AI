@@ -33,7 +33,7 @@ from app.services.tool_agent_service import TRUNCATION_NOTICE
 from .anchors import AnchorMap, ChunkInfo
 from .causes import ENVELOPES, attribute
 from .score import ANSWERABLE, REFUSALS, Observed, fact_recall
-from .text import satisfies
+from .text import norm, satisfies
 from .screen import screen
 
 NO_EVIDENCE_REPLIES = ENVELOPES
@@ -119,6 +119,26 @@ def abstention(case: Mapping[str, Any], row: Mapping[str, Any]) -> str | None:
     if not declines and asserted and not NEGATION.search(model_words(row["reply"])):
         return "substantive"
     return "ambiguous"
+
+
+def clarifying(case: Mapping[str, Any], reply: str) -> bool | None:
+    """For a "clarify" case: is the reply a clarifying question? Deterministic and independent of the judge.
+
+    ``False``: no question mark (empty reply, greeting, statement), a decline, or a stated value of a reading
+    (the forbidden-value check fails it too). ``True``: a question that names a reading, a word of an anchor
+    quote that the question itself does not contain ("the driver or the customer contact"). ``None``: a
+    question that names none ("How can I help you?"), left for the judge and a person; never a pass.
+    """
+    if "?" not in reply or is_abstention(reply):
+        return False
+    asked = set(norm(case["question"]).split())
+    readings = {
+        word
+        for anchor in case["evidence_anchors"]
+        for word in norm(anchor["quote"]).split()
+        if len(word) >= 4 and word not in asked
+    }
+    return True if readings & set(norm(reply).split()) else None
 
 
 def tri(*values: bool | None) -> bool | None:
@@ -487,6 +507,7 @@ def _strict(case: Mapping[str, Any], row: Mapping[str, Any]) -> bool | None:
     return tri(
         facts,
         declined if case["expected_behavior"] in ABSTENTION_REQUIRED else True,
+        clarifying(case, row["reply"]) if case["expected_behavior"] == "clarify" else True,
         not _forbidden(row),
         keeps_quiet,
         not row["critical_candidates"],
