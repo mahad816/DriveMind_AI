@@ -36,7 +36,7 @@ from .corpus import (
     verify,
 )
 from .dataset import DATA, HELD_OUT_SPLIT, load_many, validate
-from .schema_v3 import case_types
+from .schema_v3 import case_types, required_field_problems
 from .text import norm
 
 POOLS = {"dev": "development", "test": "regression", HELD_OUT_SPLIT: "held_out"}
@@ -154,8 +154,9 @@ def validate_question_set(
             **data,
             "cases": [
                 c
-                for c in data["cases"]
-                if all(
+                for i, c in enumerate(data["cases"])
+                if required_field_problems(c, i)  # malformed: keep it, so that validate reports it
+                or all(
                     f in have
                     for f in [*c["expected_files"], *(a["file"] for a in c["evidence_anchors"])]
                 )
@@ -169,6 +170,7 @@ def validate_question_set(
 # A validator message names a case and quotes what is wrong. For the sealed pool each message is reduced to the
 # first rule below it matches (an unmatched message becomes "other rule"), so a count survives and nothing else.
 HELD_OUT_RULES = (
+    ("required field", "a required case field is missing or invalid"),
     ("duplicate id", "duplicate case id"),
     ("missing reference_answer", "reference answer is missing"),
     ("must not list expected_files", "not-found case lists expected files"),
@@ -206,8 +208,9 @@ def problem_rule(message: str) -> str:
 def validate_held_out(path: Path | None = None) -> dict[str, Any]:
     """Validate the sealed file against the frozen corpus and the committed question set.
 
-    Returns ``{"cases": n, "problems": {rule: count}}``. Nothing in it comes from a case's text. A structurally
-    broken case (a missing key) is reported by exception class only, because an exception message may quote data.
+    Returns ``{"cases": n, "problems": {rule: count}}``. Nothing in it comes from a case's text.
+    A missing or wrongly typed required field is one rule in the count; a case that still escapes the validator
+    is reported by exception class only, because an exception message may quote data.
     """
     dataset = load_held_out(path)
     files = frozen_corpus_files()

@@ -804,3 +804,130 @@ def test_two_older_cases_have_anchors_in_two_documents_and_stay_frozen_and_exemp
     assert anchor_uniqueness_problems(by_id["sv05"], texts) and anchor_uniqueness_problems(
         by_id["tr15"], texts
     )
+
+
+# --- M1 ticket 07 review fix: required fields fail cleanly ---------------------------------------------
+# Root cause: `validate` read `case["..."]` for thirteen fields and trusted the types of the rest, so a case
+# missing one of them raised KeyError (or TypeError) instead of returning a problem, and a missing question,
+# category, language, citation_mode or tags was not reported at all.
+
+BASE_FIELDS = [
+    "id",
+    "category",
+    "question",
+    "language",
+    "expected_behavior",
+    "expected_files",
+    "citation_mode",
+    "must_include",
+    "must_not_include",
+    "reference_answer",
+    "evidence_anchors",
+    "computed",
+    "split",
+]
+
+
+@pytest.mark.parametrize("field", [*BASE_FIELDS, "tags"])
+def test_a_v3_case_missing_a_required_field_is_a_problem_not_an_exception(field):
+    case = valid_case()
+    del case[field]
+    found = problems(case)  # must not raise
+    assert has(found, f"required field {field} "), found
+
+
+@pytest.mark.parametrize("field", BASE_FIELDS)
+def test_an_older_case_missing_a_base_field_is_a_problem_not_an_exception(field):
+    case = valid_case()
+    del case["schema"], case["provenance"], case["tags"], case[field]
+    assert has(problems(case), f"required field {field} ")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("id", ""),
+        ("id", 7),
+        ("question", 5),
+        ("question", ""),
+        ("question", "   "),
+        ("question", ["x"]),
+        ("category", None),
+        ("category", ""),
+        ("language", "klingon"),
+        ("language", None),
+        ("expected_behavior", ["answer"]),
+        ("expected_files", "v1/fleet.md"),
+        ("expected_files", [1]),
+        ("must_include", "x"),
+        ("must_include", ["x"]),
+        ("must_include", [[1]]),
+        ("must_not_include", "x"),
+        ("must_not_include", [1]),
+        ("reference_answer", 5),
+        ("evidence_anchors", ["q"]),
+        ("evidence_anchors", "q"),
+        ("evidence_anchors", [{"file": "v1/fleet.md"}]),
+        ("evidence_anchors", [{"file": 1, "quote": "q"}]),
+        ("computed", "yes"),
+        ("citation_mode", None),
+        ("split", 3),
+        ("tags", "table"),
+        ("tags", [1]),
+        ("tags", None),
+        ("history", "x"),
+        ("history", ["x"]),
+        ("history", [{"role": "user"}]),
+        ("critical", "yes"),
+        ("critical_kind", ["x"]),
+        ("sibling_exempt", "x"),
+        ("judge_note", 5),
+        ("formats", "md"),
+        ("injection_document", ["x"]),
+    ],
+)
+def test_an_invalid_field_is_a_problem_naming_the_field_not_an_exception(field, value):
+    found = problems(valid_case(**{field: value}))  # must not raise
+    assert has(found, f"required field {field} "), found
+
+
+def test_a_malformed_case_does_not_hide_the_problems_of_the_other_cases():
+    broken = valid_case(id="n03")
+    del broken["must_include"]
+    other = valid_case(id="n04", expected_files=["v1/nope.md"])
+    found = problems(broken, other)
+    assert has(found, "n03: required field must_include ")
+    assert has(found, "n04: expected file v1/nope.md not in corpus")
+
+
+def test_cases_without_an_id_are_reported_one_by_one():
+    first, second = valid_case(), valid_case()
+    del first["id"], second["id"]
+    found = problems(first, second)
+    assert sum("required field id " in line for line in found) == 2
+    assert not has(found, "duplicate id")
+
+
+def test_required_field_messages_never_quote_the_value():
+    marker = "SECRET-VALUE-9"
+    found = problems(
+        valid_case(question=[marker], language=marker, tags=[marker], must_include=[marker]),
+        valid_case(id=[marker]),
+    )
+    assert has(found, "required field")
+    assert not any(marker in line for line in found), found
+
+
+def test_every_committed_case_carries_the_required_fields():
+    from evaluation.rag_eval.schema_v3 import required_field_problems
+
+    cases = pools.load_question_set()["cases"]
+    assert cases
+    assert [p for i, c in enumerate(cases) for p in required_field_problems(c, i)] == []
+
+
+def test_the_committed_set_validator_reports_a_malformed_case_instead_of_raising():
+    broken = valid_case()
+    del broken["expected_files"], broken["evidence_anchors"]
+    found = pools.validate_question_set({"cases": [broken]})
+    assert has(found, "required field expected_files ")

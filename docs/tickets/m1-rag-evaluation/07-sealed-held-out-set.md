@@ -4,7 +4,7 @@
 **What to build:** At least 100 new questions, written before any baseline measurement by an author who has seen no result, covering the same dimensions as the development pool. The sealing machinery already exists (ticket 05); this ticket supplies the cases and the Owner's review of their gold answers.
 **Blocked by:** 06.
 **Status:** ready-for-agent
-**Progress:** resolved (2026-11-22), Owner review of the review sheet pending (ticket 11 must not start until it is done)
+**Progress:** resolved (2026-11-22), Owner review of the review sheet pending (**ticket 08, the first paid step, and ticket 11 must not start until it is done**; each also needs its own approval of paid spend, which the review does not give)
 
 ## Scope
 
@@ -31,7 +31,7 @@ No paid API, no key, no network. Owner time: about one hour for the review sheet
 
 - [x] The held-out file validates, meets every held-out minimum, has at least 100 cases and no id collisions.
 - [x] The held-out file is not in the working tree; its checksum and counts are in the freeze manifest; the freeze and sealing tests pass on the real file; no held-out case id appears in any committed output; the Owner has been told to back it up.
-- [x] The Owner review sheet exists; the review result (cases checked, errors found, corrections applied) is recorded here. If the Owner has not reviewed it when the session ends, the ticket is resolved with the review recorded as pending and ticket 11 must not start until it is done. **Sheet exists; review pending (0 of 36 checked).**
+- [x] The Owner review sheet exists; the review result (cases checked, errors found, corrections applied) is recorded here. If the Owner has not reviewed it when the session ends, the ticket is resolved with the review recorded as pending and ticket 08 (the first paid step, which already measures held-out cases once) and ticket 11 must not start until it is done. **Sheet exists; review pending (0 of 36 checked).**
 - [x] Findings state that no result or run output was read during authoring.
 - [x] `git diff -- backend/app` is empty; touched evaluation files pass `ruff check`, `ruff format --check` and `mypy`; the container-free evaluation tests pass.
 
@@ -99,7 +99,25 @@ Reused unchanged: the loader and the refusal of a held-out file inside the repos
 
 ### Owner review (pending)
 
-`m1_review_sheet_for_owner.md`, next to the sealed file in the same owner-only folder, holds **36 of the 180 cases**, stratified (shapes: ambiguous 1, calculation 5, follow-up 2, identifier 2, injection 3, lookup 11, multi-file 2, non-answer 6, table 4), each with two boxes, "correct" and "gold wrong". **Result: cases checked 0 of 36, errors found 0, corrections applied 0, all pending.** Corrections go through `freeze seal-held-out --reason ...` (a held-out amendment, no ids in the log); report only the share found here. **Ticket 11 must not start until the review is done.**
+`m1_review_sheet_for_owner.md`, next to the sealed file in the same owner-only folder, holds **36 of the 180 cases**, stratified (shapes: ambiguous 1, calculation 5, follow-up 2, identifier 2, injection 3, lookup 11, multi-file 2, non-answer 6, table 4), each with two boxes, "correct" and "gold wrong". **Result: cases checked 0 of 36, errors found 0, corrections applied 0, all pending.** Corrections go through `freeze seal-held-out --reason ...` (a held-out amendment, no ids in the log); report only the share found here. **Tickets 08 and 11 must not start until the review is done** (a gold error would otherwise be measured; ticket 08's plain-question probe covers held-out cases once). The review is not a spend approval: each paid ticket also needs the Owner's own approval of its estimate and cap (spec decision 1), given when that ticket starts. Nothing in the repository records that the review is done (see "Review fix M1-07-C" below), so the check is a human one.
+
+### Review fix M1-07-C (2026-11-22, two issues from the independent review)
+
+Evidence is aggregate and fabricated only: no held-out question, answer, review sheet or transcript was opened, and `DRIVEMIND_EVAL_HELDOUT_FILE` was unset for every command.
+
+**1. Owner-review prerequisite (documentation).** *Root cause:* the review gate was written down for ticket 11 only (this ticket, spec decision 2) while ticket 08 and the spec's ticket table already said ticket 08 needs it, and ticket 08 measures held-out cases once. The review and the spend approval were never separated in words. *Fix:* this ticket, ticket 08 (scope and checklist), the spec (decisions preface, decision 2, ticket table, ordering sentence) and `docs/guides/EVALUATION.md` now say: **ticket 08 and ticket 11 need the completed Owner review, and each paid ticket also needs the Owner's own approval of its estimate and cap; one does not imply the other.** Ticket 11's existing precondition ("the held-out review (ticket 07) is done") was already correct and is unchanged.
+
+**Blocker B-1 (not fixed, needs a design decision): nothing enforces the review before a paid held-out run.** Checked: the freeze manifest holds the sealed file's checksum and counts only; the amendment log records corrections, not review state; `cli run --split held_out` and the probes check a cap and a plan, not a review; the review sheet and its marks live on the Owner's Mac outside the repository, and the result is recorded in this ticket as prose. No existing boundary can read a "review done" state, so any enforcement would need a new completion flag (where it lives, who may set it, how it is tied to the sealed file's checksum so a later amendment invalidates it). That is a broader decision than this fix and was not invented. Until it is made, the gate is the Owner's and the assistant's check of this ticket before ticket 08 starts. **The Owner review is still pending (0 of 36 checked) and was not marked complete.**
+
+**2. Required schema fields (code).** *Root cause:* `dataset.validate` read thirteen fields as `case["..."]` and trusted the type of every other field, and `v3_field_problems` did the same; the contract (all 282 committed cases carry the thirteen; v3 cases carry `tags`) was never stated or checked. A missing `id`, `expected_behavior`, `expected_files`, `must_include`, `must_not_include`, `evidence_anchors` or `computed` raised `KeyError`; a non-string question or a list of strings as anchors raised `TypeError`; a missing or invalid `question`, `category`, `language`, `citation_mode`, `tags` (or `computed` given as text) passed with no problem at all. On the sealed pool one such case collapsed the whole report into a single "KeyError" line, hiding every other count. *Fix:* `schema_v3.required_field_problems` (a field table with a type check each, `LANGUAGES = en, roman_urdu`) runs first in `dataset.validate`; a case that fails gets one `<id>: required field <name> is missing or invalid` line per field (never the value) and no other rule is run on it, and the other cases are still validated. `pools.validate_question_set` keeps malformed cases in so they are reported. In the redacted sealed report the lines are one rule: "a required case field is missing or invalid". Optional fields (`history`, `critical`, `critical_kind`, `injection_document`, `sibling_exempt`, `judge_note`, `formats`) are type-checked when present. Vocabulary checks (behaviour, split, citation mode, tags) are unchanged.
+
+| | Before (fabricated cases, same tests) | After |
+|---|---|---|
+| Missing or invalid required field, one fabricated v3 case each | 72 of 152 tests in the two touched test files fail (7 fields raise `KeyError`, bad types raise `TypeError`, 5 fields pass silently) | 152 passed, 4 skipped (the sealed-file tests) |
+| Evaluation suite | 590 passed, 8 skipped (ticket 07) | 661 passed, 8 skipped |
+| Committed cases (282) | valid | valid (`test_every_committed_case_carries_the_required_fields`); `freeze check` 0 problems; no dataset file changed |
+
+*Permanent safeguards:* the field table is the single statement of the contract; new tests in `test_question_set.py` (a missing field on a v3 case, on an older case, invalid values per field, a malformed case does not hide the others, id-less cases reported one by one, no value quoted in a message, all committed cases comply, the committed-set validator does not raise) and two in `test_held_out_set.py` (own redacted rule; every field maps to it); 72 of these failed before the fix. One older test asserted the defect ("structurally malformed (KeyError)") and now asserts the new rule. `git diff -- backend/app` is empty; `ruff check`, `ruff format --check`, `mypy` (three touched modules) and `basedpyright` (two touched test files) are clean.
 
 ### Caveats, limits and what was not tested
 

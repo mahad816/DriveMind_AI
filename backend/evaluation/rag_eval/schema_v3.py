@@ -5,6 +5,13 @@ edited and keep only the older rules, plus the history bound and the ``clarify``
 ``case_types``, ``evidence_formats`` and ``gate_groups`` read old and new cases alike, so the coverage report
 and the sealed summaries count the older pools from the fields they already have.
 
+Required on every case (older and v3 alike; the 282 committed cases all carry them): ``id``, ``category``,
+``question``, ``language`` (``LANGUAGES``), ``expected_behavior``, ``expected_files``, ``citation_mode``,
+``must_include``, ``must_not_include``, ``reference_answer``, ``evidence_anchors``, ``computed`` and ``split``,
+each of the right type. A v3 case also needs ``tags``. ``required_field_problems`` checks this first, and the
+validator skips every later rule for a case that fails it, so a malformed case is a problem line, never an
+exception. Optional fields, when present, must have the right type too.
+
 New fields (all optional on older cases):
 
   schema           3
@@ -18,7 +25,7 @@ New fields (all optional on older cases):
 """
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from pathlib import PurePosixPath
 from typing import Any
@@ -64,6 +71,95 @@ PROMISED_FORMATS = ("docx", "xlsx", "pptx", "pdf", "md", "csv", "txt")
 SESSION = re.compile(r"^m\d+-[a-z0-9]+(?:-[a-z0-9]+)*$")
 TABLE_CATEGORIES = {"borderless_table", "ruled_table", "second_sheet"}
 ONE_QUESTION_MAX_CHARS = 240
+LANGUAGES = frozenset({"en", "roman_urdu"})
+
+
+# --- required fields -----------------------------------------------------------------------------------
+
+
+def _text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _strings(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+
+def _groups(value: Any) -> bool:
+    return isinstance(value, list) and all(_strings(group) for group in value)
+
+
+def _anchors(value: Any) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(a, Mapping)
+        and isinstance(a.get("file"), str)
+        and isinstance(a.get("quote"), str)
+        for a in value
+    )
+
+
+def _turns(value: Any) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(t, Mapping) and isinstance(t.get("role"), str) and isinstance(t.get("text"), str)
+        for t in value
+    )
+
+
+# field -> type check, for every case. The vocabularies (behaviour, split, citation mode) are checked by the
+# validator after this; here a value only has to be the right kind of thing so that later rules can read it.
+REQUIRED_FIELDS: dict[str, Callable[[Any], bool]] = {
+    "id": _text,
+    "category": _text,
+    "question": _text,
+    "language": lambda v: v in LANGUAGES if isinstance(v, str) else False,
+    "expected_behavior": _text,
+    "expected_files": _strings,
+    "citation_mode": _text,
+    "must_include": _groups,
+    "must_not_include": _strings,
+    "reference_answer": lambda v: isinstance(v, str),
+    "evidence_anchors": _anchors,
+    "computed": lambda v: isinstance(v, bool),
+    "split": _text,
+}
+V3_REQUIRED_FIELDS: dict[str, Callable[[Any], bool]] = {"tags": _strings}
+# field -> type check, only when the case has the field
+OPTIONAL_FIELDS: dict[str, Callable[[Any], bool]] = {
+    "history": _turns,
+    "critical": lambda v: isinstance(v, bool),
+    "critical_kind": lambda v: isinstance(v, str),
+    "injection_document": lambda v: isinstance(v, str),
+    "sibling_exempt": _strings,
+    "judge_note": lambda v: isinstance(v, str),
+    "formats": _strings,
+}
+
+
+def required_field_problems(case: Any, index: int) -> list[str]:
+    """Missing or wrongly typed required fields of one case; empty when the case can be read by every other rule.
+
+    Never raises and never quotes a value (the sealed pool is validated with these messages): a line names the
+    case (its id, or its position when the id is unusable) and the field only.
+    """
+    if not isinstance(case, Mapping):
+        return [
+            f"case #{index}: required field case is missing or invalid (a case must be an object)"
+        ]
+    label = case["id"] if _text(case.get("id")) else f"case #{index}"
+    checks = dict(REQUIRED_FIELDS)
+    if is_v3(case):
+        checks |= V3_REQUIRED_FIELDS
+    problems = [
+        f"{label}: required field {name} is missing or invalid"
+        for name, ok in checks.items()
+        if name not in case or not ok(case[name])
+    ]
+    problems += [
+        f"{label}: required field {name} is missing or invalid"
+        for name, ok in OPTIONAL_FIELDS.items()
+        if name in case and not ok(case[name])
+    ]
+    return problems
 
 
 def is_v3(case: Mapping[str, Any]) -> bool:

@@ -147,10 +147,10 @@ Proportions use Wilson intervals; latency and cost percentiles use a bootstrap i
 
 ### Owner decisions
 
-Genuine decisions, with defaults. None blocks tickets 01 to 06, which are free and need no Owner time. Decision 3 (Google exports) and the held-out review in decision 2 involve Owner time in tickets 04 and 07 but never block them from resolving. Only decision 1 must be answered before the first paid step (ticket 08).
+Genuine decisions, with defaults. None blocks tickets 01 to 06, which are free and need no Owner time. Decision 3 (Google exports) and the held-out review in decision 2 involve Owner time in tickets 04 and 07 but never block them from resolving. Before the first paid step (ticket 08) two things must be done, and neither replaces the other: decision 1 (the Owner approves the paid budget and the ticket's estimate and cap) and the held-out review of decision 2 (ticket 08 already measures held-out cases once, so a gold error would be measured). Nothing in the repository enforces either; both are checked by the Owner and the ticket records.
 
 1. **Paid budget for M1.** Default: expected spend about 4.5 USD, cap 6.0 USD (a 30 percent contingency on the uncertain steps) across tickets 08, 09, 11 and 12, plus up to 1.3 USD for a stronger grader only if the default grader fails validation and the Owner approves it then. A lean variant (one full run with the grader, no repeats, no legacy comparison, no ablation) is about 3.3 USD. The Owner must read the real balance on the provider dashboard before ticket 08 and before ticket 11; the assistant does not know it. The earlier credit rule (never go negative, stop at 3.5 USD since the 2026-11-20 top-up, about 1.7 USD already used by 2026-11-20) was written for the retrieval work and does not cover M1; this decision replaces it for M1, and a top-up is likely.
-2. **Owner time for human labels.** Default: about 80 calibration items (about 3 to 4 hours, two sittings, blind to the grader), a review of about 30 held-out cases (about 1 hour, ticket 07; ticket 11 waits for it), and a 20-answer spot check per baseline run (about 30 minutes). Fewer labels means wider intervals and a grader that stays advisory.
+2. **Owner time for human labels.** Default: about 80 calibration items (about 3 to 4 hours, two sittings, blind to the grader), a review of about 30 held-out cases (about 1 hour, ticket 07; tickets 08 and 11 wait for it), and a 20-answer spot check per baseline run (about 30 minutes). Fewer labels means wider intervals and a grader that stays advisory.
 3. **Google-exported fixtures.** Default: the Owner makes and exports three synthetic Google files (about 1 hour, ticket 04), nothing else touching Google. Declining leaves the Google-file gate row open and says so.
 4. **Held-out sealing policy.** Default: as written above (the held-out file kept outside the repository at an Owner-local path, which the Owner must back up because the repository will not hold it; checkpoint runs once each; totals and gate groups only; burn by moving to development). It changes how future sessions behave, so it needs approval.
 5. **Optional baseline items.** Default: legacy comparison yes, claim-check ablation yes, second chat model no.
@@ -230,14 +230,14 @@ One ticket per fresh implementation session, numbered in dependency order, in `d
 | 05 | Question set: loader, schema, coverage, freeze, sealing | 04 | free | Pools, coverage report, freeze and amendment log, aggregate-only held-out reporting |
 | 06 | New development cases | 05 | free | Coverage gaps filled, Critical, ambiguous and follow-up cases, from documents only |
 | 07 | Sealed held-out set | 06 | free (Owner review about 1 h) | At least 100 unseen cases, reviewed, sealed |
-| 08 | Retrieval measurement on the new corpus | 02 to 07 (including the held-out review) | about 0.25 USD (cap 0.40) | The evaluation index for every later paid ticket; passage-level retrieval baseline from the question and from the agent's queries |
+| 08 | Retrieval measurement on the new corpus | 02 to 07 (including the completed Owner review of the held-out sample, and separately the Owner's approval of the spend) | about 0.25 USD (cap 0.40) | The evaluation index for every later paid ticket; passage-level retrieval baseline from the question and from the agent's queries |
 | 09 | Claim-support grader and calibration kit | 03, 06, 08 | about 0.80 USD (cap 1.00) | A grader, planted-positive calibration items, an Owner labelling kit; ends with an Owner action |
 | 10 | Grader and judge acceptance | 09 and the Owner's labels | free (a second grader only with approval, up to 1.3 USD) | Measured agreement with humans; direct or advisory use decided |
 | 11 | Quality baseline of the production path | 01 to 08, 10 | about 3.0 USD (cap 4.0) | Whole-set numbers with intervals, held-out aggregate, stability, legacy comparison, failure-cause table, committed baseline |
 | 12 | Performance and cost baseline | 11 | about 0.4 USD (cap 0.6) | Latency, calls, tokens and cost distributions by role, quota inputs, claim-check effect |
 | 13 | Closeout: documents, input list and reviews | 12 | free | Documents reconciled, ranked evidence list for M2 to M5, two independent reviews |
 
-Tickets 01 and 04 have no dependency and could run in parallel; the numbering is a valid sequential order. Ticket 07 must precede every paid run (08 onwards) so the held-out set is written before anything is measured.
+Tickets 01 and 04 have no dependency and could run in parallel; the numbering is a valid sequential order. Ticket 07 must precede every paid run (08 onwards) so the held-out set is written before anything is measured, and its Owner review must be complete before ticket 08 starts (a gold error would otherwise be measured). The review is not a spend approval: each paid ticket also needs the Owner's approval of its own estimate and cap.
 
 ### Cost estimates (estimates, not measurements)
 

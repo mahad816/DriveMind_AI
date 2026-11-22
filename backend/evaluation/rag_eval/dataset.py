@@ -13,6 +13,7 @@ from .schema_v3 import (
     history_problems,
     is_v3,
     reference_problems,
+    required_field_problems,
     sibling_problems,
     v3_field_problems,
 )
@@ -85,7 +86,8 @@ def validate(
     an independent ground truth (the generated fixtures' own content description) while a reader is
     still missing or being fixed; paths not given fall back to the readers.
 
-    Every case is checked against the older rules, the history bound and (for ``clarify``) the clarify rules.
+    A case with a missing or wrongly typed required field is reported as such and checked no further; the
+    validator never raises on a malformed case. Every other case is checked against the older rules, the history bound and (for ``clarify``) the clarify rules.
     A case that declares ``"schema": 3`` is also checked for provenance, tags, anchors that identify one file,
     sibling-value forbidden claims and a reference answer that passes its own checks (``schema_v3.py``). ``injection_files`` maps a corpus path to its
     embedded-instruction kind (the corpus manifest's ``injection:*`` tags) for the injection rule.
@@ -96,9 +98,14 @@ def validate(
         **(texts or {}),
     }
     problems: list[str] = []
-    ids = [c["id"] for c in dataset["cases"]]
+    cases = dataset["cases"]
+    ids = [c["id"] for c in cases if isinstance(c, Mapping) and isinstance(c.get("id"), str)]
     problems += [f"duplicate id {i}" for i, n in Counter(ids).items() if n > 1]
-    for case in dataset["cases"]:
+    for index, case in enumerate(cases):
+        malformed = required_field_problems(case, index)
+        problems += malformed
+        if malformed:  # no other rule can read this case; report it and go on with the rest
+            continue
         cid = case["id"]
         if case.get("expected_behavior") not in BEHAVIORS:
             problems.append(f"{cid}: bad expected_behavior")

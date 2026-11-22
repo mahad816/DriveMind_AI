@@ -266,13 +266,19 @@ def test_a_valid_held_out_file_reports_no_problem(sealed):
     assert pools.validate_held_out() == {"cases": 1, "problems": {}}
 
 
-def test_a_structurally_broken_case_is_reported_by_exception_class_only(sealed):
+def test_a_case_missing_a_required_field_is_counted_under_its_own_rule(sealed):
     broken = as_held_out("rb01", "zq-secret-broken", SECRET_QUESTION)
     del broken["must_include"]
     sealed([broken])
     report = pools.validate_held_out()
-    assert report["problems"] == {"a case is structurally malformed (KeyError)": 1}
+    assert report["problems"] == {"a required case field is missing or invalid": 1}
     assert not any(marker in json.dumps(report) for marker in MARKERS)
+
+
+def test_required_field_messages_map_to_one_rule_whatever_the_field():
+    for name in ("provenance", "tags", "reference_answer", "expected_files", "id", "history"):
+        message = f"{SECRET_ID}: required field {name} is missing or invalid"
+        assert pools.problem_rule(message) == "a required case field is missing or invalid"
 
 
 def test_problem_rule_never_returns_text_from_the_message():
