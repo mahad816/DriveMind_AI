@@ -19,6 +19,7 @@ A row is never forced into a verdict it lacks the data for: a missing trace, mis
 name the gap in ``missing`` and make ``status`` ``scored_partial``.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
@@ -51,6 +52,12 @@ DECLINE_PHRASES = (
     "not mentioned",
 )
 SERVER_TEXTS = (*NO_EVIDENCE_REPLIES, FILE_NOT_FOUND_TEXT, TRUNCATION_NOTICE)
+ABSTENTION_REQUIRED = {"not_found", "decline_or_not_found"}  # the case says the reply must decline
+# Negation or absence words (English, Roman Urdu). A reply with one is never called "clearly substantive":
+# it may be a refusal in words the decline list lacks, so it stays undecided.
+NEGATION = re.compile(
+    r"\b(?:no|not|none|nothing|never|cannot|unable|without|missing|nahi|nahin|nahi|koi)\b|n't", re.I
+)
 SCREENED = (
     ANSWERABLE | REFUSALS
 )  # chitchat and inventory replies legitimately contain system-made values
@@ -82,6 +89,36 @@ def is_abstention(reply: str) -> bool:
         or any(text in reply for text in NO_EVIDENCE_REPLIES)
         or any(phrase in lowered for phrase in DECLINE_PHRASES)
     )
+
+
+def abstention(case: Mapping[str, Any], row: Mapping[str, Any]) -> str | None:
+    """For a case that requires a refusal: did the reply visibly refuse? ``None`` for any other case.
+
+    Reuses ``is_abstention`` (the application's own no-evidence texts plus a short decline-phrase list) and
+    the screen's extraction of numbers, dates and identifiers. Values that merely echo the question or the
+    history do not count as an answer. Deliberately coarse, and never the judge or the legacy pass:
+
+    * ``refused``     - a decline and no asserted value;
+    * ``substantive`` - no decline, at least one asserted value and no negation or absence word (an answer
+      stated instead of a refusal);
+    * ``ambiguous``   - everything else: a decline together with a value (refusal plus answer), no decline
+      phrase and no value (a refusal in unlisted words, or an evasion), or a value beside a negation word
+      ("no mention in the 3 files I searched"). Not guessed either way.
+    """
+    if case["expected_behavior"] not in ABSTENTION_REQUIRED or row.get("error"):
+        return None
+    echoed = [case["question"], *(turn["text"] for turn in case.get("history") or [])]
+    asserted = [
+        v
+        for v in screen(model_words(row["reply"]), echoed).flagged
+        if not v.startswith("name:")  # a capital letter is not an assertion
+    ]
+    declines = is_abstention(row["reply"])
+    if declines and not asserted:
+        return "refused"
+    if not declines and asserted and not NEGATION.search(model_words(row["reply"])):
+        return "substantive"
+    return "ambiguous"
 
 
 def tri(*values: bool | None) -> bool | None:
@@ -313,6 +350,8 @@ def _outcome(case: Mapping[str, Any], row: Mapping[str, Any]) -> tuple[str | Non
         return "wrong", "answerable"
     if behavior in REFUSALS:
         flagged = bool(row.get("screen") and not row["screen"]["clean"])
+        if row.get("abstention") == "substantive":
+            return "fabrication", "non_answer"
         if _forbidden(row) or (flagged and not (row.get("refusal") or {}).get("ok", True)):
             return "fabrication", "non_answer"
         if (row.get("refusal") or {}).get("ok"):
@@ -352,6 +391,8 @@ def _review(case: Mapping[str, Any], row: Mapping[str, Any]) -> list[str]:
             reasons.append("judge_ok_but_forbidden_value_present")
         if judged is False and row.get("outcome") == "wrong":
             reasons.append("judge_fail_unconfirmed_by_code")
+    if row.get("abstention") == "ambiguous":
+        reasons.append("abstention_ambiguous")
     if (row.get("citation") or {}).get("absent_anchors"):
         reasons.append("anchor_absent_from_index")
     if (row["cause"] or {}).get("primary") == "unknown" and "trace" in row["missing"]:
@@ -372,6 +413,7 @@ def extend_row(case: Mapping[str, Any], row: dict[str, Any], resolved: Resolved)
             strict={"deterministic": None, "graded": None},
             outcome=None,
             outcome_group=None,
+            abstention=None,
             critical_candidates=[],
             review=[],
             cause=None,
@@ -393,6 +435,7 @@ def extend_row(case: Mapping[str, Any], row: dict[str, Any], resolved: Resolved)
     row["citation"] = _citation(case, row, resolved)
     row["retrieval"] = _retrieval(case, row, resolved)
     row["screen"] = _screen(case, row, resolved)
+    row["abstention"] = abstention(case, row)
     row["outcome"], row["outcome_group"] = _outcome(case, row)
     row["critical_candidates"] = _critical(case, row)
     row["strict"] = {"deterministic": _strict(case, row), "graded": None}
@@ -414,7 +457,8 @@ def _strict(case: Mapping[str, Any], row: Mapping[str, Any]) -> bool | None:
     Answerable cases: every required fact present, none forbidden, no error; every anchor chunk cited; no
     UNNECESSARY extra citation (undecided extras leave the result undecided); integrity; clean screen.
     Other cases: no error, no forbidden value, no code-detectable Critical candidate, integrity, clean
-    screen; small talk and inventory also carry no citation. Whether claims are supported is not decided
+    screen; a case that requires a refusal must visibly refuse (``abstention``: a substantive answer
+    fails, an ambiguous reply is undecided); small talk and inventory also carry no citation. Whether claims are supported is not decided
     here (``claim_support`` stays ungraded)."""
     citation = row["citation"]
     integrity = (citation["integrity"] or {}).get("ok") if citation["integrity"] else None
@@ -433,6 +477,7 @@ def _strict(case: Mapping[str, Any], row: Mapping[str, Any]) -> bool | None:
             integrity,
             screened,
         )
+    declined = {"refused": True, "substantive": False}.get(row.get("abstention") or "")
     facts = row["answer"]["correct"] if row.get("answer") else not row["error"]
     keeps_quiet = (
         row["clean"]["clean"]
@@ -441,6 +486,7 @@ def _strict(case: Mapping[str, Any], row: Mapping[str, Any]) -> bool | None:
     )
     return tri(
         facts,
+        declined if case["expected_behavior"] in ABSTENTION_REQUIRED else True,
         not _forbidden(row),
         keeps_quiet,
         not row["critical_candidates"],

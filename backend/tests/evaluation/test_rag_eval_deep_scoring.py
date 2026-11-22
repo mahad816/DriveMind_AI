@@ -352,13 +352,15 @@ def test_retrieval_from_the_recorded_searches() -> None:
 
 def refusal_case(**kw: Any) -> dict[str, Any]:
     return make_case(
-        id="nf1",
-        expected_behavior="not_found",
-        expected_files=[],
-        must_include=[],
-        evidence_anchors=[],
-        must_not_include=["30 days"],
-        **kw,
+        **{
+            "id": "nf1",
+            "expected_behavior": "not_found",
+            "expected_files": [],
+            "must_include": [],
+            "evidence_anchors": [],
+            "must_not_include": ["30 days"],
+        }
+        | kw
     )
 
 
@@ -801,3 +803,78 @@ async def test_an_index_that_lacks_the_run_files_is_refused_not_trusted(
     files = [CorpusFile(HANDBOOK, "synthetic", "x", {})]
     resolved = await runner.load_resolved(empty_database, {"t1": case}, [], files)
     assert resolved.database is False  # a re-built or empty index would mark every anchor absent
+
+
+# ---- a case that requires a refusal must visibly refuse -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reply", "verdict", "strict"),
+    [
+        ("I could not find that in your files.", "refused", True),
+        (NO_EVIDENCE_ANSWER, "refused", True),
+        # a confident invented answer with NO forbidden value to match: only the abstention rule catches it
+        ("Employees typically get 25 days of leave.", "substantive", False),
+        ("The retreat is on 12 May 2026.", "substantive", False),
+        # refusal plus a value, and neither a decline phrase nor a value: not guessed either way
+        ("I could not find it, but similar policies say 22 days.", "ambiguous", None),
+        ("That is outside what I can help with.", "ambiguous", None),
+        ("It depends on the contract.", "ambiguous", None),
+        # a genuine refusal in words the decline list lacks, with a number in it: must not be failed
+        ("There is no mention of this in the 10 files I searched.", "ambiguous", None),
+        ("I couldn't locate anything about that in version 22 of the docs.", "ambiguous", None),
+        ("Mujhe is ka koi zikr nahi mila, 10 files dekhi.", "ambiguous", None),
+    ],
+)
+def test_a_refusal_required_case_must_visibly_refuse(
+    reply: str, verdict: str, strict: bool | None
+) -> None:
+    case = refusal_case(must_not_include=["999 days"])
+    # cite the passage that holds 22 so the screen cannot be what decides these rows
+    row = run(case, make_row(case, reply, ((C1, HANDBOOK),), judge=True, trace_=GOOD_TRACE))
+    assert row["abstention"] == verdict
+    assert row["strict"]["deterministic"] is strict
+    assert ("abstention_ambiguous" in row["review"]) is (verdict == "ambiguous")
+
+
+def test_the_judge_and_legacy_verdict_do_not_decide_the_abstention_requirement() -> None:
+    case = refusal_case(must_not_include=["999 days"])
+    invented = run(case, make_row(case, "Employees typically get 25 days.", judge=True))
+    assert invented["overall"]["pass"] is True  # the judge was fooled; strict is not
+    assert invented["strict"]["deterministic"] is False
+    refused = run(case, make_row(case, "I could not find that.", judge=False))
+    assert refused["overall"]["pass"] is False and refused["strict"]["deterministic"] is True
+
+
+def test_a_value_that_only_echoes_the_question_is_not_an_answer() -> None:
+    case = refusal_case(question="What is the 2027 retreat budget?")
+    row = run(case, make_row(case, "I could not find a 2027 retreat budget."))
+    assert row["abstention"] == "refused"
+
+
+def test_the_requirement_applies_only_to_cases_that_require_a_refusal() -> None:
+    answer = make_case()
+    row = run(
+        answer, make_row(answer, "22 days.", ((C1, HANDBOOK),), trace_=GOOD_TRACE, ex=execution())
+    )
+    assert row["abstention"] is None and row["strict"]["deterministic"] is True
+    premise = make_case(id="cp1", expected_behavior="correct_premise", must_include=[["22"]])
+    row = run(
+        premise, make_row(premise, "The premise is wrong; leave is 22 days.", ((C1, HANDBOOK),))
+    )
+    assert row["abstention"] is None  # a premise correction is an answer, not a refusal
+    stopped = base_row(answer)
+    stopped.update(cap_stopped=True, error="cap_stopped")
+    assert extend_row(answer, stopped, resolved_for(answer))["abstention"] is None
+    failed = run(refusal_case(), make_row(refusal_case(), "", error="ChatError<-TimeoutError"))
+    assert failed["abstention"] is None and failed["strict"]["deterministic"] is False
+
+
+def test_a_stated_answer_where_a_refusal_is_required_is_a_fabrication_by_outcome_and_cause() -> (
+    None
+):
+    case = refusal_case(must_not_include=["999 days"])
+    row = run(case, make_row(case, "Employees typically get 25 days.", judge=True, ex=execution()))
+    assert row["outcome"] == "fabrication"  # the fooled judge does not decide it
+    assert row["cause"]["primary"] == "fabrication"
+    assert row["strict"]["deterministic"] is False

@@ -107,7 +107,8 @@ def generation_error(case: Case, row: Row) -> bool:
 
 
 def fabrication(case: Case, row: Row) -> bool:
-    return row.get("outcome") == "fabrication"
+    """A stated answer where the case needs a refusal (or a forbidden value, or a judge fail the screen confirms)."""
+    return row.get("outcome") == "fabrication" or row.get("abstention") == "substantive"
 
 
 def grounding(case: Case, row: Row) -> bool:
