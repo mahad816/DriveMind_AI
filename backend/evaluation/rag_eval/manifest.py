@@ -24,7 +24,7 @@ from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
 
 from .corpus import CorpusFile
 from .dataset import DATA
-from .meter import PRICE_TABLE_DATE
+from .meter import METERING_LIMITS, PRICE_TABLE_DATE
 from .target import ANSWER_FIELDS, BACKEND, application_defaults
 
 SCHEMA_VERSION = 1
@@ -97,6 +97,7 @@ def build_manifest(
             "files": {name: digest((DATA / name).read_text()) for name in datasets},
         },
         "price_table_date": PRICE_TABLE_DATE,
+        "metering": METERING_LIMITS,
         "concurrency": concurrency,
         "repeat_index": repeat_index,
         "repeat_count": repeat_count,

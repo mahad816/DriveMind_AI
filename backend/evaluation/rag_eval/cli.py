@@ -165,6 +165,7 @@ async def run(args: argparse.Namespace) -> None:
                         pipeline,
                         concurrency=args.concurrency,
                         repeat=repeat,
+                        meter=meter,
                     )
                     manifest = build_manifest(
                         pipeline_settings(settings, pipeline),
@@ -197,6 +198,15 @@ async def run(args: argparse.Namespace) -> None:
                         f"\n== {pipeline} ({settings.chat_model}, split={args.split}) -> {path.name}"
                     )
                     print(json.dumps(result["summary"], indent=1))
+                    if result["summary"].get("incomplete"):
+                        stopped = (
+                            f"STOPPED: the spend cap ended the run; {result['summary']['cap_stopped']} "
+                            f"case(s) are marked cap_stopped and left out of every rate (saved in {path.name}). "
+                            "Ask before spending more."
+                        )
+                        break
+                if stopped:
+                    break
     except BudgetExceeded as exc:
         stopped = f"STOPPED: {exc}. The run in progress was abandoned and not written. Ask before spending more."
     print("\nSPEND:", json.dumps(meter.summary(), indent=1))
@@ -214,7 +224,8 @@ async def rescore(args: argparse.Namespace) -> None:
         c["id"]: prepare_case(c, total)
         for c in load_many(data.get("datasets") or args.dataset)["cases"]
     }
-    judged = sum(cases[r["id"]]["expected_behavior"] in JUDGED for r in data["rows"])
+    live = [r for r in data["rows"] if not r.get("cap_stopped")]  # a cap-stopped row has no verdict
+    judged = sum(cases[r["id"]]["expected_behavior"] in JUDGED for r in live)
     plan = {"cases": len(data["rows"]), **estimate_judge(judged)}
     if args.plan:
         report_plan(plan, args.cap)
@@ -226,7 +237,9 @@ async def rescore(args: argparse.Namespace) -> None:
     try:
         with meter.installed():
             rows = [
-                await judge_row(settings, cases[r["id"]], score_row(cases[r["id"]], r))
+                r
+                if r.get("cap_stopped")
+                else await judge_row(settings, cases[r["id"]], score_row(cases[r["id"]], r))
                 for r in data["rows"]
             ]
     except BudgetExceeded as exc:

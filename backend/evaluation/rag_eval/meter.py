@@ -3,9 +3,14 @@
 Every chat and embedding response carries a ``usage`` block; this adds it up with the checked
 price table (``prices.json``) and refuses further calls once the cap is reached. An unknown model
 raises instead of being silently counted as free. Figures are estimates from token counts.
+
+Each call is attributed to the case that made it (``case_var``) and to a role. The role comes from the
+fixed system prompt the request carries, never from the model name, so two roles that share a model stay
+apart. A call whose shape is not recognised falls back to ``label_var`` (the judge and the grader set it).
 """
 
 import argparse
+import asyncio
 import contextvars
 import json
 import math
@@ -15,11 +20,64 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from app.agents.tool_rag.claim_check import SYSTEM_PROMPT as CLAIM_CHECK_PROMPT
+from app.agents.tool_rag.conversation import INTENT_SYSTEM_PROMPT
+from app.agents.tool_rag.prompts import AGENT_SYSTEM_PROMPT
+from app.llm import prompts as legacy
+
 _TABLE = json.loads((Path(__file__).with_name("prices.json")).read_text())
 PRICES = _TABLE["models"]
 PRICE_TABLE_DATE: str = _TABLE["checked_on"]
 ESTIMATES = _TABLE["estimates"]
 label_var: contextvars.ContextVar[str] = contextvars.ContextVar("meter_label", default="unlabelled")
+# The case a call belongs to. Set once per case inside its own task, so concurrent cases never mix.
+case_var: contextvars.ContextVar[str] = contextvars.ContextVar("meter_case", default="")
+
+# The system prompt a chat request starts with decides its role. Exact text, so a changed prompt that
+# is not listed here shows up as "unlabelled" instead of being silently attributed to a neighbour.
+ROLE_BY_SYSTEM_PROMPT: dict[str, str] = {
+    INTENT_SYSTEM_PROMPT: "intent_gate",
+    CLAIM_CHECK_PROMPT: "claim_check",
+    AGENT_SYSTEM_PROMPT: "agent_step",
+    legacy.FOLLOWUP_REWRITE_SYSTEM_PROMPT: "followup_rewrite",
+    **dict.fromkeys(
+        (
+            legacy.RAG_SYSTEM_PROMPT,
+            legacy.FILE_TARGET_SYSTEM_PROMPT,
+            legacy.FILE_INVENTORY_SYSTEM_PROMPT,
+            legacy.COLLECTION_SYSTEM_PROMPT,
+            legacy.CHITCHAT_SYSTEM_PROMPT,
+            legacy.DEMO_CHITCHAT_SYSTEM_PROMPT,
+        ),
+        "answer_generation",
+    ),
+}
+EMBEDDING_ROLE = "embedding"
+COUNTERS = ("calls", "failed_calls", "cancelled_calls", "missing_usage_calls")
+TOKENS = ("input_tokens", "output_tokens", "cached_tokens")
+
+# Written into every manifest: what this meter can and cannot see.
+METERING_LIMITS: dict[str, Any] = {
+    "counted": "successful non-streaming chat and embedding requests with their usage block; "
+    "failed and cancelled requests as counts without tokens",
+    "invisible": [
+        "SDK automatic retries (they happen below the wrapped method)",
+        "streamed requests (refused: the meter stops the run instead of guessing)",
+        "a request that was billed after its caller gave up",
+    ],
+    "attribution": "role from the first system prompt of the request, case from a context variable",
+}
+
+
+def role_of_chat(kwargs: dict[str, Any]) -> str:
+    """The role of a chat request, from its first system message; the label when none matches."""
+    for message in kwargs.get("messages") or ():
+        if isinstance(message, dict) and message.get("role") == "system":
+            role = ROLE_BY_SYSTEM_PROMPT.get(message.get("content") or "")
+            if role:
+                return role
+            break  # only the first system message names the role
+    return label_var.get()
 
 
 class BudgetExceeded(BaseException):  # noqa: N818 - named for what happened, like KeyboardInterrupt
@@ -29,6 +87,10 @@ class BudgetExceeded(BaseException):  # noqa: N818 - named for what happened, li
     ``Exception`` from a provider call into a recorded failure or a fail-open answer, which would hide
     the cap and let the run go on writing "errors". This one passes through all of them.
     """
+
+
+class UnmeteredRequest(BudgetExceeded):
+    """A streamed request: its usage cannot be read here, so the spend could no longer be counted."""
 
 
 class UnpricedModel(BudgetExceeded):
@@ -54,25 +116,59 @@ def cost_of(model: str, input_tokens: int, output_tokens: int, cached_tokens: in
     ) / 1_000_000
 
 
+def _blank() -> dict[str, Any]:
+    return {**dict.fromkeys(COUNTERS, 0), **dict.fromkeys(TOKENS, 0), "cost_usd": 0.0}
+
+
 class CostMeter:
     def __init__(self, cap_usd: float) -> None:
         self.cap_usd = cap_usd
         self.total = 0.0
-        self.rows: dict[tuple[str, str], dict[str, float]] = defaultdict(
-            lambda: {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+        self.tripped = False  # set the moment the meter refuses or loses count; the run must end
+        self.stopped_cases: set[str] = set()
+        self.rows: dict[tuple[str, str], dict[str, Any]] = defaultdict(_blank)  # (role, model)
+        self.by_case: dict[str, dict[tuple[str, str], dict[str, Any]]] = defaultdict(
+            lambda: defaultdict(_blank)
         )
 
+    @property
+    def exhausted(self) -> bool:
+        """True once no further case should be started."""
+        return self.tripped or self.total >= self.cap_usd
+
+    def trip(self) -> None:
+        self.tripped = True
+        self.stopped_cases.add(case_var.get())
+
     def check(self) -> None:
-        if self.total >= self.cap_usd:
+        if (
+            self.exhausted
+        ):  # also after an unpriced or streamed request: in-flight cases must stop too
+            self.trip()
             raise BudgetExceeded(
                 f"estimated spend ${self.total:.4f} reached the ${self.cap_usd:.2f} cap"
             )
 
-    def record(self, response: Any) -> None:
+    def _add(self, role: str, model: str, **deltas: float) -> None:
+        """Add to the run-wide row and to the row of the current case, so the two cannot drift apart."""
+        for row in (self.rows[(role, model)], self.by_case[case_var.get()][(role, model)]):
+            for key, value in deltas.items():
+                row[key] += value
+
+    def record(
+        self,
+        response: Any,
+        *,
+        role: str | None = None,
+        requested_model: str | None = None,
+    ) -> None:
+        role = role or label_var.get()
+        model = getattr(response, "model", None) or requested_model or "unknown"
         usage = getattr(response, "usage", None)
         if usage is None:
+            # A paid call whose cost is unknown: counted, flagged, and the case total is a lower bound.
+            self._add(role, model, calls=1, missing_usage_calls=1)
             return
-        model = getattr(response, "model", None) or "unknown"
         details = getattr(usage, "prompt_tokens_details", None)
         cached = int(getattr(details, "cached_tokens", 0) or 0)
         inp = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -81,26 +177,53 @@ class CostMeter:
             amount = cost_of(model, inp, out, cached)
         except KeyError as exc:
             # Never let an uncounted paid call pass as free: stop the run (application code would swallow a KeyError).
+            self.trip()
             raise UnpricedModel(str(exc)) from None
-        row = self.rows[(label_var.get(), model)]
-        row["calls"] += 1
-        row["input_tokens"] += inp
-        row["output_tokens"] += out
-        row["cost_usd"] += amount
+        self._add(
+            role,
+            model,
+            calls=1,
+            input_tokens=inp,
+            output_tokens=out,
+            cached_tokens=cached,
+            cost_usd=amount,
+        )
         self.total += amount
+
+    def record_failure(self, role: str, model: str, *, cancelled: bool) -> None:
+        """A request that raised or was cancelled: counted, without tokens or dollars."""
+        self._add(role, model, calls=1, failed_calls=1, cancelled_calls=int(cancelled))
 
     def summary(self) -> dict[str, Any]:
         return {
             "cap_usd": self.cap_usd,
             "estimated_total_usd": round(self.total, 5),
+            "tripped": self.tripped,
             "by_label_and_model": [
-                {
-                    "label": label,
-                    "model": model,
-                    **{k: (round(v, 5) if k == "cost_usd" else int(v)) for k, v in row.items()},
-                }
-                for (label, model), row in sorted(self.rows.items())
+                {"label": role, "model": model, **_rounded(row)}
+                for (role, model), row in sorted(self.rows.items())
             ],
+        }
+
+    def case_accounting(self, case: str) -> dict[str, Any]:
+        """Calls, failures, tokens and dollars of one case by role, and their total.
+
+        ``usage_incomplete`` is true when a call came back without a usage block (its cost is missing).
+        """
+        roles: dict[str, dict[str, Any]] = {}
+        for (role, model), row in sorted(self.by_case.get(case, {}).items()):
+            entry = roles.setdefault(role, {**_blank(), "models": []})
+            for key in (*COUNTERS, *TOKENS, "cost_usd"):
+                entry[key] += row[key]
+            entry["models"].append(model)
+        total = _blank()
+        for entry in roles.values():
+            for key in (*COUNTERS, *TOKENS, "cost_usd"):
+                total[key] += entry[key]
+        return {
+            "by_role": {role: _rounded(entry) for role, entry in roles.items()},
+            "total": _rounded(total),
+            "usage_incomplete": bool(total["missing_usage_calls"]),
         }
 
     @contextmanager
@@ -110,22 +233,39 @@ class CostMeter:
 
         originals = (AsyncCompletions.create, AsyncEmbeddings.create)
 
-        def wrap(original: Callable[..., Any]) -> Callable[..., Any]:
+        def wrap(original: Callable[..., Any], fixed_role: str | None) -> Callable[..., Any]:
             async def create(*args: Any, **kwargs: Any) -> Any:
                 self.check()
-                response = await original(*args, **kwargs)
-                self.record(response)
+                if kwargs.get("stream"):
+                    self.trip()
+                    raise UnmeteredRequest("a streamed request cannot be metered; the run stops")
+                role = fixed_role or role_of_chat(kwargs)
+                requested = kwargs.get("model")
+                try:
+                    response = await original(*args, **kwargs)
+                except (Exception, asyncio.CancelledError) as exc:
+                    self.record_failure(
+                        role,
+                        requested or "unknown",
+                        cancelled=isinstance(exc, asyncio.CancelledError),
+                    )
+                    raise
+                self.record(response, role=role, requested_model=requested)
                 return response
 
             return create
 
-        AsyncCompletions.create = wrap(originals[0])  # type: ignore[method-assign]
-        AsyncEmbeddings.create = wrap(originals[1])  # type: ignore[method-assign]
+        AsyncCompletions.create = wrap(originals[0], None)  # type: ignore[method-assign]
+        AsyncEmbeddings.create = wrap(originals[1], EMBEDDING_ROLE)  # type: ignore[method-assign]
         try:
             yield self
         finally:
             AsyncCompletions.create = originals[0]  # type: ignore[method-assign]
             AsyncEmbeddings.create = originals[1]  # type: ignore[method-assign]
+
+
+def _rounded(row: dict[str, Any]) -> dict[str, Any]:
+    return {k: (round(v, 5) if k == "cost_usd" else v) for k, v in row.items()}
 
 
 def require_prices(*models: str) -> None:

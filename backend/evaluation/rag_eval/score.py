@@ -81,7 +81,10 @@ def rates(rows: list[dict[str, Any]], key: str, flag: str) -> dict[str, Any]:
     }
 
 
-def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def summarise(all_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Rates over the cases that really ran. Cases the spend cap ended are counted, never scored."""
+    rows = [r for r in all_rows if not r.get("cap_stopped")]
+    stopped = len(all_rows) - len(rows)
     by_cat: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         by_cat[r["category"]].append(r)
@@ -95,7 +98,9 @@ def summarise(rows: list[dict[str, Any]]) -> dict[str, Any]:
         )
 
     return {
-        "cases": len(rows),
+        "cases": len(all_rows),
+        "cap_stopped": stopped,
+        "incomplete": stopped > 0,
         "errors": sum(1 for r in rows if r.get("error")),
         "evidence_found": rates(rows, "evidence", "found"),
         "answer_correct": rates(rows, "answer", "correct"),

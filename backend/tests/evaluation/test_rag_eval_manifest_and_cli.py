@@ -257,7 +257,14 @@ def offline_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, An
     calls: dict[str, Any] = {"pipelines": []}
 
     async def fake_pipeline(
-        settings: Settings, cases: Any, files: Any, pipeline: str, *, concurrency: int, repeat: int
+        settings: Settings,
+        cases: Any,
+        files: Any,
+        pipeline: str,
+        *,
+        concurrency: int,
+        repeat: int,
+        meter: Any = None,
     ) -> dict[str, Any]:
         calls["pipelines"].append((pipeline, repeat))
         if calls.get("stop_at") == len(calls["pipelines"]):

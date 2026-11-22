@@ -13,9 +13,16 @@ from app.services.rag_service import RagService
 
 from .corpus import CorpusFile
 from .judge import judge
-from .meter import label_var
+from .meter import BudgetExceeded, CostMeter, case_var, label_var
 from .score import Observed, answer_score, clean_score, evidence_score, summarise
 from .target import EVAL_USER_ID, session_factory
+from .trace import (
+    CaseTrace,
+    RecordingRetriever,
+    execution_summary,
+    trace_var,
+    tracing_installed,
+)
 
 PIPELINES = {"tool_agent": True, "legacy": False}  # value = tool_rag_agent_enabled
 JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat", "partial"}
@@ -47,22 +54,66 @@ def prepare_case(case: dict[str, Any], total_files: int) -> dict[str, Any]:
     }
 
 
-async def run_case(
+def base_row(
+    case: dict[str, Any],
+    *,
+    reply: str = "",
+    cited_files: Sequence[str] = (),
+    error: str | None = None,
+    latency_s: float | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": case["id"],
+        "category": case["category"],
+        "split": case["split"],
+        "language": case["language"],
+        "expected_behavior": case["expected_behavior"],
+        "question": case["question"],
+        "reply": reply,
+        "cited_files": list(cited_files),
+        "error": error,
+        "latency_s": latency_s,
+    }
+
+
+def stopped_row(row: dict[str, Any]) -> dict[str, Any]:
+    """The spend cap ended this case: it has no verdict and is left out of every rate."""
+    row.update(
+        cap_stopped=True,
+        error="cap_stopped",
+        evidence=None,
+        answer=None,
+        clean=None,
+        refusal=None,
+        overall=None,
+    )
+    return row
+
+
+async def answer_case(
     settings: Settings,
     case: dict[str, Any],
-    files: Sequence[CorpusFile],
+    by_name: dict[str, str],
     pipeline: str,
     sessions: Any,
 ) -> dict[str, Any]:
-    by_name = {f.name: f.path for f in files}
+    """Ask the real question-answering service once and record the reply and what it cited."""
     label = label_var.set(pipeline)
     started = perf_counter()
     answer, error = "", None
     cited: tuple[str, ...] = ()
+    citations: list[dict[str, Any]] = []
     try:
         history = case.get("history") or ()
         async with sessions() as db:
-            service = RagService(db, settings, persist_query_history=False)
+            # Only the retriever is injected: a chat service or agent here would silently remove the
+            # intent gate and the claim check. The tool agent always searches through the hybrid retriever.
+            retriever = (
+                RecordingRetriever(db, settings)
+                if settings.tool_rag_agent_enabled or settings.hybrid_retrieval_enabled
+                else None
+            )
+            service = RagService(db, settings, persist_query_history=False, retriever=retriever)
             result = await service.ask(
                 case["question"],
                 EVAL_USER_ID,
@@ -72,25 +123,61 @@ async def run_case(
             )
         answer = result.answer
         cited = tuple(dict.fromkeys(by_name.get(c.filename, c.filename) for c in result.citations))
+        citations = [
+            {
+                "chunk_id": str(c.chunk_id),
+                "file": by_name.get(c.filename, c.filename),
+                "score": c.score,
+                "snippet": c.snippet,
+            }
+            for c in result.citations
+        ]
     except Exception as exc:  # one failing case must not end the run; record the class only
         # (BudgetExceeded is a BaseException and passes through: the cap ends the run.)
         error = describe_error(exc)
     finally:
         label_var.reset(label)
-    latency = perf_counter() - started
-    row: dict[str, Any] = {
-        "id": case["id"],
-        "category": case["category"],
-        "split": case["split"],
-        "language": case["language"],
-        "expected_behavior": case["expected_behavior"],
-        "question": case["question"],
-        "reply": answer,
-        "cited_files": list(cited),
-        "error": error,
-        "latency_s": round(latency, 2),
-    }
-    return await judge_row(settings, case, score_row(case, row))
+    row = base_row(
+        case,
+        reply=answer,
+        cited_files=cited,
+        error=error,
+        latency_s=round(perf_counter() - started, 2),
+    )
+    row["cited"] = citations
+    return row
+
+
+async def run_case(
+    settings: Settings,
+    case: dict[str, Any],
+    files: Sequence[CorpusFile],
+    pipeline: str,
+    sessions: Any,
+    meter: CostMeter | None = None,
+) -> dict[str, Any]:
+    by_name = {f.name: f.path for f in files}
+    # A key unique to this attempt: the same case id recurs across pipelines and repeats.
+    key = f"{pipeline}/{case['id']}/{uuid.uuid4().hex[:8]}"
+    trace = CaseTrace()
+    case_token, trace_token = case_var.set(key), trace_var.set(trace)
+    try:
+        row = await answer_case(settings, case, by_name, pipeline, sessions)
+        row = await judge_row(settings, case, score_row(case, row))
+    except BudgetExceeded:
+        row = stopped_row(base_row(case))
+    finally:
+        case_var.reset(case_token)
+        trace_var.reset(trace_token)
+    row["execution"] = execution_summary(trace)
+    row["trace"] = trace.as_dict()
+    if meter is not None:
+        row["accounting"] = meter.case_accounting(key)
+        if key in meter.stopped_cases and not row.get("cap_stopped"):
+            stopped_row(
+                row
+            )  # the cap error was swallowed on the way up: still not a product failure
+    return row
 
 
 def score_row(case: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
@@ -156,6 +243,7 @@ async def run_pipeline(
     *,
     concurrency: int = 3,
     repeat: int = 1,
+    meter: CostMeter | None = None,
 ) -> dict[str, Any]:
     chosen = pipeline_settings(settings, pipeline)
     sessions = session_factory(chosen)
@@ -165,12 +253,16 @@ async def run_pipeline(
 
     async def one(case: dict[str, Any]) -> dict[str, Any]:
         async with gate:
-            return await run_case(chosen, case, files, pipeline, sessions)
+            if meter is not None and meter.exhausted:  # the cap was reached: start nothing new
+                row = stopped_row(base_row(case))
+                return {**row, "accounting": None, "execution": None, "trace": None}
+            return await run_case(chosen, case, files, pipeline, sessions, meter)
 
     started = datetime.now(UTC)
     tasks = [asyncio.ensure_future(one(c)) for c in prepared]
     try:
-        rows = await asyncio.gather(*tasks)
+        with tracing_installed():
+            rows = await asyncio.gather(*tasks)
     except BaseException:  # the spend cap (or Ctrl-C): stop the cases still waiting or running
         for task in tasks:
             task.cancel()
