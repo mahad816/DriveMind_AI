@@ -255,15 +255,71 @@ def test_fact_recall_gives_partial_credit_next_to_the_all_or_nothing_correctness
     assert row["answer"]["correct"] is False
 
 
-def test_citation_precision_and_the_extra_file_bound() -> None:
+def test_an_unnecessary_extra_citation_fails_strict_but_precision_stays_a_separate_metric() -> None:
     case = make_case()
-    ok = run(case, make_row(case, "22 days.", ((C1, HANDBOOK), (C5, OTHER)), trace_=GOOD_TRACE))
-    assert ok["citation"]["precision"] == 0.5 and ok["citation"]["extra_files"] == 1
-    assert ok["strict"]["deterministic"] is True  # one extra file is within the stated bound
-    many = {cid(7): ChunkInfo(cid(7), "other.txt", OWNER, 0, "Parking."), **INFOS}
-    noisy = make_row(case, "22 days.", ((C1, HANDBOOK), (C5, OTHER), (cid(7), "synthetic/x.txt")))
-    noisy = extend_row(case, noisy, resolved_for(case, chunks=many))
-    assert noisy["citation"]["extra_files"] == 2 and noisy["strict"]["deterministic"] is False
+    row = run(case, make_row(case, "22 days.", ((C1, HANDBOOK), (C5, OTHER)), trace_=GOOD_TRACE))
+    assert row["citation"]["precision"] == 0.5 and row["citation"]["extra_files"] == 1
+    assert row["citation"]["unnecessary_files"] == 1  # other.txt holds none of the required facts
+    assert row["overall"]["pass"] is True  # legacy is unchanged and kept for comparison
+    assert row["strict"]["deterministic"] is False
+    assert row["cause"]["primary"] == "citation"
+
+
+def test_declared_supporting_files_of_a_multi_document_case_are_never_unnecessary() -> None:
+    case = make_case(
+        expected_files=[HANDBOOK, OTHER],
+        must_include=[["22"], ["parking"]],
+        evidence_anchors=[{"file": HANDBOOK, "quote": QUOTE}],
+    )
+    row = run(
+        case,
+        make_row(
+            case, "22 days; parking is free.", ((C1, HANDBOOK), (C5, OTHER)), trace_=GOOD_TRACE
+        ),
+    )
+    assert row["citation"]["extra_files"] == 0 and row["citation"]["unnecessary_files"] == 0
+    assert row["strict"]["deterministic"] is True
+
+
+def test_an_extra_file_that_may_carry_a_required_fact_is_undecided_not_penalised() -> None:
+    case = make_case(
+        must_include=[["22"], ["parking"]]
+    )  # other.txt is NOT declared but holds "Parking"
+    row = run(case, make_row(case, "22 days; parking is free.", ((C1, HANDBOOK), (C5, OTHER))))
+    assert (
+        row["citation"]["unnecessary_files"] == 0 and row["citation"]["undecided_extra_files"] == 1
+    )
+    assert row["strict"]["deterministic"] is None  # the annotation cannot say; nothing is invented
+    computed = make_case(computed=True)  # operands never appear as the answer
+    row = run(computed, make_row(computed, "22 days.", ((C1, HANDBOOK), (C5, OTHER))))
+    assert row["citation"]["undecided_extra_files"] == 1 and row["strict"]["deterministic"] is None
+    unknown_text = run(
+        case, make_row(case, "22 days.", ((C1, HANDBOOK), (C5, OTHER))), database=False
+    )
+    assert unknown_text["citation"]["undecided_extra_files"] == 1  # text unavailable: undecided
+
+
+def test_strict_stands_on_its_own_criteria_and_not_on_the_legacy_pass_or_the_judge() -> None:
+    partial = make_case(expected_behavior="partial", must_not_include=["30 days"])
+    row = run(
+        partial, make_row(partial, "22 days.", ((C1, HANDBOOK),), judge=False, trace_=GOOD_TRACE)
+    )
+    assert row["overall"]["pass"] is False  # the refusal judge said fail
+    assert row["strict"]["deterministic"] is True  # strict never reads that verdict
+    row["overall"] = None  # even with no legacy verdict at all, strict is computed
+    assert extend_row(partial, row, resolved_for(partial))["strict"]["deterministic"] is True
+    # and a missing fact fails strict by its own fact criterion, with no help from legacy
+    case = make_case(must_include=[["22"], ["10"]])
+    low = run(case, make_row(case, "22 days.", ((C1, HANDBOOK),), trace_=GOOD_TRACE))
+    assert low["strict"]["deterministic"] is False and low["fact_recall"]["recall"] == 0.5
+
+
+def test_a_refusal_passes_strict_on_deterministic_criteria_only() -> None:
+    case = refusal_case()
+    ok = run(case, make_row(case, "I could not find that.", judge=False))
+    assert ok["strict"]["deterministic"] is True  # judge disagreement is a review item, not strict
+    bad = run(case, make_row(case, "Employees get 30 days.", judge=True))
+    assert bad["strict"]["deterministic"] is False
 
 
 def test_retrieval_from_the_recorded_searches() -> None:

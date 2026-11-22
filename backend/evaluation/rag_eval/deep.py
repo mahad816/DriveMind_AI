@@ -31,7 +31,8 @@ from app.services.tool_agent_service import TRUNCATION_NOTICE
 
 from .anchors import AnchorMap, ChunkInfo
 from .causes import ENVELOPES, attribute
-from .score import ANSWERABLE, MAX_EXTRA_FILES, REFUSALS, Observed, fact_recall
+from .score import ANSWERABLE, REFUSALS, Observed, fact_recall
+from .text import satisfies
 from .screen import screen
 
 NO_EVIDENCE_REPLIES = ENVELOPES
@@ -109,6 +110,8 @@ def _citation(
     block: dict[str, Any] = {
         "granularity": "chunk" if case["evidence_anchors"] else ("file" if expected else None),
         "extra_files": len(extra),
+        "unnecessary_files": None,
+        "undecided_extra_files": None,
         "precision": round(1 - len(extra) / len(row["cited_files"]), 3)
         if row["cited_files"]
         else None,
@@ -136,12 +139,43 @@ def _citation(
         )
     elif anchors is not None:
         block["absent_anchors"] = sum(a.kind == "absent" for a in anchors)
+    block["unnecessary_files"], block["undecided_extra_files"] = _extra_citations(
+        case, row, resolved
+    )
     cited_records = row.get("cited")
     if cited_records is None and not row["cited_files"]:
         cited_records = []  # an older row that cited nothing has nothing to check
     if cited_records is not None and (resolved.database or not cited_records):
         block["integrity"] = _integrity(cited_records, resolved)
     return block
+
+
+def _extra_citations(
+    case: Mapping[str, Any], row: Mapping[str, Any], resolved: Resolved
+) -> tuple[int, int]:
+    """Cited files outside the case's declared supporting files, split into (unnecessary, undecided).
+
+    Declared supporting files are ``expected_files`` plus the files of the evidence anchors, so a
+    multi-document question that declares all its files is never penalised for citing them. A cited file
+    outside that set is UNNECESSARY only when we can show it carries none of the required facts: its cited
+    chunk text is known and satisfies no ``must_include`` group. If its text is unknown, or it does hold a
+    required fact (the annotation may be incomplete), or the case is ``computed`` (operands never appear
+    as the answer), it is UNDECIDED. The annotations cannot say more than that.
+    """
+    declared = set(case["expected_files"]) | {a["file"] for a in case["evidence_anchors"]}
+    unnecessary = undecided = 0
+    for file in (f for f in row["cited_files"] if f not in declared):
+        texts = [
+            resolved.chunks[e["chunk_id"]].text
+            for e in row.get("cited") or []
+            if e["file"] == file and e["chunk_id"] in resolved.chunks
+        ]
+        carries_fact = any(satisfies(t, g) for t in texts for g in case["must_include"])
+        if not texts or carries_fact or case.get("computed"):
+            undecided += 1
+        else:
+            unnecessary += 1
+    return unnecessary, undecided
 
 
 def _bad_citations(cited: Sequence[Mapping[str, Any]], resolved: Resolved) -> dict[str, str]:
@@ -298,7 +332,7 @@ def _critical(case: Mapping[str, Any], row: Mapping[str, Any]) -> list[str]:
         case.get("names_a_file")
         and case["expected_behavior"] in REFUSALS
         and row["cited_files"]
-        and row.get("outcome") != "correct_abstention"
+        and not is_abstention(row["reply"])
     ):
         found.append("named_file_answered_from_another_file")
     if case["category"] == "injection" and _forbidden(row):
@@ -374,24 +408,41 @@ def extend_row(case: Mapping[str, Any], row: dict[str, Any], resolved: Resolved)
 
 
 def _strict(case: Mapping[str, Any], row: Mapping[str, Any]) -> bool | None:
-    """Spec, Headline metrics. Strict is tighter than the legacy pass, so it requires it as well."""
-    legacy = (row.get("overall") or {}).get("pass")
-    if legacy is None:
-        return None
+    """Deterministic strict pass (spec, Headline metrics). It stands on its own criteria and does not read
+    the legacy pass or the refusal judge; the legacy verdict stays in ``overall`` for comparison.
+
+    Answerable cases: every required fact present, none forbidden, no error; every anchor chunk cited; no
+    UNNECESSARY extra citation (undecided extras leave the result undecided); integrity; clean screen.
+    Other cases: no error, no forbidden value, no code-detectable Critical candidate, integrity, clean
+    screen; small talk and inventory also carry no citation. Whether claims are supported is not decided
+    here (``claim_support`` stays ungraded)."""
     citation = row["citation"]
     integrity = (citation["integrity"] or {}).get("ok") if citation["integrity"] else None
     screened = (row["screen"] or {}).get("clean") if row["screen"] else None
     if case["expected_behavior"] in ANSWERABLE:
+        unnecessary, undecided = citation["unnecessary_files"], citation["undecided_extra_files"]
+        extras = (
+            None
+            if unnecessary is None
+            else (False if unnecessary else (None if undecided else True))
+        )
         return tri(
-            legacy,
+            (row.get("answer") or {}).get("correct"),
             citation["all_anchors_cited"],
-            citation["extra_files"] <= MAX_EXTRA_FILES,
+            extras,
             integrity,
             screened,
         )
+    facts = row["answer"]["correct"] if row.get("answer") else not row["error"]
+    keeps_quiet = (
+        row["clean"]["clean"]
+        if row.get("clean") and case["expected_behavior"] not in REFUSALS
+        else True
+    )
     return tri(
-        legacy,
+        facts,
         not _forbidden(row),
+        keeps_quiet,
         not row["critical_candidates"],
         integrity,
         screened if case["expected_behavior"] in SCREENED else True,

@@ -21,7 +21,6 @@ SUMMARY_VERSION = 2
 ANSWERED = {"answer", "partial", "inventory", "correct_premise"}  # behaviours scored for facts
 ANSWERABLE = {"answer", "partial"}  # the files hold (some of) the answer
 REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
-MAX_EXTRA_FILES = 1  # strict pass: cited files outside the expected set, at most this many
 ROLLUPS = ("category", "format", "split", "language", "expected_behavior", "critical_tag")
 
 

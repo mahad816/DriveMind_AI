@@ -20,7 +20,7 @@ from app.agents.tool_rag.finalization import EMPTY_CONTENT, FILE_NOT_FOUND_TEXT,
 from app.llm.prompts import DEMO_NO_EVIDENCE_ANSWER, NO_EVIDENCE_ANSWER
 from app.services.tool_agent_service import TRUNCATION_NOTICE
 
-from .score import ANSWERABLE, MAX_EXTRA_FILES
+from .score import ANSWERABLE
 
 Case = Mapping[str, Any]
 Row = Mapping[str, Any]
@@ -128,7 +128,7 @@ def citation(case: Case, row: Row) -> bool:
         bad_integrity
         or block.get("all_anchors_cited") is False
         or evidence.get("found") is False
-        or (block.get("extra_files") or 0) > MAX_EXTRA_FILES
+        or (block.get("unnecessary_files") or 0) > 0
     )
 
 
