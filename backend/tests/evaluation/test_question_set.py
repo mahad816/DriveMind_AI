@@ -161,14 +161,14 @@ def test_held_out_location_is_outside_the_repository(tmp_path):
     sealed = tmp_path / "sealed.json"
     sealed.write_text(json.dumps({"cases": [valid_case(id="h1", split="held_out")]}))
     assert pools.held_out_path({pools.HELD_OUT_ENV: str(sealed)}) == sealed.resolve()
-    assert pools.load_held_out(sealed)["cases"][0]["pool"] == "held_out"
+    assert pools.load_held_out(sealed, require_review=False)["cases"][0]["pool"] == "held_out"
 
 
 def test_a_held_out_file_may_only_hold_held_out_cases(tmp_path):
     sealed = tmp_path / "sealed.json"
     sealed.write_text(json.dumps({"cases": [valid_case(id="h1", split="dev")]}))
     with pytest.raises(ValueError, match="only hold held_out"):
-        pools.load_held_out(sealed)
+        pools.load_held_out(sealed, require_review=False)
 
 
 def test_the_committed_question_set_validates_against_the_frozen_corpus():

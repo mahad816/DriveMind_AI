@@ -97,7 +97,7 @@ def recorded_held_out() -> dict[str, Any]:
 def held_out_view() -> tuple[Counter[str], list[str], str]:
     """(counts per gate, injection documents, where the numbers came from)."""
     if held_out_path() is not None:
-        cases = load_held_out()["cases"]
+        cases = load_held_out(require_review=False)["cases"]
         return count_cases(cases), injection_documents(cases), "the sealed file"
     held = recorded_held_out()
     counts = Counter(held.get("gate_group_counts") or {})

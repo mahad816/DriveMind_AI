@@ -12,9 +12,14 @@ counts per gate group and the amendment log (``freeze.py``).
     uv run python -m evaluation.rag_eval.pools validate [--with-public]    # free; exits 1 on any problem
     uv run python -m evaluation.rag_eval.pools validate --held-out         # sealed pool; prints counts per rule only
     uv run python -m evaluation.rag_eval.pools review-sheet OUT.md [--size 30] [--seed 1]   # for the Owner; OUT outside the repo
+    uv run python -m evaluation.rag_eval.pools attest-review SHEET.md      # OWNER ONLY, interactive terminal; see review_gate.py
 
 ``validate --held-out`` never prints a case id, a question, a quote or a value: every problem is reduced to the rule it
 broke. The review sheet is the one file that holds held-out text, so it may only be written outside the repository.
+
+``load_held_out`` is the one door to the sealed cases and it is closed by default: it needs the Owner's review
+attestation (``review_gate.py``) for the sealed file as it is now. Only the free, aggregate-only callers pass
+``require_review=False``.
 """
 
 import json
@@ -36,6 +41,8 @@ from .corpus import (
     verify,
 )
 from .dataset import DATA, HELD_OUT_SPLIT, load_many, validate
+from .review_gate import attest_command
+from .review_gate import require_review as _require_review
 from .schema_v3 import case_types, required_field_problems
 from .text import norm
 
@@ -96,13 +103,22 @@ def held_out_path(environ: Mapping[str, str] | None = None) -> Path | None:
     return path
 
 
-def load_held_out(path: Path | None = None) -> dict[str, Any]:
-    """The sealed cases with ``pool`` added. Every case must be in the held-out split."""
+def load_held_out(
+    path: Path | None = None, *, require_review: bool = True, manifest_path: Path | None = None
+) -> dict[str, Any]:
+    """The sealed cases with ``pool`` added. Every case must be in the held-out split.
+
+    By default the Owner's review attestation must be valid for the file as it is now, or this raises
+    ``ReviewRequired`` (no case named). Free callers that report only aggregates or counts per rule (validate,
+    coverage, the review sheet) pass ``require_review=False``; a paid run never does.
+    """
     path = path or held_out_path()
     if path is None:
         raise FileNotFoundError(
             f"set {HELD_OUT_ENV} to the held-out case file (outside the repository)"
         )
+    if require_review:
+        _require_review(path, manifest_path or FREEZE_MANIFEST)
     dataset: dict[str, Any] = json.loads(path.read_text())
     for case in dataset["cases"]:
         if case.get("split") != HELD_OUT_SPLIT:
@@ -212,7 +228,7 @@ def validate_held_out(path: Path | None = None) -> dict[str, Any]:
     A missing or wrongly typed required field is one rule in the count; a case that still escapes the validator
     is reported by exception class only, because an exception message may quote data.
     """
-    dataset = load_held_out(path)
+    dataset = load_held_out(path, require_review=False)
     files = frozen_corpus_files()
     verify(files)
     try:
@@ -303,7 +319,7 @@ def write_review_sheet(
         raise ValueError(
             "the review sheet holds held-out text and may not be written inside the repository"
         )
-    cases = load_held_out(held_out)["cases"]
+    cases = load_held_out(held_out, require_review=False)["cases"]
     sample = sample_for_review(cases, size=size, seed=seed)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(render_review_sheet(sample))
@@ -323,6 +339,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(f"review sheet written: {sum(counts.values())} cases; per shape {counts}")
         return 0
+    if args and args[0] == "attest-review" and len(args) >= 2:
+        return attest_command(Path(args[1]), held_out_path(), FREEZE_MANIFEST)
     if not args or args[0] != "validate":
         print(__doc__)
         return 2

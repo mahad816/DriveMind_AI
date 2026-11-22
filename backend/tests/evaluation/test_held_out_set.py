@@ -311,7 +311,7 @@ def test_coverage_and_freeze_commands_print_aggregates_only(sealed, capsys):
 def test_loader_errors_never_quote_a_case(sealed):
     sealed([{**as_held_out("rb01", SECRET_ID, SECRET_QUESTION), "split": "dev"}])
     with pytest.raises(ValueError) as caught:
-        pools.load_held_out()
+        pools.load_held_out(require_review=False)
     assert not any(m in str(caught.value) for m in MARKERS)
     with pytest.raises(ValueError) as inside:
         pools.held_out_path({pools.HELD_OUT_ENV: str(DATA / "rag_v2_cases.json")})
@@ -476,7 +476,7 @@ def test_the_real_sealed_file_lives_outside_the_repository_and_validates_clean(r
 
 
 def test_the_real_sealed_file_meets_every_held_out_minimum_and_matches_the_manifest(real_sealed):
-    cases = pools.load_held_out(real_sealed)["cases"]
+    cases = pools.load_held_out(real_sealed, require_review=False)["cases"]
     counts = coverage.count_cases(cases)
     shortfalls = coverage.evaluate(
         {**coverage.pool_counts([]), "held_out": counts},
@@ -491,14 +491,14 @@ def test_the_real_sealed_file_meets_every_held_out_minimum_and_matches_the_manif
 
 
 def test_the_real_sealed_cases_are_written_by_one_declared_session_with_unique_ids(real_sealed):
-    cases = pools.load_held_out(real_sealed)["cases"]
+    cases = pools.load_held_out(real_sealed, require_review=False)["cases"]
     assert len({c["id"] for c in cases}) == len(cases)
     assert {c["provenance"]["session"] for c in cases} == {"m1-07-held-a"}
     assert all(c["split"] == "held_out" and c.get("schema") == 3 for c in cases)
 
 
 def test_no_tracked_file_or_the_committed_baseline_discloses_a_real_held_out_case(real_sealed):
-    cases = pools.load_held_out(real_sealed)["cases"]
+    cases = pools.load_held_out(real_sealed, require_review=False)["cases"]
     root = pools.REPO_ROOT
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True

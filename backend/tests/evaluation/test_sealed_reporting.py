@@ -5,6 +5,7 @@ Free. The held-out file here is fabricated and lives in a temporary folder outsi
 
 import argparse
 import asyncio
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from evaluation.rag_eval import cli, pools, runner
+from evaluation.rag_eval import cli, pools, review_gate, runner
 from evaluation.rag_eval.dataset import DATA
 from evaluation.rag_eval.schema_v3 import gate_groups
 from evaluation.rag_eval.score import summarise
@@ -246,7 +247,7 @@ def test_no_committed_file_names_a_held_out_case_when_the_real_file_is_present()
     path = pools.held_out_path()
     if path is None:
         pytest.skip(f"{pools.HELD_OUT_ENV} is not set: no sealed file on this machine")
-    ids = [c["id"] for c in pools.load_held_out(path)["cases"]]
+    ids = [c["id"] for c in pools.load_held_out(path, require_review=False)["cases"]]
     root = pools.REPO_ROOT
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True
@@ -292,6 +293,25 @@ def sealed_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = outside / "sealed.json"
     path.write_text(json.dumps({"cases": fabricated_cases()}))
     monkeypatch.setenv(pools.HELD_OUT_ENV, str(path))
+    # A genuine, matching Owner attestation (fabricated): the paid run path is gated since M1-07-F.
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest = tmp_path / "freeze.json"
+    manifest.write_text(json.dumps({"held_out": {"sha256": digest}}))
+    monkeypatch.setattr(pools, "FREEZE_MANIFEST", manifest)
+    review_gate.attestation_path(path).write_text(
+        json.dumps(
+            {
+                "version": review_gate.VERSION,
+                "sealed_sha256": digest,
+                "freeze_held_out_sha256": digest,
+                "sheet_sha256": digest,
+                "reviewed": 36,
+                "correct": 36,
+                "gold_wrong": 0,
+                "attested_at": "2026-01-01T00:00:00+00:00",
+            }
+        )
+    )
     return path
 
 

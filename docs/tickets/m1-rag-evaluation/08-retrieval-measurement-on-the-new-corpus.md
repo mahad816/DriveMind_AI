@@ -31,7 +31,7 @@ Extended probes with free tests; the rebuilt index; the results section; `## Fin
 
 Disposable PostgreSQL and Qdrant containers. Embeddings for the rebuild and the probes, plus one chat call per question per repeat for the first-step probe: **estimate about 0.25 USD, cap 0.40 USD**. The Owner approves the spend when the ticket starts.
 
-- [ ] Ticket 07's Owner review is complete and its result recorded in ticket 07 before any call; the Owner's separate approval of the estimate and cap is recorded here. Neither stands in for the other.
+- [ ] Ticket 07's Owner review is complete, recorded in ticket 07, and bound to the sealed file by the Owner's `pools attest-review` (the loader refuses without it) before any call; the Owner's separate approval of the estimate and cap is recorded here. Neither stands in for the other.
 - [ ] The price table is dated within the session and covers every model used; the dry-run estimate and the Owner's approval are recorded.
 - [ ] The index holds exactly the frozen corpus (file and chunk counts match the manifest); a rerun of the plain-question probe gives identical file and rank results (only raw scores may move in the third decimal, as before).
 - [ ] Results are reported by pool (development, regression, held-out aggregate), category and format with Wilson intervals; the earlier file-level figures are reproduced on the old cases as a sanity check against the history (differences explained by the larger corpus).

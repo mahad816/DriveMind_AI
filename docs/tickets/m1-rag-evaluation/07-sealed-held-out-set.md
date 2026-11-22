@@ -153,4 +153,14 @@ Aggregate counts only: no held-out question, answer, anchor, id or per-case resu
 4. Tests: no attestation, a stale hash, a sheet with an unticked or doubly ticked case, a "gold wrong" case and fewer than 30 cases each refuse; a matching attestation passes; the review-sheet output stays outside the repository.
 The attestation records review only; the spend approval and cap stay the Owner's separate act at the start of each paid ticket.
 
+### Review gate M1-07-F (2026-11-22, on `3271550`)
+
+Aggregate only: no held-out question, answer, anchor or id was opened, printed or written; the real sealed file, sheet and freeze manifest were not read by any test (all fabricated). No paid API, Railway, push or deployment.
+
+**Blocker B-1 closed in code.** New `rag_eval/review_gate.py`; `pools.load_held_out(path, *, require_review=True)` now refuses unless the review attestation (`<sealed stem>.review-attestation.json`, beside the sealed file, mode 600, no case text or id) is valid for the sealed file as it is now and equals the freeze `held_out` checksum. Reproduced before the fix (fabricated pool, no attestation: the loader returned the cases). Enforcement point: `load_held_out`, the only door to sealed cases, used by `cli run --split held_out` (also `--plan`) and by any later probe; `validate --held-out`, `coverage` and `review-sheet` pass `require_review=False`. Writer: `pools attest-review SHEET.md`, Owner only: interactive terminal plus typed phrase; refuses a sheet inside the repository, a freeze/sealed mismatch, an unknown, mismatching or duplicate case, any case without exactly one box, fewer than 30 cases, any "gold wrong". Amending the sealed file invalidates the approval by hash.
+
+**No attestation exists yet.** The Owner's 36 of 36 review (M1-07-E) is not yet bound to the sealed file: until the Owner runs `pools attest-review` on the sheet, every paid held-out run refuses. Ticket 08 therefore starts only after that command, and the spend approval is still separate.
+
+**Limits.** A plain file: it does not stop someone with write access to the Owner's machine who forges it. It covers the 36 sampled cases only. The parser was verified on fabricated sheets in this repository's own format, not on the Owner's real sheet; if the Owner's sheet differs, the command refuses with a rule, never a case.
+
 ## Comments
