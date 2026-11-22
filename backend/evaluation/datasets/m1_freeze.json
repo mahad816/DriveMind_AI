@@ -55,7 +55,7 @@
  "held_out": {
   "env": "DRIVEMIND_EVAL_HELDOUT_FILE",
   "frozen_sha256": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5",
-  "sha256": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5",
+  "sha256": "f1d216979f946310839df47e94069ebf2f3c0f113fc1fd72d08082934a5b2472",
   "cases": 180,
   "gate_group_counts": {
    "ambiguous": 6,

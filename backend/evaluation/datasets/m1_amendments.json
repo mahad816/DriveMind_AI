@@ -218,5 +218,15 @@
   "reason": "M1 ticket 07: sealed held-out pool written (session m1-07-held-a, 2026-11-22) from the corpus text only, before any run; Owner review pending",
   "sha256_before": null,
   "sha256_after": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5"
+ },
+ {
+  "date": "2026-11-22",
+  "file": "held_out",
+  "phase": "post_freeze",
+  "kind": "correction",
+  "case_ids": [],
+  "reason": "M1 ticket 07 Owner review (M1-07-D): one clarify case lacked an evidence anchor for one of its alternatives; the missing anchor was added, verbatim from the frozen source file. No question, reference answer, expected behaviour or other case changed. Done before any run.",
+  "sha256_before": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5",
+  "sha256_after": "f1d216979f946310839df47e94069ebf2f3c0f113fc1fd72d08082934a5b2472"
  }
 ]
