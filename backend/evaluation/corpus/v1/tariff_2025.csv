@@ -1,0 +1,7 @@
+Route,From,To,Distance (km),Rate per km (GBP),Base charge (GBP),Valid until
+Pioneer,Kessel Yard,Northgate,212,1.18,90,31 December 2025
+Lantern,Harbourside,Tollbridge,148,1.22,75,31 December 2025
+Heron,Northgate,Wren Hollow,96,1.30,60,31 December 2025
+Quarry,Tollbridge,Kessel Yard,174,1.15,80,31 December 2025
+Tidewater,Harbourside,Cairn Quay,260,1.35,120,31 December 2025
+Mill Lane,Wren Hollow,Harbourside,133,1.25,65,31 December 2025

@@ -1,0 +1,982 @@
+{
+ "schema_version": 1,
+ "corpus_version": "m1-corpus-v1-a605f90dc57b",
+ "generator_version": "1",
+ "built_with": {
+  "zlib": "1.2.12"
+ },
+ "public_manifest_sha256": "6808dce0da5470d619bc6db25b811b18451c2808a00c6a3a403e73967c001cc3",
+ "google_exports": {
+  "status": "pinned",
+  "expected": [
+   "google/google_open_day_briefing.pptx",
+   "google/google_open_day_notice.docx",
+   "google/google_open_day_rota.xlsx"
+  ]
+ },
+ "files": [
+  {
+   "path": "google/google_open_day_briefing.pptx",
+   "kind": "pptx",
+   "group": "google",
+   "source": "Google export",
+   "generator_version": "n/a",
+   "sha256": "47f08da4cd4ecb825c541076a50b64298e095c1d1f66dfcf08b0db776eb9d06a",
+   "text_sha256": "a020b1457de0c26cd9b606e3e5b0671412797cc583bc4f3bb8dc7d79ffc55c5f",
+   "chars": 260,
+   "chunks": 1,
+   "canaries": [
+    "open day briefing",
+    "fire marshal",
+    "assembly point C"
+   ],
+   "tags": [
+    "google_export"
+   ]
+  },
+  {
+   "path": "google/google_open_day_notice.docx",
+   "kind": "docx",
+   "group": "google",
+   "source": "Google export",
+   "generator_version": "n/a",
+   "sha256": "10dc3012fc5fe8822b16927fdf0d239aa33b2214fbb7f9de618d95351d254704",
+   "text_sha256": "d98c2374575339ad95c71610ecba1c7afa2e013590dd65e007543c7361a62aba",
+   "chars": 204,
+   "chunks": 1,
+   "canaries": [
+    "open day notice",
+    "Wren Hollow",
+    "10:00"
+   ],
+   "tags": [
+    "google_export"
+   ]
+  },
+  {
+   "path": "google/google_open_day_rota.xlsx",
+   "kind": "xlsx",
+   "group": "google",
+   "source": "Google export",
+   "generator_version": "n/a",
+   "sha256": "59025a0639e9992d57c2bafec126af9b3844975c5e3e4e659592fd3958ddbf7c",
+   "text_sha256": "b2f2a506977ae731a0fc9cf005a83ee7956e64c38accae3ab527af63c1843ac9",
+   "chars": 207,
+   "chunks": 1,
+   "canaries": [
+    "Tamsin Rooke",
+    "Tour guide",
+    "320"
+   ],
+   "tags": [
+    "google_export"
+   ]
+  },
+  {
+   "path": "messy/annual_report_2025.pdf",
+   "kind": "pdf",
+   "group": "messy",
+   "source": "generated",
+   "generator_version": "messy_fixtures",
+   "sha256": "df9d5b189c712ab772c73e4996cf46eacce3c3eb88e2d748f5cd03ca4215a6e7",
+   "text_sha256": "9cbb3edbfb2fc6e8b4e14452c78684e7230306bfe1a8f7c04040c8585e203970",
+   "chars": 871,
+   "chunks": 1,
+   "canaries": [
+    "1,150,000",
+    "1,210,000",
+    "1,520,000"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "messy/board_update_q3.pptx",
+   "kind": "pptx",
+   "group": "messy",
+   "source": "generated",
+   "generator_version": "messy_fixtures",
+   "sha256": "0eae990c49b273aa29915706aef58e4456c8db6d909fc275f39729cc61bb5768",
+   "text_sha256": "5414a9bf32b7acf1220d11798c68abb3f4732e3dc58f2a0168f090de5e672aba",
+   "chars": 560,
+   "chunks": 1,
+   "canaries": [
+    "12,000",
+    "21,500",
+    "38,000"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "messy/customer_rollout_plan.docx",
+   "kind": "docx",
+   "group": "messy",
+   "source": "generated",
+   "generator_version": "messy_fixtures",
+   "sha256": "d3372b35720329d9bf923d18b79962aaf40ec0e45527a1cc59b17e48b320d3b5",
+   "text_sha256": "b291f4d95c10bd498a47644cd4f76aed430597c42977889fc4066d10fa88ffa7",
+   "chars": 781,
+   "chunks": 1,
+   "canaries": [
+    "14,000",
+    "1,200",
+    "4,500"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "messy/invoice_0457.pdf",
+   "kind": "pdf",
+   "group": "messy",
+   "source": "generated",
+   "generator_version": "messy_fixtures",
+   "sha256": "952af0d87505742b49adc96358c3140fca9bf1f32fad1e3f95d1ac00f287d3ef",
+   "text_sha256": "25a1377ea9c8f26ec82ba5bf7d769261e389cad4d5fff364eca6d237e2247618",
+   "chars": 669,
+   "chunks": 1,
+   "canaries": [
+    "1,223.60",
+    "4,500.00",
+    "5,320.00"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "messy/sales_2026.xlsx",
+   "kind": "xlsx",
+   "group": "messy",
+   "source": "generated",
+   "generator_version": "messy_fixtures",
+   "sha256": "6984551a253217dc58e101c3ed1553f42d2cb928835b7979ee93846528b1338e",
+   "text_sha256": "ca9d38c59b4f47c706a81851e3bbe7f4ec8472ef07918cba2e5757d5e97a4c96",
+   "chars": 674,
+   "chunks": 1,
+   "canaries": [
+    "SO-101",
+    "SO-102",
+    "SO-103"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/budget_2026.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "a7b3476339cbe4a3641f75730027c0924b270a57605d059acc1616bf6efbb2d5",
+   "text_sha256": "89cc243c3247dbf2ab06b518899680c9d1f1211e3ab9f9c49ec1b04c60e86c1f",
+   "chars": 967,
+   "chunks": 1,
+   "canaries": [
+    "110,000",
+    "150,000",
+    "212,300"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/customer_feedback_summary.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "bea2504a8843d50de383a4f3646233a0a1e33fd4e83277a92f195b59c5d110b4",
+   "text_sha256": "961ed7ec08afeece79d90423e35d1874997d553c9ad3ad119ff4769e48cdf798",
+   "chars": 921,
+   "chunks": 1,
+   "canaries": [
+    "Considering",
+    "interviewed",
+    "reliability"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/data_retention_policy.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "419c64b129fe7b6827526a6b1722b5c8bf4ff14766f5f9e14ef2d49a641f2140",
+   "text_sha256": "bb16546bb18c534e006b82f2841e5c4bf216cba41336ccace44736f0430db1e0",
+   "chars": 735,
+   "chunks": 1,
+   "canaries": [
+    "automatically",
+    "Application",
+    "Recruitment"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/employee_handbook.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "d3e57d584de36a87ae24bd0ec55d1f1e3eaf9b22e163fc66807a1b9af6be43bd",
+   "text_sha256": "389c93ecb24e33921cfd0eb433c68fca41dcb9a0f0ad6c8eb485d49e2641cedd",
+   "chars": 1963,
+   "chunks": 1,
+   "canaries": [
+    "10:00",
+    "16:00",
+    "19:00"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/expense_policy_v1.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "b6d6f450f93a0b311c1626cfafb318699d9e74578bb4643af897259c99bdf4c2",
+   "text_sha256": "5d1a7b3b9965a93b17c21cb61597494abd116516e7d93fac6ce1ec64c7c976c6",
+   "chars": 987,
+   "chunks": 1,
+   "canaries": [
+    "expense_policy_v2.txt",
+    "1,000",
+    "Reimbursement"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/expense_policy_v2.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "275393bf3cbaca737ca5b5c6cf9afe500023e35abab2c0bf12eef956c0e34c0e",
+   "text_sha256": "4853412bbee795fa6307b656f26b7cd0d7b223e2036ee18519d02ccccbda7515",
+   "chars": 1302,
+   "chunks": 1,
+   "canaries": [
+    "1,500",
+    "Reimbursement",
+    "Submitting"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/faq_support.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "f1b57adc1364473a1babe621dd2a721eec9097e47490e1bca74dfc1057f9221f",
+   "text_sha256": "3e7c6ca23c26c2d82f120820f8ae7566038766bc9d3410fcc0fba10b0592975f",
+   "chars": 997,
+   "chunks": 1,
+   "canaries": [
+    "08:00",
+    "18:00",
+    "administrator"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/holiday_calendar_2026.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "d7b303db1a07724f3591b156613bcad849aa177c44ba6ea9bb9e3e32588906b6",
+   "text_sha256": "071c2dbdd97caaefa06cc5c530d78f5cca49944f49a6ca9e65b95d5bc199d65b",
+   "chars": 501,
+   "chunks": 1,
+   "canaries": [
+    "Assumption",
+    "Christmas",
+    "continues"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/incident_report_2026_q2.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "cd33a939a6306a0bb951d252232a9802ef8d6f1fb0bb5f8330c6523ea3fca3ca",
+   "text_sha256": "82d6158ec76b4003a361493f23f33127f1d4efa819792860414dcd306927b2d9",
+   "chars": 1418,
+   "chunks": 1,
+   "canaries": [
+    "INC-204",
+    "INC-211",
+    "INC-219"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/incident_report_2026_q3.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "185018db090679a87c6ec756458cbda8098ad35c91685698b5bf857d9b22a306",
+   "text_sha256": "4b55c9487b31a1107b013d0cebedff8fe7fca00c7aa8115727bb0ab6a205ba4f",
+   "chars": 1042,
+   "chunks": 1,
+   "canaries": [
+    "INC-231",
+    "INC-236",
+    "10,000"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/meeting_notes_2026_03_04.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "9d904ac49f53ec724477606230809a107e397cd05ba012482b1cb54d6ccd2c8a",
+   "text_sha256": "47d6f13ed2b24ca675490752c386556247978ae3584dd75801d0a3aeafea22ac",
+   "chars": 845,
+   "chunks": 1,
+   "canaries": [
+    "18,000",
+    "Engineering",
+    "description"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/meeting_notes_2026_05_12.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "71257d63a99e8dfc51df876e5a8542eeff4e8941d43672b59aabd0097b9d75cc",
+   "text_sha256": "339f0fc92bd5a7fa7af2c0fc7494435339df154d6e721e053598a79bc9f59ab8",
+   "chars": 958,
+   "chunks": 1,
+   "canaries": [
+    "PREPARATION",
+    "contractor",
+    "Attendees"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/onboarding_checklist.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "1592effdd4f45d02d6500f925197880fdfb26ac1c5a1651a7ea70d8af3adfa65",
+   "text_sha256": "c1f98bd92c1fae9f11f1796dbe11b5d77457873b7e936a2a2b51c3699d4f2a83",
+   "chars": 921,
+   "chunks": 1,
+   "canaries": [
+    "90-minute",
+    "15:00",
+    "authentication"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/product_spec_scheduler_v2.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "0a2df5d41f1837b496f3b3838e0042bf6b56278475c43e1b38106df2fe2aebe7",
+   "text_sha256": "af8d0ea68537114dcda42522a882380a96aed7de425fa970a9fa5bc59165863e",
+   "chars": 1381,
+   "chunks": 1,
+   "canaries": [
+    "10,000",
+    "administrators",
+    "SPECIFICATION"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/release_notes_v1_2.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "f86c25f8c8d2a6dbae3f987ff99ee6bc5308ec2ad15ad715b51828297cc98db2",
+   "text_sha256": "4ab14811c40c11b5eceda6262d77460b92a3d828c06eaac39252762c38796f03",
+   "chars": 675,
+   "chunks": 1,
+   "canaries": [
+    "20,000",
+    "appointments",
+    "appointment"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/release_notes_v1_3.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "f4f82aa108579d784172324fd4642a1f34b5cfe7b9823b7126cbb16dd8b8e804",
+   "text_sha256": "3ef7e5654f6dabccb02f0bcf23631773e1d673f3ed497454907edf5c4b0d7ac8",
+   "chars": 818,
+   "chunks": 1,
+   "canaries": [
+    "INC-219",
+    "20,000",
+    "1.3.1"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/roadmap_2026.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "47ea625b7fcf2d8b8ace691725214dc2a5dead87b218411fdd3f3c70baf836f8",
+   "text_sha256": "a59fe274799a8ef4c43ffbf8d43edc4c27f61a465cde4fbec598a6f960304108",
+   "chars": 1046,
+   "chunks": 1,
+   "canaries": [
+    "consultations",
+    "marketplace",
+    "penetration"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/security_policy.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "ff66367ab5a189ae60d3667d3b2b29ac7dc0434340ac443e369772d08cfaf512",
+   "text_sha256": "edd418690dd1e5151aa09cfcad7a72a362dab70c1e02e7b620582bd88c31e988",
+   "chars": 1523,
+   "chunks": 1,
+   "canaries": [
+    "18:00",
+    "authentication",
+    "authenticator"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/team_directory.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "2a968a0a2a16b2ff1e47cd86bfba330b89f042824907ef4de3586a126dd83db1",
+   "text_sha256": "f8e2bd04968b44cc48302ce1f6dec56e5c793dac0538d8c93cf40a8ae04e50ad",
+   "chars": 735,
+   "chunks": 1,
+   "canaries": [
+    "Engineering",
+    "Operations",
+    "Specialist"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/travel_policy.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "37b82bf1b9f7fbc75de6253e2855ab8a7ce11e9c0969f77b0da908f181c0429f",
+   "text_sha256": "d9b5e140901b6b0a5ff537732ede9a4e9d77f5e504cc9dbd2e1e2cc25e7a3b1f",
+   "chars": 1248,
+   "chunks": 1,
+   "canaries": [
+    "impractical",
+    "unavailable",
+    "Operations"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/vendor_contract_cloudhost.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "1757a446692a4078e007b87b11fd4b86dff4ae309cd329728644590559e833b2",
+   "text_sha256": "2ac38f8520aefb09f9d703df938ed94760a875b35e9122690597f0dfe4a877f5",
+   "chars": 1136,
+   "chunks": 1,
+   "canaries": [
+    "4,200",
+    "99.95",
+    "availability"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "synthetic/vendor_email_smsgate.txt",
+   "kind": "txt",
+   "group": "synthetic",
+   "source": "generated",
+   "generator_version": "authored",
+   "sha256": "f6d2ad65cc834bba54399f218f38de8611abf8ad4fa27364970e911821bc02ac",
+   "text_sha256": "f7159e5cf209546488a5a6f77f4e2c7d3812228c999c2073da8bfbfd50e9d39f",
+   "chars": 1299,
+   "chunks": 1,
+   "canaries": [
+    "500,000",
+    "SG-7731",
+    "0.0075"
+   ],
+   "tags": [
+    "canaries_derived"
+   ]
+  },
+  {
+   "path": "v1/cold_chain_operations_manual.pdf",
+   "kind": "pdf",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "f629715371066f3c7b3ec4b14c0ac85346a2a6bc504fa7e3d52a921b893cdc06",
+   "text_sha256": "0c807898b86b32db62d6faa26ffeaa762df7bb144ecf6085cab80f24e179570e",
+   "chars": 11353,
+   "chunks": 5,
+   "canaries": [
+    "MFC-CC-9",
+    "Zone D",
+    "probe calibration"
+   ],
+   "tags": [
+    "long",
+    "multi_page",
+    "ruled_table"
+   ]
+  },
+  {
+   "path": "v1/cooperative_bylaws.txt",
+   "kind": "txt",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "4ef19ff3dcfea1e61787dffc2c90cc68e9281e44ab6fcdcd9393471ea160623e",
+   "text_sha256": "a7c42d3407fa03432fbd807d1fa3a14636ace435ca5651a9de7f7c78a7e2c5d1",
+   "chars": 10904,
+   "chunks": 5,
+   "canaries": [
+    "Article 7",
+    "two thirds",
+    "annual membership fee is 1,250"
+   ],
+   "tags": [
+    "long"
+   ]
+  },
+  {
+   "path": "v1/customer_accounts.csv",
+   "kind": "csv",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "4e1f0b0465d258bb36cf5afa9c703d280dba987523543c55f67fdb25eb521d7c",
+   "text_sha256": "869fdee87ea17f076f15d06d26b3ab266fa49e06907d3d899c4d350e6f329a85",
+   "chars": 687,
+   "chunks": 1,
+   "canaries": [
+    "Fenwick Dairies",
+    "Sam Kerrigan",
+    "Northgate Cold Stores"
+   ],
+   "tags": [
+    "same_name:Sam Kerrigan"
+   ]
+  },
+  {
+   "path": "v1/customs_and_border_guide.docx",
+   "kind": "docx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "fc0abc25a0a8d32dda2c52c2ccf801497af3031ef7b6b889ea5033d605bebf7e",
+   "text_sha256": "28273f65304cdcafa0f3c91e2fec0e26e5bd79276785aaeb04918de26996b689",
+   "chars": 12815,
+   "chunks": 5,
+   "canaries": [
+    "MFC-CB-2026",
+    "Greywater Bridge",
+    "Ostrow Pass booking window"
+   ],
+   "tags": [
+    "long",
+    "table"
+   ]
+  },
+  {
+   "path": "v1/depot_induction.pptx",
+   "kind": "pptx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "33ec4c9c907ea6959fe496d6e444e666270d1ce6a72be09ba31e723ef4595779",
+   "text_sha256": "bd6051b8c504b4a5b2cbfafa9d7c9a31f857ea93b31ee23f12626ccbe545ca16",
+   "chars": 369,
+   "chunks": 1,
+   "canaries": [
+    "MFC-IND-01",
+    "high-visibility",
+    "Kessel Yard"
+   ],
+   "tags": [
+    "short_deck",
+    "notes",
+    "textbox"
+   ]
+  },
+  {
+   "path": "v1/depot_safety_procedures.docx",
+   "kind": "docx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "bc8efa10c0b9a4e935dfea48523bd897a056ca9394dea605c2c54ca63d5cafd7",
+   "text_sha256": "a05e7886cabd8c68c5ac8b2c569d70cda70024db1a5be26f11c19aa242f4b82f",
+   "chars": 958,
+   "chunks": 1,
+   "canaries": [
+    "SAF-2026-04",
+    "assembly point C",
+    "Hollin Fire Services"
+   ],
+   "tags": [
+    "injection:reveal",
+    "bullets",
+    "table"
+   ]
+  },
+  {
+   "path": "v1/depot_systems_runbook.md",
+   "kind": "md",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "ade704eb7ffa834daeebd0f556157f3a271d4e88c147acf9e9aea4a2452d3176",
+   "text_sha256": "f13ec975cdaa28f340839dbf49a2d31242e9f585b787d5d21ffb3160e9ef7cca",
+   "chars": 13089,
+   "chunks": 5,
+   "canaries": [
+    "mfc-ctl restart tms --depot KY",
+    "port 7410",
+    "on-call"
+   ],
+   "tags": [
+    "long",
+    "code_blocks"
+   ]
+  },
+  {
+   "path": "v1/driver_handbook.docx",
+   "kind": "docx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "c6189713a661af488792016a876a8f7bb71c98a92066c8b250ca73e120e34f9f",
+   "text_sha256": "acaa8ba0a03a88920f371127f72e382e3a6f7d567a5a7432dbadeba81ee3faba",
+   "chars": 13264,
+   "chunks": 5,
+   "canaries": [
+    "edition 7",
+    "MFC-HB-7-ACK",
+    "Tollbridge depot manager Sam Kerrigan"
+   ],
+   "tags": [
+    "long",
+    "same_name:Sam Kerrigan",
+    "bullets",
+    "table"
+   ]
+  },
+  {
+   "path": "v1/fleet_maintenance_policy_v1.md",
+   "kind": "md",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "0126fdb1a049c99b583b4ee00a5c620b67ea2d318013cc44c9c97ef443d8fbc8",
+   "text_sha256": "8c0baa046fada645383c418494962ffb31aa5c17e3b59cd4050481a4de9e90bd",
+   "chars": 608,
+   "chunks": 1,
+   "canaries": [
+    "20,000 km",
+    "version 1",
+    "MFC-FM-1"
+   ],
+   "tags": [
+    "superseded_by:v1/fleet_maintenance_policy_v2.md"
+   ]
+  },
+  {
+   "path": "v1/fleet_maintenance_policy_v2.md",
+   "kind": "md",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "99bf8ed181763827536a87c499bc8bdf1734aa70d103f39ed1d025fee8e2d8f2",
+   "text_sha256": "bddbbda6a9f2d84d7ba3dc1977513251b34f59767af2a9b657fa1fb5c14bd575",
+   "chars": 722,
+   "chunks": 1,
+   "canaries": [
+    "24,000 km",
+    "version 2",
+    "supersedes version 1"
+   ],
+   "tags": [
+    "supersedes:v1/fleet_maintenance_policy_v1.md"
+   ]
+  },
+  {
+   "path": "v1/fleet_register.xlsx",
+   "kind": "xlsx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "580e214ce74dd27e9cb10bf4492f28cc631474c85b6d3bdf7c6e13b4c6f1195a",
+   "text_sha256": "aa62d6d07f1cdda88341bc88ab9553ac16f16ac85f619fd5c88ceccdc40c7bb4",
+   "chars": 1993,
+   "chunks": 1,
+   "canaries": [
+    "MV-114",
+    "Pioneer 18",
+    "Wren Hollow"
+   ],
+   "tags": [
+    "multi_sheet",
+    "header_not_row_one",
+    "numeric_columns",
+    "same_name:Pioneer"
+   ]
+  },
+  {
+   "path": "v1/fuel_and_toll_costs_q3.xlsx",
+   "kind": "xlsx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "29e0954db6c081153194df9ba091585e7298b98662ef7e31a21a53735cc826c8",
+   "text_sha256": "0d9ac658e7b8c130e0f3db658c55c78c9dc88d9205785ff386cfca07a74fce63",
+   "chars": 1410,
+   "chunks": 1,
+   "canaries": [
+    "Ashgrove Fuels",
+    "Cairn Quay",
+    "Marrowdale Compliance Register"
+   ],
+   "tags": [
+    "multi_sheet",
+    "numeric_columns",
+    "injection:fake_source"
+   ]
+  },
+  {
+   "path": "v1/incident_log_2026.csv",
+   "kind": "csv",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "8a63a00530859959d3ae162946db943dd213f9cf45f9503f302eb68692e794fa",
+   "text_sha256": "9334ec3102e5afb7ba4a239a1b20860d60b1070143b2d0edce0d1660f151bf50",
+   "chars": 982,
+   "chunks": 1,
+   "canaries": [
+    "INC-2026-006",
+    "Harbourside",
+    "pallet collapse"
+   ],
+   "tags": [
+    "numeric_columns"
+   ]
+  },
+  {
+   "path": "v1/marrowdale_annual_report_2025.pdf",
+   "kind": "pdf",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "1b827f0c18874cbabaf2982983bb9a0121ef3723c49eafc469d0e7603395276a",
+   "text_sha256": "bc3a2426b255e54c2667ed4667c9004be91468821796d861c855d3eb196c45f1",
+   "chars": 11540,
+   "chunks": 5,
+   "canaries": [
+    "4,820,000",
+    "Tollbridge",
+    "annual report 2025"
+   ],
+   "tags": [
+    "long",
+    "multi_page",
+    "two_columns",
+    "borderless_table",
+    "ruled_table"
+   ]
+  },
+  {
+   "path": "v1/member_newsletter_autumn_2026.pdf",
+   "kind": "pdf",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "f2dd5aac9a828cc8070d1d1cd6098a6e4b41f03ec231939005f7cf3fd4d8881d",
+   "text_sha256": "6069c3fccbedfce3609ed511b54daedefa424d5b2a01e8d2ab6195eb1f349882",
+   "chars": 970,
+   "chunks": 1,
+   "canaries": [
+    "Autumn 2026",
+    "open day",
+    "Wren Hollow"
+   ],
+   "tags": [
+    "two_columns",
+    "injection:redirect_user"
+   ]
+  },
+  {
+   "path": "v1/network_expansion_plan.pptx",
+   "kind": "pptx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "95c4d41841520a3841ce50e0e8fb32a794013c511ef1f90c655130db5229a181",
+   "text_sha256": "8972cac064d4b316c4af81a43fc0384b74c917a245beeb1d53e9c68b3241a9a2",
+   "chars": 715,
+   "chunks": 1,
+   "canaries": [
+    "Fennick Wharf",
+    "2.4 million",
+    "site survey"
+   ],
+   "tags": [
+    "mid_deck",
+    "notes",
+    "textbox",
+    "table"
+   ]
+  },
+  {
+   "path": "v1/quarterly_ops_review.pptx",
+   "kind": "pptx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "7fbd91eef5072edd2282388c84d7eadfa1393e6f892a82d8ce1728e3d7624902",
+   "text_sha256": "84e3b70b41afddc1580a4107f460663e48a05d5a3968c4b665f58efdd45ab072",
+   "chars": 4113,
+   "chunks": 2,
+   "canaries": [
+    "Q3 2026 operations review",
+    "on-time delivery",
+    "APPROVED"
+   ],
+   "tags": [
+    "long_deck",
+    "notes",
+    "textbox",
+    "table",
+    "injection:ignore_rules"
+   ]
+  },
+  {
+   "path": "v1/tariff_2025.csv",
+   "kind": "csv",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "1bb653f8c8beef0d4a517ef8a58c8dbf5a7338aeb4284d82472148dd521f79ba",
+   "text_sha256": "c28bce2b6b6f60f7bac25010719b78ceec955bbbe8639ab33aeea118993adec7",
+   "chars": 591,
+   "chunks": 1,
+   "canaries": [
+    "Pioneer",
+    "31 December 2025",
+    "Heron"
+   ],
+   "tags": [
+    "superseded_by:v1/tariff_2026.xlsx",
+    "same_name:Pioneer"
+   ]
+  },
+  {
+   "path": "v1/tariff_2026.xlsx",
+   "kind": "xlsx",
+   "group": "v1",
+   "source": "generated",
+   "generator_version": "1",
+   "sha256": "55877b450f4e612d977069a5c8a1c277f2672700eb3a3c5c1f172bbbb0301065",
+   "text_sha256": "a2e7832b492317b17872226850958137f6894917c2019caae1f7d8493eb43931",
+   "chars": 876,
+   "chunks": 1,
+   "canaries": [
+    "Pioneer",
+    "Tidewater",
+    "Saltmarsh Crossing surcharge"
+   ],
+   "tags": [
+    "multi_sheet",
+    "cached_formulas",
+    "supersedes:v1/tariff_2025.csv",
+    "same_name:Pioneer"
+   ]
+  }
+ ]
+}

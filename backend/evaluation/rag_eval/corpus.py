@@ -13,6 +13,8 @@ from typing import Any
 CORPUS_DIR = Path(__file__).resolve().parents[1] / "corpus"
 MIME = {
     ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -23,7 +25,7 @@ MIME = {
 @dataclass(frozen=True)
 class CorpusFile:
     path: str  # relative to CORPUS_DIR, e.g. "synthetic/budget_2026.txt"
-    kind: str  # "synthetic" | "public" | "messy"
+    kind: str  # "synthetic" | "public" | "messy" | "v1" | "google"
     sha256: str
     meta: dict[str, Any]
 
@@ -64,6 +66,23 @@ def messy_files() -> list[CorpusFile]:
     ]
 
 
+def v1_files() -> list[CorpusFile]:
+    """The Marrowdale documents (``corpus_v1.py``) and any pinned Google exports, from ``v1_manifest.json``.
+
+    Like the messy files they join a run only when asked for; the manifest also records their
+    extracted-text digests and canary strings.
+    """
+    manifest = CORPUS_DIR / "v1_manifest.json"
+    if not manifest.exists():
+        return []
+    entries = json.loads(manifest.read_text())["files"]
+    return [
+        CorpusFile(e["path"], e["group"], e["sha256"], {"source": e["source"]})
+        for e in entries
+        if e["group"] in {"v1", "google"}
+    ]
+
+
 def public_manifest() -> list[dict[str, Any]]:
     path = CORPUS_DIR / "public_manifest.json"
     return json.loads(path.read_text())["documents"] if path.exists() else []
@@ -84,7 +103,11 @@ def public_files(*, require_present: bool = True) -> list[CorpusFile]:
 def verify(files: list[CorpusFile]) -> None:
     """Fail loudly if any public or generated document changed upstream or was edited locally."""
     for file in files:
-        if file.kind in {"public", "messy"} and sha256_file(file.absolute) != file.sha256:
+        if file.kind not in {"public", "messy", "v1", "google"}:
+            continue
+        if not file.absolute.exists():
+            raise ValueError(f"{file.path} is missing")
+        if sha256_file(file.absolute) != file.sha256:
             raise ValueError(f"{file.path} does not match its recorded SHA-256")
 
 

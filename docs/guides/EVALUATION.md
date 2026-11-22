@@ -70,6 +70,54 @@ Every row is also scored without any model by `deep.extend_row` (written by `run
 
 Every `run` result file carries a `manifest` (schema version 1): the audited commit and whether the tree was clean, every answer-relevant setting, digests of the prompts and tool descriptions, corpus and dataset checksums, the price-table date, concurrency, repeat index and count, library versions, the cap and the spend. The evaluation settings are pinned to the application's code defaults (`target.ANSWER_FIELDS`), whatever the local environment says; only `--model`, `--threshold`, `--relative` and `--no-claim-check` change them, and the manifest lists such differences under `deviations_from_default`. Files written before the manifest existed can still be re-scored.
 
+## The frozen evaluation corpus (M1 ticket 04)
+
+The corpus that the v1 question sets are written against. It is **synthetic or public**: the 22 older synthetic text files (Larkspur Systems), the five generated Office and PDF files (`messy/`), 19 new files about a second invented company, the Marrowdale Freight Cooperative (`corpus/v1/`), and the 33 public PDFs (not committed). Nothing in it is private, and no invented fact can be known from a model's training data. `corpus/v1_manifest.json` freezes it. Everything below is free: no key, no model, no embedding, no network, no Google.
+
+| Command (from `backend/`) | What it does |
+|---|---|
+| `uv run python -m evaluation.rag_eval.corpus_v1 --check` | Rebuilds every v1 file in memory and compares the bytes, then runs every manifest check through the product's own readers. Exits non-zero with one line per problem. |
+| `uv run python -m evaluation.rag_eval.corpus_v1 --report` | Prints the format, size and chunk-count table. |
+| `uv run python -m evaluation.rag_eval.corpus_v1 --write` | Rewrites the v1 files and the manifest. Only for a deliberate corpus change; this changes the corpus version. |
+| `uv run python -m evaluation.rag_eval.corpus_v1 --google declined` | Records the Owner's decision about Google exports (`pending`, `pinned` or `declined`). |
+| `env -u OPENAI_API_KEY uv run pytest tests/evaluation/test_corpus_v1*.py -q` | The builder, manifest and extraction tests. |
+
+**What the manifest records for each file:** path, format, group (`synthetic`, `messy`, `v1`, `google`), source (`generated`, `public` or `Google export`), generator version, SHA-256 of the bytes, SHA-256 of the text the product's readers extract, character and chunk counts, at least three canary strings and tags (long, injection kind, superseded pair, same-name entity). The **corpus version** (`m1-corpus-v1-<12 hex>`) hashes the file bytes and the public manifest, so it changes only when a document changes. The **text digest** is separate on purpose: when a reader changes (M6), the smoke test fails with "extracted text changed", you review the difference, and only then rewrite the digest. A reader change is a visible event, not a silent new corpus.
+
+**What the free checks catch:** a missing file, a changed file (checksum), a file in the folders that is not in the manifest, duplicate paths, unknown source or group, a missing field, a wrong corpus version, fewer than three canaries, a canary the reader no longer finds, changed extracted text or chunk count, a long document under four chunks, the short deck no longer one chunk, an embedded instruction that a reader drops or alters, a Google-export status that is not `pending`, `pinned` or `declined`, and a corpus that no longer meets the ticket's counts. `tests/evaluation/test_corpus_v1_manifest.py` proves each one by breaking a copy of the corpus. The ticket's reader-defect checks (a table row lost, a sheet skipped, notes ignored) are in `test_corpus_v1_extraction.py`.
+
+**What this is not:** corpus validation, not RAG quality. Passing these tests shows that the documents are what they claim to be and that the readers keep their facts and instructions; it says nothing about retrieval or answers. The generated files are cleaner than files saved by Word, Excel or PowerPoint; the Google exports reduce, but do not remove, that gap.
+
+**Same-machine note.** DOCX, PPTX and XLSX files are zip files compressed by zlib, whose output can differ between builds. The manifest records the zlib version it was written with (`built_with`); the two tests that compare a fresh build with the committed bytes skip, with a stated reason, on a machine with another zlib. `corpus_v1 --check` always compares.
+
+### Google-exported fixtures: done 2026-11-22 (no agent calls Google)
+
+The three exports are pinned (`google_exports.status = pinned`, source `Google export`). The sheet tab in the pinned file is named `Sheet1`, not `Rota`; nothing depends on the tab name. The steps below stay as the record of how to recreate them. Creating them again changes the corpus version.
+
+Real files made by Google behave differently from generated ones, so the spec asks for three. The steps take about an hour. Use a **throwaway Google account** with nothing in it; do not use your own Drive.
+
+1. Make a Google **Doc**. Paste this text (one paragraph per line) and give the file any name:
+   `Open day notice` / `The Wren Hollow open day takes place on Saturday 17 October 2026.` / `Gates open at 10:00 and the last tour leaves at 15:00.` / `Parking is free in the lower yard. Bring your membership number.`
+   Then File, Download, **Microsoft Word (.docx)**. Rename the download to `google_open_day_notice.docx`.
+2. Make a Google **Sheet**. Name the tab `Rota`. Put this in cells A1:D4 (header in row 1): `Name | Role | Start | Budget (GBP)`, `Tamsin Rooke | Tour guide | 10:00 | 320`, `Emlyn Brask | Car park | 09:30 | 150`, `Odile Wray | Catering | 09:00 | 480`. File, Download, **Microsoft Excel (.xlsx)**. Rename to `google_open_day_rota.xlsx`.
+3. Make Google **Slides** with three slides. Slide 1: title `Open day briefing`, subtitle `Wren Hollow, 17 October 2026`. Slide 2: title `Roles`, bullets `Tour guides meet at 09:30` and `The fire marshal wears orange`. Slide 3: title `Safety`, bullet `Visitors gather at assembly point C`, and in the speaker notes `Count visitors at the gate on arrival and departure.` File, Download, **Microsoft PowerPoint (.pptx)**. Rename to `google_open_day_briefing.pptx`.
+4. Put the three files, with exactly these names, in `backend/evaluation/corpus/google/`. Do not edit them.
+5. From `backend/` run `uv run python -m evaluation.rag_eval.corpus_v1 --write`, then `--check` and `uv run pytest tests/evaluation/test_corpus_v1*.py -q`. The manifest then lists the files with source `Google export`, their checksums and text digests, and the **corpus version changes**. A failure naming a canary means the product's reader lost something in a real Google file: do not fix the file; report it, because it is a reader defect for M6.
+6. **To decline instead:** run `uv run python -m evaluation.rag_eval.corpus_v1 --google declined`, and write "Google-exported files not covered" in the ticket and in `docs/specs/m1-rag-evaluation.md` (the Google-native files line). Ticket 11 then proceeds on that basis and the gate row stays open.
+
+Do this **before** the question tickets (05 to 07) are written, so the corpus version does not change after cases exist.
+
+### Public documents: licences
+
+No public document was fetched or changed by this ticket (`fetch_public` was not run; the new modules contain no network code). The 33 PDFs are listed with their SHA-256, source and licence evidence in `backend/evaluation/corpus/public_manifest.json` (verified 2026-11-19) and are never committed:
+
+| Licence as recorded in the manifest | Documents |
+|---|---|
+| Creative Commons, per arXiv metadata for the paper (CC BY 4.0 or CC0) | 22 arXiv papers |
+| US Government work, not subject to copyright (statement printed in the document); NIST notes that third-party material inside may carry its own rights | 11 NIST publications |
+
+They are used as unmodified noise text only.
+
 ## What to measure
 
 The implemented diagnostics can help answer:

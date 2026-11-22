@@ -1,0 +1,13 @@
+Incident ID,Date,Depot,Type,Severity,Cost (GBP)
+INC-2026-001,2026-01-09,Kessel Yard,near miss,low,0
+INC-2026-002,2026-01-28,Northgate,tyre failure,medium,"1,840"
+INC-2026-003,2026-02-17,Tollbridge,cargo loss,medium,"3,200"
+INC-2026-004,2026-03-04,Wren Hollow,yard collision,low,950
+INC-2026-005,2026-03-30,Harbourside,cold room alarm,medium,"2,400"
+INC-2026-006,2026-04-22,Harbourside,pallet collapse,high,"6,750"
+INC-2026-007,2026-05-11,Kessel Yard,forklift contact,medium,"1,320"
+INC-2026-008,2026-06-02,Northgate,near miss,low,0
+INC-2026-009,2026-06-25,Tollbridge,cargo loss,low,780
+INC-2026-010,2026-07-14,Wren Hollow,tyre failure,medium,"1,610"
+INC-2026-011,2026-08-08,Kessel Yard,cold room alarm,high,"5,900"
+INC-2026-012,2026-09-19,Northgate,yard collision,medium,"2,150"
