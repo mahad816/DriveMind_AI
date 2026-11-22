@@ -10,11 +10,18 @@ inside the repository, so it cannot be committed by accident; the repository hol
 counts per gate group and the amendment log (``freeze.py``).
 
     uv run python -m evaluation.rag_eval.pools validate [--with-public]    # free; exits 1 on any problem
+    uv run python -m evaluation.rag_eval.pools validate --held-out         # sealed pool; prints counts per rule only
+    uv run python -m evaluation.rag_eval.pools review-sheet OUT.md [--size 30] [--seed 1]   # for the Owner; OUT outside the repo
+
+``validate --held-out`` never prints a case id, a question, a quote or a value: every problem is reduced to the rule it
+broke. The review sheet is the one file that holds held-out text, so it may only be written outside the repository.
 """
 
 import json
 import os
+import random
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -29,6 +36,8 @@ from .corpus import (
     verify,
 )
 from .dataset import DATA, HELD_OUT_SPLIT, load_many, validate
+from .schema_v3 import case_types
+from .text import norm
 
 POOLS = {"dev": "development", "test": "regression", HELD_OUT_SPLIT: "held_out"}
 SPLIT_CHOICES = ("dev", "test", "regression", "held_out", "all")
@@ -155,11 +164,172 @@ def validate_question_set(
     return validate(data, files, injection_files=injection_files())
 
 
+# --- the sealed pool: validation and review that disclose nothing -------------------------------------
+
+# A validator message names a case and quotes what is wrong. For the sealed pool each message is reduced to the
+# first rule below it matches (an unmatched message becomes "other rule"), so a count survives and nothing else.
+HELD_OUT_RULES = (
+    ("duplicate id", "duplicate case id"),
+    ("missing reference_answer", "reference answer is missing"),
+    ("must not list expected_files", "not-found case lists expected files"),
+    ("reference answer", "reference answer fails the case's own checks"),
+    ("evidence quote not found", "anchor quote is not verbatim in the corpus"),
+    ("occurs in", "anchor quote identifies more than one file"),
+    ("not in corpus", "expected file is not in the corpus"),
+    ("actually present in the corpus", "forbidden claim is present in the corpus"),
+    ("what the same field says elsewhere", "sibling value is not forbidden"),
+    ("absent from expected files", "required fact is absent from the expected files"),
+    ("history", "history is malformed or over the production bound"),
+    ("clarify", "clarify case is malformed"),
+    ("forbidden value", "clarify case is malformed"),
+    ("provenance", "provenance is malformed"),
+    ("multi-file", "multi-file case is malformed"),
+    ("tag", "tags do not match the case"),
+    ("critical", "critical case is malformed"),
+    ("injection", "injection case is malformed"),
+    ("held-out cases must declare schema 3", "held-out case is not schema 3"),
+    ("needs expected_files and evidence_anchors", "answer case lacks files or anchors"),
+    ("bad ", "unknown behaviour, split or citation mode"),
+)
+ID_COLLISION = "case id also used by a development or regression case"
+SAME_QUESTION = "question identical to a development or regression question"
+
+
+def problem_rule(message: str) -> str:
+    """The rule a validator message is about, with no id, quote or value from the message."""
+    for needle, label in HELD_OUT_RULES:
+        if needle in message:
+            return label
+    return "other rule"
+
+
+def validate_held_out(path: Path | None = None) -> dict[str, Any]:
+    """Validate the sealed file against the frozen corpus and the committed question set.
+
+    Returns ``{"cases": n, "problems": {rule: count}}``. Nothing in it comes from a case's text. A structurally
+    broken case (a missing key) is reported by exception class only, because an exception message may quote data.
+    """
+    dataset = load_held_out(path)
+    files = frozen_corpus_files()
+    verify(files)
+    try:
+        problems = [
+            problem_rule(m) for m in validate(dataset, files, injection_files=injection_files())
+        ]
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        problems = [f"a case is structurally malformed ({type(exc).__name__})"]
+    committed = load_question_set()["cases"]
+    known_ids = {c["id"] for c in committed}
+    known_questions = {norm(c["question"]) for c in committed}
+    cases = dataset["cases"]
+    problems += [ID_COLLISION for c in cases if c.get("id") in known_ids]
+    problems += [
+        SAME_QUESTION for c in cases if norm(str(c.get("question", ""))) in known_questions
+    ]
+    return {"cases": len(cases), "problems": dict(sorted(Counter(problems).items()))}
+
+
+def _shape(case: Mapping[str, Any]) -> str:
+    """The one stratum a case is sampled under: its most specific question type, else its behaviour."""
+    types = case_types(case)
+    for name in ("ambiguous", "follow_up", "injection", "multi_file", "calculation", "identifier"):
+        if name in types:
+            return name
+    if case.get("expected_behavior") in {"not_found", "partial", "correct_premise"}:
+        return "non_answer"
+    return "table" if "table" in types else "lookup"
+
+
+def sample_for_review(
+    cases: Sequence[Mapping[str, Any]], size: int = 30, seed: int = 1
+) -> list[Mapping[str, Any]]:
+    """A stratified sample: each shape gets a share of ``size`` in proportion to its size (largest remainders),
+    at least one case per shape while places remain. Deterministic for a given seed."""
+    if not cases:
+        return []
+    strata: dict[str, list[Mapping[str, Any]]] = {}
+    for case in cases:
+        strata.setdefault(_shape(case), []).append(case)
+    size = min(size, len(cases))
+    quotas = {name: min(len(members), 1) for name, members in strata.items()}
+    if sum(quotas.values()) > size:  # fewer places than shapes: the biggest shapes first
+        keep = sorted(strata, key=lambda n: (-len(strata[n]), n))[:size]
+        quotas = {name: int(name in keep) for name in strata}
+    shares = {name: len(members) * size / len(cases) for name, members in strata.items()}
+    while sum(quotas.values()) < size:
+        room = [n for n in strata if quotas[n] < len(strata[n])]
+        pick = max(room, key=lambda n: (shares[n] - quotas[n], len(strata[n]), n))
+        quotas[pick] += 1
+    rng = random.Random(seed)
+    chosen = [c for name in sorted(strata) for c in rng.sample(strata[name], quotas[name])]
+    return sorted(chosen, key=lambda c: str(c["id"]))
+
+
+def render_review_sheet(sample: Sequence[Mapping[str, Any]]) -> str:
+    """Markdown for the Owner: question, reference answer, anchor quote and file per case, with two boxes."""
+    lines = [
+        "# Held-out review sheet (CONFIDENTIAL: do not commit, paste or share)",
+        "",
+        "For each case mark ONE box. 'correct' = the reference answer is right and the anchor quote supports it.",
+        "'gold wrong' = the reference answer, the anchor or the case is wrong; say why in the note.",
+        "",
+    ]
+    for number, case in enumerate(sample, start=1):
+        lines += [f"## {number}. {case['id']} ({case['expected_behavior']})", ""]
+        for turn in case.get("history") or []:
+            lines.append(f"> {turn['role']}: {turn['text']}")
+        lines += [
+            f"**Question:** {case['question']}",
+            "",
+            f"**Reference answer:** {case['reference_answer']}",
+            "",
+        ]
+        lines += [f'- Anchor ({a["file"]}): "{a["quote"]}"' for a in case["evidence_anchors"]]
+        if case.get("judge_note"):
+            lines += ["", f"Judge note: {case['judge_note']}"]
+        lines += ["", "- [ ] correct    - [ ] gold wrong    Note:", ""]
+    return "\n".join(lines)
+
+
+def write_review_sheet(
+    out: Path, size: int = 30, seed: int = 1, held_out: Path | None = None
+) -> dict[str, int]:
+    """Write the sampled sheet to ``out`` (refused inside the repository) and return counts per shape only."""
+    target = out.expanduser().resolve()
+    if target == REPO_ROOT or REPO_ROOT in target.parents:
+        raise ValueError(
+            "the review sheet holds held-out text and may not be written inside the repository"
+        )
+    cases = load_held_out(held_out)["cases"]
+    sample = sample_for_review(cases, size=size, seed=seed)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_review_sheet(sample))
+    target.chmod(0o600)
+    return dict(sorted(Counter(_shape(c) for c in sample).items()))
+
+
+def _option(args: list[str], name: str, default: int) -> int:
+    return int(args[args.index(name) + 1]) if name in args else default
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "review-sheet" and len(args) >= 2:
+        counts = write_review_sheet(
+            Path(args[1]), size=_option(args, "--size", 30), seed=_option(args, "--seed", 1)
+        )
+        print(f"review sheet written: {sum(counts.values())} cases; per shape {counts}")
+        return 0
     if not args or args[0] != "validate":
         print(__doc__)
         return 2
+    if "--held-out" in args:
+        report = validate_held_out()
+        total = sum(report["problems"].values())
+        print(f"held-out pool: {report['cases']} cases; {total} problem(s)")
+        for rule, count in report["problems"].items():
+            print(f"  {count} x {rule}")
+        return 1 if total else 0
     with_public = "--with-public" in args
     dataset = load_question_set()
     problems = validate_question_set(dataset, with_public=with_public)

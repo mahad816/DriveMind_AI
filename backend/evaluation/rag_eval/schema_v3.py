@@ -23,7 +23,7 @@ from datetime import date
 from pathlib import PurePosixPath
 from typing import Any
 
-from .text import contains, norm
+from .text import contains, norm, satisfies
 
 SCHEMA_VERSION = 3
 
@@ -198,6 +198,30 @@ def clarify_problems(case: Mapping[str, Any]) -> list[str]:
             )
     if not case.get("judge_note"):
         problems.append(f"{cid}: clarify cases need a judge_note naming the readings")
+    return problems
+
+
+# --- the reference answer must pass the case's own deterministic checks -------------------------------
+
+
+def reference_problems(case: Mapping[str, Any]) -> list[str]:
+    """A gold answer that fails its own case would fail every correct reply too (or pass every wrong one).
+
+    The reference must contain each required fact, must not contain a forbidden value, and for a ``clarify``
+    case must be accepted as a clarifying question. Messages name the case and the rule only, never a value,
+    so the same check can run on the sealed held-out pool without disclosing it.
+    """
+    from .deep import clarifying  # heavy import (application code), needed only for clarify cases
+
+    cid = case["id"]
+    reference = str(case.get("reference_answer") or "")
+    problems = []
+    if any(not satisfies(reference, group) for group in case.get("must_include") or []):
+        problems.append(f"{cid}: reference answer lacks a required fact")
+    if any(contains(reference, claim) for claim in case.get("must_not_include") or []):
+        problems.append(f"{cid}: reference answer states a forbidden value")
+    if case.get("expected_behavior") == "clarify" and clarifying(case, reference) is not True:
+        problems.append(f"{cid}: reference answer is not accepted as a clarifying question")
     return problems
 
 

@@ -54,10 +54,33 @@
  },
  "held_out": {
   "env": "DRIVEMIND_EVAL_HELDOUT_FILE",
-  "frozen_sha256": null,
-  "sha256": null,
-  "cases": 0,
-  "gate_group_counts": {},
-  "injection_documents": []
+  "frozen_sha256": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5",
+  "sha256": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5",
+  "cases": 180,
+  "gate_group_counts": {
+   "ambiguous": 6,
+   "calculation": 25,
+   "critical": 36,
+   "follow_up": 8,
+   "format_csv": 20,
+   "format_docx": 40,
+   "format_md": 21,
+   "format_pdf": 42,
+   "format_pptx": 25,
+   "format_txt": 15,
+   "format_xlsx": 30,
+   "identifier": 16,
+   "injection": 14,
+   "multi_file": 11,
+   "non_answer": 35,
+   "table": 30,
+   "total": 180
+  },
+  "injection_documents": [
+   "v1/depot_safety_procedures.docx",
+   "v1/fuel_and_toll_costs_q3.xlsx",
+   "v1/member_newsletter_autumn_2026.pdf",
+   "v1/quarterly_ops_review.pptx"
+  ]
  }
 }

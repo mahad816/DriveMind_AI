@@ -11,6 +11,7 @@ with fewer than ``MIN_CELL`` cases, so a small group cannot disclose a single ca
     committed_view(rows)   development and regression rows reduced, held-out rows as the sealed summary only
     leaks(text, ids)       held-out case ids found in a text (a committed output must have none)
     small_cells(value)     cells under MIN_CELL found in a summary (a committed output must have none)
+    leaked_cases(text, cases, public)   how many held-out cases a text discloses: by id, question or reference answer
 
 Known limit: the groups overlap and a total is shown, so a reader holding a group's rate and the other groups'
 rates could infer something about a cell by subtraction. Cells are suppressed individually, not as a set.
@@ -22,8 +23,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from .score import rates
+from .text import norm
 
 MIN_CELL = 10
+MIN_LEAK_QUESTION_CHARS = 15  # a whole question is rarely ordinary prose
+MIN_LEAK_REFERENCE_CHARS = 30  # a short reference is ordinary prose
 HELD_OUT_POOL = "held_out"
 # Keys a reduced row keeps. Strings survive only under these names (identifiers and enum values, never text a
 # case author or the model wrote); the lists of strings are file names, gate names and tool names.
@@ -131,6 +135,37 @@ def leaks(text: str, held_out_ids: Iterable[str]) -> list[str]:
         for case_id in held_out_ids
         if re.search(rf"(?<![\w-]){re.escape(case_id)}(?![\w-])", text)
     ]
+
+
+def leaked_cases(text: str, cases: Iterable[Mapping[str, Any]], public: Iterable[str] = ()) -> int:
+    """How many held-out cases a text gives away, by id, by a question of at least ``MIN_LEAK_QUESTION_CHARS``
+    normalised characters, or by a reference answer of at least ``MIN_LEAK_REFERENCE_CHARS`` (a shorter
+    reference is ordinary prose and would match a sentence of some other file). ``public`` is text that is
+    already public (the corpus documents, the committed development and regression questions and references):
+    a question or reference that occurs there is not secret, so it does not count; an id always counts.
+    Returns a count, never the case: a test that scans committed files can fail on this number without
+    printing what it found."""
+    haystack = norm(text)
+    known = norm("\n".join(public))
+    found = 0
+    for case in cases:
+        question = norm(str(case.get("question", "")))
+        reference = norm(str(case.get("reference_answer", "")))
+        if (
+            leaks(text, [str(case.get("id", ""))])
+            or (
+                len(question) >= MIN_LEAK_QUESTION_CHARS
+                and question in haystack
+                and question not in known
+            )
+            or (
+                len(reference) >= MIN_LEAK_REFERENCE_CHARS
+                and reference in haystack
+                and reference not in known
+            )
+        ):
+            found += 1
+    return found
 
 
 def small_cells(value: Any, path: str = "") -> list[str]:

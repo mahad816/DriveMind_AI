@@ -4,7 +4,7 @@
 **What to build:** At least 100 new questions, written before any baseline measurement by an author who has seen no result, covering the same dimensions as the development pool. The sealing machinery already exists (ticket 05); this ticket supplies the cases and the Owner's review of their gold answers.
 **Blocked by:** 06.
 **Status:** ready-for-agent
-**Progress:** open
+**Progress:** resolved (2026-11-22), Owner review of the review sheet pending (ticket 11 must not start until it is done)
 
 ## Scope
 
@@ -29,10 +29,87 @@ The held-out case file, the review sheet, `## Findings` with the held-out covera
 
 No paid API, no key, no network. Owner time: about one hour for the review sheet (spec decision 2).
 
-- [ ] The held-out file validates, meets every held-out minimum, has at least 100 cases and no id collisions.
-- [ ] The held-out file is not in the working tree; its checksum and counts are in the freeze manifest; the freeze and sealing tests pass on the real file; no held-out case id appears in any committed output; the Owner has been told to back it up.
-- [ ] The Owner review sheet exists; the review result (cases checked, errors found, corrections applied) is recorded here. If the Owner has not reviewed it when the session ends, the ticket is resolved with the review recorded as pending and ticket 11 must not start until it is done.
-- [ ] Findings state that no result or run output was read during authoring.
-- [ ] `git diff -- backend/app` is empty; touched evaluation files pass `ruff check`, `ruff format --check` and `mypy`; the container-free evaluation tests pass.
+- [x] The held-out file validates, meets every held-out minimum, has at least 100 cases and no id collisions.
+- [x] The held-out file is not in the working tree; its checksum and counts are in the freeze manifest; the freeze and sealing tests pass on the real file; no held-out case id appears in any committed output; the Owner has been told to back it up.
+- [x] The Owner review sheet exists; the review result (cases checked, errors found, corrections applied) is recorded here. If the Owner has not reviewed it when the session ends, the ticket is resolved with the review recorded as pending and ticket 11 must not start until it is done. **Sheet exists; review pending (0 of 36 checked).**
+- [x] Findings state that no result or run output was read during authoring.
+- [x] `git diff -- backend/app` is empty; touched evaluation files pass `ruff check`, `ruff format --check` and `mypy`; the container-free evaluation tests pass.
+
+## Findings
+
+Written 2026-11-22 on `e6fb7ed` plus this ticket's changes. Every number below was produced by a command or test run in this session. No provider, key (`OPENAI_API_KEY` was unset for every command), network, Railway, Google or production data was used. **This ticket's evidence is aggregate only: no held-out question, reference answer, anchor, id or per-case result appears here, and none may be added.** Nothing here measures retrieval or answer quality: it is authoring, validation and safeguards for the question set.
+
+### Authoring statement
+
+The pool was written in one session (`m1-07-held-a`, 2026-11-22) from the **extracted text of the frozen corpus** `m1-corpus-v1-a605f90dc57b` (the Marrowdale documents and the three Google exports) through the product's own readers. **No result file, run summary, per-case failure table or system output was opened, read or used**; the session read this ticket, ticket 06's findings, the spec, the schema, coverage and freeze code, and the committed development case file (questions and gold only). Every computed answer was recomputed from the extracted tables by a script that does not read the case answers (25 of 25 agree); every number in every non-computed reference answer was traced to its question, history or evidence text (three untraced tokens were a date reformatting and two statements about the annual report, all correct). No question is identical to a development or regression question; 8 are close (similarity above 0.85) because they are the answerable or unanswerable twin of a development shape, with a different answer in each pair.
+
+### What was written and where
+
+180 schema-v3 cases, all `held_out`, **one file outside the working tree** (on the Owner's Mac: `~/.drivemind-eval-sealed/m1_held_out_cases.json`, owner-only permissions). Its checksum, case count, counts per gate group and injection documents are in `datasets/m1_freeze.json`, with one `addition` entry in `m1_amendments.json` that lists no case id. All 180 are about the second invented company or the three Google exports; none is Roman Urdu.
+
+| Held-out cases by behaviour | | Critical by kind | | Other shapes | |
+|---|---:|---|---:|---|---:|
+| answer | 139 | obeyed injection | 14 | computed (calculation) | 25 |
+| not found | 22 | wrong file as requested | 9 | follow-ups: 2, 4 and 6 messages | 6 / 1 / 1 |
+| partial | 7 | fabricated detail or citation | 8 | question names a missing file | 2 |
+| false premise | 6 | misattributed content | 5 | citation mode "any" | 3 |
+| clarify | 6 | all Critical | 36 | | |
+
+### Coverage (`coverage --require-held-out`, exit 0, with and without the sealed file)
+
+| Requirement | Min (all) | Min (held-out) | Held-out | Whole set | Met |
+|---|---:|---:|---:|---:|---|
+| Cases in total | 300 | 100 | 180 | 462 | yes |
+| Unanswerable + partial + false premise | 80 | 30 | 35 | 100 | yes |
+| Tagged Critical failure | 30 | 10 | 36 | 59 | yes |
+| Multi-file | 25 | 8 | 11 | 30 | yes |
+| Table lookup | 25 | | 30 | 74 | yes |
+| Calculation | 20 | 6 | 25 | 52 | yes |
+| Identifier | 25 | 6 | 16 | 42 | yes |
+| Follow-up | 15 | 5 | 8 | 21 | yes |
+| Ambiguous (clarify) | 10 | 4 | 6 | 14 | yes |
+| Prompt injection | 10 | 4 | 14 | 25 | yes |
+| Evidence in DOCX / XLSX / PPTX / PDF | 8 each | 3 each | 40 / 30 / 25 / 42 | 62 / 51 / 46 / 85 | yes |
+| Evidence in Markdown / CSV / TXT | 8 each | 3 each | 21 / 20 / 15 | 33 / 30 / 138 | yes |
+| Injection documents / formats | 3 / 2 | | 4 / 4 (held-out alone) | 6 / 5 | yes |
+
+These are design counts of the file, not results. Ticket 06 left whole-set shortfalls of 18 cases, 15 non-answer, 7 Critical, 6 multi-file, 2 follow-up and 2 ambiguous; the held-out pool covers those **and** its own held-out minimums at the same time (the second set is the larger requirement: for example 30 non-answer and 10 Critical inside the pool, not 15 and 7).
+
+**Reserved share of the long documents.** Counting text lines of the seven long documents (cold chain manual, bylaws, customs guide, runbook, driver handbook, annual report, Q3 review) that an evidence anchor covers: 130 lines are used by held-out questions only, 50 by development and regression only, 44 by both. 74 of the 116 held-out cases that rest on a long document share no line with a development or regression anchor.
+
+### Permanent safeguards
+
+| Safeguard | Where | Shown to bite |
+|---|---|---|
+| **A reference answer must pass its own deterministic checks** (the M1-06 review finding). The test-only helper became `schema_v3.reference_problems`, called by `dataset.validate` for every v3 case, held-out included; its messages name the case and the rule, never a value. | `schema_v3.py`, `dataset.py` | red then green; removing the call, or the clarify rule, fails a test |
+| **Redacted validation of the sealed pool**: `pools validate --held-out` prints the case count and a count per broken rule; every validator message is reduced to its rule (unmatched = "other rule"); a structurally broken case is reported by exception class only; id collisions and duplicate questions against the committed set are counted. | `pools.py` | a file with one broken copy of a real case per rule (8 rules) and secret markers in id, question, quote and forbidden claim: each rule counted once, no marker in stdout, stderr or the report; the raw validator does quote the marker |
+| **Content-leak scan**: `sealing.leaked_cases` counts how many held-out cases a text gives away by id, by a question of 15 or more normalised characters or by a reference answer of 30 or more (text already public in the corpus or in the committed questions and references does not count). The tracked-file scan now uses it, and its failure message is a number. | `sealing.py`, `test_held_out_set.py` | id, question, reference and public-text rules each have a case; removing the reference or id rule fails a test |
+| **Held-out minimums cannot be skipped silently**: a hollow held-out pool (100 cases of one shape) passes the whole-set check and fails `--require-held-out`; the command now prints "held-out minimums NOT enforced" without the flag; a free test runs `--require-held-out` on the manifest's recorded counts on every machine, so a registered file that is too small fails. | `coverage.py`, `test_held_out_set.py` | removing either the flag handling or the notice fails a test |
+| **Owner review sheet**: `pools review-sheet OUT.md` writes a stratified, deterministic sample (one place per shape, then proportional) with question, reference answer, anchor quote and file, owner-only, **refused inside the repository**; prints counts per shape. | `pools.py` | a skewed pool (two rare shapes among 40) keeps both; the inside-repository refusal and the minimum-of-one rule each fail a test when removed |
+
+Reused unchanged: the loader and the refusal of a held-out file inside the repository, `freeze seal-held-out`, the amendment log, the aggregate-only summaries with cells under ten suppressed, `coverage --require-held-out`, the freeze and pool protections. 10 deliberate breakages of the new safeguards were each caught by a test; every file was restored afterwards.
+
+### Verification
+
+- **Validator on the sealed file** (redacted): 180 cases, 0 problems (anchors verbatim, forbidden claims absent or bounded, sibling values forbidden, histories inside the bound, references consistent, no id collision, no duplicate question).
+- **Freeze:** `freeze check` 0 problems with and without the sealed file; the four older files' and the development file's checksums are unchanged; the manifest gained the held-out node and the log one entry.
+- **Tests:** `env -u OPENAI_API_KEY uv run pytest tests/evaluation -q`: **590 passed, 8 skipped** without the sealed file (2 earlier unrelated skips, the 2 sealed-file tests of ticket 05 and the 4 of this ticket); **596 passed, 2 skipped** with `DRIVEMIND_EVAL_HELDOUT_FILE` set, which runs ticket 05's checksum and id-scan tests on the real file. Ticket 06 ended at 567 passed, 4 skipped; 27 tests are new (`tests/evaluation/test_held_out_set.py`). Three older fabricated fixtures whose reference answers lacked their own facts were corrected (the new rule found them), the freeze fixture now models the repository before sealing, and the coverage test whose premise was "no held-out pool" now blanks the manifest's counts.
+- **Static:** `ruff check`, `ruff format --check` clean; `mypy` clean on the six touched evaluation modules; `basedpyright` 0 errors on the three touched test files; `git diff -- backend/app` is empty.
+- **Privacy checks:** a scan of every tracked text file for a held-out id, question or non-public reference answer finds none; `freeze check`, `coverage`, `pools validate --held-out` and `pools review-sheet` print counts only (tested with secret markers on fabricated files).
+
+### Owner review (pending)
+
+`m1_review_sheet_for_owner.md`, next to the sealed file in the same owner-only folder, holds **36 of the 180 cases**, stratified (shapes: ambiguous 1, calculation 5, follow-up 2, identifier 2, injection 3, lookup 11, multi-file 2, non-answer 6, table 4), each with two boxes, "correct" and "gold wrong". **Result: cases checked 0 of 36, errors found 0, corrections applied 0, all pending.** Corrections go through `freeze seal-held-out --reason ...` (a held-out amendment, no ids in the log); report only the share found here. **Ticket 11 must not start until the review is done.**
+
+### Caveats, limits and what was not tested
+
+- **The authoring transcript holds the pool.** The cases were written through tool calls in this session, so this session's transcript (and the builder scripts in a temporary folder) contain them. Treat the transcript as confidential, do not resume or search it from a later session that will diagnose or tune, and delete the temporary builder files (done at the end of this ticket).
+- **Not yet checked by a human.** The gold answers were verified mechanically (verbatim anchors, recomputed arithmetic, traced numbers) and by the author, not by the Owner; the share of gold errors is unknown until the sheet is reviewed. The sheet samples 36 of 180, so errors outside it stay undetected.
+- **Not run.** Whether the system answers any held-out case correctly is unknown and must stay so until ticket 11 (once per checkpoint). A valid case can still fail to discriminate; the baseline will show which never fail.
+- **Shape twins.** Several held-out shapes repeat development shapes with different entities (not-found beside an answerable lookup, clarifying templates, date-rule cases), so tuning to the development shapes can help held-out cases; the leak is of shape, not of content, and the limit is stated in the spec.
+- **Forbidden-claim noise.** Sibling values come from the validator's generator and include some noise (other columns' numbers); a few values a correct reply may mention (the other tariff year, a file name, two Notes sentences) are exempted per case. A very verbose correct reply can still trip a forbidden value; the claim-support grader and the Owner's spot check are the safeguard.
+- **Counts per gate group are committed.** The manifest records design counts per group (some under ten, such as ambiguous 6); they say how the pool is built, not how anything performed, and ticket 05 chose to commit them. Results remain suppressed under ten.
+- **Two corpus statements still contradict their details** (ticket 06, finding 4); no held-out case depends on either.
+- **Backup.** The sealed file and the review sheet exist only on this Mac. Back both up (the repository will not).
 
 ## Comments

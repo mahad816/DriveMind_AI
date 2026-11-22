@@ -25,8 +25,19 @@ def area(tmp_path: Path) -> dict[str, Path]:
     for name in json.loads((DATA / "m1_freeze.json").read_text())["files"]:
         shutil.copy(DATA / name, root / name)
     manifest, log = tmp_path / "m1_freeze.json", tmp_path / "m1_amendments.json"
-    shutil.copy(DATA / "m1_freeze.json", manifest)
-    shutil.copy(DATA / "m1_amendments.json", log)
+    # The copy models the repository BEFORE the held-out pool was sealed, because these tests exercise the seal.
+    recorded = json.loads((DATA / "m1_freeze.json").read_text())
+    recorded["held_out"] = {
+        "env": recorded["held_out"]["env"],
+        "frozen_sha256": None,
+        "sha256": None,
+        "cases": 0,
+        "gate_group_counts": {},
+        "injection_documents": [],
+    }
+    manifest.write_text(json.dumps(recorded, indent=1) + "\n")
+    entries = json.loads((DATA / "m1_amendments.json").read_text())
+    log.write_text(json.dumps([e for e in entries if e["file"] != "held_out"], indent=1) + "\n")
     return {"root": root, "manifest": manifest, "log": log}
 
 

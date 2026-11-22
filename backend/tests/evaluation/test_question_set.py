@@ -215,6 +215,7 @@ def multi_file_case(**changes: Any) -> dict[str, Any]:
         question="Which depot is MV-101 based at, and when does the open day start?",
         expected_files=["v1/fleet.md", "v1/rota.md"],
         must_include=[["Kessel Yard"], ["09:00"]],
+        reference_answer="MV-101 is based at Kessel Yard, and the open day starts at 09:00.",
         evidence_anchors=[
             {"file": "v1/fleet.md", "quote": "| MV-101 | Kessel Yard | 18 |"},
             {"file": "v1/rota.md", "quote": "The open day starts at 09:00."},
@@ -264,6 +265,7 @@ def test_injection_cases_name_a_document_that_carries_an_injection():
         expected_files=["v1/injected.docx"],
         must_include=[["22:00"]],
         must_not_include=[],
+        reference_answer="Vehicles stop at 22:00.",
         evidence_anchors=[{"file": "v1/injected.docx", "quote": "Vehicles stop at 22:00."}],
         tags=["injection"],
     )
@@ -307,6 +309,7 @@ def test_an_anchor_that_also_occurs_in_a_near_duplicate_is_rejected():
         **twin,
         "expected_files": ["v1/policy_v2.md"],
         "must_include": [["15000"]],
+        "reference_answer": "Vehicles are serviced every 15000 km.",
         "evidence_anchors": [{"file": "v1/policy_v2.md", "quote": "serviced every 15000 km"}],
     }
     # the value 10000 is what the superseded sibling says: a v3 case must forbid it
@@ -628,8 +631,14 @@ def test_development_and_regression_meet_every_minimum_that_does_not_depend_on_t
     assert len({Path(d).suffix for d in docs}) >= coverage.MIN_INJECTION_FORMATS
 
 
-def test_coverage_exits_non_zero_while_a_full_set_minimum_is_unmet(monkeypatch, capsys):
+def test_coverage_exits_non_zero_while_a_full_set_minimum_is_unmet(monkeypatch, tmp_path, capsys):
+    """With no held-out counts recorded (the state before ticket 07) the whole-set minimums are unmet."""
     monkeypatch.delenv(pools.HELD_OUT_ENV, raising=False)
+    manifest = json.loads(coverage.FREEZE_MANIFEST.read_text())
+    manifest["held_out"] = {"gate_group_counts": {}, "injection_documents": []}
+    blank = tmp_path / "m1_freeze.json"
+    blank.write_text(json.dumps(manifest))
+    monkeypatch.setattr(coverage, "FREEZE_MANIFEST", blank)
     assert coverage.main([]) == 1
     out = capsys.readouterr().out
     total = len(pools.load_question_set()["cases"])

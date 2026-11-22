@@ -12,6 +12,7 @@ from .schema_v3 import (
     clarify_problems,
     history_problems,
     is_v3,
+    reference_problems,
     sibling_problems,
     v3_field_problems,
 )
@@ -86,7 +87,7 @@ def validate(
 
     Every case is checked against the older rules, the history bound and (for ``clarify``) the clarify rules.
     A case that declares ``"schema": 3`` is also checked for provenance, tags, anchors that identify one file,
-    and sibling-value forbidden claims (``schema_v3.py``). ``injection_files`` maps a corpus path to its
+    sibling-value forbidden claims and a reference answer that passes its own checks (``schema_v3.py``). ``injection_files`` maps a corpus path to its
     embedded-instruction kind (the corpus manifest's ``injection:*`` tags) for the injection rule.
     """
     files = files if files is not None else synthetic_files() + public_files()
@@ -145,6 +146,7 @@ def validate(
             problems += v3_field_problems(case, injection_files)
             problems += anchor_uniqueness_problems(case, texts)
             problems += sibling_problems(case, texts)
+            problems += reference_problems(case)
         if case.get("derived_from") and case["derived_from"] not in ids:
             problems.append(f"{cid}: derived_from {case['derived_from']} unknown")
     return problems

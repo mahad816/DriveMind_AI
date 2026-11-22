@@ -208,5 +208,15 @@
   "reason": "Two multi-turn follow-ups added to the same new file before any run: fxL1 (4-message history) and fxL2 (6-message history, at the production bound). The first 79 cases are unchanged; all earlier follow-ups had a single exchange.",
   "sha256_before": "530cfd1e3329eeb7a8d0df8c8851eaff22398113c5bd900936c5a178b6ad2d54",
   "sha256_after": "8b7429a6d300475f01e259f011dbdb615e1631c21a8de2d0712d133a753aa855"
+ },
+ {
+  "date": "2026-11-22",
+  "file": "held_out",
+  "phase": "post_freeze",
+  "kind": "addition",
+  "case_ids": [],
+  "reason": "M1 ticket 07: sealed held-out pool written (session m1-07-held-a, 2026-11-22) from the corpus text only, before any run; Owner review pending",
+  "sha256_before": null,
+  "sha256_after": "ab103fa1f608b10dbc6de260e9a5ff097f15622faea9cbd8b03a27171d0a29d5"
  }
 ]

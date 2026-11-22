@@ -169,9 +169,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     counts["held_out"] = held_counts
     docs = sorted({*injection_documents(committed), *held_docs})
     print(render(counts, docs, source))
-    short = evaluate(counts, docs, require_held_out="--require-held-out" in args)
+    enforced = "--require-held-out" in args
+    short = evaluate(counts, docs, require_held_out=enforced)
     for line in short:
         print("SHORT:", line)
+    if not enforced:
+        print(
+            "held-out minimums NOT enforced: add --require-held-out for the full milestone requirements"
+        )
     return 1 if short else 0
 
 
