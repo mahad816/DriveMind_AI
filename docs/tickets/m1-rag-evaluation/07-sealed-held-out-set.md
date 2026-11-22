@@ -4,7 +4,7 @@
 **What to build:** At least 100 new questions, written before any baseline measurement by an author who has seen no result, covering the same dimensions as the development pool. The sealing machinery already exists (ticket 05); this ticket supplies the cases and the Owner's review of their gold answers.
 **Blocked by:** 06.
 **Status:** ready-for-agent
-**Progress:** resolved (2026-11-22), Owner review of the review sheet pending (**ticket 08, the first paid step, and ticket 11 must not start until it is done**; each also needs its own approval of paid spend, which the review does not give)
+**Progress:** resolved (2026-11-22), Owner review of the review sheet complete (36 of 36 correct, 0 gold wrong; see "Owner review finalization M1-07-E"). **Ticket 08 and ticket 11 each still need the Owner's own approval of paid spend; the review does not give it.**
 
 ## Scope
 
@@ -31,7 +31,7 @@ No paid API, no key, no network. Owner time: about one hour for the review sheet
 
 - [x] The held-out file validates, meets every held-out minimum, has at least 100 cases and no id collisions.
 - [x] The held-out file is not in the working tree; its checksum and counts are in the freeze manifest; the freeze and sealing tests pass on the real file; no held-out case id appears in any committed output; the Owner has been told to back it up.
-- [x] The Owner review sheet exists; the review result (cases checked, errors found, corrections applied) is recorded here. If the Owner has not reviewed it when the session ends, the ticket is resolved with the review recorded as pending and ticket 08 (the first paid step, which already measures held-out cases once) and ticket 11 must not start until it is done. **Sheet exists; review pending (0 of 36 checked).**
+- [x] The Owner review sheet exists; the review result (cases checked, errors found, corrections applied) is recorded here. If the Owner has not reviewed it when the session ends, the ticket is resolved with the review recorded as pending and ticket 08 (the first paid step, which already measures held-out cases once) and ticket 11 must not start until it is done. **Sheet exists; review complete (36 of 36 checked, 36 correct, 0 gold wrong), recorded in "Owner review finalization M1-07-E".**
 - [x] Findings state that no result or run output was read during authoring.
 - [x] `git diff -- backend/app` is empty; touched evaluation files pass `ruff check`, `ruff format --check` and `mypy`; the container-free evaluation tests pass.
 
@@ -97,7 +97,7 @@ Reused unchanged: the loader and the refusal of a held-out file inside the repos
 - **Static:** `ruff check`, `ruff format --check` clean; `mypy` clean on the six touched evaluation modules; `basedpyright` 0 errors on the three touched test files; `git diff -- backend/app` is empty.
 - **Privacy checks:** a scan of every tracked text file for a held-out id, question or non-public reference answer finds none; `freeze check`, `coverage`, `pools validate --held-out` and `pools review-sheet` print counts only (tested with secret markers on fabricated files).
 
-### Owner review (pending)
+### Owner review (superseded: see "Owner review finalization M1-07-E" below)
 
 `m1_review_sheet_for_owner.md`, next to the sealed file in the same owner-only folder, holds **36 of the 180 cases**, stratified (shapes: ambiguous 1, calculation 5, follow-up 2, identifier 2, injection 3, lookup 11, multi-file 2, non-answer 6, table 4), each with two boxes, "correct" and "gold wrong". **Result: cases checked 0 of 36, errors found 0, corrections applied 0, all pending.** Corrections go through `freeze seal-held-out --reason ...` (a held-out amendment, no ids in the log); report only the share found here. **Tickets 08 and 11 must not start until the review is done** (a gold error would otherwise be measured; ticket 08's plain-question probe covers held-out cases once). The review is not a spend approval: each paid ticket also needs the Owner's own approval of its estimate and cap (spec decision 1), given when that ticket starts. Nothing in the repository records that the review is done (see "Review fix M1-07-C" below), so the check is a human one.
 
@@ -129,5 +129,28 @@ Evidence is aggregate and fabricated only: no held-out question, answer, review 
 - **Counts per gate group are committed.** The manifest records design counts per group (some under ten, such as ambiguous 6); they say how the pool is built, not how anything performed, and ticket 05 chose to commit them. Results remain suppressed under ten.
 - **Two corpus statements still contradict their details** (ticket 06, finding 4); no held-out case depends on either.
 - **Backup.** The sealed file and the review sheet exist only on this Mac. Back both up (the repository will not).
+
+### Owner review finalization M1-07-E (2026-11-22, on `b6d3f32`)
+
+Aggregate counts only: no held-out question, answer, anchor, id or per-case result appears here. No paid API, key, network, Railway, push or deployment was used; the sealed file was not modified.
+
+**Authorization.** The Owner reviewed the 36 sampled cases visually and authorized recording "correct" for every case that the existing tools verify, and "gold wrong" with a note for any that fail. None failed.
+
+**Re-verification before marking** (a scratch script outside the repository, printing counts and sheet positions only):
+- The sealed file's SHA-256 equals the checksum in `datasets/m1_freeze.json`; the sheet (36 cases, no duplicate id) matches the sealed file on behaviour, question, reference answer, history, judge note and every anchor (file and quote) for all 36 cases, including the case whose missing anchor was corrected in M1-07-D.
+- `pools validate --held-out`: 180 cases, 0 problems (anchors verbatim, one file each, reference answers pass their own checks). Every answer or partial case in the pool, and so every sampled one, has an anchor in each expected file.
+
+**Result.** Decisions recorded 36 of 36; **correct 36; gold wrong 0; unresolved 0.** Each case has exactly one box selected. Corrections applied: 0 (no amendment needed). The sheet stays in the owner-only folder (mode 600), outside the repository. The sealed file's checksum is identical before and after, and equals the manifest's.
+
+**Limits.** The sheet samples 36 of 180 cases; errors in the other 144 are not excluded. "Correct" means the reference answer and anchors were verified against the corpus text, not that the system answers the case. The review is **not** an approval of paid spend: ticket 08 and ticket 11 each need the Owner's explicit approval of their estimate and cap.
+
+**Free checks run:** `freeze check` 0 problems; `coverage --require-held-out` exit 0; `pytest tests/evaluation` 667 passed, 2 skipped (sealed file present); `ruff check` clean.
+
+**Blocker B-1 remains open (safeguard recommendation for a separate ticket).** Nothing in the repository still stops a paid held-out run on an unreviewed or later-modified sealed file; the review state lives only in this prose. Smallest deterministic mechanism:
+1. A review attestation file beside the sealed file (outside the repository), holding `sealed_sha256`, the number of cases reviewed, the number marked correct and the number marked gold wrong. A command (for example `pools attest-review`) writes it by parsing the Owner's sheet: it refuses unless every sheet case has exactly one box, every id is in the sealed file, there are at least 30 cases and none is "gold wrong"; it records the sealed file's current hash and the sheet's hash.
+2. One check in `pools.load_held_out`, the only entry point the paid `run --split held_out` path uses: the file must have an attestation whose `sealed_sha256` equals the file's current hash and the manifest's `held_out` checksum; otherwise stop with a message that names no case. Any later amendment changes the hash, so it invalidates the attestation without extra bookkeeping.
+3. Free-only commands (`validate`, `coverage`, `freeze check`, `review-sheet`) must bypass the check, so they use a separate loader flag, not the default.
+4. Tests: no attestation, a stale hash, a sheet with an unticked or doubly ticked case, a "gold wrong" case and fewer than 30 cases each refuse; a matching attestation passes; the review-sheet output stays outside the repository.
+The attestation records review only; the spend approval and cap stay the Owner's separate act at the start of each paid ticket.
 
 ## Comments
