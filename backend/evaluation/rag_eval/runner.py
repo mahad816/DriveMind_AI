@@ -11,7 +11,9 @@ from app.agents.tool_rag.finalization import FILE_NOT_FOUND_TEXT
 from app.core.config import Settings
 from app.services.rag_service import RagService
 
+from .anchors import load_chunks, load_file_chunks, map_case_anchors
 from .corpus import CorpusFile
+from .deep import Resolved, extend_rows
 from .judge import judge
 from .meter import BudgetExceeded, CostMeter, case_var, label_var
 from .score import Observed, answer_score, clean_score, evidence_score, summarise
@@ -231,6 +233,46 @@ def overall(row: dict[str, Any], behavior: str | None = None) -> bool:
     return all(row[k][keys[k]] for k in stages if row.get(k) is not None)
 
 
+async def load_resolved(
+    sessions: Any,
+    cases: dict[str, dict[str, Any]],
+    rows: Sequence[dict[str, Any]],
+    files: Sequence[CorpusFile],
+) -> Resolved:
+    """Chunk texts for the anchors of these cases and for every chunk the rows cite, from the evaluation
+    database. If the database cannot be reached the rows are still scored, without chunk-level fields
+    (a paid run is never lost to a free step)."""
+    names = {f.path: f.name for f in files}
+    wanted = {
+        names[a["file"]]
+        for c in cases.values()
+        for a in c.get("evidence_anchors", [])
+        if a["file"] in names
+    }
+    cited = {e["chunk_id"] for row in rows for e in row.get("cited") or []}
+    try:
+        async with sessions() as db:
+            by_file = await load_file_chunks(db, EVAL_USER_ID, wanted)
+            chunks = await load_chunks(db, cited)
+    except Exception:
+        return Resolved(names=names)
+    if wanted - by_file.keys():  # an empty or re-built index: its chunk ids are not the run's
+        return Resolved(names=names)
+    anchors = {cid: map_case_anchors(case, by_file, names) for cid, case in cases.items()}
+    texts = {chunk_id: text for chunk_list in by_file.values() for chunk_id, text in chunk_list}
+    return Resolved(str(EVAL_USER_ID), names, chunks, texts, anchors, database=True)
+
+
+async def extend_all(
+    sessions: Any,
+    cases: dict[str, dict[str, Any]],
+    rows: Sequence[dict[str, Any]],
+    files: Sequence[CorpusFile],
+) -> list[dict[str, Any]]:
+    """The deterministic scores of ``deep.py`` for every row (free: database reads only)."""
+    return extend_rows(cases, rows, await load_resolved(sessions, cases, rows, files))
+
+
 def pipeline_settings(settings: Settings, pipeline: str) -> Settings:
     return settings.model_copy(update={"tool_rag_agent_enabled": PIPELINES[pipeline]})
 
@@ -270,6 +312,11 @@ async def run_pipeline(
         raise
     for row in rows:
         row["repeat"] = repeat
+    try:
+        rows = await extend_all(sessions, {c["id"]: c for c in prepared}, rows, files)
+    except Exception as exc:  # the answers are paid for: keep them, say the free scores are missing
+        for row in rows:
+            row["extend_error"] = describe_error(exc)
     return {
         "pipeline": pipeline,
         "model": settings.chat_model,

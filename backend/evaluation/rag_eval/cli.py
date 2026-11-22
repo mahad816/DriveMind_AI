@@ -37,6 +37,7 @@ from .meter import (
 from .runner import (
     JUDGED,
     PIPELINES,
+    extend_all,
     judge_row,
     pipeline_settings,
     prepare_case,
@@ -44,7 +45,7 @@ from .runner import (
     score_row,
 )
 from .score import summarise
-from .target import ensure_database, eval_settings, ingest, migrate
+from .target import ensure_database, eval_settings, ingest, migrate, session_factory
 
 
 def corpus_files(*, with_messy: bool) -> list[CorpusFile]:
@@ -244,6 +245,9 @@ async def rescore(args: argparse.Namespace) -> None:
             ]
     except BudgetExceeded as exc:
         raise SystemExit(f"STOPPED: {exc}. Nothing was written. Ask before spending more.") from exc
+    rows = await extend_all(
+        lambda: session_factory(settings)(), cases, rows, corpus_files(with_messy=args.with_messy)
+    )
     data.update(
         rows=rows, summary=summarise(rows), rescored_from=source.name, rescore_spend=meter.summary()
     )
