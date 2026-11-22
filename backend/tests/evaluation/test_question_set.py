@@ -17,6 +17,7 @@ import pytest
 from evaluation.rag_eval import coverage, dataset, judge, pools, runner
 from evaluation.rag_eval.dataset import DATA, validate
 from evaluation.rag_eval.schema_v3 import (
+    is_v3,
     HISTORY_MAX_CHARS,
     HISTORY_MAX_MESSAGES,
     case_types,
@@ -107,10 +108,12 @@ def raw_cases() -> dict[str, list[dict[str, Any]]]:
 def test_all_pools_load_the_201_existing_cases_with_original_ids():
     loaded = pools.load_question_set()["cases"]
     raw = raw_cases()
-    assert len(loaded) == 201
-    assert [c["id"] for c in loaded] == [c["id"] for name in pools.LEGACY_FILES for c in raw[name]]
-    assert len({c["id"] for c in loaded}) == 201
-    assert Counter(c["pool"] for c in loaded) == {"development": 120, "regression": 81}
+    older = [c["id"] for name in pools.LEGACY_FILES for c in raw[name]]
+    assert len(older) == 201
+    # the four older files come first, unchanged and in order; later tickets add files after them
+    assert [c["id"] for c in loaded[:201]] == older
+    assert Counter(c["pool"] for c in loaded[:201]) == {"development": 120, "regression": 81}
+    assert len({c["id"] for c in loaded}) == len(loaded)
 
 
 def test_nothing_is_relabelled_on_disk():
@@ -336,6 +339,37 @@ def test_computed_and_non_answer_cases_have_no_siblings():
 # --- clarify -----------------------------------------------------------------------------------------
 
 
+def not_found_case(claim: str, **changes: Any) -> dict[str, Any]:
+    return valid_case(
+        id="n03",
+        category="named_file_missing",
+        question="What does policy_v3.md say about servicing?",
+        expected_behavior="not_found",
+        expected_files=[],
+        must_include=[],
+        must_not_include=[claim],
+        reference_answer="No file named policy_v3.md exists.",
+        evidence_anchors=[],
+        tags=[],
+        **changes,
+    )
+
+
+def test_a_forbidden_claim_of_a_missing_thing_must_be_absent_from_every_corpus_family():
+    """A refusal that mentions the similar document that does exist must not trip over its own forbidden
+    claim, so a claim found in any corpus file (synthetic, messy, v1 or a Google export) is rejected.
+    Before the fix only synthetic/ and messy/ were scanned, so a Marrowdale case could carry a claim that
+    the corpus really contains."""
+    texts = {**TEXTS, "google/notice.docx": "Gates open at 10:00 on the open day."}
+
+    def check(claim: str) -> list[str]:
+        return validate({"cases": [not_found_case(claim)]}, [], texts=texts)
+
+    assert has(check("15000 km"), "actually present in the corpus")  # v1/ file
+    assert has(check("gates open at 10:00"), "actually present in the corpus")  # google/ file
+    assert check("99999 km") == []  # absent: the control
+
+
 def test_a_clarify_case_is_valid_when_its_readings_are_grounded():
     assert problems(clarify_case()) == []
 
@@ -434,6 +468,72 @@ def history(count: int, chars: int) -> list[dict[str, str]]:
     ]
 
 
+def reference_contradictions(cases: list[dict[str, Any]]) -> list[str]:
+    """Cases whose own reference answer fails the case's deterministic checks (a contradictory gold)."""
+    from evaluation.rag_eval import deep
+    from evaluation.rag_eval.text import contains, satisfies
+
+    found = []
+    for c in cases:
+        ref = c["reference_answer"]
+        if c["expected_behavior"] in {"answer", "partial"} and not all(
+            satisfies(ref, group) for group in c["must_include"]
+        ):
+            found.append(f"{c['id']}: reference lacks a required fact")
+        if any(contains(ref, claim) for claim in c["must_not_include"]):
+            found.append(f"{c['id']}: reference states a forbidden value")
+        if c["expected_behavior"] == "clarify" and deep.clarifying(c, ref) is not True:
+            found.append(f"{c['id']}: reference is not accepted as a clarifying question")
+    return found
+
+
+def test_every_v3_reference_answer_passes_its_own_deterministic_checks():
+    cases = [c for c in pools.load_question_set()["cases"] if is_v3(c)]
+    assert cases and reference_contradictions(cases) == []
+
+
+def test_a_contradictory_reference_is_detected():
+    good = pools.load_question_set()["cases"]
+    by_id = {c["id"]: c for c in good if is_v3(c)}
+    missing = {**by_id["rb01"], "reference_answer": "The port is not stated."}
+    forbids = {**by_id["rb01"], "reference_answer": "Port 7420, not 7430."}
+    vague = {**by_id["am01"], "reference_answer": "How can I help you?"}
+    assert reference_contradictions([missing]) == ["rb01: reference lacks a required fact"]
+    assert reference_contradictions([forbids]) == ["rb01: reference states a forbidden value"]
+    assert reference_contradictions([vague]) == [
+        "am01: reference is not accepted as a clarifying question"
+    ]
+
+
+NOISE = (
+    "The 2019 results. The 10 sites. In 2008 it began. A 77 case. Of 45 units. And 3000 more. "
+    "On 99 days. For 1234 hours. With 56 staff. At 78 sites. It 15 times."
+)
+
+
+def test_a_cases_sibling_values_do_not_depend_on_unrelated_documents(real):
+    """`pools validate` without the public PDFs must agree with `--with-public`. An anchor that starts with a
+    generic word (a one-word context) let digits from any other document become siblings, and only the slow
+    run with the public PDFs showed it (sk02, ticket 06). Adding unrelated text may not change a case's siblings."""
+    noisy = {**real, "public/unrelated.pdf": NOISE}
+    cases = [c for c in pools.load_question_set()["cases"] if is_v3(c)]
+    assert cases
+    unstable = [c["id"] for c in cases if sibling_values(c, real) != sibling_values(c, noisy)]
+    assert unstable == []
+
+
+def test_the_noise_check_catches_an_anchor_that_starts_with_a_generic_word(real):
+    case = next(c for c in pools.load_question_set()["cases"] if c["id"] == "sk02")
+    fragile = copy.deepcopy(case)
+    for anchor in fragile["evidence_anchors"]:
+        anchor["quote"] = anchor["quote"].replace(
+            "Tollbridge depot manager", "The Tollbridge depot manager"
+        )
+    noisy = {**real, "public/unrelated.pdf": NOISE}
+    assert sibling_values(case, real) == sibling_values(case, noisy)
+    assert sibling_values(fragile, real) != sibling_values(fragile, noisy)
+
+
 def test_the_history_bound_is_six_messages_and_six_thousand_characters():
     assert (HISTORY_MAX_MESSAGES, HISTORY_MAX_CHARS) == (6, 6000)
     assert problems(valid_case(history=history(6, 6000), tags=["table", "follow_up"])) == []
@@ -502,18 +602,38 @@ def test_files_that_are_alternatives_do_not_make_a_multi_file_question():
 
 
 def test_coverage_counts_the_current_pools():
-    cases = pools.load_question_set()["cases"]
-    counts = coverage.pool_counts(cases)
+    # the four older files, before any new development file
+    older = pools.load_question_set()["cases"][:201]
+    counts = coverage.pool_counts(older)
     assert counts["development"]["total"] == 120 and counts["regression"]["total"] == 81
     assert counts["development"]["non_answer"] + counts["regression"]["non_answer"] == 52
     assert counts["development"]["ambiguous"] == counts["regression"]["critical"] == 0
+
+
+def test_development_and_regression_meet_every_minimum_that_does_not_depend_on_the_held_out_pool():
+    """Ticket 06's acceptance: what the held-out pool (ticket 07) will not supply must already be there. A
+    whole-set minimum less its held-out share is the target; a gate with no held-out share (table lookup) and
+    the eight evidence cases per promised format are held to the full number."""
+    counts = coverage.pool_counts(pools.load_question_set()["cases"])
+    for gate in coverage.GATES:
+        have = counts["development"][gate.key] + counts["regression"][gate.key]
+        target = gate.minimum - gate.held_out_minimum
+        if gate.key.startswith("format_"):
+            target = gate.minimum
+        assert have >= target, (
+            f"{gate.label}: {have} in development plus regression, {target} needed"
+        )
+    docs = coverage.injection_documents(pools.load_question_set()["cases"])
+    assert len(docs) >= coverage.MIN_INJECTION_DOCUMENTS
+    assert len({Path(d).suffix for d in docs}) >= coverage.MIN_INJECTION_FORMATS
 
 
 def test_coverage_exits_non_zero_while_a_full_set_minimum_is_unmet(monkeypatch, capsys):
     monkeypatch.delenv(pools.HELD_OUT_ENV, raising=False)
     assert coverage.main([]) == 1
     out = capsys.readouterr().out
-    assert "SHORT" in out and "cases in total" in out and "201" in out
+    total = len(pools.load_question_set()["cases"])
+    assert "SHORT" in out and "cases in total" in out and str(total) in out
 
 
 def full_counts(held_out: int = 0) -> dict[str, Counter[str]]:

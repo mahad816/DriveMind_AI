@@ -22,7 +22,7 @@ def area(tmp_path: Path) -> dict[str, Path]:
     """A throwaway copy of the case files, the manifest and the log."""
     root = tmp_path / "datasets"
     root.mkdir()
-    for name in pools.LEGACY_FILES:
+    for name in json.loads((DATA / "m1_freeze.json").read_text())["files"]:
         shutil.copy(DATA / name, root / name)
     manifest, log = tmp_path / "m1_freeze.json", tmp_path / "m1_amendments.json"
     shutil.copy(DATA / "m1_freeze.json", manifest)
@@ -74,10 +74,13 @@ def test_the_freeze_records_the_corpus_version_the_pool_mapping_and_every_case_f
         == pools.POOLS
         == {"dev": "development", "test": "regression", "held_out": "held_out"}
     )
-    assert list(manifest["files"]) == list(pools.LEGACY_FILES)
-    assert sum(f["cases"] for f in manifest["files"].values()) == 201
+    # The four legacy files, unchanged, then the files later tickets registered (ticket 06: its development file).
+    assert list(manifest["files"]) == [*pools.LEGACY_FILES, "rag_v3_dev_cases.json"]
+    assert sum(manifest["files"][n]["cases"] for n in pools.LEGACY_FILES) == 201
     for name, node in manifest["files"].items():
-        assert node["sha256"] == freeze.sha256_of(DATA / name) == node["frozen_sha256"]
+        assert node["sha256"] == freeze.sha256_of(DATA / name)  # the current checksum is the file's
+        if name in pools.LEGACY_FILES:  # the four older files were never amended after the freeze
+            assert node["sha256"] == node["frozen_sha256"]
 
 
 def test_the_first_amendment_entries_come_from_the_results_history():
@@ -93,13 +96,12 @@ def test_the_first_amendment_entries_come_from_the_results_history():
         and by_case["id10"]["sha256_before_prefix"] == "1d9f4f05"
     )
     assert by_case["id10"]["sha256_after"].startswith("7f5f4dfd")
+    # The first five entries are reconstructed from git and the results history; later ones are written as the
+    # freeze tool records changes (ticket 06 added its development file as an "addition").
+    assert [e["phase"] for e in log[:5]] == ["history"] * 5
+    assert {e["phase"] for e in log[5:]} <= {"post_freeze"}
     for entry in log:
-        assert (
-            entry["reason"]
-            and entry["date"]
-            and entry["sha256_after"]
-            and entry["phase"] == "history"
-        )
+        assert entry["reason"] and entry["date"] and entry["sha256_after"]
 
 
 # --- a silent edit fails; an amendment makes it pass ----------------------------------------------
@@ -207,6 +209,12 @@ def test_a_new_case_file_must_be_registered_and_is_then_frozen(area):
     assert any("m1_dev_cases_a.json: changed since it was frozen" in p for p in problems(area))
     amend(area, new.name, case_ids=["n01"], reason="question reworded before any run")
     assert problems(area) == []
+
+
+def test_an_unregistered_rag_v3_case_file_fails_like_any_other(area):
+    """Ticket 06 named its file rag_v3_dev_cases.json; the guard for unlisted case files must cover that family."""
+    (area["root"] / "rag_v3_extra_cases.json").write_text(json.dumps({"cases": []}))
+    assert any("rag_v3_extra_cases.json: case file not in the freeze" in p for p in problems(area))
 
 
 def test_a_missing_frozen_file_fails(area):

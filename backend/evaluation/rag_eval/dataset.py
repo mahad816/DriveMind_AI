@@ -133,7 +133,7 @@ def validate(
             if case["expected_behavior"] in {"not_found", "decline_or_not_found"} and any(
                 contains(t, claim)
                 for p, t in texts.items()
-                if p.startswith(("synthetic/", "messy/")) and "smsgate" not in p
+                if p.startswith(("synthetic/", "messy/", "v1/", "google/")) and "smsgate" not in p
             ):
                 problems.append(
                     f"{cid}: forbidden claim {claim!r} is actually present in the corpus"

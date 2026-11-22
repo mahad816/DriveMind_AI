@@ -42,6 +42,14 @@
     "development": 10,
     "regression": 9
    }
+  },
+  "rag_v3_dev_cases.json": {
+   "frozen_sha256": "208eb1505e01617f950c5481022b0f1a740263bb5557e598b88fcf5e0e272f5d",
+   "sha256": "8b7429a6d300475f01e259f011dbdb615e1631c21a8de2d0712d133a753aa855",
+   "cases": 81,
+   "by_pool": {
+    "development": 81
+   }
   }
  },
  "held_out": {

@@ -35,7 +35,7 @@ HELD_OUT_KEY = "held_out"
 KINDS = {"correction", "addition", "move_to_development"}
 SHA = re.compile(r"[0-9a-f]{64}")
 PREFIX = re.compile(r"[0-9a-f]{6,63}")
-CASE_FILE_PATTERNS = ("rag_v2_*.json", "m1_*cases*.json")
+CASE_FILE_PATTERNS = ("rag_v2_*.json", "rag_v3_*.json", "m1_*cases*.json")
 
 
 def sha256_of(path: Path) -> str:
