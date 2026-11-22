@@ -35,8 +35,9 @@ from app.llm.openai_agent_service import OpenAIAgentChatService
 from app.retrieval.hybrid import HybridRetriever
 from app.services.tool_agent_service import bounded_agent_history
 
-from .corpus import messy_files, public_files, synthetic_files, verify
+from .corpus import verify
 from .dataset import files_to_check, load_cases, validate
+from .frozen_corpus import FrozenCorpusError, corpus_for
 from .meter import BudgetExceeded, CostMeter, cap_argument
 from .retrieval_probe import (
     DATASETS,
@@ -153,10 +154,12 @@ async def run_probe(
 
 
 async def run(args: argparse.Namespace) -> None:
-    files = synthetic_files() + public_files()
     names = args.dataset or (list(MESSY_DATASETS) if args.messy else list(DATASETS))
-    if args.messy or args.with_messy:
-        files += messy_files()  # the store must hold them too: cli setup --with-messy
+    try:
+        # Legacy: the store must hold the messy documents too (cli setup --with-messy). Frozen: it holds them already.
+        files = corpus_for(frozen=args.frozen, with_messy=args.messy or args.with_messy)
+    except FrozenCorpusError as exc:
+        raise SystemExit(f"STOPPED: {exc}") from exc
     verify(files)
     cases: list[dict[str, Any]] = []
     for name in names:
@@ -242,6 +245,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--with-messy", action="store_true", help="the store holds the messy documents"
+    )
+    parser.add_argument(
+        "--frozen",
+        action="store_true",
+        help="the store holds the complete frozen M1 corpus (cli setup --frozen)",
     )
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--tag", help="suffix for the result file name")

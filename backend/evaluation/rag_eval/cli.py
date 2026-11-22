@@ -20,9 +20,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .corpus import CorpusFile, messy_files, public_files, synthetic_files, verify
+from .corpus import CorpusFile, verify
 from .dataset import files_to_check, load_many, validate
 from .freeze import sha256_of
+from .frozen_corpus import FrozenCorpusError, corpus_for, frozen_corpus
+from .index_manifest import record_index
 from .judge import JUDGE_MODEL
 from .manifest import build_manifest
 from .meter import (
@@ -51,12 +53,28 @@ from .sealing import reduce_row
 from .target import ensure_database, eval_settings, ingest, migrate, session_factory
 
 
-def corpus_files(*, with_messy: bool) -> list[CorpusFile]:
+def corpus_files(*, with_messy: bool, frozen: bool = False) -> list[CorpusFile]:
     """The evaluation corpus. The generated messy documents (DOCX, PPTX, XLSX, PDF) are added on request:
     a store that holds them gives different answers to the older datasets (five more files to confuse
-    with), so they never join a run by accident."""
-    files = synthetic_files() + public_files()
-    return files + messy_files() if with_messy else files
+    with), so they never join a run by accident.
+
+    ``frozen`` selects the complete frozen M1 corpus from the committed manifests (synthetic, messy, v1,
+    Google exports and every public PDF); it already contains the messy documents, so it cannot be combined
+    with ``with_messy``. A corpus that differs from its manifests is refused with every difference named.
+    """
+    if frozen and with_messy:
+        raise SystemExit("--frozen already includes the messy documents; do not add --with-messy.")
+    try:
+        return corpus_for(frozen=frozen, with_messy=with_messy)
+    except FrozenCorpusError as exc:
+        raise SystemExit(f"STOPPED: {exc}") from exc
+
+
+def selected_files(args: argparse.Namespace) -> list[CorpusFile]:
+    """The corpus the command line asks for. The legacy call is unchanged unless --frozen is given."""
+    if getattr(args, "frozen", False):
+        return corpus_files(with_messy=args.with_messy, frozen=True)
+    return corpus_files(with_messy=args.with_messy)
 
 
 MAX_REPEATS = 5
@@ -88,7 +106,7 @@ def report_plan(plan: dict[str, Any], cap: float) -> None:
 
 
 async def setup(args: argparse.Namespace) -> None:
-    files = corpus_files(with_messy=args.with_messy)
+    files = selected_files(args)
     verify(files)
     # Upper bound: every file embedded from scratch at 4 bytes per token; files already indexed cost nothing.
     megabytes = sum(f.absolute.stat().st_size for f in files) / 1_000_000
@@ -112,7 +130,17 @@ async def setup(args: argparse.Namespace) -> None:
             counts = await ingest(settings, files)
     except BudgetExceeded as exc:
         raise SystemExit(f"STOPPED: {exc}. Ask before spending more.") from exc
-    print(json.dumps({"corpus_files": len(files), **counts, "spend": meter.summary()}, indent=1))
+    report: dict[str, Any] = {"corpus_files": len(files), **counts, "spend": meter.summary()}
+    problems: list[str] = []
+    if getattr(args, "frozen", False):
+        # Free: reads the evaluation index back and compares it with the frozen corpus.
+        path, problems = await record_index(settings, frozen_corpus())
+        report |= {"index_manifest": path.name, "index_problems": problems}
+    print(json.dumps(report, indent=1))
+    if problems:
+        raise SystemExit(
+            f"INDEX DIFFERS FROM THE FROZEN CORPUS: {len(problems)} problem(s), see above."
+        )
 
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
@@ -120,7 +148,7 @@ HELD_OUT_RESULTS = "heldout_results"  # a folder next to the sealed file, outsid
 
 
 async def run(args: argparse.Namespace) -> None:
-    files = corpus_files(with_messy=args.with_messy)
+    files = selected_files(args)
     verify(files)
     sealed = args.split == "held_out"
     if sealed and (args.ids or args.category or args.limit or args.repeats != 1):
@@ -246,7 +274,7 @@ async def rescore(args: argparse.Namespace) -> None:
     """Apply the current judge and pass rules to the replies of a saved run; nothing is re-asked."""
     source = Path(args.file)
     data = json.loads(source.read_text())
-    total = len(corpus_files(with_messy=args.with_messy))  # pass --with-messy if the run used it
+    total = len(selected_files(args))  # pass the flag the run used
     # The datasets the run was made with are recorded in its file; the command-line default is not.
     cases = {
         c["id"]: prepare_case(c, total)
@@ -273,7 +301,10 @@ async def rescore(args: argparse.Namespace) -> None:
     except BudgetExceeded as exc:
         raise SystemExit(f"STOPPED: {exc}. Nothing was written. Ask before spending more.") from exc
     rows = await extend_all(
-        lambda: session_factory(settings)(), cases, rows, corpus_files(with_messy=args.with_messy)
+        lambda: session_factory(settings)(),
+        cases,
+        rows,
+        selected_files(args),
     )
     data.update(
         rows=rows, summary=summarise(rows), rescored_from=source.name, rescore_spend=meter.summary()
@@ -335,6 +366,12 @@ def main() -> None:
     )
     parser.add_argument("--model", default=None, help="chat model (default: the app default)")
     parser.add_argument("--concurrency", type=positive_int, default=3)
+    parser.add_argument(
+        "--frozen",
+        action="store_true",
+        help="use the complete frozen M1 corpus from the committed manifests (setup, run, rescore); "
+        "includes the messy documents, so do not combine with --with-messy",
+    )
     parser.add_argument(
         "--with-messy",
         action="store_true",

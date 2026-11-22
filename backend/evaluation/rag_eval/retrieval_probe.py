@@ -37,8 +37,9 @@ from app.retrieval.hybrid import HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import EligibleCollectionScope
 
-from .corpus import messy_files, public_files, synthetic_files, verify
-from .dataset import load_cases, validate
+from .corpus import messy_files, verify
+from .dataset import files_to_check, load_cases, validate
+from .frozen_corpus import FrozenCorpusError, corpus_for
 from .meter import BudgetExceeded, CostMeter, cap_argument
 from .runner import prepare_case
 from .score import wilson
@@ -196,9 +197,11 @@ def make_search(retriever: HybridRetriever) -> Search:
 
 
 async def run(args: argparse.Namespace) -> None:
-    files = synthetic_files() + public_files()
-    if args.messy:
-        files += messy_files()  # the store must hold them too: cli setup --with-messy
+    try:
+        # Legacy: the store must hold the messy documents too (cli setup --with-messy). Frozen: it holds them already.
+        files = corpus_for(frozen=args.frozen, with_messy=args.messy)
+    except FrozenCorpusError as exc:
+        raise SystemExit(f"STOPPED: {exc}") from exc
     verify(files)
     total = len(files)
     # The messy questions only name messy documents; checking them against those alone avoids reading
@@ -207,7 +210,8 @@ async def run(args: argparse.Namespace) -> None:
     cases: list[dict[str, Any]] = []
     for name in MESSY_DATASETS if args.messy else DATASETS:
         dataset = load_cases(name)
-        problems = validate(dataset, checked)
+        # The frozen corpus has 33 public PDFs: read only the ones a case points at.
+        problems = validate(dataset, files_to_check(dataset, files) if args.frozen else checked)
         if problems:
             raise SystemExit(f"{name} is invalid:\n" + "\n".join(problems))
         cases += [prepare_case(c, total) for c in dataset["cases"]]
@@ -281,6 +285,11 @@ def main() -> None:
         "--messy",
         action="store_true",
         help="probe the messy question set instead (the store needs cli setup --with-messy)",
+    )
+    parser.add_argument(
+        "--frozen",
+        action="store_true",
+        help="the store holds the complete frozen M1 corpus (cli setup --frozen)",
     )
     parser.add_argument(
         "--phrasings", action="store_true", help="also test the three lead-in wordings"
