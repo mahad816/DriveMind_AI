@@ -27,7 +27,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-
 from app.agents.tool_rag.claim_check import (
     MAX_EVIDENCE_CHARS,
     clean_unit,
@@ -37,7 +36,7 @@ from app.agents.tool_rag.claim_check import (
 from app.core.config import get_settings
 from app.llm.openai_agent_service import OpenAIAgentChatService
 
-from .meter import CostMeter, label_var
+from .meter import CostMeter, cap_argument, label_var
 from .score import wilson
 
 API = "https://datasets-server.huggingface.co/rows"
@@ -234,6 +233,11 @@ if __name__ == "__main__":
     parser.add_argument("--model", default="gpt-5.4-nano")
     parser.add_argument("--per-config", type=int, default=40)
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--cap", type=float, default=1.0)
+    parser.add_argument(
+        "--cap",
+        type=cap_argument,
+        required=True,
+        help="hard spend cap in USD (required, no default)",
+    )
     parser.add_argument("--concurrency", type=int, default=4)
     asyncio.run(main(parser.parse_args()))

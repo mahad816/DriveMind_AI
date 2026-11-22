@@ -39,7 +39,7 @@ from app.routing.intent_frame.scope import EligibleCollectionScope
 
 from .corpus import messy_files, public_files, synthetic_files, verify
 from .dataset import load_cases, validate
-from .meter import BudgetExceeded, CostMeter
+from .meter import BudgetExceeded, CostMeter, cap_argument
 from .runner import prepare_case
 from .score import wilson
 from .target import EVAL_USER_ID, eval_settings, session_factory
@@ -293,7 +293,12 @@ def main() -> None:
     )
     parser.add_argument("--top-k", type=int, help="override retrieval_top_k")
     parser.add_argument("--tag", help="suffix for the result file name")
-    parser.add_argument("--cap", type=float, default=0.10, help="hard spend cap in USD")
+    parser.add_argument(
+        "--cap",
+        type=cap_argument,
+        required=True,
+        help="hard spend cap in USD (required, no default)",
+    )
     asyncio.run(run(parser.parse_args()))
 
 

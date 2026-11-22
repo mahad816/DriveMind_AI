@@ -10,6 +10,7 @@ import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
@@ -38,11 +39,44 @@ def admin_url() -> str:
     )
 
 
+# Every setting that can change an answer. The evaluation measures the application's code defaults for
+# these (what a rebuilt deployment runs), never whatever the local environment or .env happens to say.
+ANSWER_FIELDS = (
+    "tool_rag_agent_enabled",
+    "agent_graph_enabled",
+    "hybrid_retrieval_enabled",
+    "claim_check_enabled",
+    "claim_check_model",
+    "chat_model",
+    "embedding_model",
+    "retrieval_candidate_k",
+    "retrieval_top_k",
+    "retrieval_score_threshold",
+    "retrieval_relative_threshold",
+    "retrieval_name_term_max_files",
+    "retrieval_max_chunks_per_file",
+    "hybrid_rrf_k",
+    "hybrid_weight_vector",
+    "hybrid_weight_keyword",
+    "hybrid_weight_metadata",
+    "evidence_min_fusion_score",
+    "fts_language",
+    "rag_max_context_chars",
+    "agent_max_rewrite_attempts",
+)
+
+
+def application_defaults() -> dict[str, Any]:
+    """The code default of every answer-relevant setting."""
+    return {name: Settings.model_fields[name].get_default() for name in ANSWER_FIELDS}
+
+
 def eval_settings(*, chat_model: str | None = None, tool_agent: bool = True) -> Settings:
     base = get_settings()
     url = make_url(admin_url()).set(database=EVAL_DB).render_as_string(hide_password=False)
     settings = base.model_copy(
         update={
+            **application_defaults(),
             "database_url": url,
             "qdrant_url": "",
             "qdrant_api_key": "",
@@ -52,8 +86,6 @@ def eval_settings(*, chat_model: str | None = None, tool_agent: bool = True) -> 
             "demo_mode": False,
             "debug": False,
             "tool_rag_agent_enabled": tool_agent,
-            "agent_graph_enabled": False,
-            "hybrid_retrieval_enabled": True,
             **({"chat_model": chat_model} if chat_model else {}),
         }
     )

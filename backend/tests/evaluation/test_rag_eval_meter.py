@@ -6,7 +6,14 @@ from typing import Any
 import pytest
 from openai.resources.chat.completions import AsyncCompletions
 
-from evaluation.rag_eval.meter import BudgetExceeded, CostMeter, cost_of, label_var, price_for
+from evaluation.rag_eval.meter import (
+    BudgetExceeded,
+    CostMeter,
+    UnpricedModel,
+    cost_of,
+    label_var,
+    price_for,
+)
 
 
 async def sdk_create(*args: Any, **kwargs: Any) -> Any:
@@ -44,7 +51,9 @@ def test_dated_model_names_resolve_to_the_most_specific_price():
 def test_unknown_model_is_an_error_not_free():
     with pytest.raises(KeyError, match="no price recorded"):
         price_for("gpt-99-imaginary")
-    with pytest.raises(KeyError):
+    with pytest.raises(
+        UnpricedModel
+    ):  # stops the run; a plain KeyError would be swallowed by the app
         CostMeter(1.0).record(response("gpt-99-imaginary", 10, 10))
 
 

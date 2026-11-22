@@ -36,6 +36,34 @@ uv run pytest tests/evaluation -q
 
 A deliberate gold run uses `uv run python -m evaluation.runner --execute-gold`. It needs the controlled Drive corpus indexed in PostgreSQL and Qdrant, a configured backend/OpenAI environment, and a clean Git tree by default. The explicit flag prevents accidental live API usage. The runner writes JSON under `backend/evaluation/results/`, which is ignored by Git. The conversation harness has its own explicit `--execute-conversation` flag and dataset. Do not treat synthetic test fixtures as measured retrieval quality.
 
+## The v2 harness (`backend/evaluation/rag_eval/`): free and paid commands
+
+Run from `backend/`. The v2 harness answers the committed question sets through the production path against an isolated, disposable PostgreSQL and Qdrant store (see `docs/EVALUATION_RESULTS.md`).
+
+**Free (no key, no provider, no store):**
+
+```bash
+env -u OPENAI_API_KEY uv run pytest tests/evaluation -q
+uv run python -m evaluation.rag_eval.cli run --plan --cap 3 --pipelines tool_agent --split dev
+uv run python -m evaluation.rag_eval.cli setup --plan --cap 1
+uv run python -m evaluation.rag_eval.cli rescore evaluation/results/FILE.json --plan --cap 1
+```
+
+`--plan` prints the number of cases, the expected calls by role and an estimate, then stops: nothing is called, built or written. The estimate uses the dated planning constants in `evaluation/rag_eval/prices.json` (`estimates`), which are not measurements.
+
+**Paid (can spend money, each needs an explicit `--cap` in USD, no default):**
+
+| Command | What it can spend on |
+|---|---|
+| `cli setup --cap USD` | embeddings for the corpus |
+| `cli run --cap USD [--repeats N] [--limit N]` | the answering calls and the refusal judge; `--repeats` is 1 to 5 and writes one result file per repeat and pipeline |
+| `cli rescore FILE --cap USD` | the refusal judge |
+| `first_step_probe`, `retrieval_probe`, `ragbench_check`, `planted_claims` (`--cap USD`) | one model call or one embedding per question; these four have no `--plan` yet |
+
+A command whose estimate is above `--cap` refuses to start. During a run the meter refuses every provider call after the cap is reached and the run stops (the run in progress is not written). The meter checks before each call, so requests already in flight can overshoot by up to the concurrency times one call. It counts successful responses only, so SDK retries and failed requests are invisible to it.
+
+Every `run` result file carries a `manifest` (schema version 1): the audited commit and whether the tree was clean, every answer-relevant setting, digests of the prompts and tool descriptions, corpus and dataset checksums, the price-table date, concurrency, repeat index and count, library versions, the cap and the spend. The evaluation settings are pinned to the application's code defaults (`target.ANSWER_FIELDS`), whatever the local environment says; only `--model`, `--threshold`, `--relative` and `--no-claim-check` change them, and the manifest lists such differences under `deviations_from_default`. Files written before the manifest existed can still be re-scored.
+
 ## What to measure
 
 The implemented diagnostics can help answer:

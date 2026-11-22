@@ -28,7 +28,7 @@ from app.llm.openai_agent_service import OpenAIAgentChatService
 
 from .corpus import public_files, synthetic_files
 from .dataset import corpus_texts, load_cases
-from .meter import CostMeter, label_var
+from .meter import CostMeter, cap_argument, label_var
 from .score import wilson
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
@@ -189,5 +189,10 @@ async def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="gpt-5.4-mini")
-    parser.add_argument("--cap", type=float, default=0.4)
+    parser.add_argument(
+        "--cap",
+        type=cap_argument,
+        required=True,
+        help="hard spend cap in USD (required, no default)",
+    )
     asyncio.run(main(parser.parse_args()))

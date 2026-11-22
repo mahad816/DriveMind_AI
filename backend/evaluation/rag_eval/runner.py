@@ -13,7 +13,7 @@ from app.services.rag_service import RagService
 
 from .corpus import CorpusFile
 from .judge import judge
-from .meter import BudgetExceeded, label_var
+from .meter import label_var
 from .score import Observed, answer_score, clean_score, evidence_score, summarise
 from .target import EVAL_USER_ID, session_factory
 
@@ -72,9 +72,8 @@ async def run_case(
             )
         answer = result.answer
         cited = tuple(dict.fromkeys(by_name.get(c.filename, c.filename) for c in result.citations))
-    except BudgetExceeded:
-        raise
     except Exception as exc:  # one failing case must not end the run; record the class only
+        # (BudgetExceeded is a BaseException and passes through: the cap ends the run.)
         error = describe_error(exc)
     finally:
         label_var.reset(label)
@@ -145,6 +144,10 @@ def overall(row: dict[str, Any], behavior: str | None = None) -> bool:
     return all(row[k][keys[k]] for k in stages if row.get(k) is not None)
 
 
+def pipeline_settings(settings: Settings, pipeline: str) -> Settings:
+    return settings.model_copy(update={"tool_rag_agent_enabled": PIPELINES[pipeline]})
+
+
 async def run_pipeline(
     settings: Settings,
     cases: Sequence[dict[str, Any]],
@@ -152,19 +155,29 @@ async def run_pipeline(
     pipeline: str,
     *,
     concurrency: int = 3,
+    repeat: int = 1,
 ) -> dict[str, Any]:
-    pipeline_settings = settings.model_copy(update={"tool_rag_agent_enabled": PIPELINES[pipeline]})
-    sessions = session_factory(pipeline_settings)
+    chosen = pipeline_settings(settings, pipeline)
+    sessions = session_factory(chosen)
     gate = asyncio.Semaphore(concurrency)
     total = len(files)
     prepared = [prepare_case(c, total) for c in cases]
 
     async def one(case: dict[str, Any]) -> dict[str, Any]:
         async with gate:
-            return await run_case(pipeline_settings, case, files, pipeline, sessions)
+            return await run_case(chosen, case, files, pipeline, sessions)
 
     started = datetime.now(UTC)
-    rows = await asyncio.gather(*(one(c) for c in prepared))
+    tasks = [asyncio.ensure_future(one(c)) for c in prepared]
+    try:
+        rows = await asyncio.gather(*tasks)
+    except BaseException:  # the spend cap (or Ctrl-C): stop the cases still waiting or running
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    for row in rows:
+        row["repeat"] = repeat
     return {
         "pipeline": pipeline,
         "model": settings.chat_model,

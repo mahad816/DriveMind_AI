@@ -37,7 +37,7 @@ from app.services.tool_agent_service import bounded_agent_history
 
 from .corpus import messy_files, public_files, synthetic_files, verify
 from .dataset import files_to_check, load_cases, validate
-from .meter import BudgetExceeded, CostMeter
+from .meter import BudgetExceeded, CostMeter, cap_argument
 from .retrieval_probe import (
     DATASETS,
     MESSY_DATASETS,
@@ -245,7 +245,12 @@ def main() -> None:
     )
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--tag", help="suffix for the result file name")
-    parser.add_argument("--cap", type=float, default=0.10, help="hard spend cap in USD")
+    parser.add_argument(
+        "--cap",
+        type=cap_argument,
+        required=True,
+        help="hard spend cap in USD (required, no default)",
+    )
     asyncio.run(run(parser.parse_args()))
 
 
