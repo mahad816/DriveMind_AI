@@ -7,6 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from .corpus import CorpusFile, extract_text, public_files, synthetic_files
+from .schema_v3 import (
+    anchor_uniqueness_problems,
+    clarify_problems,
+    history_problems,
+    is_v3,
+    sibling_problems,
+    v3_field_problems,
+)
 from .text import contains, norm, satisfies
 
 DATA = Path(__file__).resolve().parents[1] / "datasets"
@@ -18,8 +26,10 @@ BEHAVIORS = {
     "inventory",
     "correct_premise",
     "partial",  # part of the answer is in the files, part is not: state the first, never invent the second
+    "clarify",  # the question is ambiguous: the correct reply is one short clarifying question
 }
-SPLITS = {"dev", "test"}
+SPLITS = {"dev", "test", "held_out"}
+HELD_OUT_SPLIT = "held_out"
 
 
 def load_cases(name: str = "rag_v2_cases.json") -> dict[str, Any]:
@@ -28,10 +38,19 @@ def load_cases(name: str = "rag_v2_cases.json") -> dict[str, Any]:
 
 
 def load_many(names: Sequence[str]) -> dict[str, Any]:
-    """Several case files as one dataset; ``validate`` reports an id that appears twice."""
+    """Several case files as one dataset; ``validate`` reports an id that appears twice.
+
+    A file inside the repository may not hold held-out cases: the sealed pool lives outside the working
+    tree (see ``pools.py``), so such a file is refused rather than loaded.
+    """
     merged: dict[str, Any] = {"cases": []}
     for name in names:
-        merged["cases"] += load_cases(name)["cases"]
+        cases = load_cases(name)["cases"]
+        if any(c.get("split") == HELD_OUT_SPLIT for c in cases):
+            raise ValueError(
+                f"{name} holds held-out cases; the sealed pool must live outside the repository"
+            )
+        merged["cases"] += cases
     return merged
 
 
@@ -57,12 +76,18 @@ def validate(
     files: list[CorpusFile] | None = None,
     *,
     texts: Mapping[str, str] | None = None,
+    injection_files: Mapping[str, str] | None = None,
 ) -> list[str]:
     """Return a list of problems (empty = valid). Never mutates anything.
 
     ``texts`` replaces what the product's readers extract, by corpus path. Use it to check cases against
     an independent ground truth (the generated fixtures' own content description) while a reader is
     still missing or being fixed; paths not given fall back to the readers.
+
+    Every case is checked against the older rules, the history bound and (for ``clarify``) the clarify rules.
+    A case that declares ``"schema": 3`` is also checked for provenance, tags, anchors that identify one file,
+    and sibling-value forbidden claims (``schema_v3.py``). ``injection_files`` maps a corpus path to its
+    embedded-instruction kind (the corpus manifest's ``injection:*`` tags) for the injection rule.
     """
     files = files if files is not None else synthetic_files() + public_files()
     texts = {
@@ -78,6 +103,8 @@ def validate(
             problems.append(f"{cid}: bad expected_behavior")
         if case.get("split") not in SPLITS:
             problems.append(f"{cid}: bad split")
+        if case.get("split") == HELD_OUT_SPLIT and not is_v3(case):
+            problems.append(f"{cid}: held-out cases must declare schema 3")
         if case.get("citation_mode", "all") not in {"all", "any"}:
             problems.append(f"{cid}: bad citation_mode")
         for path in case["expected_files"]:
@@ -111,11 +138,13 @@ def validate(
                 problems.append(
                     f"{cid}: forbidden claim {claim!r} is actually present in the corpus"
                 )
-        if case.get("history"):
-            if not all(
-                t.get("role") in {"user", "assistant"} and t.get("text") for t in case["history"]
-            ):
-                problems.append(f"{cid}: malformed history")
+        problems += history_problems(cid, case.get("history") or [])
+        if case["expected_behavior"] == "clarify":
+            problems += clarify_problems(case)
+        if is_v3(case):
+            problems += v3_field_problems(case, injection_files)
+            problems += anchor_uniqueness_problems(case, texts)
+            problems += sibling_problems(case, texts)
         if case.get("derived_from") and case["derived_from"] not in ids:
             problems.append(f"{cid}: derived_from {case['derived_from']} unknown")
     return problems

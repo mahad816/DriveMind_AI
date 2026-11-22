@@ -1,0 +1,97 @@
+[
+ {
+  "date": "2026-11-19",
+  "phase": "history",
+  "file": "rag_v2_cases.json",
+  "kind": "correction",
+  "case_ids": [
+   "ag05",
+   "pb05",
+   "td01"
+  ],
+  "reason": "Each case listed a single acceptable source although the corpus has a second one that answers it; expected_files (and citation_mode for ag05 and pb05) were corrected after the first baseline run showed the flaw. Source: commit fcfc119 and docs/EVALUATION_RESULTS.md.",
+  "sha256_before": "fdca77be00c0976434496e5f2d86ecaaf6f6d7f62706d95536cfdbf61e9aedf6",
+  "sha256_after": "a74373e41eb9be4684e5ebb5deb1ffcbd03c7272099068376256b0e55caccaa9"
+ },
+ {
+  "date": "2026-11-20",
+  "phase": "history",
+  "file": "rag_v2_trap_cases.json",
+  "kind": "addition",
+  "case_ids": [
+   "tc01",
+   "tc02",
+   "tc03",
+   "tc04",
+   "tc05",
+   "tc06",
+   "tc07",
+   "tc08",
+   "tc09",
+   "tc10",
+   "tc11",
+   "tc12",
+   "tc13",
+   "tc14",
+   "tc15",
+   "tc16",
+   "tc17",
+   "tc18",
+   "tr19",
+   "tr20",
+   "tr21",
+   "tr22",
+   "tr23",
+   "tr24",
+   "tr25",
+   "tr26",
+   "tr27",
+   "tr28",
+   "tr29",
+   "tr30",
+   "tr31"
+  ],
+  "reason": "Trap set v2: 13 traps (tr19 to tr31) and 18 controls (tc01 to tc18) added to the 18 first traps; no existing case changed (compared case by case). Source: commit e9d17ba.",
+  "sha256_before": "1fa27dc8aa6eb5483d7ea228af357484e4050c1de4a709057602028f35ad8fb4",
+  "sha256_after": "ede4d868d8575a6dbe8f11f61993beea860d8395672a4131bb63ac103a3d8e2f"
+ },
+ {
+  "date": "2026-11-20",
+  "phase": "history",
+  "file": "rag_v2_messy_cases.json",
+  "kind": "correction",
+  "case_ids": [
+   "vr02",
+   "vr03"
+  ],
+  "reason": "Three evidence anchors were shortened to the cell value (for example 'Revenue (USD) | 1,210,000 | 1,840,000' became '1,840,000') when the PDF reader began to read ruled tables as cells; required facts and expected files did not change. Source: commit a3feb6f.",
+  "sha256_before": "6f74bf21d868dcba5f594476e582bf699138f2e9ce4b8fec8ab38c6c2921dc98",
+  "sha256_after": "33e4f2162922f63cd70dbdc7521a893e10406d18cc590ac66410957aa1ebf21e"
+ },
+ {
+  "date": "2026-11-20",
+  "phase": "history",
+  "file": "rag_v2_messy_cases.json",
+  "kind": "correction",
+  "case_ids": [
+   "vi06",
+   "vi08"
+  ],
+  "reason": "vi06 ('What discount was applied on invoice INV-0457?') was labelled not-in-the-files but the invoice answers it ('none'); it was replaced by vi08 (VAT registration number, which the invoice does not contain). Made after a result was seen, so it is a change to a regression-pool question. Source: docs/EVALUATION_RESULTS.md ('vi06 replaced by vi08') and commit c64749e.",
+  "sha256_before": "33e4f2162922f63cd70dbdc7521a893e10406d18cc590ac66410957aa1ebf21e",
+  "sha256_after": "18ac07f209259ae7337c1822780eb1adee3f2275acb716f7b0740ade064b5883"
+ },
+ {
+  "date": "2026-11-20",
+  "phase": "history",
+  "file": "rag_v2_identifier_cases.json",
+  "kind": "correction",
+  "case_ids": [
+   "id10"
+  ],
+  "reason": "id10 ('Why was patch 1.3.1 rolled back?') was answered correctly from the incident report but the gold required the release notes; two files answer it, so the gold now accepts either. The file was first committed already corrected (commit fefb0a9), so the checksum before the correction is known only as the prefix printed in docs/EVALUATION_RESULTS.md, not as a full SHA-256.",
+  "sha256_before": null,
+  "sha256_before_prefix": "1d9f4f05",
+  "sha256_after": "7f5f4dfd0abd863ba8883dca2ea5a90b5a693592b4c339023530b8ef2e4a2ce9"
+ }
+]

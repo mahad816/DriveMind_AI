@@ -22,6 +22,7 @@ from typing import Any
 
 from .corpus import CorpusFile, messy_files, public_files, synthetic_files, verify
 from .dataset import files_to_check, load_many, validate
+from .freeze import sha256_of
 from .judge import JUDGE_MODEL
 from .manifest import build_manifest
 from .meter import (
@@ -34,6 +35,7 @@ from .meter import (
     require_prices,
     refuse_over_cap,
 )
+from .pools import SPLIT_CHOICES, held_out_path, load_held_out, select
 from .runner import (
     JUDGED,
     PIPELINES,
@@ -45,6 +47,7 @@ from .runner import (
     score_row,
 )
 from .score import summarise
+from .sealing import reduce_row
 from .target import ensure_database, eval_settings, ingest, migrate, session_factory
 
 
@@ -113,16 +116,31 @@ async def setup(args: argparse.Namespace) -> None:
 
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
+HELD_OUT_RESULTS = "heldout_results"  # a folder next to the sealed file, outside the repository
 
 
 async def run(args: argparse.Namespace) -> None:
     files = corpus_files(with_messy=args.with_messy)
     verify(files)
-    dataset = load_many(args.dataset)
+    sealed = args.split == "held_out"
+    if sealed and (args.ids or args.category or args.limit or args.repeats != 1):
+        raise SystemExit(
+            "The held-out pool runs whole and once per checkpoint: no --ids, --category, --limit or --repeats."
+        )
+    held_file = held_out_path() if sealed else None
+    if sealed and held_file is None:
+        raise SystemExit(
+            "Set DRIVEMIND_EVAL_HELDOUT_FILE to the sealed case file (outside the repository)."
+        )
+    dataset = load_held_out(held_file) if sealed else load_many(args.dataset)
     problems = validate(dataset, files_to_check(dataset, files))
+    if problems and sealed:
+        # A held-out problem names a case and quotes it: say how many, nothing more.
+        raise SystemExit(f"Held-out file invalid: {len(problems)} problem(s) (details withheld).")
     if problems:
         raise SystemExit("Dataset invalid; refusing to spend money:\n" + "\n".join(problems))
-    cases = [c for c in dataset["cases"] if args.split == "all" or c["split"] == args.split]
+    # "all" is development plus regression, never held-out.
+    cases = select(dataset["cases"], args.split)
     if args.category:
         cases = [c for c in cases if c["category"] in args.category]
     if args.ids:
@@ -171,7 +189,7 @@ async def run(args: argparse.Namespace) -> None:
                     manifest = build_manifest(
                         pipeline_settings(settings, pipeline),
                         files=files,
-                        datasets=args.dataset,
+                        datasets=[] if sealed else args.dataset,
                         with_messy=args.with_messy,
                         split=args.split,
                         concurrency=args.concurrency,
@@ -180,10 +198,12 @@ async def run(args: argparse.Namespace) -> None:
                         cap_usd=args.cap,
                     )
                     manifest["spend"] = meter.summary()
+                    if held_file is not None:
+                        manifest["dataset"]["held_out_sha256"] = sha256_of(held_file)
                     result.update(
                         manifest=manifest,
                         split=args.split,
-                        datasets=args.dataset,
+                        datasets=[] if sealed else args.dataset,
                         retrieval={
                             "score_threshold": settings.retrieval_score_threshold,
                             "relative_threshold": settings.retrieval_relative_threshold,
@@ -193,7 +213,14 @@ async def run(args: argparse.Namespace) -> None:
                     tag = f"_{args.tag}" if args.tag else ""
                     again = f"_r{repeat}of{args.repeats}" if args.repeats > 1 else ""
                     name = f"rag_v2_{stamp}_{pipeline}_{settings.chat_model}_{args.split}{again}{tag}.json"
-                    path = RESULTS / name
+                    if held_file is not None:
+                        # Outside the repository, and no reply text: reduced rows plus the sealed summary.
+                        result["rows"] = [reduce_row(r) for r in result["rows"]]
+                        folder = held_file.parent / HELD_OUT_RESULTS
+                        folder.mkdir(exist_ok=True)
+                    else:
+                        folder = RESULTS
+                    path = folder / name
                     path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
                     print(
                         f"\n== {pipeline} ({settings.chat_model}, split={args.split}) -> {path.name}"
@@ -282,7 +309,13 @@ def main() -> None:
         help=f"run each pipeline this many times (1 to {MAX_REPEATS}), one result file per run",
     )
     parser.add_argument("--pipelines", nargs="+", choices=sorted(PIPELINES), default=["tool_agent"])
-    parser.add_argument("--split", choices=["dev", "test", "all"], default="dev")
+    parser.add_argument(
+        "--split",
+        choices=SPLIT_CHOICES,
+        default="dev",
+        help="dev = development pool, test/regression = regression pool, all = both (never held-out), "
+        "held_out = the sealed pool, only by name and once per checkpoint",
+    )
     parser.add_argument("--category", nargs="*")
     parser.add_argument("--limit", type=positive_int, help="run at most this many cases")
     parser.add_argument("--ids", nargs="*", help="only these case ids")

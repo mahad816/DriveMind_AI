@@ -24,6 +24,9 @@ EXPECTATION = {
     "partial": "The files answer only PART of the question (see the note). A correct reply states what the files say "
     "and makes clear the remaining part is not in the files, or leaves it out. It must NOT state a specific value "
     "(number, date, name, amount, rule) for the missing part.",
+    "clarify": "The question is ambiguous: the files support more than one reading (see the note). A correct reply is ONE "
+    "short question that asks which reading the user means. It must NOT answer by picking a reading, must NOT state "
+    "a specific value for any reading, and must not say the information is missing or refuse.",
     "chitchat": "Small talk or a question about what the assistant can do. A correct reply is brief, polite and fitting. "
     "Greeting back and offering to answer questions about the user's files is CORRECT. Describing what the "
     "assistant can do with the user's files is CORRECT for a capability question. It must NOT say that a "

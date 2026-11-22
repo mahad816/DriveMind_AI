@@ -1,0 +1,55 @@
+{
+ "schema_version": 1,
+ "corpus_version": "m1-corpus-v1-a605f90dc57b",
+ "pools": {
+  "dev": "development",
+  "test": "regression",
+  "held_out": "held_out"
+ },
+ "files": {
+  "rag_v2_cases.json": {
+   "frozen_sha256": "a74373e41eb9be4684e5ebb5deb1ffcbd03c7272099068376256b0e55caccaa9",
+   "sha256": "a74373e41eb9be4684e5ebb5deb1ffcbd03c7272099068376256b0e55caccaa9",
+   "cases": 94,
+   "by_pool": {
+    "development": 63,
+    "regression": 31
+   }
+  },
+  "rag_v2_trap_cases.json": {
+   "frozen_sha256": "ede4d868d8575a6dbe8f11f61993beea860d8395672a4131bb63ac103a3d8e2f",
+   "sha256": "ede4d868d8575a6dbe8f11f61993beea860d8395672a4131bb63ac103a3d8e2f",
+   "cases": 49,
+   "by_pool": {
+    "development": 25,
+    "regression": 24
+   }
+  },
+  "rag_v2_messy_cases.json": {
+   "frozen_sha256": "18ac07f209259ae7337c1822780eb1adee3f2275acb716f7b0740ade064b5883",
+   "sha256": "18ac07f209259ae7337c1822780eb1adee3f2275acb716f7b0740ade064b5883",
+   "cases": 39,
+   "by_pool": {
+    "development": 22,
+    "regression": 17
+   }
+  },
+  "rag_v2_identifier_cases.json": {
+   "frozen_sha256": "7f5f4dfd0abd863ba8883dca2ea5a90b5a693592b4c339023530b8ef2e4a2ce9",
+   "sha256": "7f5f4dfd0abd863ba8883dca2ea5a90b5a693592b4c339023530b8ef2e4a2ce9",
+   "cases": 19,
+   "by_pool": {
+    "development": 10,
+    "regression": 9
+   }
+  }
+ },
+ "held_out": {
+  "env": "DRIVEMIND_EVAL_HELDOUT_FILE",
+  "frozen_sha256": null,
+  "sha256": null,
+  "cases": 0,
+  "gate_group_counts": {},
+  "injection_documents": []
+ }
+}

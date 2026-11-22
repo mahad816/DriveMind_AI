@@ -118,6 +118,38 @@ No public document was fetched or changed by this ticket (`fetch_public` was not
 
 They are used as unmodified noise text only.
 
+## The frozen question set (M1 ticket 05)
+
+One question set, three named pools, and the machinery that keeps it honest. Everything below is free: no key, no model, no network. Ticket 05 wrote no cases; tickets 06 (development) and 07 (held-out) write them with this machinery.
+
+| Pool | What it is | Where it lives |
+|---|---|---|
+| `development` | the old `dev` cases (120) plus new development cases; may be tuned against | `backend/evaluation/datasets/` |
+| `regression` | the 81 old `test` cases; seen and used as vetoes, so no longer held out; run in every comparison, never presented as generalisation | the same four files |
+| `held_out` | at least 100 new sealed cases, scored once per checkpoint, reported only as aggregates | **one file outside the repository**, found through `DRIVEMIND_EVAL_HELDOUT_FILE`; the Owner must back it up |
+
+The four existing case files are never edited and never relabelled on disk: `split` keeps `dev` and `test`, and the pool is assigned at load time (`pools.py`). `--split dev|test|regression|held_out|all`: `all` is development plus regression and **never** includes held-out; `held_out` runs only when named, whole, once (no `--ids`, `--category`, `--limit`, `--repeats`).
+
+| Command (from `backend/`) | What it does |
+|---|---|
+| `uv run python -m evaluation.rag_eval.pools validate [--with-public]` | Validates the committed question set against the frozen corpus through the product's own readers. Exits 1 on any problem. Public PDFs only with `--with-public` (minutes). |
+| `uv run python -m evaluation.rag_eval.coverage [--require-held-out]` | Prints counts per pool against the spec's minimums. Exits 1 while a whole-set minimum is unmet; `--require-held-out` also enforces the held-out minimums. Prints counts only, never case ids. |
+| `uv run python -m evaluation.rag_eval.freeze check` | Verifies every frozen file against the manifest and the amendment log; verifies the held-out file's checksum when the environment variable names it. |
+| `uv run python -m evaluation.rag_eval.freeze amend FILE --reason TEXT [--cases ID ...]` | The only way to change a frozen case file: writes the log entry and the new checksum together. |
+| `uv run python -m evaluation.rag_eval.freeze add FILE --reason TEXT` | Registers a new case file (logged as an addition). A case file the manifest does not list fails `check`. |
+| `uv run python -m evaluation.rag_eval.freeze seal-held-out --reason TEXT` | Records the sealed file's checksum and its counts per gate group (no ids) in the manifest. |
+| `env -u OPENAI_API_KEY uv run pytest tests/evaluation/test_question_set.py tests/evaluation/test_question_freeze.py tests/evaluation/test_sealed_reporting.py -q` | The free tests for all of the above. |
+
+**Schema v3** (a case that declares `"schema": 3`; older cases keep the older rules). Extra fields: `provenance` (`{"session": "m1-06-dev-a", "date": ...}`: an author session, never a person), `tags` (a closed list, each checked against the case's own fields), optional `formats` (must equal the evidence files' formats), `critical` with `critical_kind` (one of the four kinds in the glossary entry), `injection_document` (a corpus file the manifest tags `injection:*`), `sibling_exempt`. The behaviour `clarify` is new: the correct reply is one short clarifying question; its anchors are the competing readings, its forbidden claims are the readings' values, no fact is required, and it cites nothing. It is judged by its own expectation text in `judge.py`; a reply with no `?` fails in code without calling the judge; a citation or a guessed reading fails the `clean` stage as for small talk.
+
+**Rules the validator adds for v3 cases:** every anchor quote identifies **one** file (a quote that also occurs in a superseded or near-duplicate document is rejected); **sibling values**: the other values the same field takes elsewhere in the corpus (the rest of the same table column and the same-named column in other tables, or the number after the same few words) must be in `must_not_include`, or in `sibling_exempt` when a correct reply may mention them, so a verbose reply that lists many values does not pass. The generator is `schema_v3.sibling_values`; it is a validation requirement, not a silent merge, so the frozen file shows the full list. For every case, old or new, the history is checked against the production bound: at most 6 prior messages and 6000 characters, stated once in `schema_v3.py` and pinned by a test to the agent's own check.
+
+**Freeze.** `datasets/m1_freeze.json` holds the SHA-256 of every frozen case file (`sha256` current, `frozen_sha256` the anchor), case counts per pool, the corpus version id and the pool mapping, and for the sealed file only its checksum, case count, counts per gate group and its injection documents. `datasets/m1_amendments.json` lists every change: date, file, case ids, reason, checksums before and after. `phase: history` entries were entered from the results history and git (the `vi06` to `vi08` change, the `id10` gold, the three `ag05`/`pb05`/`td01` sources, the anchor shortening, the trap-set additions); `post_freeze` entries are written by `amend`, `add` and `seal-held-out`. `check` fails when a file differs from the manifest, when the manifest differs from `frozen_sha256` with no log entry behind it, when a chain is broken, or when a case file is unlisted. It cannot stop someone who rewrites the manifest, the log and the file together; git shows that.
+
+**Sealing.** The held-out file is refused if it lies inside the repository. Anything a run prints, logs, summarises or commits shows that pool only as a total plus the gate groups, and **suppresses every cell under ten cases**, including a rate that rests on fewer than ten decided rows (`sealing.py`; `score.summarise` applies it to any row whose pool is held-out). Per-case held-out rows are written to a `heldout_results/` folder beside the sealed file, without reply, question, queries or snippets. `sealing.committed_view` is what a committed baseline may carry; `leaks` and `small_cells` are the checks the tests run. To diagnose a held-out case, move it to the development pool with an amendment-log entry; it stays in earlier checkpoints' denominators. There is no reserve and no reveal flag.
+
+**What this is not:** dataset correctness and bookkeeping, not RAG quality. A valid case shows that its quotes exist verbatim in the documents the product extracts and that its forbidden claims are absent or bounded; it says nothing about whether the system answers it. Counts of cases are not measures of retrieval or answer quality.
+
 ## What to measure
 
 The implemented diagnostics can help answer:

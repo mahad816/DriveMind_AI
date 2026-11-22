@@ -21,7 +21,7 @@ SUMMARY_VERSION = 2
 ANSWERED = {"answer", "partial", "inventory", "correct_premise"}  # behaviours scored for facts
 ANSWERABLE = {"answer", "partial"}  # the files hold (some of) the answer
 REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
-ROLLUPS = ("category", "format", "split", "language", "expected_behavior", "critical_tag")
+ROLLUPS = ("category", "format", "pool", "split", "language", "expected_behavior", "critical_tag")
 
 
 def wilson(successes: int, total: int) -> tuple[float, float]:
@@ -107,7 +107,18 @@ def rate_of(flags: list[bool]) -> dict[str, Any]:
 
 
 def summarise(all_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Rates over the cases that really ran. Cases the spend cap ended are counted, never scored."""
+    """Rates over the cases that really ran. Cases the spend cap ended are counted, never scored.
+
+    Rows of the sealed held-out pool never reach the rates below: they appear only as ``sealed_summary`` (a
+    total and the gate groups, no cell under ten cases). A summary of held-out rows alone is that view.
+    """
+    held = [r for r in all_rows if r.get("pool") == "held_out"]
+    if held:
+        from .sealing import sealed_summary
+
+        rest = [r for r in all_rows if r.get("pool") != "held_out"]
+        sealed = sealed_summary(held)
+        return {**summarise(rest), "held_out": sealed} if rest else sealed
     rows = [r for r in all_rows if not r.get("cap_stopped")]
     stopped = len(all_rows) - len(rows)
     by_cat: dict[str, list[dict[str, Any]]] = defaultdict(list)

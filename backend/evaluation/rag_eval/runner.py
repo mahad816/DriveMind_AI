@@ -16,6 +16,8 @@ from .corpus import CorpusFile
 from .deep import Resolved, extend_rows
 from .judge import judge
 from .meter import BudgetExceeded, CostMeter, case_var, label_var
+from .pools import pool_of
+from .schema_v3 import gate_groups
 from .score import Observed, answer_score, clean_score, evidence_score, summarise
 from .target import EVAL_USER_ID, session_factory
 from .trace import (
@@ -27,7 +29,7 @@ from .trace import (
 )
 
 PIPELINES = {"tool_agent": True, "legacy": False}  # value = tool_rag_agent_enabled
-JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat", "partial"}
+JUDGED = {"not_found", "decline_or_not_found", "correct_premise", "chitchat", "partial", "clarify"}
 REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
 
 
@@ -68,6 +70,8 @@ def base_row(
         "id": case["id"],
         "category": case["category"],
         "split": case["split"],
+        "pool": pool_of(case),
+        "gates": sorted(gate_groups(case)),
         "language": case["language"],
         "expected_behavior": case["expected_behavior"],
         "question": case["question"],
@@ -202,6 +206,10 @@ async def judge_row(
         answer = row["reply"]
         if not answer:
             verdict = {"verdict": "fail", "reason": "no answer"}
+        elif case["expected_behavior"] == "clarify" and "?" not in answer:
+            # The reply to an ambiguous question is a question. Code can see its absence; the judge decides
+            # whether it is one short question that picks no reading.
+            verdict = {"verdict": "fail", "reason": "no clarifying question in the reply"}
         elif answer.strip() == FILE_NOT_FOUND_TEXT and not case.get("names_a_file"):
             # Wrong route (KI-025): the agent looked for a *file* of that name and never searched the
             # text. It says "not found", so a grader that only reads the words would pass it. A case
