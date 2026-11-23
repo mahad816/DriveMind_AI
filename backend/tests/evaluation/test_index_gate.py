@@ -249,6 +249,7 @@ def namespace(**kw):
             "phrasings": False,
             "passage": False,
             "plan": False,
+            "mode": "model",
             "threshold": None,
             "relative": None,
             "top_k": None,

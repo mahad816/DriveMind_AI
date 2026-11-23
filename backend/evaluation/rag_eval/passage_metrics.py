@@ -242,6 +242,7 @@ async def passage_section(
     plain_hits: Mapping[str, Sequence[Hit]],
     *,
     top_k: int | None,
+    query: str = "the question text itself (an upper bound; the agent writes its own query)",
 ) -> dict[str, Any]:
     """Passage report for the cases a probe searched. Reads the evaluation database only (no provider call).
     Cases that need an earlier turn are not searched and are counted as ``skipped_history``."""
@@ -271,7 +272,7 @@ async def passage_section(
     return {
         "status": "ok",
         "top_k": top_k,
-        "query": "the question text itself (an upper bound; the agent writes its own query)",
+        "query": query,
         "skipped_history": skipped,
         **passage_report(rows, refusal_rows),
         "rows": rows,

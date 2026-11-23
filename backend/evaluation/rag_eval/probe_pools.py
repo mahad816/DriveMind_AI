@@ -82,6 +82,58 @@ def check_probe_mode(
         )
 
 
+MAX_REPEATS = 5  # upper limit of --repeats for the model-written probe (the default is 2)
+MODES = ("model", "baseline", "both")
+
+
+def dataset_name_problem(name: str) -> str | None:
+    """Why ``name`` is not a committed case file in the datasets folder, or None. ``DATA / name`` would follow an
+    absolute path or ``..`` out of the folder, so only a bare ``*.json`` file name is accepted."""
+    if "/" in name or "\\" in name or name in {"", ".", ".."} or not name.endswith(".json"):
+        return f"{name!r} is not a bare case-file name from evaluation/datasets"
+    return None
+
+
+def check_first_step_mode(
+    split: str,
+    *,
+    frozen: bool,
+    mode: str,
+    repeats: int,
+    datasets: Sequence[str] | None = None,
+    passage: bool = False,
+) -> None:
+    """Exit with a plain reason when a model-written-query run is not allowed. Free; reads nothing, calls nothing.
+
+    The held-out pool is refused outright: model-written queries, repeats and per-case rows would leak or tune.
+    """
+    if split == HELD_OUT_SPLIT:
+        raise SystemExit(
+            "STOPPED: the held-out pool is not available to the model-written-query probe (no query "
+            "generation, repeats or per-case comparison on it); use retrieval_probe --split held_out."
+        )
+    if split not in SPLIT_CHOICES:
+        raise SystemExit(
+            f"STOPPED: unknown split {split!r}; choose one of {', '.join(SPLIT_CHOICES)}."
+        )
+    if split in POOL_SPLITS and not frozen:
+        raise SystemExit(
+            f"STOPPED: --split {split} needs --frozen (the pools exist only for the frozen corpus)."
+        )
+    if mode not in MODES:
+        raise SystemExit(f"STOPPED: unknown mode {mode!r}; choose one of {', '.join(MODES)}.")
+    if not 1 <= repeats <= MAX_REPEATS:
+        raise SystemExit(f"STOPPED: --repeats must be between 1 and {MAX_REPEATS}, got {repeats}.")
+    if passage and mode != "both":
+        raise SystemExit(
+            f"STOPPED: --passage compares the model-written queries with a measured baseline, so it needs "
+            f"--mode both (got --mode {mode}; the default mode is model). Nothing was read or called."
+        )
+    for name in datasets or ():
+        if problem := dataset_name_problem(name):
+            raise SystemExit(f"STOPPED: --dataset {problem}.")
+
+
 def _withheld(what: str, exc: BaseException) -> str:
     """A held-out failure reduced to what happened and its exception class; never the exception's text."""
     return f"STOPPED: {what} ({type(exc).__name__}); details withheld."
