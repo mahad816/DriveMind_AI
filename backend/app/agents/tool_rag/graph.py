@@ -24,7 +24,7 @@ from .contracts import (
 )
 
 from .claim_check import ClaimChecker, evidence_text, user_text
-from .finalization import UnknownCitation, finalize_answer, provenance_response
+from .finalization import UnknownCitation, finalize_answer, is_social_phrase, provenance_response
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.services.chat_stream import emit, provisional_text, stream_sink
 
@@ -32,6 +32,34 @@ MAX_AGENT_CYCLES = 6
 MAX_MODEL_HISTORY_CHARS = 128000
 CYCLE_LIMIT_MESSAGE = "I wasn't able to complete that request within the available tool steps."
 FAILURE_MESSAGE = "I wasn't able to complete that request safely. Please try again."
+# KI-034: fixed server text for the one corrective turn after a first step that used no tool. It carries no user
+# text and no handles, and it is not part of AGENT_SYSTEM_PROMPT, so the policy hash (the evaluation's prompt id)
+# does not change. The model may still decline; its reply is then the fixed no-evidence text, as before.
+SEARCH_NUDGE_NOTE = (
+    "No tool was used and no document evidence has been retrieved. If answering this question needs the "
+    "user's indexed documents, call search_knowledge now with the question. If it does not, reply briefly "
+    "and state no facts about the user's documents."
+)
+# One agent call for the tool step and one for the answer must still fit after the first step.
+SEARCH_NUDGE_MIN_REMAINING_CYCLES = 2
+
+
+def wants_search_nudge(state: AgentState, context: ExecutionContext) -> bool:
+    """Whether a prose-only first step gets the one corrective turn (KI-034).
+
+    Only a run that has so far done nothing qualifies: first agent step, no tool, no evidence, no history, not an
+    exact social phrase, not nudged before, and enough cycles left for a search plus an answer. Anything that
+    already used a tool (including ``resolve_file``) keeps its own rules and never gets the note.
+    """
+    return (
+        not state.get("search_nudged", False)
+        and state["cycle_count"] == 1
+        and not state["tool_history"]
+        and not state["evidence"]
+        and not context.has_prior_history
+        and not is_social_phrase(state["original_question"])
+        and state["max_cycles"] - state["cycle_count"] >= SEARCH_NUDGE_MIN_REMAINING_CYCLES
+    )
 
 
 def route_after_agent(state: AgentState) -> Literal["FINAL", "TOOLS", "ERROR"]:
@@ -159,6 +187,15 @@ def build_tool_graph(
         if pending is None or not pending.text or pending.tool_calls:
             return {"failure": "STATE_ERROR", "final_answer": FAILURE_MESSAGE}
         text = pending.text.strip()
+        if wants_search_nudge(state, runtime.context):
+            # KI-034: the skipped step's prose is never shown (no evidence), so it neither needs a citation retry
+            # nor a claim check. Ask once; the model decides whether the question needs the documents.
+            return {
+                "messages": state["messages"]
+                + (AgentMessage(role="USER", text=SEARCH_NUDGE_NOTE),),
+                "pending": None,
+                "search_nudged": True,
+            }
         if claim_check is not None and state["evidence"]:
             # KI-002: drop statements the retrieved evidence does not support. Never raises;
             # an unusable check leaves the text unchanged.
@@ -246,10 +283,10 @@ def build_tool_graph(
     )
     graph.add_conditional_edges(
         "finalize",
-        # A set final answer or failure ends the run; only the one corrective turn loops back.
+        # A set final answer or failure ends the run; only the corrective turns loop back (KI-026 and KI-034).
         lambda s: (
             "AGENT"
-            if s.get("citation_retried", False)
+            if (s.get("citation_retried", False) or s.get("search_nudged", False))
             and s["final_answer"] is None
             and s["failure"] is None
             else "END"

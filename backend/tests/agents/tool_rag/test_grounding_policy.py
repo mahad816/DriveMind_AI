@@ -8,7 +8,7 @@ from app.agents.tool_rag.agent_models import AgentStepResult
 from app.agents.tool_rag.finalization import EMPTY_CONTENT, NO_CONTENT
 from app.core.config import Settings
 from app.services.tool_agent_service import ToolAgentAdapter
-from tests.agents.tool_rag.test_agent_loop import ScriptChat, call, inventory, run
+from tests.agents.tool_rag.test_agent_loop import ScriptChat, assert_consumed, call, inventory, run
 from tests.agents.tool_rag.test_tool_execution import file, USER
 
 CLAIM = "The document describes experience in AI."
@@ -26,11 +26,16 @@ SEARCH = {"query": "policy", "scope": {"kind": "ALL_ELIGIBLE_INDEXED_FILES"}}
     ],
 )
 async def test_no_tools_never_publishes_arbitrary_prose(question):
+    # KI-034: a prose-only first step gets one corrective note, so the model is asked twice. If it again answers
+    # without a tool, its prose is still never published and nothing is read.
     db = AsyncMock()
-    result = await ToolAgentAdapter(
-        db, Settings(_env_file=None), chat=ScriptChat([AgentStepResult(text=CLAIM)])
-    ).answer(question, user_id=USER, history=[], history_window_complete=True)
-    assert result.answer == NO_CONTENT
+    chat = ScriptChat([AgentStepResult(text=CLAIM), AgentStepResult(text=CLAIM)])
+    result = await ToolAgentAdapter(db, Settings(_env_file=None), chat=chat).answer(
+        question, user_id=USER, history=[], history_window_complete=True
+    )
+    assert_consumed(chat)
+    assert len(chat.received) == 2
+    assert result.answer == NO_CONTENT and CLAIM not in result.answer
     assert result.citations == () and result.retrieval_count == 0
     assert not db.mock_calls
 
@@ -146,9 +151,15 @@ async def test_content_evidence_and_real_handle_allow_grounded_answer():
 
 @pytest.mark.asyncio
 async def test_tool_free_clarification_does_not_require_content():
-    state, _, _ = await run(
-        [AgentStepResult(text="Which file do you mean?")], question="Summarize that file"
+    # KI-034: the model is asked once more (corrective note); a clarification-only reply stays safe either way.
+    state, chat, _ = await run(
+        [
+            AgentStepResult(text="Which file do you mean?"),
+            AgentStepResult(text="Which file do you mean?"),
+        ],
+        question="Summarize that file",
     )
+    assert_consumed(chat)
     assert state["failure"] is None and state["final_answer"] == NO_CONTENT
     assert "Which file" in state["final_answer"] and not state["citations"]
 

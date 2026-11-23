@@ -26,6 +26,7 @@ from app.agents.tool_rag.claim_check import (
     split_statements,
     user_text,
 )
+from app.agents.tool_rag.finalization import NO_CONTENT
 from app.core.config import Settings
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.services.tool_agent_service import ToolAgentAdapter
@@ -197,14 +198,14 @@ async def test_a_marker_only_answer_is_not_sent_to_the_model():
 # --- inside the agent (the KI-002 reproduction, now with the check) ---------------------------
 
 
-async def run_with(claim_check, steps):
+async def run_with(claim_check, steps, chat=None):
     from unittest.mock import AsyncMock as AM
 
     retriever = AM()
     retriever.retrieve.return_value = [
         chunk()
     ]  # evidence text: "Authoritative refund policy text."
-    service = ToolRagAgentService(ScriptChat(steps), claim_check=claim_check)
+    service = ToolRagAgentService(chat or ScriptChat(steps), claim_check=claim_check)
     return await service.run(
         "Synthetic question",
         user_id=USER,
@@ -250,11 +251,14 @@ async def test_partial_removal_keeps_the_supported_part_and_its_citation():
 
 async def test_the_check_only_runs_when_there_is_evidence():
     complete = reply("S1")
-    state = await run_with(
-        checker(complete), [AgentStepResult(text="Refunds are approved within 90 days.")]
-    )
+    # KI-034: the question gets one corrective note, so the model is asked twice (both prose, no tool).
+    prose = AgentStepResult(text="Refunds are approved within 90 days.")
+    chat = ScriptChat([prose, prose])
+    state = await run_with(checker(complete), [], chat=chat)
     complete.assert_not_called()
-    assert state["final_answer"]  # existing no-tool behaviour is untouched
+    assert not chat.exhausted and chat.steps == []
+    assert state["failure"] is None
+    assert state["final_answer"] == NO_CONTENT  # existing no-tool behaviour is untouched
 
 
 async def test_a_checker_that_raises_cannot_take_answering_down():

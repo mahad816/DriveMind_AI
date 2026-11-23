@@ -99,8 +99,16 @@ def without_content(state: AgentState) -> str:
                     + " indexed file: "
                     + display_filename(listing.item.filename)
                 )
-    question = state["original_question"].strip().casefold().rstrip(".!?")
-    return _SOCIAL.get(question, NO_CONTENT)
+    return _SOCIAL.get(_social_key(state["original_question"]), NO_CONTENT)
+
+
+def _social_key(question: str) -> str:
+    return question.strip().casefold().rstrip(".!?")
+
+
+def is_social_phrase(question: str) -> bool:
+    """True for the exact social phrases that ``without_content`` answers with a fixed short reply."""
+    return _social_key(question) in _SOCIAL
 
 
 MIXED_METADATA = "Only verified file metadata is shown. A combined metadata/content answer could not be verified."

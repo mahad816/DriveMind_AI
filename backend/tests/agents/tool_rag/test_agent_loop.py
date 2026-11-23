@@ -33,6 +33,9 @@ class ScriptChat:
     def __init__(self, steps):
         self.steps = list(steps)
         self.received = []
+        # An empty script raises IndexError inside the graph, which turns into PROVIDER_ERROR and can look like an
+        # ordinary failure reply. ``exhausted`` records it, and ``assert_consumed`` makes a test fail on it.
+        self.exhausted = False
 
     async def step(
         self, *, messages: Sequence[AgentMessage], tools: Sequence[ToolDefinition]
@@ -44,10 +47,20 @@ class ScriptChat:
             "search_knowledge",
             "file_evidence",
         }
+        if not self.steps:
+            self.exhausted = True
         value = self.steps.pop(0)
         if isinstance(value, Exception):
             raise value
         return value
+
+
+def assert_consumed(chat) -> None:
+    """The scripted model was asked exactly as often as it had replies: no step left over, none missing."""
+    assert not chat.exhausted, (
+        "the script ran out of replies (the run hit an IndexError -> PROVIDER_ERROR)"
+    )
+    assert chat.steps == [], f"{len(chat.steps)} scripted replies were never used"
 
 
 def call(name, args, identifier="call_1"):

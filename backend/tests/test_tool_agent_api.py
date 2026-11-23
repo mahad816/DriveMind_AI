@@ -33,6 +33,7 @@ from app.services.tool_agent_service import (
     bounded_agent_history,
 )
 from app.agents.tool_rag.agent_models import AgentStepResult
+from app.agents.tool_rag.finalization import NO_CONTENT
 from tests.agents.tool_rag.test_agent_loop import ScriptChat, call, inventory
 from tests.agents.tool_rag.test_revision_safety import DocumentDB, row
 from tests.agents.tool_rag.test_tool_execution import file, chunk, USER
@@ -338,29 +339,36 @@ async def test_exact_focused_and_truncation(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "steps",
+    "steps,expected_status",
     [
-        [ChatError("private token XYZ")],
-        [AgentStepResult(text=str(UUID(int=10)))],
-        [
-            call(
-                "files_query",
-                {
-                    "operation": "COUNT",
-                    "scope": {"kind": "ALL_ELIGIBLE_INDEXED_FILES"},
-                    "user_id": str(UUID(int=2)),
-                },
-            ),
-            AgentStepResult(text="Invalid arguments."),
-        ],
+        ([ChatError("private token XYZ")], 503),
+        # KI-034: a prose-only first step on a document question is asked once more, so two prose replies are
+        # scripted; the fixed no-evidence reply (HTTP 200) is the outcome, never an error.
+        ([AgentStepResult(text=str(UUID(int=10)))] * 2, 200),
+        (
+            [
+                call(
+                    "files_query",
+                    {
+                        "operation": "COUNT",
+                        "scope": {"kind": "ALL_ELIGIBLE_INDEXED_FILES"},
+                        "user_id": str(UUID(int=2)),
+                    },
+                ),
+                AgentStepResult(text="Invalid arguments."),
+            ],
+            200,
+        ),
     ],
 )
-async def test_failures_no_fallback_or_sensitive_error(monkeypatch, steps):
-    async with api(monkeypatch, steps) as (client, db, _chat, _retriever, legacy):
+async def test_failures_no_fallback_or_sensitive_error(monkeypatch, steps, expected_status):
+    async with api(monkeypatch, steps) as (client, db, chat, _retriever, legacy):
         response = await client.post(
             "/api/v1/chat", json={"question": "Use the index.", "user_id": str(UUID(int=2))}
         )
-        assert response.status_code in (200, 503)
+        # Exact status and exact script use: a script that ran out would turn a 200 into a 503 unnoticed.
+        assert response.status_code == expected_status, response.text
+        assert chat.steps == [] and not chat.exhausted
         assert "private token XYZ" not in response.text and str(UUID(int=2)) not in response.text
         assert db.closed
         legacy.generate_grounded_answer.assert_not_awaited()
@@ -368,6 +376,54 @@ async def test_failures_no_fallback_or_sensitive_error(monkeypatch, steps):
             assert not db.saved
         else:
             assert response.json()["user_id"] == str(USER)
+            assert response.json()["answer"] != "" and str(UUID(int=10)) not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "steps,expected_status",
+    [
+        # KI-034: a prose-only first step gets one corrective turn. A model that ignores it ends with the fixed
+        # no-content reply as a normal 200, never a 503 (the second scripted reply is consumed by the corrective turn).
+        ([AgentStepResult(text="Prose."), AgentStepResult(text="Prose again.")], 200),
+        # It searches after the note and cites: a normal 200 with a citation.
+        (
+            [
+                AgentStepResult(text="Prose."),
+                search(),
+                AgentStepResult(text="Deadline passed. [source_1]"),
+            ],
+            200,
+        ),
+        # Two bad markers after a real search: the existing safe failure (503). That it equals the no-note outcome is
+        # shown at graph level in test_first_step_nudge.py, not here.
+        (
+            [
+                AgentStepResult(text="Prose."),
+                search(),
+                AgentStepResult(text="Deadline passed. [source_9]"),
+                AgentStepResult(text="Deadline passed. [source_9]"),
+            ],
+            503,
+        ),
+    ],
+)
+async def test_first_step_corrective_turn_http_outcomes_are_exact(
+    monkeypatch, steps, expected_status
+):
+    async with api(monkeypatch, steps) as (client, db, chat, _retriever, legacy):
+        response = await client.post("/api/v1/chat", json={"question": "Use the index."})
+        assert response.status_code == expected_status, response.text
+        assert chat.steps == [] and not chat.exhausted  # every scripted reply used, none missing
+        assert len(chat.received) == len(steps)
+        legacy.generate_grounded_answer.assert_not_awaited()
+        assert db.closed
+        if expected_status == 503:
+            assert not db.saved and "source_9" not in response.text
+        elif len(steps) == 2:
+            assert response.json()["answer"] == NO_CONTENT and not response.json()["citations"]
+        else:
+            assert response.json()["citations"] and "[1]" in response.json()["answer"]
 
 
 @pytest.mark.asyncio

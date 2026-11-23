@@ -41,3 +41,4 @@ class AgentState(TypedDict):
     retrieval_count: int
     failure: Failure | None
     citation_retried: bool  # KI-026: the model has already been asked to fix a bad marker once
+    search_nudged: bool  # KI-034: already asked once to search after a no-tool first step

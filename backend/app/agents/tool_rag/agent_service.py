@@ -112,6 +112,7 @@ class ToolRagAgentService:
             "retrieval_count": 0,
             "failure": None,
             "citation_retried": False,
+            "search_nudged": False,
         }
         result = await self.graph.ainvoke(
             state, context=context, config={"recursion_limit": 2 * MAX_AGENT_CYCLES + 4}

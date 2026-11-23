@@ -18,7 +18,7 @@ from app.agents.tool_rag.conversation import (
 from app.agents.tool_rag.finalization import NO_CONTENT
 from app.core.config import Settings
 from app.services.tool_agent_service import ToolAgentAdapter
-from tests.agents.tool_rag.test_agent_loop import ScriptChat, run
+from tests.agents.tool_rag.test_agent_loop import ScriptChat, assert_consumed, run
 from tests.agents.tool_rag.test_tool_execution import USER
 
 CLAIM = "The document describes experience in AI."
@@ -143,7 +143,9 @@ def test_server_owned_replies_exist_for_exactly_the_conversational_intents():
 
 async def ask(question, intent_complete, steps=None, **settings):
     db = AsyncMock()
-    chat = ScriptChat(steps if steps is not None else [AgentStepResult(text=CLAIM)])
+    chat = ScriptChat(
+        steps if steps is not None else [AgentStepResult(text=CLAIM), AgentStepResult(text=CLAIM)]
+    )  # KI-034: a prose-only first step on a document question is asked once more
     adapter = ToolAgentAdapter(
         db, Settings(_env_file=None, **settings), chat=chat, intent_complete=intent_complete
     )
@@ -172,7 +174,10 @@ async def test_model_prose_in_the_classifier_reply_is_never_shown():
 @pytest.mark.asyncio
 async def test_document_question_goes_to_the_grounded_agent():
     result, chat, _ = await ask("Hi, summarize my resume", declares("document_question"))
-    assert len(chat.received) == 1  # The agent ran; with no tools its prose is still refused.
+    assert_consumed(chat)
+    assert (
+        len(chat.received) == 2
+    )  # The agent ran and was asked once more; with no tools its prose is refused.
     assert result.answer == NO_CONTENT and CLAIM not in result.answer
 
 
@@ -180,7 +185,8 @@ async def test_document_question_goes_to_the_grounded_agent():
 @pytest.mark.parametrize("broken", [failing(RuntimeError("down")), raw("garbage")])
 async def test_classifier_failure_never_blocks_a_question(broken):
     result, chat, _ = await ask("What does the contract say?", broken)
-    assert len(chat.received) == 1 and result.answer == NO_CONTENT
+    assert_consumed(chat)
+    assert len(chat.received) == 2 and result.answer == NO_CONTENT
 
 
 @pytest.mark.asyncio
@@ -210,7 +216,10 @@ async def test_without_a_classifier_behaviour_is_unchanged():
     ],
 )
 async def test_fallback_greeting_plus_document_question_still_needs_evidence(question):
-    state, _, _ = await run([AgentStepResult(text=CLAIM)], question=question)
+    state, chat, _ = await run(
+        [AgentStepResult(text=CLAIM), AgentStepResult(text=CLAIM)], question=question
+    )
+    assert_consumed(chat)
     assert state["final_answer"] == NO_CONTENT
     assert not state["citations"] and CLAIM not in state["final_answer"]
 

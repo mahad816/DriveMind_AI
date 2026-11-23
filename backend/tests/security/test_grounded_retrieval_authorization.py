@@ -247,10 +247,15 @@ async def test_graph_rewrite_keeps_owner_and_exact_scope(chat_reads):
     assert_owned(result["ranked_chunks"], r)
 
 
+@pytest.mark.parametrize("skipped_first_tool", [False, True])
 @pytest.mark.parametrize(
     "hybrid,graph", [(False, False), (True, False), (False, True), (True, True)]
 )
-async def test_tool_precedence_uses_real_owner_scoped_hybrid(chat_reads, hybrid, graph):
+async def test_tool_precedence_uses_real_owner_scoped_hybrid(
+    chat_reads, hybrid, graph, skipped_first_tool
+):
+    # KI-034: with skipped_first_tool the model first answers in prose, gets the one corrective note, and only then
+    # searches. The search must still run through the real owner-scoped retrieval: same boundary, same result.
     from app.agents.tool_rag.agent_models import AgentStepResult
     from app.services.tool_agent_service import ToolAgentAdapter
     from tests.agents.tool_rag.test_agent_loop import ScriptChat, call
@@ -262,6 +267,11 @@ async def test_tool_precedence_uses_real_owner_scoped_hybrid(chat_reads, hybrid,
     r.settings.tool_rag_agent_enabled = True
     agent_chat = ScriptChat(
         [
+            *(
+                [AgentStepResult(text="It is probably in a document.")]
+                if skipped_first_tool
+                else []
+            ),
             call(
                 "search_knowledge",
                 {
@@ -298,6 +308,9 @@ async def test_tool_precedence_uses_real_owner_scoped_hybrid(chat_reads, hybrid,
     assert response.status_code == 200, response.text
     messages = " ".join(m.text or "" for turn in agent_chat.received for m in turn)
     assert A_TEXT in messages and B_TEXT not in messages
+    # every scripted reply was used (a missing one would end as a provider error, not as this answer)
+    assert agent_chat.steps == [] and not agent_chat.exhausted
+    assert len(agent_chat.received) == (3 if skipped_first_tool else 2)
     assert "UNINDEXED_PRIVATE_TEXT" not in messages
     assert response.json()["citations"]
     legacy_chat.generate_grounded_answer.assert_not_awaited()

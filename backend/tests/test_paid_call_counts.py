@@ -33,7 +33,14 @@ from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.vector import VectorRetriever
 from app.services.rag_service import RagService
 from app.services.tool_agent_service import ToolAgentAdapter
-from tests.agents.tool_rag.test_agent_loop import InventoryDB, ScriptChat, call, chunk, file
+from tests.agents.tool_rag.test_agent_loop import (
+    InventoryDB,
+    ScriptChat,
+    assert_consumed,
+    call,
+    chunk,
+    file,
+)
 from tests.agents.tool_rag.test_claim_check import make_settings
 from tests.agents.tool_rag.test_grounding_policy import SEARCH
 from tests.agents.tool_rag.test_tool_execution import USER
@@ -111,12 +118,19 @@ async def test_tool_agent_conversational_intent_stops_after_the_gate() -> None:
 
 async def test_tool_agent_long_question_skips_the_intent_gate() -> None:
     counters = Counters()
-    a, chat = adapter(counters, [AgentStepResult(text="Hello there, how can I help?")])
+    prose = AgentStepResult(text="Hello there, how can I help?")
+    a, chat = adapter(
+        counters, [prose, prose]
+    )  # KI-034: a prose-only first step is asked once more
 
     await ask(a, "x " * 200)  # longer than the 300-character gate limit
 
     assert counters.intent.await_count == 0
-    assert len(chat.received) == 1
+    assert_consumed(chat)
+    assert (
+        len(chat.received) == 2
+    )  # 1 first step + 1 corrective turn; no retrieval, so no embedding
+    counters.retriever.retrieve.assert_not_awaited()
 
 
 async def test_tool_agent_empty_corpus_still_pays_for_the_search_it_chooses() -> None:

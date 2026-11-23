@@ -289,7 +289,11 @@ def real_adapter_service(seen: dict[str, Any]) -> type:
 
 
 def stub_provider(monkeypatch: pytest.MonkeyPatch, calls: list[str], per_call_tokens: int) -> None:
-    """Intent gate says 'document question'; the agent answers 'done' without tools."""
+    """Intent gate says 'document question'; the agent answers 'done' without tools.
+
+    KI-034: a prose-only first step on a document question gets one corrective turn, so the agent is called twice
+    per case (the second reply is again 'done' without a tool, and the answer stays the fixed no-evidence reply).
+    """
 
     async def fake_chat(self: Any, *args: Any, **kwargs: Any) -> Any:
         first = kwargs["messages"][0]["content"]
@@ -308,15 +312,18 @@ async def test_a_tripped_cap_stops_the_run_through_the_real_tool_agent_adapter(
     stub_provider(monkeypatch, calls, 1_000_000)  # $0.20 a call at the recorded nano price
     monkeypatch.setattr(runner, "RagService", real_adapter_service(seen))
     monkeypatch.setattr(runner, "session_factory", lambda settings: FakeSession)
-    meter = CostMeter(0.50)
+    # KI-034: a case now costs three calls ($0.60), so the cap is 0.70 to keep the crossing INSIDE case 2 (a call
+    # refused in the real adapter), which is what this test is about; at 0.50 the run would stop between cases.
+    meter = CostMeter(0.70)
     cases = [sample_case(n) for n in range(1, 5)]
     with meter.installed():
         result = await runner.run_pipeline(
             agent_settings, cases, [], "tool_agent", concurrency=1, meter=meter
         )
     rows = {r["id"]: r for r in result["rows"]}
-    # case 1 used two calls ($0.40); case 2's intent gate crossed the cap and its agent step was refused
-    assert calls == ["intent", "agent", "intent"]
+    # case 1 used three calls ($0.60: intent, agent step, corrective agent step); case 2's intent gate crossed the
+    # cap ($0.80) and its agent step was refused
+    assert calls == ["intent", "agent", "agent", "intent"]
     assert rows["case-1"]["error"] is None and not rows["case-1"].get("cap_stopped")
     assert rows["case-1"]["overall"]["pass"] is True
     for stopped in ("case-2", "case-3", "case-4"):
@@ -378,12 +385,13 @@ async def test_rows_carry_accounting_trace_and_execution_and_old_rows_still_resc
         assert existing in row
     assert row["cited"] == []
     by_role = row["accounting"]["by_role"]
-    assert by_role["intent_gate"]["calls"] == 1 and by_role["agent_step"]["calls"] == 1
-    assert row["accounting"]["total"]["input_tokens"] == 2000
+    # KI-034: the stubbed agent answers without a tool, so it is asked twice (first step plus the corrective turn)
+    assert by_role["intent_gate"]["calls"] == 1 and by_role["agent_step"]["calls"] == 2
+    assert row["accounting"]["total"]["input_tokens"] == 3000
     assert row["trace"]["schema_version"] == 1 and row["trace"]["tool_calls"] == []
     execution = row["execution"]
     assert execution["path"] == "tool_agent" and execution["outcome"] == "COMPLETED"
-    assert execution["agent_steps"] == 1 and execution["search_count"] == 0
+    assert execution["agent_steps"] == 2 and execution["search_count"] == 0
     json.dumps(row)  # the row must serialise
     # rescoring recomputes the verdict from reply and citations and keeps the new fields
     rescored = runner.score_row(sample_case(1), dict(row))
