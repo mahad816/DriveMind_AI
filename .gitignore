@@ -55,3 +55,7 @@ Thumbs.db
 
 # Evaluation: downloaded public documents (fetched by evaluation.rag_eval.fetch_public, never committed)
 backend/evaluation/corpus/public/
+
+# Claude Code local worktrees (never tracked)
+.claude/worktrees/
+.claude/settings.local.json

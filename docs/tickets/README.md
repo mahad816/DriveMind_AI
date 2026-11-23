@@ -12,6 +12,7 @@ Each ticket is a vertical slice (a narrow but complete path through every layer 
 **Blocked by:** ticket numbers/titles, or "None (can start immediately)".
 **Status:** a triage role from docs/agents/triage-labels.md (what the ticket is for)
 **Progress:** open | claimed | resolved (what is happening to it)
+**Risk:** standard | high (optional; judged from the actual change, see the `drivemind-engineering` skill. A high-risk ticket needs an Owner decision before the risky action)
 
 - [ ] Acceptance criterion
 - [ ] Acceptance criterion

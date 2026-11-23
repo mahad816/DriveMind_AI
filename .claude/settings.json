@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git push)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)",
+      "Bash(railway *)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/credentials.json)",
+      "Read(**/token.json)",
+      "Read(**/*.pem)"
+    ],
+    "ask": [
+      "Bash(*evaluation.rag_eval.cli*)",
+      "Bash(*evaluation.rag_eval.retrieval_probe*)",
+      "Bash(*evaluation.rag_eval.first_step_probe*)",
+      "Bash(*python*rag_eval/cli*)",
+      "Bash(*python*retrieval_probe*)",
+      "Bash(*python*first_step_probe*)",
+      "Bash(*python*planted_claims*)",
+      "Bash(*python*ragbench_check*)",
+      "Bash(*python*intent_eval*)",
+      "Bash(*python*agent_smoke_runner*)",
+      "Bash(*python*conversation_runner*)",
+      "Bash(*python*evaluation.runner*)",
+      "Bash(*python*evaluation/runner*)",
+      "Bash(git commit*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
