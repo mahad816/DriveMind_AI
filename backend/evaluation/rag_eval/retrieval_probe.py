@@ -40,10 +40,11 @@ from app.routing.intent_frame.scope import EligibleCollectionScope
 from .corpus import messy_files, verify
 from .dataset import files_to_check, load_cases, validate
 from .frozen_corpus import FrozenCorpusError, corpus_for
+from .index_verify import require_verified_index
 from .meter import BudgetExceeded, CostMeter, cap_argument
 from .runner import prepare_case
 from .score import wilson
-from .target import EVAL_USER_ID, eval_settings, session_factory
+from .target import EVAL_USER_ID, eval_settings, session_factory, store_for
 
 CANDIDATE_LIMIT = 20  # the search_knowledge tool's default
 DATASETS = ("rag_v2_cases.json", "rag_v2_trap_cases.json")
@@ -225,7 +226,13 @@ async def run(args: argparse.Namespace) -> None:
         updates["retrieval_relative_threshold"] = args.relative
     if args.top_k is not None:
         updates["retrieval_top_k"] = args.top_k
-    settings: Settings = eval_settings(tool_agent=True).model_copy(update=updates)
+    store = store_for(frozen=args.frozen, name=args.store)
+    if args.frozen:
+        # Before any embedding call: the store must hold exactly the verified frozen corpus.
+        base = (await require_verified_index(store, tool_agent=True)).settings
+    else:
+        base = eval_settings(tool_agent=True, store=store)
+    settings: Settings = base.model_copy(update=updates)
     names = list(PHRASINGS) if args.phrasings else ["plain"]
     meter = CostMeter(args.cap)
     sessions = session_factory(settings)
@@ -290,6 +297,10 @@ def main() -> None:
         "--frozen",
         action="store_true",
         help="the store holds the complete frozen M1 corpus (cli setup --frozen)",
+    )
+    parser.add_argument(
+        "--store",
+        help="with --frozen: the evaluation store to measure (default v3; it must verify)",
     )
     parser.add_argument(
         "--phrasings", action="store_true", help="also test the three lead-in wordings"

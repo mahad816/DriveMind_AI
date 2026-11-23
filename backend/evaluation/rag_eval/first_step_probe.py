@@ -38,6 +38,7 @@ from app.services.tool_agent_service import bounded_agent_history
 from .corpus import verify
 from .dataset import files_to_check, load_cases, validate
 from .frozen_corpus import FrozenCorpusError, corpus_for
+from .index_verify import require_verified_index
 from .meter import BudgetExceeded, CostMeter, cap_argument
 from .retrieval_probe import (
     DATASETS,
@@ -50,7 +51,7 @@ from .retrieval_probe import (
 )
 from .runner import prepare_case
 from .score import wilson
-from .target import eval_settings, session_factory
+from .target import eval_settings, session_factory, store_for
 
 Step = Callable[[Sequence[AgentMessage]], Awaitable[AgentStepResult]]
 Search = Callable[[str], Awaitable[list[Hit]]]
@@ -173,7 +174,12 @@ async def run(args: argparse.Namespace) -> None:
     if args.ids:
         cases = [c for c in cases if c["id"] in set(args.ids)]
 
-    settings: Settings = eval_settings(tool_agent=True)
+    store = store_for(frozen=args.frozen, name=args.store)
+    if args.frozen:
+        # Before any chat or embedding call: the store must hold exactly the verified frozen corpus.
+        settings: Settings = (await require_verified_index(store, tool_agent=True)).settings
+    else:
+        settings = eval_settings(tool_agent=True, store=store)
     chat = OpenAIAgentChatService(settings)
     tools = tuple(ToolDefinition.model_validate(d) for d in ToolRegistry().definitions())
 
@@ -250,6 +256,10 @@ def main() -> None:
         "--frozen",
         action="store_true",
         help="the store holds the complete frozen M1 corpus (cli setup --frozen)",
+    )
+    parser.add_argument(
+        "--store",
+        help="with --frozen: the evaluation store to measure (default v3; it must verify)",
     )
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--tag", help="suffix for the result file name")

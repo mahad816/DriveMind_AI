@@ -22,13 +22,20 @@ from typing import Any
 
 from .corpus import CorpusFile, verify
 from .dataset import files_to_check, load_many, validate
+from .embedding_estimate import estimate_embedding, extract_texts
 from .freeze import sha256_of
 from .frozen_corpus import FrozenCorpusError, corpus_for, frozen_corpus
-from .index_manifest import record_index
+from .index_verify import (
+    extraction_problems,
+    read_db_snapshot,
+    read_qdrant_snapshot,
+    record_receipt,
+    require_verified_index,
+    verify_index,
+)
 from .judge import JUDGE_MODEL
 from .manifest import build_manifest
 from .meter import (
-    ESTIMATES,
     BudgetExceeded,
     CostMeter,
     cap_argument,
@@ -50,7 +57,15 @@ from .runner import (
 )
 from .score import summarise
 from .sealing import reduce_row
-from .target import ensure_database, eval_settings, ingest, migrate, session_factory
+from .target import (
+    application_defaults,
+    ensure_database,
+    eval_settings,
+    ingest,
+    migrate,
+    session_factory,
+    store_for,
+)
 
 
 def corpus_files(*, with_messy: bool, frozen: bool = False) -> list[CorpusFile]:
@@ -105,42 +120,84 @@ def report_plan(plan: dict[str, Any], cap: float) -> None:
     )
 
 
+def setup_plan(files: list[CorpusFile], texts: dict[str, str], model: str) -> dict[str, Any]:
+    """The planned embedding work, priced from the extracted and chunked text (see ``embedding_estimate``)."""
+    embedding = estimate_embedding(texts, model)
+    return {
+        "corpus_files": len(files),
+        "calls": {"embedding_batches_at_most": len(files)},
+        "embedding": embedding,
+        "estimated_usd": embedding["estimated_usd"],
+    }
+
+
 async def setup(args: argparse.Namespace) -> None:
     files = selected_files(args)
     verify(files)
-    # Upper bound: every file embedded from scratch at 4 bytes per token; files already indexed cost nothing.
-    megabytes = sum(f.absolute.stat().st_size for f in files) / 1_000_000
-    plan = {
-        "corpus_files": len(files),
-        "megabytes": round(megabytes, 2),
-        "calls": {"embedding_batches_at_most": len(files)},
-        "estimated_usd": round(megabytes * ESTIMATES["setup_usd_per_mb_of_files"], 5),
-    }
+    frozen = getattr(args, "frozen", False)
+    store = store_for(frozen=frozen, name=getattr(args, "store", None))
+    # Free, local: read every original file the way the index will, and price the chunks that come out.
+    # The evaluation always embeds with the application's default model (see target.ANSWER_FIELDS).
+    texts = extract_texts(files)
+    plan = setup_plan(files, texts, application_defaults()["embedding_model"])
+    if frozen:
+        plan["store"] = {"database": store.database, "collection": store.collection}
+        if broken := extraction_problems(frozen_corpus(), texts):
+            raise SystemExit(
+                "STOPPED: the files extract differently from the frozen corpus, nothing was embedded:\n  "
+                + "\n  ".join(broken)
+            )
     if args.plan:
         report_plan(plan, args.cap)
         return
     refuse_over_cap(plan["estimated_usd"], args.cap)
-    settings = eval_settings(tool_agent=False)
+    settings = eval_settings(tool_agent=False, store=store)
     require_prices(settings.embedding_model)
-    await ensure_database()
+    await ensure_database(store)
     migrate(settings)
     meter = CostMeter(args.cap)
     try:
         with meter.installed():
-            counts = await ingest(settings, files)
+            counts = await ingest(settings, files, texts=texts, refresh_stale=frozen)
     except BudgetExceeded as exc:
         raise SystemExit(f"STOPPED: {exc}. Ask before spending more.") from exc
     report: dict[str, Any] = {"corpus_files": len(files), **counts, "spend": meter.summary()}
     problems: list[str] = []
-    if getattr(args, "frozen", False):
-        # Free: reads the evaluation index back and compares it with the frozen corpus.
-        path, problems = await record_index(settings, frozen_corpus())
-        report |= {"index_manifest": path.name, "index_problems": problems}
+    if frozen:
+        # Free: read the store back and compare every chunk and vector with the original documents.
+        corpus = frozen_corpus()
+        verification, db, qdrant = await verify_index(
+            settings,
+            corpus,
+            texts=texts,
+            read_db=read_db_snapshot,
+            read_qdrant=read_qdrant_snapshot,
+        )
+        problems = verification.problems
+        report |= {
+            "store": store.database,
+            "index_problems": problems,
+            "not_provable": verification.limitations,
+        }
+        if not problems and db is not None and qdrant is not None:
+            report["index_manifest"] = record_receipt(settings, corpus, db, qdrant).name
     print(json.dumps(report, indent=1))
     if problems:
         raise SystemExit(
-            f"INDEX DIFFERS FROM THE FROZEN CORPUS: {len(problems)} problem(s), see above."
+            f"INDEX DIFFERS FROM THE FROZEN CORPUS: {len(problems)} problem(s), see above. No receipt was written."
         )
+
+
+async def run_settings(args: argparse.Namespace, *, chat_model: str | None) -> Any:
+    """The settings of the store a paid command measures.
+
+    Frozen: the store must first pass verification, and these are the verified store's own settings. Legacy:
+    the legacy store, as before.
+    """
+    store = store_for(frozen=getattr(args, "frozen", False), name=getattr(args, "store", None))
+    if getattr(args, "frozen", False):
+        return (await require_verified_index(store, chat_model=chat_model)).settings
+    return eval_settings(chat_model=chat_model, store=store)
 
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
@@ -182,7 +239,7 @@ async def run(args: argparse.Namespace) -> None:
         report_plan(plan, args.cap)
         return
     refuse_over_cap(plan["estimated_usd"], args.cap)
-    settings = eval_settings(chat_model=args.model)
+    settings = await run_settings(args, chat_model=args.model)
     if args.no_claim_check:
         settings = settings.model_copy(update={"claim_check_enabled": False})
     overrides = {
@@ -287,7 +344,7 @@ async def rescore(args: argparse.Namespace) -> None:
         report_plan(plan, args.cap)
         return
     refuse_over_cap(plan["estimated_usd"], args.cap)
-    settings = eval_settings(chat_model=data["model"])
+    settings = await run_settings(args, chat_model=data["model"])
     require_prices(JUDGE_MODEL)
     meter = CostMeter(args.cap)
     try:
@@ -371,6 +428,11 @@ def main() -> None:
         action="store_true",
         help="use the complete frozen M1 corpus from the committed manifests (setup, run, rescore); "
         "includes the messy documents, so do not combine with --with-messy",
+    )
+    parser.add_argument(
+        "--store",
+        help="with --frozen: the evaluation store (a database and a Qdrant collection of the same name, "
+        "e.g. v4); default v3. v2 is the legacy store and is refused",
     )
     parser.add_argument(
         "--with-messy",

@@ -13,12 +13,11 @@
   },
   "estimates": {
     "checked_on": "2026-11-22",
-    "basis": "Planning constants for the --plan dry run, not measurements. Dollars per question: docs/specs/m1-rag-evaluation.md, Cost estimates (tool agent 0.0025 with the claim check on, legacy 0.001). Calls per question: docs/tickets/m0-sec-security-hardening/04-trace-paid-calls-per-route-and-path.md section 2, case (a), a normal question with evidence. Judge: one gpt-5.4-mini call of about 1,000 input and 100 output tokens (an assumption), which is 0.0012. Setup: 4 bytes per token is an upper bound on the embedded tokens. Ticket 12 replaces all of these with measured values.",
+    "basis": "Planning constants for the --plan dry run, not measurements. Dollars per question: docs/specs/m1-rag-evaluation.md, Cost estimates (tool agent 0.0025 with the claim check on, legacy 0.001). Calls per question: docs/tickets/m0-sec-security-hardening/04-trace-paid-calls-per-route-and-path.md section 2, case (a), a normal question with evidence. Judge: one gpt-5.4-mini call of about 1,000 input and 100 output tokens (an assumption), which is 0.0012. Setup is no longer a constant: embedding_estimate.py prices the extracted, chunked text at the model's input price. Ticket 12 replaces all of these with measured values.",
     "per_question": {
       "tool_agent": {"calls": {"intent_gate": 1, "agent_step": 2, "claim_check": 1, "embedding": 1}, "usd": 0.0025},
       "legacy": {"calls": {"chat": 1, "embedding": 1}, "usd": 0.001}
     },
-    "judge": {"calls": 1, "usd": 0.0012},
-    "setup_usd_per_mb_of_files": 0.005
+    "judge": {"calls": 1, "usd": 0.0012}
   }
 }

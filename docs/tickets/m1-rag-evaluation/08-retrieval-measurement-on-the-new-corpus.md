@@ -40,3 +40,11 @@ Disposable PostgreSQL and Qdrant containers. Embeddings for the rebuild and the 
 - [ ] Any retrieval defect found is registered with the reproducing case ids; none is fixed. `git diff -- backend/app` is empty; touched evaluation files pass `ruff check`, `ruff format --check` and `mypy`; the container-free evaluation tests pass.
 
 ## Comments
+
+### M1-08-B-Fix (2026-11-23): fresh frozen store, deep verification, gated commands
+
+- **Store.** Frozen commands use their own store, `drivemind_eval_v3` (PostgreSQL database and Qdrant collection of the same name; `--store vN` picks another). v2 is the legacy store: frozen commands refuse it, and the refresh of stale documents is refused on it. `assert_safe` now also requires the database and the collection to be the same store.
+- **Rebuild.** `cli setup --frozen [--store vN]` extracts every original file, refuses to continue if the text or chunk count differs from the frozen manifests, embeds, then verifies chunk by chunk and vector by vector; only a passing run writes the receipt (`origin: "setup"`). Documents made by an older extraction pipeline are re-read and refreshed in a frozen store; the legacy path is unchanged.
+- **Gate.** `cli run` / `cli rescore` / `retrieval_probe` / `first_step_probe` with `--frozen` call `index_verify.require_verified_index` before any paid call and use the settings it returns. A missing or invalid receipt, a stale or incomplete store or an unreadable Qdrant or database stops the command. `--plan`, dataset validation and `index_verify verify|check` stay free. The held-out review attestation is a separate check and runs first.
+- **Estimate.** `setup --plan` prices the chunked text (UTF-8 bytes / 3, safety margin 1.2, overlap included) at the recorded `text-embedding-3-small` price: 0.0335 USD for 1,508 chunks, down from the 0.244 USD that came from compressed PDF bytes. No price was changed.
+- **Not provable without a paid call:** that a stored vector is the embedding of its chunk's text, and which embedding model made it (Qdrant does not store it; the setup receipt records it). The paid rebuild into v3 has not been run.

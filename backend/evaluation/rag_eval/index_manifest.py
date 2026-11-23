@@ -1,40 +1,33 @@
-"""The index manifest: what the disposable evaluation index holds, checked against the frozen corpus.
+"""The index manifest: what the evaluation index held when it was built, checked against the frozen corpus.
 
-    uv run python -m evaluation.rag_eval.index_manifest write     # read the eval index, write and check a manifest
-    uv run python -m evaluation.rag_eval.index_manifest check [FILE]   # check a saved manifest (default: read the index)
+This module is the record and its pure checks: building a manifest from what was read, listing its
+differences from the frozen corpus, writing it. Reading the index and verifying it live is
+``index_verify`` (``uv run python -m evaluation.rag_eval.index_verify verify``), which also decides whether a
+frozen command may start. Nothing here calls a provider or a database.
 
-Reading the index is free (PostgreSQL and Qdrant on loopback; no provider call). It only reads rows that belong
-to the evaluation user, in a ``drivemind_eval`` store; ``target.assert_safe`` refuses anything else. The manifest
-is written into the Git-ignored results folder.
+A manifest written by ``cli setup --frozen`` after a passing verification has ``origin: "setup"``: it is the
+receipt of the build, and the only record of which embedding model made the vectors (Qdrant does not store
+it). Only such a receipt can let a frozen command start.
 
 Chunk counts are compared only where a manifest froze one (the 49 committed files). A public PDF has no frozen
 count: its count is recorded and must be at least one, nothing more.
 """
 
-import argparse
-import asyncio
 import json
-import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Select, func, select
-
 from app.core.config import Settings
 from app.db.enums import DriveFileStatus
-from app.db.models.chunk import Chunk
-from app.db.models.document import Document
-from app.db.models.drive_file import DriveFile
 from app.embeddings.openai_service import resolve_embedding_dimension
-from app.embeddings.qdrant_connection import create_qdrant_client
 from app.ingestion.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_TARGET_CHUNK_SIZE
 from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
 
-from .frozen_corpus import FrozenCorpus, frozen_corpus
-from .target import ANSWER_FIELDS, EVAL_USER_ID, assert_safe, eval_settings, session_factory
+from .frozen_corpus import FrozenCorpus
+from .target import ANSWER_FIELDS, store_of
 
 SCHEMA_VERSION = 1
 DEFAULT_FOLDER = Path(__file__).resolve().parents[1] / "results"
@@ -51,59 +44,13 @@ class IndexedFile:
     status: str
 
 
-def indexed_statement() -> Select[Any]:
-    """Per-file state of the evaluation user's files. Read-only and scoped to ``EVAL_USER_ID``."""
-    chunks = select(func.count(Chunk.id)).where(Chunk.document_id == Document.id).scalar_subquery()
-    digest = func.encode(func.sha256(func.convert_to(Document.extracted_text, "UTF8")), "hex")
-    return (
-        select(
-            DriveFile.drive_file_id,
-            DriveFile.status,
-            func.coalesce(chunks, 0),
-            func.coalesce(digest, ""),
-            func.coalesce(Document.pipeline_version, 0),
-        )
-        .select_from(DriveFile)
-        .outerjoin(Document, Document.drive_file_id == DriveFile.id)
-        .where(DriveFile.user_id == EVAL_USER_ID)
-    )
-
-
-async def read_indexed(settings: Settings) -> dict[str, IndexedFile]:
-    """Corpus path -> what the index holds, for the evaluation user only."""
-    assert_safe(settings)
-    sessions = session_factory(settings)
-    async with sessions() as db:
-        rows = (await db.execute(indexed_statement())).all()
-    return {
-        str(drive_id).removeprefix(ID_PREFIX): IndexedFile(
-            chunks=int(count),
-            text_sha256=str(text_sha),
-            pipeline_version=int(version),
-            status=DriveFileStatus(status).value,
-        )
-        for drive_id, status, count, text_sha, version in rows
-    }
-
-
-async def count_vectors(settings: Settings) -> int | None:
-    """Points in the evaluation collection, or ``None`` when it cannot be read (reported, not guessed)."""
-    assert_safe(settings)
-    client = create_qdrant_client(settings)
-    try:
-        return int((await client.count(settings.qdrant_collection, exact=True)).count)
-    except Exception:  # noqa: BLE001 - an absent collection or a stopped container means "unchecked"
-        return None
-    finally:
-        await client.close()
-
-
 def build_index_manifest(
     corpus: FrozenCorpus,
     *,
     settings: Settings,
     indexed: Mapping[str, IndexedFile],
     qdrant_points: int | None,
+    origin: str = "inspection",
 ) -> dict[str, Any]:
     by_path = {f.path: f for f in corpus.files}
     files: dict[str, Any] = {}
@@ -120,6 +67,7 @@ def build_index_manifest(
         }
     return {
         "schema_version": SCHEMA_VERSION,
+        "origin": origin,  # "setup": written by cli setup after a passing verification; anything else is a note
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "corpus": {
             "version_id": corpus.version_id,
@@ -137,6 +85,7 @@ def build_index_manifest(
             "chunk_overlap": DEFAULT_CHUNK_OVERLAP,
         },
         "store": {
+            "name": store_of(settings).name,
             "database": str(settings.database_url).rsplit("/", 1)[-1],
             "collection": settings.qdrant_collection,
         },
@@ -150,8 +99,14 @@ def build_index_manifest(
     }
 
 
-def index_problems(manifest: Mapping[str, Any], corpus: FrozenCorpus) -> list[str]:
-    """Differences between an index manifest and the frozen corpus (empty = consistent)."""
+def index_problems(
+    manifest: Mapping[str, Any], corpus: FrozenCorpus, *, require_vectors: bool = False
+) -> list[str]:
+    """Differences between an index manifest and the frozen corpus (empty = consistent).
+
+    A vector count that could not be read (``None``) is accepted unless ``require_vectors`` is set; every
+    check that lets a command start sets it.
+    """
     problems: list[str] = []
     if manifest.get("schema_version") != SCHEMA_VERSION:
         problems.append(f"index manifest schema version is {manifest.get('schema_version')!r}")
@@ -220,6 +175,8 @@ def index_problems(manifest: Mapping[str, Any], corpus: FrozenCorpus) -> list[st
             f"total chunks is {totals.get('chunks')!r}, the entries add up to {chunk_sum}"
         )
     points = totals.get("qdrant_points")
+    if points is None and require_vectors:
+        problems.append("the vector store was not read, so the vectors are unchecked")
     if points is not None and points != chunk_sum:
         problems.append(f"vector count is {points}, the index holds {chunk_sum} chunks")
     return problems
@@ -228,41 +185,7 @@ def index_problems(manifest: Mapping[str, Any], corpus: FrozenCorpus) -> list[st
 def write_index_manifest(manifest: Mapping[str, Any], *, folder: Path = DEFAULT_FOLDER) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    path = folder / f"index_manifest_{manifest['corpus']['version_id']}_{stamp}.json"
+    store = manifest.get("store", {}).get("name", "unknown")
+    path = folder / f"index_manifest_{manifest['corpus']['version_id']}_{store}_{stamp}.json"
     path.write_text(json.dumps(manifest, indent=1, ensure_ascii=False) + "\n")
     return path
-
-
-async def record_index(settings: Settings, corpus: FrozenCorpus) -> tuple[Path, list[str]]:
-    """Read the evaluation index, write its manifest and return the path and any inconsistencies."""
-    manifest = build_index_manifest(
-        corpus,
-        settings=settings,
-        indexed=await read_indexed(settings),
-        qdrant_points=await count_vectors(settings),
-    )
-    return write_index_manifest(manifest), index_problems(manifest, corpus)
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument("command", choices=["write", "check"])
-    parser.add_argument("file", nargs="?", help="saved manifest (check)")
-    args = parser.parse_args(argv)
-    corpus = frozen_corpus()
-    if args.command == "check" and args.file:
-        problems = index_problems(json.loads(Path(args.file).read_text()), corpus)
-        where = args.file
-    else:
-        path, problems = asyncio.run(record_index(eval_settings(tool_agent=False), corpus))
-        where = str(path)
-    print(f"index manifest {where}: {len(problems)} problem(s)")
-    for line in problems:
-        print(" ", line)
-    return 1 if problems else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

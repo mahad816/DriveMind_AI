@@ -22,9 +22,9 @@ from evaluation.rag_eval.index_manifest import (
     IndexedFile,
     build_index_manifest,
     index_problems,
-    indexed_statement,
     write_index_manifest,
 )
+from evaluation.rag_eval.index_verify import read_db_snapshot, snapshot_statements
 from evaluation.rag_eval.target import EVAL_COLLECTION, EVAL_USER_ID, eval_settings
 
 CORPUS = frozen_corpus()
@@ -151,6 +151,12 @@ def test_a_vector_count_that_differs_from_the_chunk_total_is_named():
     assert any("vector" in p for p in problems)
 
 
+def test_an_unread_vector_store_fails_when_vectors_are_required():
+    manifest = manifest_for(faithful_index())
+    manifest["totals"]["qdrant_points"] = None
+    assert any("unchecked" in p for p in index_problems(manifest, CORPUS, require_vectors=True))
+
+
 def test_an_unread_vector_store_is_not_a_failure_but_is_recorded_as_unchecked():
     indexed = faithful_index()
     manifest = build_index_manifest(
@@ -188,21 +194,20 @@ def test_a_changed_chunking_setting_is_named():
 # ---- isolation from application data -----------------------------------------------------------------------
 
 
-def test_the_database_read_is_scoped_to_the_evaluation_user_only():
-    compiled = indexed_statement().compile(dialect=postgresql.dialect())
-    assert EVAL_USER_ID in compiled.params.values()
-    assert "drive_files.user_id" in str(compiled)
-    assert "SELECT" in str(compiled).upper() and "DELETE" not in str(compiled).upper()
+def test_the_database_reads_are_scoped_to_the_evaluation_user_only():
+    for statement in snapshot_statements():
+        compiled = statement.compile(dialect=postgresql.dialect())
+        assert EVAL_USER_ID in compiled.params.values()
+        assert "drive_files.user_id" in str(compiled)
+        assert "SELECT" in str(compiled).upper() and "DELETE" not in str(compiled).upper()
 
 
 def test_a_non_evaluation_store_is_refused_before_anything_is_read():
-    from evaluation.rag_eval.index_manifest import read_indexed
-
     unsafe = eval_settings(tool_agent=False).model_copy(
         update={"database_url": "postgresql+asyncpg://u:p@127.0.0.1:5432/drivemind"}
     )
-    with pytest.raises(RuntimeError, match="loopback drivemind_eval"):
-        asyncio.run(read_indexed(unsafe))
+    with pytest.raises(RuntimeError, match="drivemind_eval|same evaluation store"):
+        asyncio.run(read_db_snapshot(unsafe))
 
 
 def test_the_manifest_is_written_only_into_the_ignored_results_folder(tmp_path: Path):
@@ -220,6 +225,15 @@ def test_the_manifest_is_written_only_into_the_ignored_results_folder(tmp_path: 
 def args(**kw: Any) -> argparse.Namespace:
     base = {"plan": True, "cap": 1.0, "frozen": False, "with_messy": False}
     return argparse.Namespace(**{**base, **kw})
+
+
+@pytest.fixture(autouse=True)
+def fast_extraction(monkeypatch):
+    """The plan reads every original file (about 2.5 minutes with the public PDFs); these tests are about the plan's shape."""
+    monkeypatch.setattr(
+        "evaluation.rag_eval.embedding_estimate.extract_text", lambda f: "short text"
+    )
+    monkeypatch.setattr(cli, "extraction_problems", lambda corpus, texts: [])
 
 
 def test_setup_plan_for_the_frozen_corpus_counts_every_file_and_calls_nothing(capsys):
