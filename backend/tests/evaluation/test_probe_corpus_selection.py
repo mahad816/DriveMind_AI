@@ -14,7 +14,19 @@ class Reached(Exception):
 
 def namespace(**kw):
     return argparse.Namespace(
-        **{"frozen": False, "messy": False, "with_messy": False, "dataset": None, **kw}
+        **{
+            "split": "dev",
+            "frozen": False,
+            "messy": False,
+            "with_messy": False,
+            "dataset": None,
+            "phrasings": False,
+            "passage": False,
+            "threshold": None,
+            "relative": None,
+            "top_k": None,
+            **kw,
+        }
     )
 
 
@@ -28,8 +40,8 @@ def test_a_broken_frozen_corpus_stops_the_probe_before_any_store_is_touched(modu
 
 
 @pytest.mark.parametrize("module", [retrieval_probe, first_step_probe])
-@pytest.mark.parametrize("frozen", [False, True])
-def test_the_frozen_flag_reaches_the_selector(module, frozen, monkeypatch):
+@pytest.mark.parametrize(("frozen", "messy"), [(False, True), (True, False)])
+def test_the_frozen_flag_reaches_the_selector(module, frozen, messy, monkeypatch):
     seen = {}
 
     def spy(*, frozen: bool, with_messy: bool):
@@ -38,5 +50,5 @@ def test_the_frozen_flag_reaches_the_selector(module, frozen, monkeypatch):
 
     monkeypatch.setattr(module, "corpus_for", spy)
     with pytest.raises(Reached):
-        asyncio.run(module.run(namespace(frozen=frozen, messy=True)))
-    assert seen == {"frozen": frozen, "with_messy": True}
+        asyncio.run(module.run(namespace(frozen=frozen, messy=messy)))
+    assert seen == {"frozen": frozen, "with_messy": messy}

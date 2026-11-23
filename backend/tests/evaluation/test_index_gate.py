@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from evaluation.rag_eval import cli, first_step_probe, index_verify, retrieval_probe
+from evaluation.rag_eval import (
+    cli,
+    first_step_probe,
+    index_verify,
+    probe_pools,
+    retrieval_probe,
+)
 from evaluation.rag_eval.corpus import CorpusFile
 from evaluation.rag_eval.frozen_corpus import FrozenCorpus
 from evaluation.rag_eval.index_manifest import build_index_manifest, write_index_manifest
@@ -241,6 +247,8 @@ def namespace(**kw):
             "ids": None,
             "cap": 1.0,
             "phrasings": False,
+            "passage": False,
+            "plan": False,
             "threshold": None,
             "relative": None,
             "top_k": None,
@@ -253,10 +261,14 @@ def namespace(**kw):
 
 @pytest.fixture(autouse=True)
 def cheap_validation(monkeypatch):
-    """Validating cases reads the public PDFs (minutes); these tests are about what happens after it."""
+    """Validating cases reads the public PDFs (minutes); these tests are about what happens after it.
+    The frozen retrieval probe validates in ``probe_pools``; the first-step probe still does it itself."""
+    monkeypatch.setattr(probe_pools, "validate", lambda *a, **k: [])
+    monkeypatch.setattr(probe_pools, "files_to_check", lambda *a: [])
+    monkeypatch.setattr(retrieval_probe, "validate", lambda *a, **k: [])
+    monkeypatch.setattr(first_step_probe, "validate", lambda *a: [])
+    monkeypatch.setattr(first_step_probe, "files_to_check", lambda *a: [])
     for module in (retrieval_probe, first_step_probe):
-        monkeypatch.setattr(module, "validate", lambda *a: [])
-        monkeypatch.setattr(module, "files_to_check", lambda *a: [])
         monkeypatch.setattr(module, "verify", lambda files: None)
 
 

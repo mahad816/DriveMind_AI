@@ -1,6 +1,7 @@
 """Retrieval-only test: does the search put the right file in front of the model? No chat model.
 
-    python -m evaluation.rag_eval.retrieval_probe [--split dev|test|all] [--phrasings] [--tag NAME]
+    python -m evaluation.rag_eval.retrieval_probe [--split dev|test|regression|held_out|all] [--phrasings]
+                                                  [--passage] [--plan] [--cap USD] [--tag NAME]
                                                   [--threshold 0.2] [--top-k 8]
 
 It runs the same call the agent's ``search_knowledge`` tool makes (``HybridRetriever.retrieve`` with
@@ -37,14 +38,31 @@ from app.retrieval.hybrid import HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import EligibleCollectionScope
 
+from .cli import report_plan
 from .corpus import messy_files, verify
-from .dataset import files_to_check, load_cases, validate
+from .dataset import HELD_OUT_SPLIT, load_cases, validate
 from .frozen_corpus import FrozenCorpusError, corpus_for
 from .index_verify import require_verified_index
-from .meter import BudgetExceeded, CostMeter, cap_argument
+from .meter import BudgetExceeded, CostMeter, cap_argument, refuse_over_cap
+from .pools import SPLIT_CHOICES
+from .probe_pools import (
+    check_probe_mode,
+    plan_probe,
+    print_sealed,
+    sealed_probe_report,
+    select_probe_cases,
+    write_sealed_report,
+)
+from .review_gate import sha256_file
 from .runner import prepare_case
 from .score import wilson
-from .target import EVAL_USER_ID, eval_settings, session_factory, store_for
+from .target import (
+    EVAL_USER_ID,
+    application_defaults,
+    eval_settings,
+    session_factory,
+    store_for,
+)
 
 CANDIDATE_LIMIT = 20  # the search_knowledge tool's default
 DATASETS = ("rag_v2_cases.json", "rag_v2_trap_cases.json")
@@ -196,6 +214,18 @@ async def probe(
     }
 
 
+def planned_queries(cases: Sequence[dict[str, Any]], phrasings: Sequence[str]) -> list[str]:
+    """The queries ``probe`` will search for, in its order (free; used by ``--plan``)."""
+    answerable, refusal = split_cases(cases)
+    queries = [
+        PHRASINGS[name](case["question"])
+        for name in phrasings
+        for case in answerable
+        if name == "plain" or case.get("language", "en") == "en"
+    ]
+    return queries + [c["question"] for c in refusal]
+
+
 def make_search(retriever: HybridRetriever) -> Search:
     async def search(query: str) -> list[Hit]:
         request = RetrievalRequest(
@@ -211,26 +241,66 @@ def make_search(retriever: HybridRetriever) -> Search:
 
 
 async def run(args: argparse.Namespace) -> None:
+    split: str = args.split
+    sealed_pool = split == HELD_OUT_SPLIT
+    overrides = [
+        flag
+        for flag, value in (
+            ("--threshold", args.threshold),
+            ("--relative", args.relative),
+            ("--top-k", args.top_k),
+        )
+        if value is not None
+    ]
+    # Before any file is read, any store opened or any call made.
+    check_probe_mode(
+        split,
+        frozen=args.frozen,
+        messy=args.messy,
+        phrasings=args.phrasings,
+        passage=args.passage,
+        overrides=overrides,
+    )
     try:
         # Legacy: the store must hold the messy documents too (cli setup --with-messy). Frozen: it holds them already.
         files = corpus_for(frozen=args.frozen, with_messy=args.messy)
     except FrozenCorpusError as exc:
         raise SystemExit(f"STOPPED: {exc}") from exc
     verify(files)
-    total = len(files)
-    # The messy questions only name messy documents; checking them against those alone avoids reading
-    # (and slowly extracting) every public PDF just to validate.
-    checked = messy_files() if args.messy else files
-    cases: list[dict[str, Any]] = []
-    for name in MESSY_DATASETS if args.messy else DATASETS:
-        dataset = load_cases(name)
-        # The frozen corpus has 33 public PDFs: read only the ones a case points at.
-        problems = validate(dataset, files_to_check(dataset, files) if args.frozen else checked)
-        if problems:
-            raise SystemExit(f"{name} is invalid:\n" + "\n".join(problems))
-        cases += [prepare_case(c, total) for c in dataset["cases"]]
-    if args.split != "all":
-        cases = [c for c in cases if c["split"] == args.split]
+    held_file: Path | None = None
+    if args.frozen:
+        # The named pools, through the shared loaders; held-out only through the Owner's review attestation.
+        cases, held_file = select_probe_cases(split, files)
+    else:
+        total = len(files)
+        # The messy questions only name messy documents; checking them against those alone avoids reading
+        # (and slowly extracting) every public PDF just to validate.
+        checked = messy_files() if args.messy else files
+        cases = []
+        for name in MESSY_DATASETS if args.messy else DATASETS:
+            dataset = load_cases(name)
+            problems = validate(dataset, checked)
+            if problems:
+                raise SystemExit(f"{name} is invalid:\n" + "\n".join(problems))
+            cases += [prepare_case(c, total) for c in dataset["cases"]]
+        if split != "all":
+            cases = [c for c in cases if c["split"] == split]
+    if sealed_pool and held_file is None:
+        # Fail closed: the held-out pool has no other source, and nothing else may stand in for it.
+        raise SystemExit("STOPPED: the held-out pool has no sealed source; nothing was run.")
+    if not cases:
+        raise SystemExit("No cases selected; nothing to run.")
+
+    names = list(PHRASINGS) if args.phrasings else ["plain"]
+    # Free: the exact queries, priced at the model the application embeds with. Nothing is called before
+    # the plan is printed (--plan) or accepted against the cap.
+    queries = planned_queries(cases, names)
+    model = application_defaults()["embedding_model"]
+    plan = plan_probe(queries, model, cap=args.cap, split=split)
+    if args.plan:
+        report_plan(plan, args.cap)
+        return
+    refuse_over_cap(plan["estimated_usd"], args.cap)
 
     updates: dict[str, Any] = {}
     if args.threshold is not None:
@@ -246,7 +316,10 @@ async def run(args: argparse.Namespace) -> None:
     else:
         base = eval_settings(tool_agent=True, store=store)
     settings: Settings = base.model_copy(update=updates)
-    names = list(PHRASINGS) if args.phrasings else ["plain"]
+    if settings.embedding_model != model:
+        # The store embeds with another model than the plan assumed: price that one, and hold it to the cap.
+        replan = plan_probe(queries, settings.embedding_model, cap=args.cap, split=split)
+        refuse_over_cap(replan["estimated_usd"], args.cap)
     meter = CostMeter(args.cap)
     sessions = session_factory(settings)
     plain_hits: dict[str, list[Hit]] = {}
@@ -258,6 +331,41 @@ async def run(args: argparse.Namespace) -> None:
                 )
     except BudgetExceeded as exc:
         raise SystemExit(f"STOPPED: {exc}") from exc
+    except Exception as exc:
+        if not sealed_pool:
+            raise
+        # A retrieval error may quote the query, which is a held-out question: class name only.
+        raise SystemExit(
+            f"STOPPED: the held-out probe failed ({type(exc).__name__}); details withheld."
+        ) from None
+    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    if sealed_pool:
+        if (
+            held_file is None
+        ):  # unreachable (checked above); never write held-out rows to the repository
+            raise SystemExit(
+                "STOPPED: the held-out pool has no sealed source; nothing was written."
+            )
+        # Totals and gate groups only, beside the sealed file. The per-case rows stay in memory.
+        sealed_report = {
+            "held_out": sealed_probe_report(
+                report["rows"]["plain"],
+                report["refusal_rows"],
+                cases,
+                skipped_history=sum(1 for c in cases if c.get("history")),
+            ),
+            "held_out_sha256": sha256_file(held_file),
+            "settings": {
+                "retrieval_score_threshold": settings.retrieval_score_threshold,
+                "retrieval_top_k": settings.retrieval_top_k,
+                "retrieval_relative_threshold": settings.retrieval_relative_threshold,
+                "candidate_limit": CANDIDATE_LIMIT,
+            },
+            "spend": meter.summary(),
+        }
+        path = write_sealed_report(sealed_report, held_file, stamp)
+        print_sealed(sealed_report, path.name)
+        return
     if args.passage:
         # Free: database reads only. The hits are the plain-question searches already made above.
         from .passage_metrics import passage_section  # late: that module imports this one
@@ -269,12 +377,11 @@ async def run(args: argparse.Namespace) -> None:
         "retrieval_score_threshold": settings.retrieval_score_threshold,
         "retrieval_top_k": settings.retrieval_top_k,
         "retrieval_relative_threshold": settings.retrieval_relative_threshold,
-        "split": args.split,
+        "split": split,
         "candidate_limit": CANDIDATE_LIMIT,
     }
     report["spend"] = meter.summary()
     RESULTS.mkdir(exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     path = RESULTS / f"retrieval_probe_{stamp}{'_' + args.tag if args.tag else ''}.json"
     path.write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n")
     print_report(report, path.name)
@@ -314,7 +421,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument("--split", choices=["dev", "test", "all"], default="all")
+    parser.add_argument(
+        "--split",
+        choices=SPLIT_CHOICES,
+        default="all",
+        help="dev = development pool, test/regression = regression pool, all = both (never held-out); "
+        "regression and held_out need --frozen; held_out is the sealed pool (plain question only, "
+        "aggregate output beside the sealed file)",
+    )
     parser.add_argument(
         "--messy",
         action="store_true",
@@ -346,6 +460,11 @@ def main() -> None:
     )
     parser.add_argument("--top-k", type=int, help="override retrieval_top_k")
     parser.add_argument("--tag", help="suffix for the result file name")
+    parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="print the planned embedding calls and the estimate, then stop: no provider call, no file written",
+    )
     parser.add_argument(
         "--cap",
         type=cap_argument,

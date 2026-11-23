@@ -41,6 +41,42 @@ Disposable PostgreSQL and Qdrant containers. Embeddings for the rebuild and the 
 
 ## Comments
 
+### Checkpoints A to G (defined 2026-11-23 at the start of M1-08-D; the original acceptance criteria above are unchanged)
+
+| Checkpoint | Scope | Free or paid | Status |
+|---|---|---|---|
+| A | No commit or text in Git carries this letter. Assumed to be the groundwork before B (corpus and case-set freeze, tickets 02-07) [owner, not in the repo]. | free | done [owner] |
+| B, B-Fix | Frozen corpus selection, index manifest, fresh store `v3`, deep verification, gated frozen commands (`8aa53ec`, `384b0ac`). The paid rebuild into `v3` was run later and is not yet recorded here (see the status file, "Known drift"). | rebuild paid (owner-reported 0.01878 USD), code free | committed [git] |
+| C | Passage-level metrics from the plain-question searches, development and regression only (`c81bf6b`). | free | committed [git] |
+| D | The retrieval probe selects pools (development, regression, held-out) through the existing `pools` loaders; held-out loads only through the review attestation and is refused for every mode that could leak or tune (wordings, passage metrics, threshold overrides, non-frozen store) before any billable call, and is reported only as totals and gate groups outside the repository; a free `--plan` prices the exact planned queries at the configured embedding model's recorded price; a paid probe refuses when the estimate is above `--cap` or the model has no price. | free (code and tests only) | implemented, review pending |
+| E | Model-written-query probe (`first_step_probe`): pool selection, two repeats on development and regression only, anchor-chunk recall of the model's queries next to the plain-question recall, its own `--plan` (chat model price). | paid when run | not started |
+| F | Integration and readiness: reconcile the drift between this ticket, ticket 07 and the status file, record the rebuild, the price-table date and the `--plan` figures, confirm every gate end to end with disposable stores. | free | not started |
+| G | Owner-authorized paid execution (rebuild already done): plain-question probe incl. held-out aggregate, model-written-query probe, results in `docs/EVALUATION_RESULTS.md`, spend recorded. Needs the attestation, the Owner's approval of the estimate and the cap. | paid | blocked on Owner gates |
+
+### M1-08-D findings and open items (2026-11-23)
+
+Checkpoint D covers the **retrieval probe only** (`retrieval_probe.py`, `probe_pools.py`). Review round 1 returned APPROVE with one P2; the Owner then authorized corrections (round 2, below).
+
+- **Scope statement: file-level held-out aggregates only.** At D the held-out pool is probed once with the plain question and reported as a total and gate groups of *file-level* recall and MRR (cells under 10 suppressed, written beside the sealed file). `--passage` (anchor-chunk recall) is refused for held-out. Whether a passage-level held-out aggregate is wanted is an Owner decision for F or G.
+- **Corrected in round 2:** `--frozen --messy` is rejected with a clear error (it had silently probed the whole selected pool); the held-out branch fails closed when no sealed source exists; held-out read, validation, preparation and search failures are reduced to a class name (`details withheld`, no exception chain); the plan's `estimated_usd` is the full-precision figure and is the value the cap is compared with (an earlier five-decimal rounding let estimates below 0.000005 USD pass any cap).
+- **Open, must be resolved before any held-out paid evaluation:** `cli run --split held_out` accepts `--threshold` and `--relative`. Overriding retrieval thresholds on the held-out pool is tuning against it. The probe refuses this; `cli run` does not. Not changed in D (out of scope by the Owner's instruction).
+- **Open, assigned to checkpoint E:** `first_step_probe` has no `--plan`, no estimate against `--cap`, no price check and no pool selection (it still reads the two legacy files). Its `--split` cannot name held-out, so it cannot reach the sealed pool today.
+- **Open limitations (not defects of D):**
+  - The estimate's token count (UTF-8 bytes / 3, times 1.2) is inherited from B-Fix and is not a proven upper bound for Urdu or short identifiers; amounts are fractions of a cent and the run-time meter still enforces the cap.
+  - `top_vector_score_max` in the held-out refusal cell is one hidden case's raw score (the earlier probe reported the same field).
+  - The held-out `non_answer` group holds only `partial` answerable rows in the probe, because refusal rows are not grouped; the label can mislead.
+  - Not proven that no retrieval, Qdrant or database error message can contain a held-out query during a real run; the probe now withholds exception text, but library logging was not inspected.
+  - `require_review` hashes the sealed file and `load_held_out` reads it again afterwards; a change between the two reads would go unnoticed (pre-existing).
+  - Tests not yet written: `--relative` and `--top-k` on held-out at `run()` level (only `--threshold` is), and held-out with `--plan`.
+
+- **Review round 2 (APPROVE, no confirmed defect): P3 items carried forward, none fixed in D.**
+  - The held-out `BudgetExceeded` is re-raised `from exc` (no case content, but the chain survives; the other held-out paths use `from None`).
+  - Two tests assert only `__suppress_context__`, which `from exc` also sets; add `__cause__ is None` to `test_held_out_loading_exceptions_never_carry_case_content` and `test_a_failing_held_out_search_is_reported_by_class_only`.
+  - `test_the_frozen_flag_reaches_the_selector` no longer covers `first_step_probe` with frozen plus messy (still valid there); add a case for that module in E.
+  - `refuse_over_cap` prints the cap with two decimals, so a cap below 0.005 USD reads "$0.00" (display only; the decision uses the exact figure).
+  - Planning, report building, hashing and writing in the held-out branch run outside the class-only handler; no way to quote case content was found on validated cases, but wrapping that block would close it (probe test: make `gate_groups` raise a marker during a held-out run).
+  - Not proven: that no third-party library (openai, httpx, qdrant_client, asyncpg) logs request bodies at WARNING; `held_out_sha256` is computed after the run, so a sealed file swapped during the run would not be noticed.
+
 ### M1-08-B-Fix (2026-11-23): fresh frozen store, deep verification, gated commands
 
 - **Store.** Frozen commands use their own store, `drivemind_eval_v3` (PostgreSQL database and Qdrant collection of the same name; `--store vN` picks another). v2 is the legacy store: frozen commands refuse it, and the refresh of stale documents is refused on it. `assert_safe` now also requires the database and the collection to be the same store.
