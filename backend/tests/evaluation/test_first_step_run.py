@@ -89,7 +89,7 @@ class World:
     def __init__(self, tmp_path: Path):
         self.events: list[str] = []
         self.results = tmp_path / "results"
-        self.steps: list[AgentStepResult] = []
+        self.steps: list[Any] = []  # AgentStepResult, or an exception to raise at that call
         q1, q2 = fab(1)["question"], fab(2)["question"]
         # baseline: the question of p001 finds its file, the question of p002 does not
         self.by_query = {
@@ -130,7 +130,10 @@ def world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> World:
 
         async def step(self, **_k: Any) -> AgentStepResult:
             w.events.append("chat-call")
-            return w.steps.pop(0)
+            item = w.steps.pop(0)
+            if isinstance(item, BaseException):  # a scripted failure (provider error, cap reached)
+                raise item
+            return item
 
     class Sessions:
         def __call__(self) -> "Sessions":
@@ -163,7 +166,7 @@ def world(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> World:
         fsp, "store_for", lambda **_k: SimpleNamespace(database="drivemind_eval_v3")
     )
     monkeypatch.setattr(fsp, "require_verified_index", require_verified_index)
-    monkeypatch.setattr(fsp, "OpenAIAgentChatService", FakeChat)
+    monkeypatch.setattr(fsp, "make_chat_service", lambda s: FakeChat(s))
     monkeypatch.setattr(fsp, "session_factory", lambda _s: Sessions())
     monkeypatch.setattr(fsp, "HybridRetriever", lambda _db, _s: object())
     monkeypatch.setattr(fsp, "make_search", make_search)
@@ -271,3 +274,432 @@ def test_baseline_mode_without_passage_makes_no_chat_call(world: World):
     report = world.report()
     assert "rows" not in report and len(report["baseline_rows"]) == 2
     assert "chat-call" not in world.events and report["settings"]["model"] is None
+
+
+# ---- M1-08-F: paid rows survive a failure, and a report says whether it is complete ------------------------
+
+
+def incomplete(world: World) -> list[Path]:
+    return sorted(world.results.glob("first_step_*_incomplete.json"))
+
+
+def finished(world: World) -> list[Path]:
+    return [p for p in world.results.glob("first_step_*.json") if "_incomplete" not in p.name]
+
+
+def test_a_provider_failure_after_partial_progress_keeps_every_paid_row(world: World):
+    from app.llm.base import ChatError
+
+    # both baseline searches are done; p001 ran twice; the first call for p002 fails
+    world.steps = [search_step("a1"), search_step("a1"), ChatError("Agent provider request failed")]
+    with pytest.raises(SystemExit, match=r"incomplete.*ChatError|ChatError.*incomplete"):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    (path,) = incomplete(world)
+    saved = json.loads(path.read_text())
+    assert saved["status"] == "incomplete" and saved["complete"] is False
+    assert "ChatError" in saved["incomplete_reason"]
+    assert len(saved["baseline_rows"]) == 2 and [r["repeat"] for r in saved["rows"]] == [1, 2]
+    assert saved["spend"]["cap_usd"] == 5.0 and "plan" in saved
+    # nothing computed from a partial run can be mistaken for a result
+    for key in ("summary", "baseline_summary", "comparison", "passage"):
+        assert key not in saved
+    assert finished(world) == []
+
+
+def test_a_cap_stop_in_the_model_phase_keeps_the_paid_baseline_rows(world: World):
+    from evaluation.rag_eval.meter import BudgetExceeded
+
+    world.steps = [BudgetExceeded("estimated spend $0.0010 reached the $0.00 cap")]
+    with pytest.raises(SystemExit, match="STOPPED"):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    (path,) = incomplete(world)
+    saved = json.loads(path.read_text())
+    assert len(saved["baseline_rows"]) == 2 and saved["rows"] == []
+    assert "reached" in saved["incomplete_reason"] and "comparison" not in saved
+
+
+def test_a_failure_in_the_baseline_phase_keeps_the_rows_already_made(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    calls = {"n": 0}
+
+    def make_search(_retriever: Any) -> Any:
+        async def search(query: str) -> list[Hit]:
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise RuntimeError("retrieval failed")
+            return [chunk(1, 0)]
+
+        return search
+
+    monkeypatch.setattr(fsp, "make_search", make_search)
+    with pytest.raises(SystemExit, match="incomplete"):
+        asyncio.run(fsp.run(run_args(mode="baseline")))
+    (path,) = incomplete(world)
+    assert len(json.loads(path.read_text())["baseline_rows"]) == 1
+
+
+@pytest.mark.parametrize("failing", ["compare", "passage_comparison"])
+def test_a_failure_while_building_the_report_keeps_the_rows_marked_rows_only(
+    world: World, monkeypatch: pytest.MonkeyPatch, failing: str
+):
+    world.steps = [search_step("a1"), search_step("a1"), search_step("a2"), search_step("a2")]
+
+    async def boom_async(*_a: Any, **_k: Any) -> Any:
+        raise ValueError("report step failed")
+
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise ValueError("report step failed")
+
+    monkeypatch.setattr(fsp, failing, boom_async if failing == "passage_comparison" else boom)
+    with pytest.raises(SystemExit, match=r"rows_only|not complete") as caught:
+        asyncio.run(fsp.run(run_args(mode="both", passage=True)))
+    assert "ValueError" in str(caught.value)
+    (path,) = finished(world)  # one file, at the final name, but it says what it is
+    saved = json.loads(path.read_text())
+    assert saved["status"] == "rows_only" and saved["complete"] is False
+    assert len(saved["rows"]) == 4 and len(saved["baseline_rows"]) == 2
+    assert "comparison" not in saved and "passage" not in saved
+    assert incomplete(world) == []
+
+
+def test_a_finished_run_is_marked_complete_and_leaves_no_temporary_file(world: World):
+    world.steps = [search_step("a1"), search_step("a1"), search_step("a2"), search_step("a2")]
+    asyncio.run(fsp.run(run_args(mode="both")))
+    report = world.report()
+    assert report["status"] == "complete" and report["complete"] is True
+    assert sorted(p.suffix for p in world.results.iterdir()) == [".json"]
+
+
+def test_two_runs_with_the_same_tag_never_overwrite_each_other(world: World):
+    for _ in range(2):
+        world.steps = [search_step("a1"), search_step("a1"), search_step("a2"), search_step("a2")]
+        asyncio.run(fsp.run(run_args(mode="model", tag="same")))
+    assert len(finished(world)) == 2
+
+
+def test_the_atomic_writer_keeps_the_old_file_when_serialising_fails(tmp_path: Path):
+    target = tmp_path / "r.json"
+    target.write_text('{"old": true}\n')
+    with pytest.raises(TypeError):
+        fsp.write_json_atomic(target, {"bad": {1, 2}})
+    assert json.loads(target.read_text()) == {"old": True}
+    assert [p.name for p in tmp_path.iterdir()] == ["r.json"]
+
+
+def test_the_atomic_writer_leaves_no_final_file_when_the_replace_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import os
+
+    def boom(*_a: Any, **_k: Any) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", boom)
+    target = tmp_path / "r.json"
+    with pytest.raises(OSError):
+        fsp.write_json_atomic(target, {"a": 1})
+    assert list(tmp_path.iterdir()) == []
+
+
+# ---- an empty comparison is not a successful pairing -----------------------------------------------------
+
+
+def test_a_comparison_without_pairs_says_it_paired_nothing():
+    base = [{"id": "a", "found": True, "rank": 1}]
+    none = fsp.compare(base, [])
+    assert none["paired"] is False and none["pairs"] == 0 and none["baseline_found_pct"] is None
+    partial = fsp.compare(
+        base, [{"id": "a", "repeat": 1, "queries": [], "found": False, "rank": None}]
+    )
+    assert partial["paired"] is True and partial["pairs"] == 1
+
+
+def test_two_empty_passage_sections_are_not_the_same_cases():
+    assert fsp.same_cases({"rows": []}, {"rows": []}) is False
+
+
+def test_the_printed_report_does_not_announce_a_pairing_that_did_not_happen(
+    capsys: pytest.CaptureFixture[str],
+):
+    report: dict[str, Any] = {
+        "settings": {
+            "mode": "both",
+            "split": "dev",
+            "repeats": 2,
+            "model": "m",
+            "prompt_id": "p",
+        },
+        "comparison": fsp.compare([{"id": "a", "found": True, "rank": 1}], []),
+        "plan": {"estimated_usd": 0.0},
+        "spend": {"estimated_total_usd": 0.0, "cap_usd": 1.0},
+    }
+    fsp.print_report(report, "x.json")
+    out = capsys.readouterr().out
+    assert "nothing was compared" in out and "paired comparison over" not in out
+
+
+# ---- refusals before any spend, at the level of run() ----------------------------------------------------
+
+
+def test_an_invalid_index_stops_the_run_before_any_chat_or_search(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    async def refuse(_store: Any, **_k: Any) -> Any:
+        raise SystemExit("INDEX NOT VERIFIED: stale")
+
+    monkeypatch.setattr(fsp, "require_verified_index", refuse)
+    with pytest.raises(SystemExit, match="INDEX NOT VERIFIED"):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    assert world.events == ["corpus"] and not world.results.exists()
+
+
+def test_a_cap_below_the_estimate_refuses_before_the_index_is_even_opened(world: World):
+    with pytest.raises(SystemExit, match="Refusing to start"):
+        asyncio.run(fsp.run(run_args(mode="both", cap=0.0000001)))
+    assert world.events == ["corpus"] and not world.results.exists()
+
+
+def test_a_plan_is_free_and_writes_nothing(world: World, capsys: pytest.CaptureFixture[str]):
+    asyncio.run(fsp.run(run_args(mode="both", plan=True)))
+    assert world.events == ["corpus"] and not world.results.exists()
+    assert "Nothing was called" in capsys.readouterr().out
+
+
+def _price_of(chat_model: str) -> float:
+    plan = fsp.plan_first_step(
+        [fab(1), fab(2)],
+        mode="both",
+        repeats=2,
+        chat_model=chat_model,
+        embedding_model=application_defaults()["embedding_model"],
+        tools=tuple(fsp.ToolDefinition.model_validate(d) for d in fsp.ToolRegistry().definitions()),
+        cap=99.0,
+        split="dev",
+    )
+    return float(plan["estimated_usd"])
+
+
+def test_a_store_that_uses_a_dearer_model_is_re_planned_against_the_cap(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    cheap, dear = _price_of(application_defaults()["chat_model"]), _price_of("gpt-5.4")
+    assert dear > cheap
+    world.steps = [search_step("a1")] * 4
+
+    async def dearer(_store: Any, **_k: Any) -> Any:
+        world.events.append("verify-index")
+        return SimpleNamespace(
+            settings=SimpleNamespace(
+                chat_model="gpt-5.4",
+                embedding_model=application_defaults()["embedding_model"],
+                retrieval_top_k=3,
+            )
+        )
+
+    monkeypatch.setattr(fsp, "require_verified_index", dearer)
+    with pytest.raises(SystemExit, match="Refusing to start"):
+        asyncio.run(fsp.run(run_args(mode="both", cap=(cheap + dear) / 2)))
+    assert "chat-service" not in world.events and "chat-call" not in world.events
+
+
+def test_a_store_that_uses_an_unpriced_model_refuses_before_the_chat_service_exists(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    async def unpriced(_store: Any, **_k: Any) -> Any:
+        world.events.append("verify-index")
+        return SimpleNamespace(
+            settings=SimpleNamespace(
+                chat_model="zz-unpriced-model",
+                embedding_model=application_defaults()["embedding_model"],
+                retrieval_top_k=3,
+            )
+        )
+
+    monkeypatch.setattr(fsp, "require_verified_index", unpriced)
+    with pytest.raises(SystemExit, match="No price recorded"):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    assert "chat-service" not in world.events and "chat-call" not in world.events
+
+
+def test_the_run_installs_a_meter_with_the_retry_free_limited_strict_settings(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    seen: list[dict[str, Any]] = []
+    real = fsp.CostMeter
+
+    def recording(cap: float, **kw: Any) -> Any:
+        seen.append(kw)
+        return real(cap, **kw)
+
+    monkeypatch.setattr(fsp, "CostMeter", recording)
+    asyncio.run(fsp.run(run_args(mode="baseline")))
+    assert seen == [
+        {
+            "max_output_tokens": fsp.MAX_OUTPUT_TOKENS_PER_STEP,
+            "require_usage": True,
+            "require_complete": True,
+        }
+    ]
+
+
+# ---- D, E and the shared case selection agree ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("split", ["dev", "test", "all"])
+def test_the_baseline_of_e_scores_exactly_the_cases_the_plain_probe_of_d_scores(split: str):
+    """Both probes must compare like with like. On the committed question set the case rule of the first-step
+    probe (``baseline_eligible``) selects the same cases as the retrieval probe (``split_cases``)."""
+    from evaluation.rag_eval import pools
+    from evaluation.rag_eval.retrieval_probe import split_cases
+
+    cases = pools.select(pools.load_question_set()["cases"], split)
+    answerable = {c["id"] for c in split_cases(cases)[0]}
+    eligible = {c["id"] for c in cases if fsp.baseline_eligible(c)}
+    assert eligible == answerable and eligible  # non-empty: the check really compared something
+
+
+# ---- M1-08-F corrections: cancellation, truncation, no overwrite -----------------------------------------
+
+
+def only_incomplete(world: World) -> dict[str, Any]:
+    (path,) = incomplete(world)
+    return json.loads(path.read_text())
+
+
+def assert_marked_incomplete(saved: dict[str, Any], kind: str) -> None:
+    assert saved["status"] == "incomplete" and saved["complete"] is False
+    assert saved["incomplete_kind"] == kind
+    for key in ("summary", "baseline_summary", "comparison", "passage"):
+        assert key not in saved  # nothing derived from a partial run
+
+
+def test_cancellation_after_the_baseline_keeps_its_rows_and_is_still_a_cancellation(world: World):
+    world.steps = [asyncio.CancelledError()]
+    with pytest.raises(
+        asyncio.CancelledError
+    ):  # cancellation is not turned into an exit and not swallowed
+        asyncio.run(fsp.run(run_args(mode="both")))
+    saved = only_incomplete(world)
+    assert_marked_incomplete(saved, "cancelled")
+    assert len(saved["baseline_rows"]) == 2 and saved["rows"] == []
+    assert finished(world) == [] and world.events.count("chat-call") == 1  # no paid call after it
+
+
+def test_cancellation_after_partial_model_results_keeps_every_completed_row(world: World):
+    world.steps = [search_step("a1"), search_step("a1"), asyncio.CancelledError()]
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    saved = only_incomplete(world)
+    assert_marked_incomplete(saved, "cancelled")
+    assert [r["repeat"] for r in saved["rows"]] == [1, 2] and len(saved["baseline_rows"]) == 2
+    assert world.events.count("chat-call") == 3
+
+
+def test_cancellation_before_any_result_still_writes_an_empty_incomplete_file(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    def make_search(_retriever: Any) -> Any:
+        async def search(_query: str) -> list[Hit]:
+            raise asyncio.CancelledError
+
+        return search
+
+    monkeypatch.setattr(fsp, "make_search", make_search)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    saved = only_incomplete(world)
+    assert_marked_incomplete(saved, "cancelled")
+    assert saved["rows"] == [] and saved["baseline_rows"] == []
+
+
+def test_a_keyboard_interrupt_is_kept_and_re_raised(world: World):
+    world.steps = [search_step("a1"), KeyboardInterrupt()]
+    with pytest.raises(KeyboardInterrupt):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    assert_marked_incomplete(only_incomplete(world), "interrupted")
+
+
+def test_a_write_failure_during_cancellation_does_not_replace_the_cancellation(
+    world: World, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    def broken(_path: Path, _payload: Any) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fsp, "write_json_atomic", broken)
+    world.steps = [asyncio.CancelledError()]
+    with pytest.raises(asyncio.CancelledError):  # not OSError
+        asyncio.run(fsp.run(run_args(mode="both")))
+    assert "could not be saved" in capsys.readouterr().err
+    assert incomplete(world) == [] and finished(world) == []
+
+
+def test_a_write_failure_after_a_provider_error_still_says_the_rows_were_not_saved(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        fsp, "write_json_atomic", lambda *_a: (_ for _ in ()).throw(OSError("disk full"))
+    )
+    world.steps = [RuntimeError("provider down")]
+    with pytest.raises(SystemExit, match="could not be saved"):
+        asyncio.run(fsp.run(run_args(mode="both")))
+
+
+def test_cancellation_while_the_report_is_built_leaves_the_rows_and_never_complete(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    world.steps = [search_step("a1"), search_step("a1"), search_step("a2"), search_step("a2")]
+
+    async def cancelled(*_a: Any, **_k: Any) -> Any:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(fsp, "passage_comparison", cancelled)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(fsp.run(run_args(mode="both", passage=True)))
+    (path,) = finished(world)
+    saved = json.loads(path.read_text())
+    assert saved["status"] == "rows_only" and saved["complete"] is False
+    assert len(saved["rows"]) == 4 and len(saved["baseline_rows"]) == 2
+
+
+def test_a_truncated_response_stops_the_run_apart_from_a_decision_not_to_search(world: World):
+    from evaluation.rag_eval.meter import IncompleteResponse
+
+    # p001 repeat 1 is a genuine decision not to search (a valid miss); repeat 2 is cut off by the output limit
+    world.steps = [
+        NO_SEARCH,
+        IncompleteResponse("the chat response was cut off (finish_reason 'length')"),
+    ]
+    with pytest.raises(SystemExit, match="incomplete"):
+        asyncio.run(fsp.run(run_args(mode="both")))
+    saved = only_incomplete(world)
+    assert_marked_incomplete(saved, "truncated_response")
+    assert "IncompleteResponse" in saved["incomplete_reason"]
+    assert [r["tool"] for r in saved["rows"]] == [None]  # the real "no search" is kept as it was
+    assert (
+        len(saved["rows"]) == 1
+    )  # the truncated step produced no row at all, never a fabricated miss
+
+
+def test_the_run_meter_also_requires_complete_responses(
+    world: World, monkeypatch: pytest.MonkeyPatch
+):
+    seen: list[dict[str, Any]] = []
+    real = fsp.CostMeter
+
+    def recording(cap: float, **kw: Any) -> Any:
+        seen.append(kw)
+        return real(cap, **kw)
+
+    monkeypatch.setattr(fsp, "CostMeter", recording)
+    asyncio.run(fsp.run(run_args(mode="baseline")))
+    assert seen[0]["require_complete"] is True
+
+
+def test_a_result_file_name_is_never_reused(tmp_path: Path):
+    first = fsp.unique_path(tmp_path, "first_step_X")
+    first.write_text("{}")
+    second = fsp.unique_path(tmp_path, "first_step_X")
+    second.write_text("{}")
+    third = fsp.unique_path(tmp_path, "first_step_X")
+    assert len({first, second, third}) == 3 and second.name == "first_step_X_2.json"

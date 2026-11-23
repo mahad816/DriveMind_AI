@@ -23,6 +23,7 @@ attestation (``review_gate.py``) for the sealed file as it is now. Only the free
 """
 
 import json
+import logging
 import os
 import random
 import sys
@@ -103,14 +104,45 @@ def held_out_path(environ: Mapping[str, str] | None = None) -> Path | None:
     return path
 
 
+class SealedAccessRefused(RuntimeError):
+    """A paid held-out run was asked for while a library would write the held-out questions to a log."""
+
+
+# Libraries that put a request, its body or its SQL parameters into their log at these levels. The OpenAI SDK's
+# debug log carries the request body ("Request options"); httpx and httpcore log the connection at debug;
+# SQLAlchemy logs statements with their parameters at info. The evaluation code sets none of these itself.
+REQUEST_LOGGERS = (
+    ("openai", logging.DEBUG),
+    ("httpx", logging.DEBUG),
+    ("httpcore", logging.DEBUG),
+    ("qdrant_client", logging.DEBUG),
+    ("sqlalchemy.engine", logging.INFO),
+)
+
+
+def request_logging_problem(environ: Mapping[str, str] | None = None) -> str | None:
+    """Why a held-out run must not start now (a fixed message naming no case), or None."""
+    env = environ if environ is not None else os.environ
+    names = [name for name, level in REQUEST_LOGGERS if logging.getLogger(name).isEnabledFor(level)]
+    if env.get("OPENAI_LOG", "").lower() == "debug":
+        names.append("OPENAI_LOG=debug")
+    if not names:
+        return None
+    return (
+        f"logging would write requests to a log ({', '.join(names)}), and a held-out request carries the "
+        "question text; lower the log level (unset OPENAI_LOG) and run again"
+    )
+
+
 def load_held_out(
     path: Path | None = None, *, require_review: bool = True, manifest_path: Path | None = None
 ) -> dict[str, Any]:
     """The sealed cases with ``pool`` added. Every case must be in the held-out split.
 
     By default the Owner's review attestation must be valid for the file as it is now, or this raises
-    ``ReviewRequired`` (no case named). Free callers that report only aggregates or counts per rule (validate,
-    coverage, the review sheet) pass ``require_review=False``; a paid run never does.
+    ``ReviewRequired`` (no case named); and no library may be logging requests (``SealedAccessRefused``).
+    Free callers that report only aggregates or counts per rule (validate, coverage, the review sheet) pass
+    ``require_review=False``; a paid run never does.
     """
     path = path or held_out_path()
     if path is None:
@@ -118,6 +150,8 @@ def load_held_out(
             f"set {HELD_OUT_ENV} to the held-out case file (outside the repository)"
         )
     if require_review:
+        if problem := request_logging_problem():
+            raise SealedAccessRefused(problem)
         _require_review(path, manifest_path or FREEZE_MANIFEST)
     dataset: dict[str, Any] = json.loads(path.read_text())
     for case in dataset["cases"]:

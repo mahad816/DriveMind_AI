@@ -343,6 +343,10 @@ def test_a_held_out_run_prints_and_writes_only_aggregates(sealed_file, monkeypat
     assert_sealed(out)
     written = list((sealed_file.parent / cli.HELD_OUT_RESULTS).glob("*.json"))
     assert len(written) == 1 and pools.REPO_ROOT not in written[0].parents
+    assert written[0].stat().st_mode & 0o777 == 0o600  # owner only, like the probe's sealed report
+    assert (
+        written[0].parent.stat().st_mode & 0o777 == 0o700
+    )  # the folder too, made before the write
     saved = json.loads(written[0].read_text())
     assert not any(s in written[0].read_text() for s in ("SECRET", "4711", "vault code"))
     assert [r["id"] for r in saved["rows"]] == IDS and "reply" not in saved["rows"][0]

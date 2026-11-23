@@ -4,8 +4,8 @@ The estimate extracts every file with the product's own readers, splits the text
 chunker (so the overlap between neighbouring chunks is counted, because the overlap is embedded too), and
 prices the tokens at the recorded input price of the configured embedding model.
 
-No tokenizer is installed in the project, so the token count is an upper bound taken from UTF-8 bytes
-(``BYTES_PER_TOKEN``), then raised by ``SAFETY_MARGIN``. Bytes, not characters: Urdu and other non-Latin text
+No tokenizer is installed in the project, so the token count is a conservative estimate taken from UTF-8 bytes
+(``BYTES_PER_TOKEN``), then raised by ``SAFETY_MARGIN``. It is not a proven bound for every text (Urdu, identifiers). Bytes, not characters: Urdu and other non-Latin text
 needs several bytes per character, and it is also the text that tokenizers split into the most tokens.
 """
 
@@ -18,9 +18,7 @@ from app.ingestion.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_TARGET_CHUNK_S
 from .corpus import CorpusFile, extract_text
 from .meter import PRICE_TABLE_DATE, price_for
 
-BYTES_PER_TOKEN = (
-    3  # English text is about 4 bytes per token, Urdu and dense numbers fewer: 3 is an upper bound
-)
+BYTES_PER_TOKEN = 3  # English text is about 4 bytes per token, Urdu and dense numbers fewer: 3 is a conservative figure
 SAFETY_MARGIN = 1.2
 
 
@@ -51,12 +49,14 @@ def estimate_embedding(texts: Mapping[str, str], model: str) -> dict[str, Any]:
         "raw_tokens": raw_tokens,
         "safety_margin": SAFETY_MARGIN,
         "estimated_tokens": tokens,
-        "estimated_usd": round(tokens * price / 1_000_000, 5),
+        "estimated_usd": tokens
+        * price
+        / 1_000_000,  # full precision: the cap is compared with this
         "assumptions": [
             "text is extracted with the product's readers and chunked with the product's chunker; "
             "the overlap between chunks is embedded and therefore counted",
-            f"no tokenizer is installed: tokens are an upper bound of UTF-8 bytes / {BYTES_PER_TOKEN}, "
-            f"then multiplied by a safety margin of {SAFETY_MARGIN}",
+            f"no tokenizer is installed: tokens are a conservative estimate of UTF-8 bytes / {BYTES_PER_TOKEN} "
+            f"(not a proven bound), then multiplied by a safety margin of {SAFETY_MARGIN}",
             "every file is embedded from scratch (an upper bound: chunks that are already indexed cost nothing)",
             f"input price of {model} from prices.json (checked {PRICE_TABLE_DATE}); the file is not edited by the plan",
         ],

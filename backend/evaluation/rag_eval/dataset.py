@@ -34,8 +34,39 @@ SPLITS = {"dev", "test", "held_out"}
 HELD_OUT_SPLIT = "held_out"
 
 
+def case_file_problem(name: object) -> str | None:
+    """Why ``name`` is not a committed case file in the datasets folder, or None.
+
+    Only a bare ``*.json`` name of a regular, non-symlink file inside ``DATA`` is accepted: ``DATA / name`` would
+    follow an absolute path, ``..`` or a symlink to any file, including the sealed held-out file. The message names
+    the rule, never the target's location or content. Reads nothing but file metadata.
+    """
+    refusal = f"{name!r} is not a case file inside evaluation/datasets"
+    if (
+        not isinstance(name, str)
+        or name in {"", ".", ".."}
+        or any(ch in name for ch in ("/", "\\", "\x00"))
+        or not name.endswith(".json")
+    ):
+        return refusal
+    path = DATA / name
+    try:
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != DATA.resolve():
+            return refusal
+    except OSError:
+        return refusal
+    return None
+
+
+def resolve_case_file(name: str) -> Path:
+    """The path of a committed case file; raises ``ValueError`` for anything ``case_file_problem`` refuses."""
+    if problem := case_file_problem(name):
+        raise ValueError(problem)
+    return DATA / name
+
+
 def load_cases(name: str = "rag_v2_cases.json") -> dict[str, Any]:
-    data: dict[str, Any] = json.loads((DATA / name).read_text())
+    data: dict[str, Any] = json.loads(resolve_case_file(name).read_text())
     return data
 
 

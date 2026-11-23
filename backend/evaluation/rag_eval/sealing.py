@@ -17,9 +17,11 @@ Known limit: the groups overlap and a total is shown, so a reader holding a grou
 rates could infer something about a cell by subtraction. Cells are suppressed individually, not as a set.
 """
 
+import os
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from .score import rates
@@ -181,3 +183,22 @@ def small_cells(value: Any, path: str = "") -> list[str]:
         for index, child in enumerate(value):
             found += small_cells(child, f"{path}[{index}]")
     return found
+
+
+def private_folder(folder: Path) -> Path:
+    """Create ``folder`` (or keep it) readable by its owner only, before anything confidential goes into it.
+
+    ``mkdir`` mode is reduced by the umask, never widened, and a folder that already exists keeps its old mode, so the
+    mode is set again explicitly."""
+    folder.mkdir(mode=0o700, exist_ok=True)
+    folder.chmod(0o700)
+    return folder
+
+
+def write_private(path: Path, text: str) -> None:
+    """Write ``text`` to a file that is owner-only from the moment it exists (no world-readable window), also when
+    the file already existed with looser permissions."""
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        handle.write(text)

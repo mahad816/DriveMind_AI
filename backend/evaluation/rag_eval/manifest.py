@@ -23,7 +23,7 @@ from app.ingestion.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_TARGET_CHUNK_S
 from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
 
 from .corpus import CorpusFile
-from .dataset import DATA
+from .dataset import resolve_case_file
 from .meter import METERING_LIMITS, PRICE_TABLE_DATE
 from .target import ANSWER_FIELDS, BACKEND, application_defaults
 
@@ -94,7 +94,7 @@ def build_manifest(
         "dataset": {
             "version_id": "",
             "split": split,
-            "files": {name: digest((DATA / name).read_text()) for name in datasets},
+            "files": {name: digest(resolve_case_file(name).read_text()) for name in datasets},
         },
         "price_table_date": PRICE_TABLE_DATE,
         "metering": METERING_LIMITS,

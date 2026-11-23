@@ -39,7 +39,7 @@ from .review_gate import ReviewRequired
 from .runner import prepare_case
 from .schema_v3 import gate_groups
 from .score import wilson
-from .sealing import MIN_CELL
+from .sealing import MIN_CELL, private_folder, write_private
 
 POOL_SPLITS = {"regression", HELD_OUT_SPLIT}  # splits that exist only for the frozen corpus
 
@@ -192,8 +192,9 @@ def select_probe_cases(
 
 
 def plan_probe(queries: Sequence[str], model: str, *, cap: float, split: str) -> dict[str, Any]:
-    """Free estimate: one embedding call per query, priced from the queries' own UTF-8 bytes (an upper bound,
-    see ``embedding_estimate``) at the recorded input price of ``model``. Never edits the price table."""
+    """Free estimate: one embedding call per query, priced from the queries' own UTF-8 bytes (a conservative
+    estimate, not a proven bound, see ``embedding_estimate``) at the recorded input price of ``model``. Never edits
+    the price table."""
     require_prices(model)
     price = price_for(model)["input"]
     raw = math.ceil(sum(len(q.encode()) for q in queries) / BYTES_PER_TOKEN)
@@ -211,7 +212,8 @@ def plan_probe(queries: Sequence[str], model: str, *, cap: float, split: str) ->
         "within_cap": usd <= cap,
         "assumptions": [
             "one embedding call per search and no chat call (the probe stops before the model)",
-            f"tokens are an upper bound of UTF-8 bytes / {BYTES_PER_TOKEN}, times {SAFETY_MARGIN}",
+            f"tokens are a conservative estimate (not a proven bound) of UTF-8 bytes / {BYTES_PER_TOKEN}, "
+            f"times {SAFETY_MARGIN}",
             f"input price of {model} from prices.json (checked {PRICE_TABLE_DATE}); the file is not edited",
         ],
     }
@@ -281,11 +283,11 @@ def sealed_probe_report(
 
 def write_sealed_report(report: Mapping[str, Any], sealed: Path, stamp: str) -> Path:
     """Beside the sealed file (outside the repository), owner-readable only."""
-    folder = sealed.parent / HELD_OUT_RESULTS
-    folder.mkdir(exist_ok=True)
+    folder = private_folder(
+        sealed.parent / HELD_OUT_RESULTS
+    )  # owner-only before the first byte is written
     path = folder / f"retrieval_probe_{stamp}_held_out.json"
-    path.write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n")
-    path.chmod(0o600)
+    write_private(path, json.dumps(report, indent=1, ensure_ascii=False) + "\n")
     return path
 
 

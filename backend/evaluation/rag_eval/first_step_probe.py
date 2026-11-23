@@ -27,6 +27,15 @@ M1-08-E adds, without changing what the default invocation measures:
   held-out pool is refused before anything is read or called.
 * A free ``--plan`` (chat calls, embedding calls, tokens, dollars at the recorded prices), a refusal when the
   estimate is above ``--cap``, and the run-time ``CostMeter`` as in the other paid probes.
+
+M1-08-F adds, without changing what is measured:
+
+* Spending safeguards: the chat client does not retry by itself (``max_retries=0``), every chat request carries an
+  output limit (``MAX_OUTPUT_TOKENS_PER_STEP``), a response without a usage block stops the run, and the first failed
+  call ends it. The plan states the ceiling these give (the cap plus one call), and what they do not cover.
+* Paid rows are never lost: the rows are saved the moment the paid phase ends (status ``rows_only``) and replaced
+  atomically by the finished report (status ``complete``); a failure during the paid phase saves what was paid for in a
+  file named ``*_incomplete.json`` (status ``incomplete``, raw rows only, no figure derived from them).
 """
 
 import argparse
@@ -34,12 +43,17 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import statistics
+import sys
 from collections import Counter
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+from openai import AsyncOpenAI
 
 from app.agents.tool_rag.agent_models import AgentMessage, AgentStepResult, ToolDefinition
 from app.agents.tool_rag.agent_service import initial_messages
@@ -60,6 +74,9 @@ from .meter import (
     PRICE_TABLE_DATE,
     BudgetExceeded,
     CostMeter,
+    IncompleteResponse,
+    UnmeteredRequest,
+    UnpricedModel,
     cap_argument,
     price_for,
     refuse_over_cap,
@@ -88,18 +105,32 @@ SKIPPED_CATEGORIES = {"chitchat"}
 INVENTORY_CATEGORIES = {"inventory"}
 SEARCH_TOOLS = {"search_knowledge", "resolve_file", "file_evidence"}
 
-# Planning assumptions of --plan: not measurements and not guaranteed upper bounds (the request sets no output
-# limit); the meter records the real figures.
+# Planning assumptions of --plan: not measurements and not guaranteed bounds; the meter records the real figures.
 # One first model step: a tool call of up to three short queries (about 150 tokens), a 2x margin.
-# No reasoning tokens are modelled (the request sets no output limit).
+# No reasoning tokens are modelled.
 OUTPUT_TOKENS_PER_STEP = 300
+# The output limit the run puts on every chat request (the meter adds ``max_completion_tokens``). Earlier first steps
+# used 20 to 107 output tokens (ticket 08), so this is about ten times the largest seen. The limit also covers
+# reasoning tokens. A response that the limit cuts off (``finish_reason`` "length") stops the run and is saved as
+# incomplete (``CostMeter.check_complete``); whether the provider honours the limit is not verified without a paid call.
+MAX_OUTPUT_TOKENS_PER_STEP = 1000
 MAX_QUERIES_PER_STEP = 3  # search_knowledge queries one first step may carry
 # A model-written query is assumed to be as long as the question, but never shorter than this many bytes.
 QUERY_BYTES_FLOOR = 200
 DEFAULT_REPEATS = 2
-SDK_DEFAULT_RETRIES = (
-    2  # openai 2.44.0 DEFAULT_MAX_RETRIES; the agent's non-streaming step uses the default client
-)
+
+
+def make_chat_service(settings: Settings) -> OpenAIAgentChatService:
+    """The agent's chat service on a client that never retries by itself.
+
+    The agent's non-streaming ``step`` uses the SDK's default client, which retries a failed request twice below the
+    meter, where the spend is neither counted nor limited. The service accepts a client, so the probe passes one with
+    ``max_retries=0``: a failed request ends the run instead of being repeated. No application code changes.
+    """
+    if not settings.openai_api_key:
+        raise SystemExit("STOPPED: OPENAI_API_KEY is not configured; nothing was called.")
+    client = AsyncOpenAI(api_key=settings.openai_api_key, max_retries=0)
+    return OpenAIAgentChatService(settings, client=client)
 
 
 @dataclass(frozen=True)
@@ -138,8 +169,12 @@ async def probe_case(
     repeats: int,
     *,
     collect: dict[int, dict[str, list[list[Hit]]]] | None = None,
+    sink: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Run one case ``repeats`` times: first call, then the retrieval of the query it wrote.
+
+    ``sink``, when given, is the list the finished rows are appended to as they complete (and is returned), so a
+    failure on a later repeat or case still leaves every earlier paid row with the caller.
 
     ``collect``, when given, receives per repeat (1-based) and case id the chunks of every search the model made,
     one list per search and uncut, for the passage metrics. It is filled for every case the baseline can also score
@@ -149,7 +184,7 @@ async def probe_case(
     history = history_messages(case)
     messages = initial_messages(case["question"], history, history_window_complete=bool(history))
     names = expected_names(case)
-    rows: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = sink if sink is not None else []
     for repeat in range(1, repeats + 1):
         result = await step(messages)
         call = first_call(result)
@@ -188,10 +223,15 @@ def baseline_eligible(case: dict[str, Any]) -> bool:
 
 
 async def baseline_rows(
-    search: Search, cases: Sequence[dict[str, Any]], *, collect: dict[str, list[Hit]] | None = None
+    search: Search,
+    cases: Sequence[dict[str, Any]],
+    *,
+    collect: dict[str, list[Hit]] | None = None,
+    sink: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """The question text as the query, one search per eligible case (embedding only; no chat model)."""
-    rows: list[dict[str, Any]] = []
+    """The question text as the query, one search per eligible case (embedding only; no chat model).
+    ``sink`` receives each finished row as it completes."""
+    rows: list[dict[str, Any]] = sink if sink is not None else []
     for case in cases:
         if not baseline_eligible(case):
             continue
@@ -258,6 +298,8 @@ def compare(baseline: Sequence[dict[str, Any]], model: Sequence[dict[str, Any]])
     model_found = both + model_only
     return {
         "cases": cases,
+        "paired": pairs
+        > 0,  # False: nothing was compared, and every figure below is empty, not a result
         "repeats_per_case": repeats,
         "unpaired_ids": sorted(unpaired),
         "pairs": pairs,
@@ -337,14 +379,16 @@ def budget_summary(collect: dict[int, dict[str, list[list[Hit]]]], top_k: int) -
 
 
 def same_cases(first: dict[str, Any], second: dict[str, Any]) -> bool:
-    """True when two passage sections scored exactly the same case ids (and both were computed)."""
+    """True when two passage sections scored exactly the same, non-empty set of case ids (and both were computed).
+
+    Two empty sections are not "the same cases": nothing was compared."""
     if first.get("status", "ok") != "ok" or second.get("status", "ok") != "ok":
         return False
 
     def ids(section: dict[str, Any]) -> list[str]:
         return sorted(r["id"] for r in section.get("rows", []))
 
-    return ids(first) == ids(second)
+    return ids(first) == ids(second) and bool(ids(first))
 
 
 PASSAGE_LABELS = {
@@ -424,7 +468,8 @@ def prompt_id(tools: Sequence[ToolDefinition]) -> str:
 
 
 def _tokens(total_bytes: int) -> int:
-    """The upper bound the other plans use: UTF-8 bytes / BYTES_PER_TOKEN, times SAFETY_MARGIN."""
+    """The conservative estimate the other plans use: UTF-8 bytes / BYTES_PER_TOKEN, times SAFETY_MARGIN. Not a
+    proven bound (no tokenizer is installed)."""
     return math.ceil(math.ceil(total_bytes / BYTES_PER_TOKEN) * SAFETY_MARGIN)
 
 
@@ -442,8 +487,9 @@ def plan_first_step(
     """Free estimate of a run: exact messages for the chat calls, bounded sizes for the queries it will embed.
 
     Nothing is called. The dollars are full precision and are what the cap is compared with. Cached-input
-    discounts are not assumed. Tokens are upper bounds (see ``embedding_estimate``); output is a fixed
-    assumption per step, because the agent's request sets no output limit.
+    discounts are not assumed. Tokens are conservative estimates, not proven bounds (see ``embedding_estimate``);
+    output is a fixed assumption per step. ``spend_ceiling_usd`` is the cap plus the dearest single step under the
+    safeguards the run really applies (``safeguards``), and ``not_enforced`` lists what it still does not cover.
     """
     do_model = mode in {"model", "both"}
     do_baseline = mode in {"baseline", "both"}
@@ -452,6 +498,7 @@ def plan_first_step(
     runnable = [c for c in cases if c["category"] not in SKIPPED_CATEGORIES]
     chat_calls = embed_calls = 0
     chat_bytes = embed_bytes = 0
+    max_chat_bytes = max_query_bytes = 0  # the dearest single step: its input and its longest query
     if do_model:
         tool_bytes = len(
             json.dumps([t.model_dump(mode="json") for t in tools], ensure_ascii=False).encode()
@@ -464,15 +511,19 @@ def plan_first_step(
             per_call = tool_bytes + sum(len((m.text or "").encode()) for m in messages)
             chat_calls += repeats
             chat_bytes += per_call * repeats
+            max_chat_bytes = max(max_chat_bytes, per_call)
             if expected_names(case):  # only these have their queries searched
                 size = max(len(case["question"].encode()), QUERY_BYTES_FLOOR)
                 embed_calls += repeats * MAX_QUERIES_PER_STEP
                 embed_bytes += repeats * MAX_QUERIES_PER_STEP * size
+                max_query_bytes = max(max_query_bytes, size)
     if do_baseline:
         for case in runnable:
             if baseline_eligible(case):
                 embed_calls += 1
                 embed_bytes += len(case["question"].encode())
+                if not do_model:
+                    max_query_bytes = max(max_query_bytes, len(case["question"].encode()))
     chat_in, embed_in = _tokens(chat_bytes), _tokens(embed_bytes)
     chat_price = price_for(chat_model) if do_model else {"input": 0.0, "output": 0.0}
     embed_price = price_for(embedding_model)["input"]
@@ -481,6 +532,17 @@ def plan_first_step(
     ) / 1_000_000
     embed_usd = embed_in * embed_price / 1_000_000
     usd = chat_usd + embed_usd
+    # The dearest single step: one chat call at the output limit, then its (at most three) query embeddings.
+    queries_in_step = MAX_QUERIES_PER_STEP if do_model else 1
+    max_single = (
+        (
+            _tokens(max_chat_bytes) * chat_price["input"]
+            + MAX_OUTPUT_TOKENS_PER_STEP * chat_price["output"]
+            if do_model and max_chat_bytes
+            else 0.0
+        )
+        + _tokens(queries_in_step * max_query_bytes) * embed_price
+    ) / 1_000_000
     return {
         "split": split,
         "mode": mode,
@@ -499,23 +561,48 @@ def plan_first_step(
         "estimated_usd": usd,
         "within_cap": usd <= cap,
         "cap_is_hard_limit": False,
+        "safeguards": {
+            "sdk_retries": 0,
+            "max_output_tokens_per_chat_call": MAX_OUTPUT_TOKENS_PER_STEP,
+            "stops_on_missing_usage": True,
+            "stops_on_truncated_response": True,
+            "stops_on_first_failed_call": True,
+            "cap_checked_between_calls": True,
+        },
+        "max_single_step_usd": max_single,
+        "spend_ceiling_usd": cap + max_single,
+        "ceiling_basis": "the cap plus the dearest single step: the meter refuses the next call once the reported "
+        "spend reaches the cap, so a run can pass it by the one step in flight; valid only while the points in "
+        "'not_enforced' hold",
+        "not_enforced": [
+            "the provider accepts max_completion_tokens for this chat model and honours it (not verifiable without "
+            "a paid call; a rejection would fail the first call and end the run)",
+            "a failed request (timeout, server error) may still be billed and is invisible to the meter; the run "
+            "ends at the first failed call, so at most one such request",
+            "embedding requests are made by the application's retriever with the SDK's default retries (each query "
+            "is a few hundred tokens at most); their cost is negligible and not metered when retried",
+            "whether the chat model uses reasoning tokens: the output limit covers them, and a response cut off by it "
+            "(finish_reason 'length') stops the run and is saved as incomplete, so the spend stays bounded, but "
+            "every step would then be cut off and no first step could be measured",
+            "the input size of a step comes from the byte estimate, not a tokenizer",
+        ],
         "measured": "none before a paid run: the report then holds the meter's figures beside this estimate",
         "assumptions": [
             "conservative estimate from the recorded prices (prices.json), not a measurement; not edited by the plan",
-            f"chat input: the exact messages and tool descriptions of each first step, as an upper bound of "
-            f"UTF-8 bytes / {BYTES_PER_TOKEN} times {SAFETY_MARGIN}; no cached-input discount",
-            f"chat output: {OUTPUT_TOKENS_PER_STEP} tokens per step (the request sets no output limit)",
+            f"chat input: the exact messages and tool descriptions of each first step, estimated conservatively "
+            f"as UTF-8 bytes / {BYTES_PER_TOKEN} times {SAFETY_MARGIN} (not a proven bound); no cached-input discount",
+            f"chat output: {OUTPUT_TOKENS_PER_STEP} tokens per step is a planning figure; the run asks for at most "
+            f"{MAX_OUTPUT_TOKENS_PER_STEP} (max_completion_tokens), so one call can cost more than this estimate",
             f"model-written searches: at most {MAX_QUERIES_PER_STEP} queries per step, each at most "
             f"max(question length, {QUERY_BYTES_FLOOR} bytes); only cases with expected files are searched",
             "baseline: one embedding call per eligible case on the question itself",
             "the cap is not a provider-side limit: the meter adds up the usage each response reports and refuses "
             "the next call once the cap is reached; calls run one at a time, so a run can pass the cap by the "
             "one call in flight",
-            "no output limit is set on the request, so one call is not bounded by this estimate; the usage the "
-            "meter reads (completion tokens) includes reasoning tokens, but whether the chat model reasons here is "
-            "not verified without a paid call",
-            f"the SDK retries a failed request by itself (default {SDK_DEFAULT_RETRIES} retries, below the "
-            "meter): a retried request is not counted and may be billed",
+            "the usage the meter reads (completion tokens) includes reasoning tokens, and the output limit covers "
+            "them; whether the chat model reasons here is not verified without a paid call",
+            "SDK retries are switched off for the chat client (max_retries=0): a failed request is not repeated, it "
+            "ends the run",
         ],
     }
 
@@ -555,11 +642,13 @@ async def run_probe(
     repeats: int,
     *,
     collect: dict[int, dict[str, list[list[Hit]]]] | None = None,
+    sink: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+    """Every runnable case, ``repeats`` times. ``sink`` receives each finished row as it completes."""
+    rows: list[dict[str, Any]] = sink if sink is not None else []
     for case in cases:
         if case["category"] not in SKIPPED_CATEGORIES:
-            rows += await probe_case(step, search, case, repeats, collect=collect)
+            await probe_case(step, search, case, repeats, collect=collect, sink=rows)
     return rows
 
 
@@ -645,35 +734,25 @@ async def run(args: argparse.Namespace) -> None:
             split=args.split,
         )
         refuse_over_cap(plan["estimated_usd"], args.cap)
-    chat = OpenAIAgentChatService(settings)
+    chat = make_chat_service(settings)
 
     async def step(messages: Sequence[AgentMessage]) -> AgentStepResult:
         return await chat.step(messages=messages, tools=tools)
 
-    meter = CostMeter(args.cap)
+    # The meter also puts the output limit on every chat request and stops at a response without usage.
+    meter = CostMeter(
+        args.cap,
+        max_output_tokens=MAX_OUTPUT_TOKENS_PER_STEP,
+        require_usage=True,
+        require_complete=True,
+    )
     sessions = session_factory(settings)
     model_rows: list[dict[str, Any]] = []
     base_rows: list[dict[str, Any]] = []
     base_hits: dict[str, list[Hit]] = {}
     model_hits: dict[int, dict[str, list[list[Hit]]]] = {}
     top_k = settings.retrieval_top_k
-    try:
-        with meter.installed():
-            async with sessions() as db:
-                search = make_search(HybridRetriever(db, settings))
-                if args.mode in {"baseline", "both"}:
-                    base_rows = await baseline_rows(search, cases, collect=base_hits)
-                if args.mode in {"model", "both"}:
-                    model_rows = await run_probe(
-                        step,
-                        search,
-                        cases,
-                        args.repeats,
-                        collect=model_hits,
-                    )
-    except BudgetExceeded as exc:
-        raise SystemExit(f"STOPPED: {exc}") from exc
-    report: dict[str, Any] = {
+    header: dict[str, Any] = {
         "settings": {
             "split": args.split,
             "mode": args.mode,
@@ -691,24 +770,140 @@ async def run(args: argparse.Namespace) -> None:
             "temperature": 0,
         },
         "plan": plan,
+    }
+    RESULTS.mkdir(
+        exist_ok=True
+    )  # before the first paid call: a folder error must not cost a paid run
+    stem = f"first_step_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}{'_' + args.tag if args.tag else ''}"
+    try:
+        with meter.installed():
+            async with sessions() as db:
+                search = make_search(HybridRetriever(db, settings))
+                if args.mode in {"baseline", "both"}:
+                    await baseline_rows(search, cases, collect=base_hits, sink=base_rows)
+                if args.mode in {"model", "both"}:
+                    await run_probe(
+                        step, search, cases, args.repeats, collect=model_hits, sink=model_rows
+                    )
+    except (Exception, BudgetExceeded, KeyboardInterrupt, asyncio.CancelledError) as exc:
+        # Everything paid for so far is kept as raw rows. Nothing derived from a partial run is written: no
+        # summary, comparison or passage figure that could be mistaken for a result.
+        kind = incomplete_kind(exc)
+        reason = (
+            f"{type(exc).__name__}: {exc}"
+            if isinstance(exc, BudgetExceeded)
+            else type(exc).__name__
+        )
+        saved: Path = unique_path(RESULTS, stem + "_incomplete")
+        try:
+            write_json_atomic(
+                saved,
+                {
+                    **header,
+                    "status": "incomplete",
+                    "complete": False,
+                    "incomplete_kind": kind,
+                    "incomplete_reason": reason,
+                    "spend": meter.summary(),
+                    "rows": model_rows,
+                    "baseline_rows": base_rows,
+                },
+            )
+            where = (
+                f"{len(model_rows)} model row(s) and {len(base_rows)} baseline row(s) already paid "
+                f"for are saved in {saved.name} (raw rows only, not a result)"
+            )
+        except (
+            Exception
+        ) as write_error:  # a failed save must never replace the reason the run stopped
+            where = (
+                f"the {len(model_rows)} model row(s) and {len(base_rows)} baseline row(s) already paid "
+                f"for could not be saved ({type(write_error).__name__})"
+            )
+        if isinstance(exc, KeyboardInterrupt | asyncio.CancelledError):
+            # Cancellation keeps its meaning: the rows are saved, then it goes on up. Nothing runs after it.
+            print(f"STOPPED ({kind}): {where}.", file=sys.stderr)
+            raise
+        raise SystemExit(
+            f"STOPPED: {reason}. The run is incomplete: {where}. Ask before spending more."
+        ) from exc
+    # The paid phase is over: write the raw rows first, so that nothing computed afterwards can lose them.
+    path = unique_path(RESULTS, stem)
+    report: dict[str, Any] = {
+        **header,
+        "status": "rows_only",
+        "complete": False,
         "spend": meter.summary(),
     }
     if model_rows:
-        report |= {"summary": summarise(model_rows), "rows": model_rows}
+        report["rows"] = model_rows
     if base_rows:
-        report |= {"baseline_summary": summarise_answerable(base_rows), "baseline_rows": base_rows}
-    if model_rows and base_rows:
-        report["comparison"] = compare(base_rows, model_rows)
-    if args.passage:
-        # Free: database reads only. One case set, one denominator, for the baseline and every repeat.
-        report["passage"] = await passage_comparison(
-            sessions, cases, files, base_hits, model_hits, top_k=top_k
-        )
-    RESULTS.mkdir(exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    path = RESULTS / f"first_step_{stamp}{'_' + args.tag if args.tag else ''}.json"
-    path.write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n")
+        report["baseline_rows"] = base_rows
+    write_json_atomic(path, report)
+    try:
+        if model_rows:
+            report["summary"] = summarise(model_rows)
+        if base_rows:
+            report["baseline_summary"] = summarise_answerable(base_rows)
+        if model_rows and base_rows:
+            report["comparison"] = compare(base_rows, model_rows)
+        if args.passage:
+            # Free: database reads only. One case set, one denominator, for the baseline and every repeat.
+            report["passage"] = await passage_comparison(
+                sessions, cases, files, base_hits, model_hits, top_k=top_k
+            )
+        report["status"], report["complete"] = "complete", True
+        write_json_atomic(path, report)
+    except Exception as exc:
+        raise SystemExit(
+            f"STOPPED: the paid rows are saved in {path.name} (status rows_only, not complete), but the report "
+            f"could not be finished ({type(exc).__name__}). It is not a result. No command re-summarises saved "
+            "rows yet, and the passage views need the searches' chunk ids, which are not saved."
+        ) from exc
     print_report(report, path.name)
+
+
+def incomplete_kind(exc: BaseException) -> str:
+    """Why a paid phase ended early, as a label the report keeps apart from every measured outcome."""
+    if isinstance(exc, asyncio.CancelledError):
+        return "cancelled"
+    if isinstance(exc, KeyboardInterrupt):
+        return "interrupted"
+    if isinstance(exc, IncompleteResponse):
+        return "truncated_response"
+    if isinstance(exc, UnmeteredRequest | UnpricedModel):
+        return "unmetered_response"
+    if isinstance(exc, BudgetExceeded):
+        return "cap_reached"
+    return "error"
+
+
+def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write ``payload`` as JSON so that ``path`` holds either its old content or the whole new content.
+
+    The text is built first (a serialisation error leaves nothing behind), written to a temporary file beside the
+    target, flushed to disk and moved over the target in one step; a failed step removes the temporary file.
+    """
+    text = json.dumps(payload, indent=1, ensure_ascii=False) + "\n"
+    scratch = path.with_name(path.name + ".tmp")
+    try:
+        with open(scratch, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(scratch, path)
+    except BaseException:
+        scratch.unlink(missing_ok=True)
+        raise
+
+
+def unique_path(folder: Path, stem: str) -> Path:
+    """``stem.json`` in ``folder``, or ``stem_2.json`` and so on: a result file is never overwritten."""
+    path, number = folder / f"{stem}.json", 2
+    while path.exists():
+        path = folder / f"{stem}_{number}.json"
+        number += 1
+    return path
 
 
 def print_report(report: dict[str, Any], filename: str) -> None:
@@ -741,7 +936,9 @@ def print_report(report: dict[str, Any], filename: str) -> None:
             f"baseline (question as query): {b.get('found_in_results', 0)} of {b['n']} found, "
             f"MRR {b.get('mrr')}"
         )
-    if "comparison" in report:
+    if "comparison" in report and not report["comparison"]["paired"]:
+        print("paired comparison: nothing was compared (no case has every repeat of both sides)")
+    elif "comparison" in report:
         k = report["comparison"]
         print(
             f"paired comparison over {k['cases']} cases x repeats = {k['pairs']}: baseline "
@@ -749,7 +946,9 @@ def print_report(report: dict[str, Any], filename: str) -> None:
             f"{k['model_found']} ({k['model_found_pct']}%); baseline only {k['baseline_only']}, "
             f"model only {k['model_only']}; unstable cases {k['unstable_ids']}"
         )
-    if "passage" in report:
+    if "passage" in report and not report["passage"]["cases"]:
+        print("passage views: no eligible case, nothing was compared")
+    elif "passage" in report:
         p = report["passage"]
         b = p["budget"]
         print(
@@ -835,8 +1034,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--cap",
         type=cap_argument,
         required=True,
-        help="spend cap in USD (required, no default). Enforced between calls from the usage each response "
-        "reports; not a provider-side limit (see the plan's assumptions)",
+        help="spend cap in USD (required, no default). Checked between calls from the usage each response "
+        "reports; not a provider-side limit. The plan prints the ceiling the safeguards give (see its "
+        "'not_enforced' list)",
     )
     return parser
 

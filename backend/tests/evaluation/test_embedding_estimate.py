@@ -14,7 +14,7 @@ from evaluation.rag_eval.embedding_estimate import (
     SAFETY_MARGIN,
     estimate_embedding,
 )
-from evaluation.rag_eval.meter import PRICES, PRICE_TABLE_DATE
+from evaluation.rag_eval.meter import PRICE_TABLE_DATE, PRICES
 
 MODEL = "text-embedding-3-small"
 
@@ -49,7 +49,7 @@ def test_the_estimate_states_its_model_method_and_assumptions():
     assert plan["chunk_target_size"] == DEFAULT_TARGET_CHUNK_SIZE
     assert plan["chunk_overlap"] == DEFAULT_CHUNK_OVERLAP
     text = " ".join(plan["assumptions"])
-    for word in ("no tokenizer", "overlap", "safety margin", "upper bound"):
+    for word in ("no tokenizer", "overlap", "safety margin", "conservative estimate"):
         assert word in text
 
 

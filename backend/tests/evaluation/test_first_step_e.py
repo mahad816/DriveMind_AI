@@ -352,7 +352,7 @@ def test_chitchat_is_not_planned_and_the_plan_states_its_assumptions():
     p = plan([fab(1, category="chitchat"), fab(2)])
     assert p["cases"] == 1 and p["chat_calls"] == 2
     text = " ".join(p["assumptions"])
-    assert "no cached-input discount" in text and "no output limit" in text
+    assert "no cached-input discount" in text and "max_completion_tokens" in text
     assert "one call in flight" in text and p["measured"].startswith("none before")
 
 

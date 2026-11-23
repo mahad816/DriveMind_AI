@@ -1,8 +1,15 @@
-"""Spend meter with a hard cap, installed around the OpenAI SDK for the duration of a run.
+"""Spend meter with a cap, installed around the OpenAI SDK for the duration of a run.
 
 Every chat and embedding response carries a ``usage`` block; this adds it up with the checked
 price table (``prices.json``) and refuses further calls once the cap is reached. An unknown model
 raises instead of being silently counted as free. Figures are estimates from token counts.
+
+The cap is checked BETWEEN calls from the usage each response reports. It is not a provider-side limit: a run
+can pass it by the call in flight, and a retried, cancelled-but-billed or usage-less request is invisible
+(``METERING_LIMITS``). Three opt-in safeguards narrow that gap for a command that wants them: ``max_output_tokens``
+puts an output limit on every chat request that sets none, ``require_usage`` stops the run at a response without
+a usage block instead of counting it as free, and ``require_complete`` stops the run at a chat response that did
+not finish normally (cut off by the output limit, filtered, or in a state this code does not know).
 
 Each call is attributed to the case that made it (``case_var``) and to a role. The role comes from the
 fixed system prompt the request carries, never from the model name, so two roles that share a model stay
@@ -53,6 +60,7 @@ ROLE_BY_SYSTEM_PROMPT: dict[str, str] = {
     ),
 }
 EMBEDDING_ROLE = "embedding"
+COMPLETE_FINISH_REASONS = frozenset({"stop", "tool_calls"})
 COUNTERS = ("calls", "failed_calls", "cancelled_calls", "missing_usage_calls")
 TOKENS = ("input_tokens", "output_tokens", "cached_tokens")
 
@@ -61,7 +69,8 @@ METERING_LIMITS: dict[str, Any] = {
     "counted": "successful non-streaming chat and embedding requests with their usage block; "
     "failed and cancelled requests as counts without tokens",
     "invisible": [
-        "SDK automatic retries (they happen below the wrapped method)",
+        "SDK automatic retries (they happen below the wrapped method; a command must switch them off at its "
+        "client, as the first-step probe does)",
         "streamed requests (refused: the meter stops the run instead of guessing)",
         "a request that was billed after its caller gave up",
     ],
@@ -93,8 +102,20 @@ class UnmeteredRequest(BudgetExceeded):
     """A streamed request: its usage cannot be read here, so the spend could no longer be counted."""
 
 
+class IncompleteResponse(BudgetExceeded):
+    """A chat response did not finish normally (``finish_reason`` other than ``stop`` or ``tool_calls``).
+
+    Its text or tool arguments may be cut off, so no caller may read it as a valid, empty or partial answer. The
+    message names the finish reason only, never any text of the response."""
+
+
 class UnpricedModel(BudgetExceeded):
     """A paid response came from a model with no recorded price, so the spend can no longer be counted."""
+
+
+def format_usd(amount: float) -> str:
+    """A dollar amount with enough digits that a small cap is not shown as $0.00."""
+    return f"${amount:.6g}"
 
 
 def price_for(model: str) -> dict[str, float]:
@@ -121,8 +142,22 @@ def _blank() -> dict[str, Any]:
 
 
 class CostMeter:
-    def __init__(self, cap_usd: float) -> None:
+    def __init__(
+        self,
+        cap_usd: float,
+        *,
+        max_output_tokens: int | None = None,
+        require_usage: bool = False,
+        require_complete: bool = False,
+    ) -> None:
         self.cap_usd = cap_usd
+        self.max_output_tokens = (
+            max_output_tokens  # put on chat requests that set no limit; None: leave them alone
+        )
+        self.require_usage = require_usage  # a response without usage stops the run
+        self.require_complete = (
+            require_complete  # a chat response that did not finish normally stops the run
+        )
         self.total = 0.0
         self.tripped = False  # set the moment the meter refuses or loses count; the run must end
         self.stopped_cases: set[str] = set()
@@ -146,7 +181,7 @@ class CostMeter:
         ):  # also after an unpriced or streamed request: in-flight cases must stop too
             self.trip()
             raise BudgetExceeded(
-                f"estimated spend ${self.total:.4f} reached the ${self.cap_usd:.2f} cap"
+                f"estimated spend {format_usd(self.total)} reached the {format_usd(self.cap_usd)} cap"
             )
 
     def _add(self, role: str, model: str, **deltas: float) -> None:
@@ -168,6 +203,11 @@ class CostMeter:
         if usage is None:
             # A paid call whose cost is unknown: counted, flagged, and the case total is a lower bound.
             self._add(role, model, calls=1, missing_usage_calls=1)
+            if self.require_usage:
+                self.trip()
+                raise UnmeteredRequest(
+                    "a response came back without a usage block, so its cost cannot be counted; the run stops"
+                )
             return
         details = getattr(usage, "prompt_tokens_details", None)
         cached = int(getattr(details, "cached_tokens", 0) or 0)
@@ -189,6 +229,28 @@ class CostMeter:
             cost_usd=amount,
         )
         self.total += amount
+
+    def check_complete(self, response: Any) -> None:
+        """Stop the run unless every choice of a chat response finished normally.
+
+        OpenAI Chat Completions (non-streaming) reports ``finish_reason``: ``stop`` (a finished reply) and
+        ``tool_calls`` (finished tool calls) are the only values accepted. ``length`` (cut off by the output limit,
+        which also counts reasoning tokens), ``content_filter``, ``function_call`` (not used with tools), a missing
+        value or any value this code does not know is refused: the cost was already counted, and the run ends.
+        """
+        reasons = [
+            getattr(choice, "finish_reason", None)
+            for choice in getattr(response, "choices", None) or ()
+        ]
+        bad = [reason for reason in reasons if reason not in COMPLETE_FINISH_REASONS] or (
+            [] if reasons else ["no choices"]
+        )
+        if bad:
+            self.trip()
+            raise IncompleteResponse(
+                f"a chat response did not finish normally (finish_reason {bad[0]!r}); its content cannot be "
+                "trusted, so the run stops"
+            )
 
     def record_failure(self, role: str, model: str, *, cancelled: bool) -> None:
         """A request that raised or was cancelled: counted, without tokens or dollars."""
@@ -239,6 +301,13 @@ class CostMeter:
                 if kwargs.get("stream"):
                     self.trip()
                     raise UnmeteredRequest("a streamed request cannot be metered; the run stops")
+                if (
+                    fixed_role is None
+                    and self.max_output_tokens is not None
+                    and "max_completion_tokens" not in kwargs
+                    and "max_tokens" not in kwargs
+                ):
+                    kwargs["max_completion_tokens"] = self.max_output_tokens
                 role = fixed_role or role_of_chat(kwargs)
                 requested = kwargs.get("model")
                 try:
@@ -251,6 +320,8 @@ class CostMeter:
                     )
                     raise
                 self.record(response, role=role, requested_model=requested)
+                if self.require_complete and fixed_role is None:  # chat only
+                    self.check_complete(response)
                 return response
 
             return create
@@ -312,7 +383,8 @@ def estimate_run(
         "cases": cases,
         "runs": runs,
         "calls": calls,
-        "estimated_usd": round(usd + judge["estimated_usd"], 5),
+        "estimated_usd": usd
+        + judge["estimated_usd"],  # full precision: the cap is compared with this
     }
 
 
@@ -321,7 +393,7 @@ def estimate_judge(judged: int) -> dict[str, Any]:
     calls = ESTIMATES["judge"]["calls"] * judged
     return {
         "calls": {"judge": calls},
-        "estimated_usd": round(ESTIMATES["judge"]["usd"] * judged, 5),
+        "estimated_usd": ESTIMATES["judge"]["usd"] * judged,
     }
 
 
@@ -329,6 +401,6 @@ def refuse_over_cap(estimated_usd: float, cap_usd: float) -> None:
     """Stop before any provider call when the planned cost already exceeds the cap."""
     if estimated_usd > cap_usd:
         raise SystemExit(
-            f"Refusing to start: the estimate ${estimated_usd:.4f} is above the ${cap_usd:.2f} cap. "
+            f"Refusing to start: the estimate {format_usd(estimated_usd)} is above the {format_usd(cap_usd)} cap. "
             "Run with --plan to see the numbers, then raise --cap or reduce the work."
         )

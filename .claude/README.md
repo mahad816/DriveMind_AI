@@ -30,7 +30,7 @@ Not verified automatically: that the Owner's `ask` prompts appear in every permi
 
 ## Paid-capable entry points (checked 2026-11-23 from the code; nothing was run)
 
-`ask` is an approval prompt. Only a **hard cap** limits spending, and only the first five rows have one: the program meters estimated cost from token counts (`rag_eval/meter.py`), requires `--cap USD` and stops when the cap is reached. The last four have no meter and no cap; each is guarded only by an opt-in flag. A meter is a program-side estimate, not a provider-side limit; the provider balance is the only external limit and is not recorded here.
+`ask` is an approval prompt. Only a program-side **cap** limits spending, and only the first five rows have one: the program meters estimated cost from token counts (`rag_eval/meter.py`), requires `--cap USD` and refuses the next call once the reported spend reaches the cap. It is checked between calls, so a run can pass it by the call in flight; it is not a hard limit. The last four have no meter and no cap; each is guarded only by an opt-in flag. A meter is a program-side estimate, not a provider-side limit; the provider balance is the only external limit and is not recorded here.
 
 | Module (`python -m evaluation.<module>`) | Paid when | Metered, capped | Other guard in the code |
 |---|---|---|---|

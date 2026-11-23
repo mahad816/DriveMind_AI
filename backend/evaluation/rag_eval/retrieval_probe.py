@@ -469,7 +469,8 @@ def main() -> None:
         "--cap",
         type=cap_argument,
         required=True,
-        help="hard spend cap in USD (required, no default)",
+        help="spend cap in USD (required, no default). Checked between calls from the usage each response reports; "
+        "not a provider-side limit",
     )
     asyncio.run(run(parser.parse_args()))
 

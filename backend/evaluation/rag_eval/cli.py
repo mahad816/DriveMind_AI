@@ -5,8 +5,9 @@
     python -m evaluation.rag_eval.cli run --cap USD --pipelines tool_agent legacy --split dev
         [--limit N] [--repeats N]
 
-setup, run and rescore can reach the provider, so --cap (hard spend cap in USD) is required and
-there is no default. Add --plan to print the planned calls and the estimate without calling anything
+setup, run and rescore can reach the provider, so --cap (spend cap in USD) is required and
+there is no default. The cap is checked between calls from the usage each response reports: it is not a
+provider-side limit, and a run can pass it by the call in flight (see ``meter.METERING_LIMITS``). Add --plan to print the planned calls and the estimate without calling anything
 or writing a file; without it, a command whose estimate is above the cap refuses to start.
 
 Requires the disposable PostgreSQL/Qdrant containers (see docs/EVALUATION_RESULTS.md) and an
@@ -20,6 +21,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import review_gate
 from .corpus import CorpusFile, verify
 from .dataset import files_to_check, load_many, validate
 from .embedding_estimate import estimate_embedding, extract_texts
@@ -41,10 +43,10 @@ from .meter import (
     cap_argument,
     estimate_judge,
     estimate_run,
-    require_prices,
     refuse_over_cap,
+    require_prices,
 )
-from .pools import SPLIT_CHOICES, held_out_path, load_held_out, select
+from .pools import SPLIT_CHOICES, SealedAccessRefused, held_out_path, load_held_out, select
 from .runner import (
     JUDGED,
     PIPELINES,
@@ -56,7 +58,7 @@ from .runner import (
     score_row,
 )
 from .score import summarise
-from .sealing import reduce_row
+from .sealing import private_folder, reduce_row, write_private
 from .target import (
     application_defaults,
     ensure_database,
@@ -116,7 +118,8 @@ def report_plan(plan: dict[str, Any], cap: float) -> None:
         )
     )
     print(
-        "Estimate from planning constants (prices.json), not a measurement. Nothing was called or written."
+        "Estimate from planning constants (prices.json), not a measurement. Nothing was called or written. "
+        "The cap is checked between calls; it is not a provider-side limit."
     )
 
 
@@ -202,23 +205,62 @@ async def run_settings(args: argparse.Namespace, *, chat_model: str | None) -> A
 
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 HELD_OUT_RESULTS = "heldout_results"  # a folder next to the sealed file, outside the repository
+# Overrides that change what is measured. Against the held-out pool they are tuning, so they are refused.
+HELD_OUT_TUNING = (("--threshold", "threshold"), ("--relative", "relative"))
+
+
+def withheld(what: str, exc: BaseException) -> str:
+    """A sealed-pool failure reduced to what happened and the exception class; never the exception's text."""
+    return f"STOPPED: {what} ({type(exc).__name__}); details withheld."
 
 
 async def run(args: argparse.Namespace) -> None:
+    sealed = args.split == "held_out"
+    if sealed:
+        # Before anything is read: a retrieval threshold chosen against the held-out pool is tuning on it.
+        tuned = [flag for flag, attr in HELD_OUT_TUNING if getattr(args, attr, None) is not None]
+        if tuned:
+            raise SystemExit(
+                "STOPPED: the held-out pool is measured once, at the settings under test; it is never "
+                f"combined with {', '.join(tuned)}."
+            )
     files = selected_files(args)
     verify(files)
-    sealed = args.split == "held_out"
     if sealed and (args.ids or args.category or args.limit or args.repeats != 1):
         raise SystemExit(
             "The held-out pool runs whole and once per checkpoint: no --ids, --category, --limit or --repeats."
         )
-    held_file = held_out_path() if sealed else None
-    if sealed and held_file is None:
-        raise SystemExit(
-            "Set DRIVEMIND_EVAL_HELDOUT_FILE to the sealed case file (outside the repository)."
-        )
-    dataset = load_held_out(held_file) if sealed else load_many(args.dataset)
-    problems = validate(dataset, files_to_check(dataset, files))
+    held_file: Path | None = None
+    if sealed:
+        try:
+            held_file = held_out_path()
+        except (ValueError, FileNotFoundError) as exc:  # fixed messages: no case content
+            raise SystemExit(f"STOPPED: {exc}") from None
+        if held_file is None:
+            raise SystemExit(
+                "Set DRIVEMIND_EVAL_HELDOUT_FILE to the sealed case file (outside the repository)."
+            )
+        try:
+            dataset = load_held_out(held_file)  # the attestation is checked before the file is read
+        except SealedAccessRefused as exc:  # fixed message: no case content
+            raise SystemExit(f"STOPPED: {exc}") from None
+        except Exception as exc:
+            if isinstance(exc, review_gate.ReviewRequired):
+                raise  # a fixed, content-free message
+            raise SystemExit(withheld("the held-out file could not be read", exc)) from None
+    else:
+        try:
+            dataset = load_many(args.dataset)
+        except (
+            ValueError
+        ) as exc:  # a name outside evaluation/datasets, or a file holding held-out cases
+            raise SystemExit(f"STOPPED: {exc}.") from None
+    try:
+        problems = validate(dataset, files_to_check(dataset, files))
+    except Exception as exc:
+        if not sealed:
+            raise
+        raise SystemExit(withheld("held-out validation failed", exc)) from None
     if problems and sealed:
         # A held-out problem names a case and quotes it: say how many, nothing more.
         raise SystemExit(f"Held-out file invalid: {len(problems)} problem(s) (details withheld).")
@@ -301,12 +343,17 @@ async def run(args: argparse.Namespace) -> None:
                     if held_file is not None:
                         # Outside the repository, and no reply text: reduced rows plus the sealed summary.
                         result["rows"] = [reduce_row(r) for r in result["rows"]]
-                        folder = held_file.parent / HELD_OUT_RESULTS
-                        folder.mkdir(exist_ok=True)
+                        folder = private_folder(held_file.parent / HELD_OUT_RESULTS)
                     else:
                         folder = RESULTS
                     path = folder / name
-                    path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
+                    text = json.dumps(result, indent=1, ensure_ascii=False) + "\n"
+                    if held_file is not None:
+                        write_private(
+                            path, text
+                        )  # owner only from the first byte, like the probe's report
+                    else:
+                        path.write_text(text)
                     print(
                         f"\n== {pipeline} ({settings.chat_model}, split={args.split}) -> {path.name}"
                     )
@@ -331,12 +378,19 @@ async def rescore(args: argparse.Namespace) -> None:
     """Apply the current judge and pass rules to the replies of a saved run; nothing is re-asked."""
     source = Path(args.file)
     data = json.loads(source.read_text())
+    if data.get("split") == "held_out" or (data.get("manifest") or {}).get("dataset", {}).get(
+        "held_out_sha256"
+    ):
+        # Its rows carry held-out ids and no replies: rescoring would look them up in the committed cases and
+        # name them in the failure. Held-out results are never re-judged.
+        raise SystemExit("STOPPED: a held-out result file is never rescored.")
     total = len(selected_files(args))  # pass the flag the run used
     # The datasets the run was made with are recorded in its file; the command-line default is not.
-    cases = {
-        c["id"]: prepare_case(c, total)
-        for c in load_many(data.get("datasets") or args.dataset)["cases"]
-    }
+    try:
+        recorded = load_many(data.get("datasets") or args.dataset)
+    except ValueError as exc:  # a name outside evaluation/datasets
+        raise SystemExit(f"STOPPED: {exc}.") from None
+    cases = {c["id"]: prepare_case(c, total) for c in recorded["cases"]}
     live = [r for r in data["rows"] if not r.get("cap_stopped")]  # a cap-stopped row has no verdict
     judged = sum(cases[r["id"]]["expected_behavior"] in JUDGED for r in live)
     plan = {"cases": len(data["rows"]), **estimate_judge(judged)}
@@ -383,7 +437,8 @@ def main() -> None:
         "--cap",
         type=cap_argument,
         required=True,
-        help="hard spend cap in USD (required, no default: setup, run and rescore can spend money)",
+        help="spend cap in USD (required, no default: setup, run and rescore can spend money). Checked "
+        "between calls from the usage each response reports; not a provider-side limit",
     )
     parser.add_argument(
         "--plan",
