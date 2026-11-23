@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from dataclasses import dataclass
 from time import perf_counter
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,11 +18,33 @@ from app.retrieval.merge import reciprocal_rank_fusion_merge
 from app.retrieval.metadata import MetadataRetriever
 from app.retrieval.rerank import weighted_fusion_rerank
 from app.retrieval.owned import gather_owned
+from app.retrieval.round_robin import round_robin_merge
 from app.retrieval.types import RetrievedChunk
 from app.retrieval.scope import require_request
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import ResolvedFileScope
 from app.retrieval.vector import VectorRetriever
+
+
+@dataclass(frozen=True)
+class DualRetrieval:
+    """Outcome of ``HybridRetriever.retrieve_dual``: the chunks plus how they were found (no query text, no content).
+
+    ``original_chunks`` and ``model_chunks`` are the two lists after the normal pipeline and evidence grading
+    (empty when that search found no sufficient evidence or failed); ``model_chunks`` is exactly what the
+    single-query strategy returns for the model's query.
+    """
+
+    chunks: list[RetrievedChunk]
+    original_chunks: list[RetrievedChunk]
+    model_chunks: list[RetrievedChunk]
+    strategy: Literal["A", "C2"]
+    degraded_reason: str | None
+    skipped_reason: str | None
+    retrieval_calls: int
+    embedding_calls: int  # one per search: the vector retriever embeds each non-blank query once
+    latency_ms: float
+    overlap: int  # chunks present in both lists
 
 
 class HybridRetriever:
@@ -141,3 +166,76 @@ class HybridRetriever:
             )
             trace.finish_attempt(1)
         return evidence
+
+    async def retrieve_dual(
+        self, request: RetrievalRequest, original_question: str
+    ) -> DualRetrieval:
+        """C2: search the model's query (``request``) and the user's own question, then round-robin the two lists.
+
+        The question search is the same request with only the query text replaced, so user, scope, candidate
+        limit and policy cannot differ, and each search runs the full pipeline (fusion, rerank, evidence grading)
+        on its own database sessions (each retriever opens one). The model-query search is primary: its failure is
+        raised as in the single-query strategy. A failed question search keeps the model's results and is recorded
+        as ``degraded_reason`` (exception class only). Identical queries, after ``strip``, search once.
+        """
+        started = perf_counter()
+        original_query = original_question.strip()
+        skipped: str | None = None
+        if not original_query:
+            skipped = "blank_original_question"
+        elif original_query == request.query.strip():
+            skipped = "identical_queries"
+        if skipped is not None:
+            grade = await self.retrieve_with_grade(request)
+            return DualRetrieval(
+                chunks=grade.chunks,
+                original_chunks=[],
+                model_chunks=grade.chunks,
+                strategy="A",
+                degraded_reason=None,
+                skipped_reason=skipped,
+                retrieval_calls=1,
+                embedding_calls=1,
+                latency_ms=elapsed_ms(started),
+                overlap=0,
+            )
+
+        original_request = RetrievalRequest(
+            user_id=request.user_id,
+            query=original_query,
+            scope=request.scope,
+            candidate_limit=request.candidate_limit,
+            candidate_policy=request.candidate_policy,
+        )
+        model_task = asyncio.ensure_future(self.retrieve_with_grade(request))
+        original_task = asyncio.ensure_future(self.retrieve_with_grade(original_request))
+        degraded: str | None = None
+        original_chunks: list[RetrievedChunk] = []
+        try:
+            model_chunks = (await model_task).chunks
+            try:
+                original_chunks = (await original_task).chunks
+            except Exception as exc:  # cancellation is a BaseException and passes through
+                degraded = f"original_question_search_failed:{type(exc).__name__}"
+        finally:
+            for task in (model_task, original_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(model_task, original_task, return_exceptions=True)
+
+        merged = round_robin_merge(
+            original_chunks, model_chunks, limit=self.settings.retrieval_top_k
+        )
+        model_ids = {chunk.chunk_id for chunk in model_chunks}
+        return DualRetrieval(
+            chunks=merged,
+            original_chunks=original_chunks,
+            model_chunks=model_chunks,
+            strategy="C2",
+            degraded_reason=degraded,
+            skipped_reason=None,
+            retrieval_calls=2,
+            embedding_calls=2,
+            latency_ms=elapsed_ms(started),
+            overlap=sum(1 for chunk in original_chunks if chunk.chunk_id in model_ids),
+        )

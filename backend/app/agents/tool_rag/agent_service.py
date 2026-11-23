@@ -82,6 +82,9 @@ class ToolRagAgentService:
             raise ValueError("Prior history exceeds the bounded conversation window")
         if any(m.role not in ("USER", "ASSISTANT") or m.tool_calls or m.call_id for m in history):
             raise ValueError("Prior history contains execution messages")
+        run_settings = (
+            retriever.settings if isinstance(retriever, HybridRetriever) else get_settings()
+        )
         context = ExecutionContext(
             user_id=user_id,
             db=db,
@@ -89,12 +92,8 @@ class ToolRagAgentService:
             retriever=retriever,
             original_question=question,
             has_prior_history=bool(history),
-            max_context_chars=min(
-                (
-                    retriever.settings if isinstance(retriever, HybridRetriever) else get_settings()
-                ).rag_max_context_chars,
-                32000,
-            ),
+            dual_query_enabled=run_settings.retrieval_dual_query_enabled,
+            max_context_chars=min(run_settings.rag_max_context_chars, 32000),
         )
         state: AgentState = {
             "original_question": question,

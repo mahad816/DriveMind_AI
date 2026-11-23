@@ -1,0 +1,101 @@
+# 01: Define and run the hybrid-retrieval comparison (existing fusion, original question alongside the model's query, RRF)
+
+**Spec:** docs/specs/m1-rag-evaluation.md (retrieval measurement); no new spec, this ticket defines one experiment
+**What to build:** a fixed, written comparison of three ways to produce the chunks the agent sees, run on English development and regression cases against the verified v3 index, so a ranking change is chosen by measurement and not by guess. **Amended 2026-11-24:** the Owner, citing an exploratory comparison of arms A and C2 whose figures reach this repository only through the Owner's brief [owner], authorized implementing C2 behind a default-off flag; see "Implementation of C2" below. No other ranking change (B, C1, D) is implemented.
+**Blocked by:** None (can start immediately). KI-034 acceptance is separate and does not block it.
+**Status:** ready-for-human (the definition below needs the Owner's approval before any spend or build)
+**Progress:** claimed
+**Risk:** the measurement was standard (read-only retrieval on a disposable evaluation store; the only provider calls are query embeddings, see "Cost"); the C2 implementation touches the tool agent's owner-scoped retrieval path and adds concurrency, so it is treated as **high** (the reviewers judged it so)
+
+## Why
+
+The earlier diagnosis (evidence folder `m1-08-g-diagnosis`; not re-verified here) found a ceiling in `weighted_fusion_rerank`: a keyword-only chunk can score at most 0.3 (`hybrid_weight_keyword`), while every vector survivor scores at least 0.35, so a file that only the keyword search finds cannot outrank a weak vector match. Today's pipeline (`app/retrieval/hybrid.py`) is: vector, keyword and metadata retrievers, then `reciprocal_rank_fusion_merge` (candidate union, `hybrid_rrf_k` 60), then `weighted_fusion_rerank` (weights 0.5 / 0.3 / 0.2, `retrieval_top_k` 8, at most 3 chunks per file) which decides the final order. Frozen M1-08-G rows suggest the agent's own query finds the expected file less often than the plain question, but the model rows count runs without a search as misses, so the size of any gap is unknown until the denominators in this ticket are applied.
+
+## Arms (everything else identical: same store, thresholds, top-k, per-file cap, filename priority)
+
+- **A, control:** today's pipeline with the query the agent used (weighted fusion order).
+- **B, RRF order:** the same candidate pool, final order by the RRF score instead of the weighted rerank.
+- **C, original question alongside the model's query:** run retrieval for both texts and combine the two result lists (C1: reciprocal rank fusion across the two lists; C2: round-robin to the same total top-k budget).
+- Optional **D:** B applied to C. Only if B or C alone shows a gain.
+
+## Cases and queries
+
+- English development and regression cases from `load_question_set()` (275 English: 196 development, 79 regression), minus cases with earlier turns, chit-chat and cases without an expected file, counts to be printed by the free plan. The 7 Roman Urdu cases are excluded from the metrics and listed with their count, not deleted; the held-out pool is not touched.
+- Plain-question query: the case question. Model-written queries: the queries already stored in the frozen first-step rows (`first_step_20261123_170220_G_dev.json`, `first_step_20261123_171737_G_regression.json`), so no model call. A run whose first step did not search has no model query: reported as such, never counted as a retrieval miss of the arms.
+
+## Metrics (per arm, per pool, English only, with 95% intervals as the stats module gives them)
+
+Expected-file recall at 1 and at 8; best file rank and MRR (file level); passage recall (existing `passage_metrics`); ranking changes against A (cases that move up, down, enter or leave the top 8, and every case that flips between hit and miss, listed by id); top-8 overlap with A; retrieval latency (per retriever and total, fusion time separately; arm C adds one embedding and one retrieval round) and added cost.
+
+## What can be done for free, and what cannot
+
+- **Free now, from stored evidence:** control figures for the plain question and the agent's query on the v3 store (the frozen first-step files). Indicative plain-question control, recomputed 2026-11-24 over answerable cases: development 138 cases, expected-file recall 0.993 (English subset 134 cases, 0.993), MRR 0.847 (English 0.852); regression 56 cases, recall 1.000 (English 55), MRR 0.906 (English 0.904). Model-query rows mix denominators (runs without a search count as misses), so no model-query figure is recorded until the denominator in this ticket is applied.
+- **Not recomputable from stored evidence:** the stored first-step and older retrieval-probe files keep only final ranks, counts and file lists, not per-source candidate lists, so arms B and C cannot be re-ranked from them.
+- **Free on the live store:** the keyword and metadata retrievers (PostgreSQL), the fusion arithmetic and all metrics.
+- **Not free:** the vector retriever needs an embedding of every query text. Embed each distinct query string once, cache the vectors outside Git, then replay all arms offline.
+
+## Cost (estimate, not a measurement)
+
+About 275 plain questions plus at most about 276 stored model queries, roughly 550 embeddings. The first-step runs measured 10 to 12 tokens per query, so about 6,300 tokens, about **0.00013 USD** at 0.02 USD per 1M tokens (`prices.json`), with a proposed cap of 0.01 USD. Needs the Owner's go-ahead because it is a provider call, however small. No chat model is called.
+
+## Decision rule (written before any measurement)
+
+A variant is considered only if on development it loses no case that A finds (no hit-to-miss flip) and improves recall at 8 or MRR; it is then checked once on regression. Choosing and implementing a change is a later ticket and needs a held-out English check under the existing seal rules (`docs/DECISIONS.md`: a fix is only called fixed after a held-out question set written before the fix). The sample is small: report intervals, claim no significance.
+
+- [ ] The Owner approves this definition (arms, cases, metrics, rule)
+- [ ] A free plan prints the case counts, the excluded unsupported-language count and the embedding count
+- [ ] After a separately authorized embedding spend: the three arms are measured on the English development cases, then regression, with the metrics above
+- [ ] A report lists every hit/miss flip by id and the latency and cost per arm; the frozen files and historical results are unchanged
+- [x] ~~No production code ... is changed~~ superseded by the Owner's 2026-11-24 authorization of C2 behind a flag (see below); still true: no index, held-out file, prompt or frozen result file is changed
+
+## Exclusions
+
+No ranking change other than C2 behind its flag, no index rebuild, no held-out access, no Roman Urdu or other multilingual work, no paid chat-model call, no change to frozen results.
+
+## Implementation of C2 (2026-11-24, uncommitted)
+
+**What it is.** (Owner decisions of 2026-11-24 are applied: C2 runs on the **first eligible `search_knowledge` call of a run only**, later refinement searches use A, and the round-robin and per-file behaviour are kept as first tested, no new cap.) With `RETRIEVAL_DUAL_QUERY_ENABLED=true` (setting `retrieval_dual_query_enabled`, default **false**, no other config system), `search_knowledge` also searches the user's own question and round-robins the two ranked lists into the existing `retrieval_top_k` (8): original-question rank 1, model-query rank 1, rank 2, ... A chunk already taken is skipped (it does not cost the turn), a list that runs out hands its turns to the other, stop at 8 unique chunks. Arm A (flag off) is the previous path unchanged and stays the control.
+
+**How, in the code.**
+- `app/retrieval/round_robin.py` (new): `round_robin_merge(original, model, *, limit)`, pure, chunk objects returned unchanged.
+- `app/retrieval/hybrid.py`: `HybridRetriever.retrieve_dual(request, original_question)` and `DualRetrieval`. The question search is the same `RetrievalRequest` with only the query replaced (owner, scope, candidate limit, policy copied). Both run `retrieve_with_grade` (fusion, rerank, evidence grading) concurrently as tasks; each vector/keyword/metadata retriever opens its own session through `scoped_session`, so no `AsyncSession` is shared (existing mechanism, now used by two concurrent searches). The model-query search is primary: its failure is raised as before and the sibling task is cancelled and awaited. A failed question search keeps the model results and sets `degraded_reason` (`original_question_search_failed:<ExceptionClass>`, never the message). Identical queries (after `strip`) or a blank question search once (`strategy "A"`, `skipped_reason`).
+- `execution/context.py`, `agent_service.py`: `ExecutionContext.dual_query_enabled`, set by the service from the retriever's settings (never a model argument). `executor.py`: `search_knowledge` uses `retrieve_dual` only when the flag is on, the run has no prior history (`has_prior_history` false; a later turn may be a follow-up whose own text does not carry the intent, so it keeps A) and `original_question` (the current turn, set in `ToolRagAgentService.run`) is non-blank. `file_evidence` and the other tools are unchanged. The merged chunks still go through the existing scope check and `validate_files` owner/INDEXED revalidation. One INFO log line per C2 call: strategy, skipped/degraded reason, retrieval and embedding call counts, latency, chunk and overlap counts; no query or document text.
+- `app/core/config.py`: the flag. `evaluation/rag_eval/target.py`: the flag added to `ANSWER_FIELDS` so evaluation runs always use the code default, never a local `.env` value (found in review round 1, reproduced with a failing test, fixed).
+- `evaluation/rag_eval/dual_query_probe.py` (new): free `--plan`; the paid run compares A and C2 on the same English cases using the model queries stored in the frozen first-step files (read only, SHA-256 recorded), refuses held-out and anything over `--cap`, records git state, settings, index manifest, query source and case ids; reports recall at 1 and 8, file MRR, optional passage recall at 8, gained/lost cases by id, rank changes, top-8 overlap, latency, embedding calls and the meter's cost. Routing failures (stored runs that never searched) are listed apart and are in neither denominator; Roman Urdu is excluded with its ids listed.
+- Documented in `app/agents/tool_rag/README.md` (new section; the KI-034 sentence edit in that file pre-dates this work).
+
+**Tests (new files only; no existing test changed).** `tests/retrieval/test_round_robin.py`, `tests/retrieval/test_hybrid_dual.py`, `tests/agents/tool_rag/test_dual_query_search.py`, `tests/evaluation/test_dual_query_probe.py`: 83 tests (13 + 18 + 27 + 25, counted per file on 2026-11-24). Red before the code (import errors). Mutations killed: concatenate-and-truncate, no history guard, sequential searches (the sequential mutation was run only against the concurrency test: the barrier test fails by timeout, and the failure-cleanup test hangs without a timeout under that mutation).
+
+**Measured results [local, 2026-11-24].**
+- Full backend suite on the local disposable containers, round-1 tree: `4180 passed, 10 skipped, 6 xfailed, 0 failed` in 26 min 42 s. The three real-RAG-mode tests need Qdrant exactly at `127.0.0.1:61448`, so they were not run there; rerun alone on a temporary Qdrant 1.18.0 container at that port: `tests/security/test_conversation_chat.py` 32 passed, 0 skipped (container removed afterwards).
+- After the round-1 correction: `tests/evaluation` container-free `1090 passed, 8 skipped`; the focused tests pass (83 after the final round); `ruff check`, `ruff format --check` and `mypy` (app, the probe, `target.py`) clean; basedpyright 0 errors on the 12 touched files; `git diff --check` clean. The full suite was **not** repeated after the correction (a one-line flag-list change, test additions and two wording edits).
+- `index_verify verify --store v3`: verified, 82 files, 1508 chunks, 1508 vectors, same receipt (the suite did not alter the frozen store).
+- The 3 extra skips against the last recorded 7 are unexplained (skip reasons were not printed).
+- Free plan of the probe, `--plan --split all`: 182 scored English cases, 7 routing failures (`ca04 ca05 id14 id16 id17 vi07 wf01`), 7 Roman Urdu left out, 546 embedding calls (arm A 182, arm C2 364), estimated 0.00023 USD. The earlier experiment's 129 + 52 = 181 differs by one case, **`id13`**: reconciled by exact case id (see "Case counts reconciled" below); the count is not forced to 181.
+
+**Independent review.** Round 1, two fresh read-only `drivemind-reviewer` agents (they ran nothing; both stopped at their turn limit and delivered after one reminder): Review 1 (specification and correctness) **BLOCK**, Review 2 (standards and security) **BLOCK**. Shared substantiated P2: the flag was not in `ANSWER_FIELDS` (a local `RETRIEVAL_DUAL_QUERY_ENABLED=true` would silently turn an evaluation into C2); reproduced, fixed. Every other criterion was judged met. Remaining reviewer points are under "Known limitations". **Round 2** (one fresh read-only reviewer covering both axes, ran nothing, so not independent execution): **APPROVE**, no confirmed defects; it verified the `ANSWER_FIELDS` fix and its test. Review-approved; that is not approval to spend, commit, push or enable the flag. Its P3 notes: the test for duplicates never exercises the shrink case (original list alone already holds 8 unique chunks; add `[c1,c2,c3]` against `[c1..c9]` expecting 1 to 8); the strategy log line exists only on the C2 path; `embedding_calls=2` is reported even when the question search failed before embedding; identical-query detection is `strip` only; mock-based tests would call `retrieve_dual` on a mock if a developer `.env` set the flag true (the service reads `get_settings()` for non-`HybridRetriever` retrievers); tests should use a Qdrant separate from the evaluation store's (the suite ran on port 56333, which hosts v3; v3 verified afterwards); connection-pool use.
+
+**Known limitations.**
+- **Not measured on the real agent.** The exploratory A/C2 figures are the Owner's [owner] and use stored model queries; a fresh agent run with the flag on has never been made. Nothing here shows C2 improves production answers; C2 changes the top 8 substantially, so answer quality must still be validated.
+- **First search only (decided, implemented):** `ExecutionContext.dual_query_allowance` is claimed by the first eligible `search_knowledge` call (flag on, no history, non-blank question), even if that search then fails; later calls use A. `resolve_file` first does not use it up; a call that fails before searching does not claim it. The paid probe measures only the first stored query, which is exactly the C2 call.
+- **Per-file behaviour (measured, kept):** the per-file cap applies inside each list, not to the merged list. Measured with the real rerank: default cap 3 gives at most 6 chunks of one file in the merged top 8 (2 x cap); no cap (exact-file scope or a named file) gives up to 8; each list keeps the existing soft refill (a file can exceed the cap when no other file has candidates). The merged result therefore does not satisfy the per-list cap. No new cap was added.
+- **The implemented C2 is not the experiment's C2.** The experiment script (Owner's evidence folder, outside Git) interleaved the full ungated lists and then applied `limit_chunks_per_file` to the merged list (a post-merge cap, soft); the implementation merges the per-list graded results and stops at 8, with no post-merge cap and with insufficient-evidence lists contributing nothing. The 99.2% / 100% recall figures belong to the experiment's variant. Only the paid probe, which runs the implemented `retrieve_dual`, can say what the implemented C2 does. Aligning the two (a merge-level cap, ungated lists) is an Owner decision and was not done.
+- No re-grading of the merged list: each list is graded on its own and an insufficient list contributes nothing, so C2 cannot turn an A-sufficient run into an insufficient one.
+- Concurrency is verified by tests with fakes and by code reading (`scoped_session` gives each retriever its own session); no new test runs C2 on a real engine and PostgreSQL. One C2 search holds up to about 7 pooled connections (request session plus six scoped sessions) against the default pool of 5 + 10: fine for one Owner at a time, unmeasured for more.
+- Identical-query detection is `strip` only. Embedding and retrieval call counts are derived (one per search), not read from the provider; cost is the meter's run total, not per arm. No latency or parallel-speedup measurement exists yet. The strategy log line exists only on the C2 path.
+- In an end-to-end evaluation with the flag on, `RecordingRetriever` would record the question search as an extra "agent search" (inflating `search_count`); the flag is pinned off for evaluation runs, so this does not happen today.
+- The probe header records the git commit but not a dataset digest, and the commit is only reproducible from a clean tree (run it after a commit).
+- **Case counts reconciled (2026-11-24, from the experiment's `free_plan.json` against the probe's selection):** the experiment scored 129 development + 52 regression = 181; the probe scores 130 + 52 = 182. The only difference is **`id13`** (development, category `identifier_in_question`, English, no history, one expected file; fully eligible). The experiment took repeat 1 only; in repeat 1 `id13` called `resolve_file` (counted as a routing failure), in repeat 2 it searched ("INV-0457 billed to"), and the probe takes the lowest repeat that searched. Nothing else differs: the other 7 routing failures (experiment: dev `ca05 vi07 id13 id17 wf01`, regression `ca04 id14 id16`; probe: `ca04 ca05 id14 id16 id17 vi07 wf01`, never searched in any repeat) and the 7 Roman Urdu cases agree. The probe keeps `id13` (both arms use the same stored query, so the comparison is valid), names it (`queries_from_later_repeat`), records `query_repeat` per row and also reports the comparison without it (`by_pool_repeat1_only`), which is the experiment's denominator. The count was not forced to 181.
+- **Every selected case is accounted for exactly once** (final round, 2026-11-24): `partition_cases` puts each case of the selected non-held-out pools into exactly one of scored, routing failure, no stored run, unsupported language, or `excluded_ineligible` (English, with its reason: `chitchat`, `inventory_question`, `earlier_turns` or `no_expected_file`). `check_accounting` raises if an id repeats or a case is lost; the free plan and the saved report print the counts and the report lists the ids. The scored set and the 182 denominator are unchanged.
+
+**Gate.** Production enablement stays **off**. Not done and not claimed: any paid run, the held-out English check, KI-034 closure, M1-08 closure.
+
+**Free plan and paid estimate for the Owner.**
+- Free now: `cd backend && env -u OPENAI_API_KEY uv run python -m evaluation.rag_eval.dual_query_probe --plan --cap 0.01 --split all`.
+- Paid (needs the Owner's explicit go-ahead; query embeddings only, no chat model): the same command without `--plan` and with `--passage`: 546 embedding calls, estimated **0.00023 USD** (planning constants, not a measurement). Proposed `--cap 0.01` (about 40 times the estimate; the cap is checked between calls and is not a provider-side limit).
+
+## Comments
+
+- 2026-11-24: written after the KI-034 validation and the English-only scope decision. Nothing run yet.
+- 2026-11-24: C2 implemented at the Owner's request; the amendments above supersede the "no production code" lines. Round 1 BLOCK/BLOCK (one shared P2, fixed). No paid call, no held-out access, no index change, no commit.
+- 2026-11-24: round 2 APPROVE (no confirmed defects). `backend/README.md` settings table gained the flag row (docs only, after the review; no code changed after the review). Still open for the Owner: first-call-only C2, per-file cap on the merged list, a paid probe run (estimate above), held-out English check, production enablement.

@@ -110,7 +110,7 @@ The corrective turn adds **one chat call** for every affected turn. When the mod
 
 ## Completion criteria
 
-This ticket is **not resolved** by scripted tests. Record, in this order: (1) mechanism implemented; (2) scripted behaviour verified, with the counts of what ran and what did not; (3) real-model effectiveness **unmeasured**; (4) held-out acceptance **pending** under a separate Owner authorization. KI-034 stays Open until a measured run on a frozen set shows the model searches after the note and answers correctly. Do not write "fixed" anywhere before that.
+This ticket is **not resolved** by scripted tests. Record, in this order: (1) mechanism implemented; (2) scripted behaviour verified, with the counts of what ran and what did not; (3) real-model effectiveness: **one small exploratory run only** (see the 2026-11-24 Comments), not an acceptance measurement; (4) held-out acceptance **pending** under a separate Owner authorization. KI-034 stays Open until a measured run on a frozen set shows the model searches after the note and answers correctly. Do not write "fixed" anywhere before that.
 
 ## Scripted-model exhaustion (required for every test that scripts the model)
 
@@ -159,3 +159,4 @@ Source: `backend/app/agents/tool_rag/graph.py` (`finalize`, its routing lambda, 
   - `ruff check`, `ruff format --check`, `mypy app` and `git diff --check`: clean.
   - Reviews: round 1 NEEDS-EVIDENCE (no P0/P1; one P2 documentation error, several P3); round 2 BLOCK for documentation only (ticket 04 call counts, fixed afterwards). A third, final review covers the corrections. The reviewers had no shell: they judged saved raw outputs and did not run the tests.
   - Not yet explained: 7 skips in the full run against 1 in the `AGENTS.md` baseline (the skip reasons were not collected).
+- 2026-11-24: committed locally as `b25d80b` (final read-only review APPROVE; not pushed). Exploratory real-model run (Owner-authorized, cap 0.10 USD, commit `b25d80b`, v3 store): 8 runs over `ca05`, `ca04`, `ru02`, `ru05`, 2 repeats, metered **0.02029 USD**, 38 calls, no errors. 4 of 8 scored correct; 5 of 8 retrieved the expected file; `ca05` and `ru02` searched after the note and were correct (2 of 2 each); `ca04` ignored it (0 of 2); `ru05` repeat 1 ignored it, repeat 2 searched at the first step and was scored wrong although substantively correct (Roman Urdu reply against an English-sensitive scorer). Activation is inferred, not recorded. English-only scope (decision 2026-11-24): `ru02` and `ru05` are outside it, so English evidence is `ca05` (helped) and `ca04` (not helped). KI-034 stays Open: see the registry entry for what acceptance still needs. Evidence: the Owner's review-evidence folder, `ki-034/real-model-run`.

@@ -25,6 +25,20 @@ class EvidenceRecoveryBudget:
         return True
 
 
+@dataclass
+class DualQueryAllowance:
+    """One use of C2 per run. The context (and with it this object) is created once per agent run, so a retry, a
+    repeated tool call or a later cycle can never reset it; the first eligible search claims it for good."""
+
+    used: bool = False
+
+    def claim(self) -> bool:
+        if self.used:
+            return False
+        self.used = True
+        return True
+
+
 @dataclass(frozen=True)
 class ExecutionContext:
     user_id: UUID
@@ -33,6 +47,9 @@ class ExecutionContext:
     retriever: HybridRetriever | None = None
     original_question: str = ""
     has_prior_history: bool = False
+    # C2 (settings.retrieval_dual_query_enabled): set by the agent service, never by a model argument.
+    dual_query_enabled: bool = False
+    dual_query_allowance: DualQueryAllowance = field(default_factory=DualQueryAllowance)
     max_context_chars: int = 12000
     recovery_budget: EvidenceRecoveryBudget = field(default_factory=EvidenceRecoveryBudget)
 

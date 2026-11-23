@@ -94,6 +94,7 @@ ANSWER_FIELDS = (
     "retrieval_relative_threshold",
     "retrieval_name_term_max_files",
     "retrieval_max_chunks_per_file",
+    "retrieval_dual_query_enabled",
     "hybrid_rrf_k",
     "hybrid_weight_vector",
     "hybrid_weight_keyword",

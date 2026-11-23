@@ -1,5 +1,6 @@
 """Four explicit deterministic read-only dispatch branches; no dynamic execution."""
 
+import logging
 from dataclasses import dataclass
 from uuid import UUID
 from sqlalchemy import func, select
@@ -28,6 +29,8 @@ from .. import contracts as c
 from ..registry import ToolRegistry, RichResult, SafeResult
 from ..errors import ToolError, ToolErrorCode, SafeToolError, ToolFailure
 from .context import ExecutionContext
+
+logger = logging.getLogger(__name__)
 
 LIST_LIMIT = 100
 # Single-user portfolio safety cap. Beyond it, fail explicitly; do not pick a SQL-sorted prefix.
@@ -132,11 +135,44 @@ async def validate_files(file_ids: tuple[UUID, ...], context: ExecutionContext) 
         raise ToolFailure(ToolErrorCode.NOT_FOUND)
 
 
+def claim_original_question_search(context: ExecutionContext) -> bool:
+    """C2 applies to the first eligible ``search_knowledge`` call of a run, and only then.
+
+    Eligible: the flag is on, the turn stands alone (a turn with earlier history may be a follow-up whose own text
+    does not express the retrieval intent) and the question is non-blank. The first eligible call claims the run's
+    one allowance (even if its search then fails), so every later refinement search takes the single-query path.
+    Checked in this order on purpose: an ineligible call, or one that failed before searching, claims nothing.
+    """
+    return (
+        context.dual_query_enabled
+        and not context.has_prior_history
+        and bool(context.original_question.strip())
+        and context.dual_query_allowance.claim()
+    )
+
+
 async def retrieve_sections(
-    request: RetrievalRequest, context: ExecutionContext
+    request: RetrievalRequest, context: ExecutionContext, *, dual: bool = False
 ) -> tuple[EvidenceSection, ...]:
     retriever = context.retriever or HybridRetriever(context.db)
-    chunks = await retriever.retrieve(request)
+    if dual:
+        found = await retriever.retrieve_dual(request, context.original_question)
+        # Counts and names only: no question, query or document text.
+        logger.info(
+            "retrieval strategy=%s skipped=%s degraded=%s retrieval_calls=%d embedding_calls=%d "
+            "latency_ms=%.1f chunks=%d overlap=%d",
+            found.strategy,
+            found.skipped_reason,
+            found.degraded_reason,
+            found.retrieval_calls,
+            found.embedding_calls,
+            found.latency_ms,
+            len(found.chunks),
+            found.overlap,
+        )
+        chunks = found.chunks
+    else:
+        chunks = await retriever.retrieve(request)
     if not chunks:
         return ()
     file_ids = tuple(dict.fromkeys(chunk.drive_file_id for chunk in chunks))
@@ -187,7 +223,10 @@ async def search_knowledge(
         scope=scope,
         candidate_limit=arguments.candidate_limit,
     )
-    return c.SearchKnowledgeResult(sections=await retrieve_sections(request, context))
+    sections = await retrieve_sections(
+        request, context, dual=claim_original_question_search(context)
+    )
+    return c.SearchKnowledgeResult(sections=sections)
 
 
 async def file_evidence(

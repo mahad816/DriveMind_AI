@@ -2,6 +2,29 @@
 
 Short, dated records of engineering decisions with the evidence behind them. Newest first.
 
+## 2026-11-24 — The first product is English-only; unsupported languages are out of scope, not defects
+
+**Decision.** For the current scope, supported questions, documents, expected answers, citations and evaluation are
+English (standard English in Latin characters). Roman Urdu, Urdu and mixed Urdu-English questions or documents are
+outside the supported scope. We do not build transliteration, multilingual normalization or Roman-Urdu-specific
+retrieval or scoring.
+
+**Why.** A deliberate scope choice: establish reliable core RAG first, without multilingual engineering.
+
+**Evaluation rules that follow.**
+- Future retrieval and answer acceptance metrics are computed on English cases. Unsupported-language cases are
+  excluded from those metrics but their records and the exclusion count stay in every report; cases are never
+  silently deleted and historical denominators and frozen results are not changed.
+- Committed non-held-out question set today: 282 cases, of which 7 are Roman Urdu (`ru01` to `ru07`: 5 development,
+  2 regression); 275 are English (196 development, 79 regression). The held-out pool was not read, so its
+  unsupported-language count is unknown here and must come from a count-only output of the sealed process.
+- No credits are spent on Roman Urdu experiments.
+- A scorer false negative on a non-English reply (KI-034 validation, `ru05`) is a language-scope limitation of the
+  evaluation, not a defect that calls for multilingual support.
+
+**Not done.** The evaluation tools still report all languages together; adding the exclusion and its count to the
+summaries is future work (the `language` field already exists on each case).
+
 ## 2026-11-20 — KI-025: recover from a wrong name lookup in code; do not try to prevent it with prompt wording
 
 **Problem.** `resolve_file` matches exact file names only. A model that passes "invoice INV-0457" to it always

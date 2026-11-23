@@ -104,6 +104,10 @@ class Settings(BaseSettings):
     retrieval_name_term_max_files: int = Field(default=2, ge=1)
     # At most this many of the final chunks may come from one file (0 = no limit).
     retrieval_max_chunks_per_file: int = Field(default=3, ge=0)
+    # C2 (docs/tickets/hybrid-retrieval-comparison): the tool agent's search_knowledge also searches the user's own
+    # question and round-robins both ranked lists (original question first) into the top-k. Off by default until the
+    # ticket's acceptance criteria are met. Single-turn questions only; ignored on the legacy paths.
+    retrieval_dual_query_enabled: bool = False
     hybrid_rrf_k: int = 60
     hybrid_weight_vector: float = 0.5
     hybrid_weight_keyword: float = 0.3
