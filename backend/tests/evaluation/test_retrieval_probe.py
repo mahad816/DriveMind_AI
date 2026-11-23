@@ -246,4 +246,5 @@ async def test_make_search_sends_the_same_request_the_agent_tool_sends():
     assert isinstance(request.scope, EligibleCollectionScope)
     assert request.candidate_limit == CANDIDATE_LIMIT == 20
     assert request.candidate_policy == "BOUNDED"
-    assert hits == [Hit("a.txt", 0.42), Hit("b.txt", None)]
+    assert [(h.filename, h.vector_score) for h in hits] == [("a.txt", 0.42), ("b.txt", None)]
+    assert all(h.chunk_id and uuid.UUID(h.chunk_id) for h in hits)  # passage metrics match on it

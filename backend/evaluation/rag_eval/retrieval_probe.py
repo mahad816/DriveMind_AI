@@ -62,6 +62,7 @@ class Hit:
     vector_score: (
         float | None
     )  # raw cosine score, None when the chunk came from keyword/metadata only
+    chunk_id: str | None = None  # the PostgreSQL chunk UUID: what passage-level metrics match on
 
 
 Search = Callable[[str], Awaitable[list[Hit]]]
@@ -157,8 +158,13 @@ def expected_names(case: dict[str, Any]) -> list[str]:
 
 
 async def probe(
-    search: Search, cases: Sequence[dict[str, Any]], phrasings: Sequence[str]
+    search: Search,
+    cases: Sequence[dict[str, Any]],
+    phrasings: Sequence[str],
+    plain_hits: dict[str, list[Hit]] | None = None,
 ) -> dict[str, Any]:
+    """``plain_hits``, when given, receives the chunks of every plain-question search by case id (answerable
+    and refusal cases), so passage metrics need no second search and no second embedding call."""
     answerable, refusal = split_cases(cases)
     rows: dict[str, list[dict[str, Any]]] = {name: [] for name in phrasings}
     for name in phrasings:
@@ -166,6 +172,8 @@ async def probe(
             if name != "plain" and case.get("language", "en") != "en":
                 continue  # the lead-ins are English
             hits = await search(PHRASINGS[name](case["question"]))
+            if plain_hits is not None and name == "plain":
+                plain_hits[case["id"]] = hits
             rows[name].append(
                 {
                     "id": case["id"],
@@ -174,7 +182,12 @@ async def probe(
                     **measure(hits, expected_names(case)),
                 }
             )
-    refusal_rows = [{"id": c["id"], **measure(await search(c["question"]), [])} for c in refusal]
+    refusal_rows = []
+    for c in refusal:
+        hits = await search(c["question"])
+        if plain_hits is not None:
+            plain_hits[c["id"]] = hits
+        refusal_rows.append({"id": c["id"], **measure(hits, [])})
     return {
         "answerable": {name: summarise_answerable(r) for name, r in rows.items()},
         "refusal_cases": summarise_refusal(refusal_rows),
@@ -192,7 +205,7 @@ def make_search(retriever: HybridRetriever) -> Search:
             candidate_limit=CANDIDATE_LIMIT,
         )
         chunks = await retriever.retrieve(request)
-        return [Hit(c.filename, c.source_scores.get("vector")) for c in chunks]
+        return [Hit(c.filename, c.source_scores.get("vector"), str(c.chunk_id)) for c in chunks]
 
     return search
 
@@ -236,12 +249,22 @@ async def run(args: argparse.Namespace) -> None:
     names = list(PHRASINGS) if args.phrasings else ["plain"]
     meter = CostMeter(args.cap)
     sessions = session_factory(settings)
+    plain_hits: dict[str, list[Hit]] = {}
     try:
         with meter.installed():
             async with sessions() as db:
-                report = await probe(make_search(HybridRetriever(db, settings)), cases, names)
+                report = await probe(
+                    make_search(HybridRetriever(db, settings)), cases, names, plain_hits
+                )
     except BudgetExceeded as exc:
         raise SystemExit(f"STOPPED: {exc}") from exc
+    if args.passage:
+        # Free: database reads only. The hits are the plain-question searches already made above.
+        from .passage_metrics import passage_section  # late: that module imports this one
+
+        report["passage"] = await passage_section(
+            sessions, cases, files, plain_hits, top_k=settings.retrieval_top_k
+        )
     report["settings"] = {
         "retrieval_score_threshold": settings.retrieval_score_threshold,
         "retrieval_top_k": settings.retrieval_top_k,
@@ -280,6 +303,10 @@ def print_report(report: dict[str, Any], filename: str) -> None:
         f"\nnot-in-the-files cases: {r['n']}, {r['with_any_result']} still return chunks; "
         f"top vector score median {r['top_vector_score_median']}, max {r['top_vector_score_max']}"
     )
+    if "passage" in report:
+        from .passage_metrics import print_passage
+
+        print_passage(report["passage"])
     print("spend:", report["spend"]["estimated_total_usd"], "USD")
 
 
@@ -304,6 +331,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--phrasings", action="store_true", help="also test the three lead-in wordings"
+    )
+    parser.add_argument(
+        "--passage",
+        action="store_true",
+        help="also report passage-level metrics (anchor-chunk recall, rank, MRR) from the same searches; "
+        "development and regression pools only, never held-out",
     )
     parser.add_argument("--threshold", type=float, help="override retrieval_score_threshold")
     parser.add_argument(
