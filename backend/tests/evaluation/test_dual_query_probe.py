@@ -331,3 +331,25 @@ def test_the_scored_set_and_its_denominator_are_unchanged_by_the_accounting():
     parts = mixed_parts()
     assert [c["id"] for c in parts["searched"]] == ["scored", "late"]
     assert parts["queries_from_later_repeat"] == ["late"]
+
+
+# ---- the shared Qdrant client is closed when the probe ends, however it ends ----------------------------------
+
+
+def test_the_probe_closes_the_shared_qdrant_client_after_a_run_and_after_a_failure(monkeypatch):
+    import argparse
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    closed = AsyncMock()
+    monkeypatch.setattr(dq, "close_shared_qdrant_clients", closed)
+    args = argparse.Namespace()
+
+    monkeypatch.setattr(dq, "run", AsyncMock())
+    asyncio.run(dq.run_and_close(args))
+    assert closed.await_count == 1
+
+    monkeypatch.setattr(dq, "run", AsyncMock(side_effect=RuntimeError("stopped")))
+    with pytest.raises(RuntimeError, match="stopped"):
+        asyncio.run(dq.run_and_close(args))
+    assert closed.await_count == 2

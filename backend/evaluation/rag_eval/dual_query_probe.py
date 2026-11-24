@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import Settings
+from app.embeddings.qdrant_connection import close_shared_qdrant_clients
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.types import RetrievedChunk
 from app.routing.intent_frame.execution import RetrievalRequest
@@ -530,8 +531,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+async def run_and_close(args: argparse.Namespace) -> None:
+    """The run, then the one Qdrant client the retrievers shared (they borrow the application's managed client)."""
+    try:
+        await run(args)
+    finally:
+        await close_shared_qdrant_clients()
+
+
 def main() -> None:
-    asyncio.run(run(build_parser().parse_args()))
+    asyncio.run(run_and_close(build_parser().parse_args()))
 
 
 if __name__ == "__main__":

@@ -2,6 +2,44 @@
 
 Short, dated records of engineering decisions with the evidence behind them. Newest first.
 
+## 2026-11-24 — Qdrant: one managed client per event loop; the loopback keep-alive override was tried and removed
+
+**Decision.** Vector stores that are not given a client share one `AsyncQdrantClient` per running event loop and
+connection configuration (`shared_qdrant_client`, closed by `lifespan` at shutdown through `close_shared_qdrant_clients`;
+an injected client always wins). Before this, every search built a new client and never closed it. We do **not**
+override qdrant-client's default for loopback hosts: for `localhost` and `127.0.0.1` the library disables HTTP keep-alive
+unless `limits` is passed, and we pass nothing.
+
+**Why a managed client.** A paid C2 evaluation stopped at case 13 of 182 (about the 39th search) with `httpx.ConnectTimeout`; the cause is not
+established (Qdrant was healthy and idle, and 450+ later read-only searches did not reproduce it). Per-search clients also
+showed latency spikes. With one shared client, read-only searches on the real local Qdrant built 1 client and had 0
+failures in every run. Median latency was 3.8 to 8.3 ms against 18 to 32 ms with a client per search. The maximum was
+45 ms in the best run, but 257 ms and 318 ms in two other runs of the same configuration (the last on a busier machine),
+against 1551 ms before: the shared client reduces the spikes, it does not remove them.
+
+**What was tried and removed.** Bounded keep-alive on loopback: an `httpx.Limits` override on the managed client (idle
+expiry 2 s, at most 20 idle and 50 open connections; 2 s because Qdrant 1.18.2 closed idle connections after 4.5 s and 4.7 s
+in two raw-socket probes, with no `Keep-Alive` header and no setting). **None of these settings remains in the code, the
+configuration or the tests.** Measured on this machine (read-only searches, no embeddings, 158 per arm, 0 errors in every arm):
+- Real TCP connects (httpcore `connect_tcp` hook): 158 with keep-alive off; 8 and 7 with it on (two runs). Connections idle
+  3 s or 6 s were not reused; a 1 s idle one was. `netstat` deltas did not agree with the hook and were not used.
+- Median search latency rose from 7.0 ms to 49.8 ms (49.8 ms in both runs); p95 53 ms to 60 ms.
+- Raw httpx (no qdrant-client) reproduced it: on a persistent connection a POST body of about 12 KB or more took about
+  46 ms; an 8 KB body took about 3 ms and GET requests 1.4 to 2.5 ms, and fresh connections took 3 to 5 ms at every size. A real
+  1536-float embedding is about 27 KB, so every search is affected. `TCP_NODELAY` was on.
+- **Mechanism not established.** A TCP delayed-ACK interaction on this machine's Docker Desktop loopback path is a
+  suspicion only; the probes do not exclude httpx, and no run off this machine exists.
+- The independent reviewer blocked the keep-alive change (P1: it was on by default despite the latency regression and
+  the Owner's condition that it be enabled only if no compatibility issue was found).
+
+**Consequence.** On loopback every request still opens a new TCP connection, so the rare `ConnectTimeout` can recur; the
+shared client removes per-search client construction, not the per-request connect. A failed paid probe run still needs a
+new Owner approval to repeat.
+
+**Reconsider only if** measurements in another deployment environment (for example Qdrant not behind Docker Desktop)
+show keep-alive to be a benefit. Not measured: a non-loopback Qdrant, where the shared client now reuses connections under
+the httpx defaults (5 s expiry, close to the server's ~4.5 s idle close).
+
 ## 2026-11-24 — The first product is English-only; unsupported languages are out of scope, not defects
 
 **Decision.** For the current scope, supported questions, documents, expected answers, citations and evaluation are

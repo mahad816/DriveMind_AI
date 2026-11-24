@@ -17,6 +17,7 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal, engine, google_refresh_lifecycle
 from app.demo.readiness_client import DemoReadinessClient
+from app.embeddings.qdrant_connection import close_shared_qdrant_clients
 from app.core.public_safety import (
     public_error_detail,
     ChatBodyLimit,
@@ -136,7 +137,10 @@ async def lifespan(
                 else:
                     logger.warning("Indexing cleanup is deferred; database remains available.")
         finally:
-            await app.state.demo_readiness_client.close()
+            try:
+                await app.state.demo_readiness_client.close()
+            finally:
+                await close_shared_qdrant_clients()
 
 
 def create_app(*, indexing_test_runtime: DisposableIndexingRuntime | None = None) -> FastAPI:
