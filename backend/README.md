@@ -66,7 +66,7 @@ Question -> vector + keyword + metadata retrieval -> RRF merge -> weighted reran
 | `HYBRID_RETRIEVAL_ENABLED` | `true` | Toggle hybrid retrieval in `RagService` |
 | `RETRIEVAL_CANDIDATE_K` | `24` | Candidate pool size per retriever before merge |
 | `RETRIEVAL_TOP_K` | `8` | Final reranked chunks sent downstream |
-| `RETRIEVAL_DUAL_QUERY_ENABLED` | `false` | Tool agent only: `search_knowledge` also searches the user's own question and round-robins both lists into the top-k (C2; single-turn questions only; off until its ticket's acceptance criteria are met, see `docs/tickets/hybrid-retrieval-comparison/`) |
+| `RETRIEVAL_DUAL_QUERY_ENABLED` | `false` | Tool agent only: `search_knowledge` also searches the user's own question and round-robins both lists into the top-k with a soft per-file cap of 3 (C2-cap3; single-turn questions only; off until its ticket's acceptance criteria are met, see `docs/tickets/hybrid-retrieval-comparison/`) |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.25` | Vector score floor and evidence weak-signal rule |
 | `RETRIEVAL_RELATIVE_THRESHOLD` | `0.7` | Drop vector hits scoring below this fraction of the best vector hit (`0` = off) |
 | `RETRIEVAL_NAME_TERM_MAX_FILES` | `2` | A question word (5+ letters) counts as naming a file only if it is in at most this many file names |

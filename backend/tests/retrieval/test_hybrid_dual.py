@@ -296,10 +296,9 @@ def per_file(chunks: list[RetrievedChunk]) -> dict[int, int]:
 
 
 @pytest.mark.asyncio
-async def test_per_file_cap_holds_inside_each_list_but_the_merged_list_can_hold_twice_the_cap() -> (
-    None
-):
-    # Each list: three strong chunks of file 1, then five chunks of five other files.
+async def test_the_soft_per_file_cap_also_holds_across_the_merged_list() -> None:
+    # Contract change of 2026-11-24 (C2-cap3): the merge applies the same soft cap, so two lists of three strong
+    # chunks of one file no longer put six of them in the top 8.
     question = [file_chunk(10 + i, 1, 0.95 - 0.01 * i) for i in range(3)] + [
         file_chunk(20 + i, 100 + i, 0.5 - 0.01 * i) for i in range(5)
     ]
@@ -311,8 +310,87 @@ async def test_per_file_cap_holds_inside_each_list_but_the_merged_list_can_hold_
 
     assert max(per_file(result.original_chunks).values()) == 3
     assert max(per_file(result.model_chunks).values()) == 3
-    assert per_file(result.chunks)[1] == 6  # 3 + 3: the cap is not applied again after the merge
+    assert per_file(result.chunks)[1] == 3  # the cap is applied again after the merge
     assert len(result.chunks) == 8
+
+
+@pytest.mark.asyncio
+async def test_an_exact_file_scope_with_two_files_keeps_the_merge_uncapped() -> None:
+    # The cap was evaluated on the whole collection only: inside an exact-file scope the merge stays plain round-robin.
+    scope = ResolvedFileScope(file_ids=(uuid.UUID(int=2001), uuid.UUID(int=2002)))
+    question = [file_chunk(10 + i, 1, 0.9 - 0.01 * i) for i in range(5)] + [
+        file_chunk(20 + i, 2, 0.5 - 0.01 * i) for i in range(3)
+    ]
+    model = [file_chunk(30 + i, 1, 0.9 - 0.01 * i) for i in range(5)] + [
+        file_chunk(40 + i, 2, 0.5 - 0.01 * i) for i in range(3)
+    ]
+    vector = Source({QUESTION: question, MODEL_QUERY: model})
+    result = await make(vector).retrieve_dual(request(scope=scope), QUESTION)
+    assert per_file(result.chunks)[1] == 8  # 10, 30, 11, 31, 12, 32, 13, 33: nothing is deferred
+
+
+@pytest.mark.asyncio
+async def test_a_file_named_in_the_original_question_keeps_the_merge_uncapped() -> None:
+    # A named file switches the per-file limit off for that search; the merge must not impose it again.
+    named = 'What does "file1.txt" say about leave?'
+    question = [file_chunk(10 + i, 1, 0.9 - 0.01 * i) for i in range(8)]
+    model = [file_chunk(30 + i, 1, 0.9 - 0.01 * i) for i in range(2)] + [
+        file_chunk(40 + i, 200 + i, 0.5 - 0.01 * i) for i in range(6)
+    ]
+    vector = Source({named: question, MODEL_QUERY: model})
+    result = await make(vector).retrieve_dual(request(), named)
+    assert per_file(result.chunks)[1] > 3
+
+
+@pytest.mark.asyncio
+async def test_a_file_named_in_the_model_query_keeps_the_merge_uncapped() -> None:
+    named_model_query = 'leave policy in "file1.txt"'
+    question = [file_chunk(10 + i, 1, 0.9 - 0.01 * i) for i in range(2)] + [
+        file_chunk(20 + i, 100 + i, 0.5 - 0.01 * i) for i in range(6)
+    ]
+    model = [file_chunk(30 + i, 1, 0.9 - 0.01 * i) for i in range(8)]
+    vector = Source({QUESTION: question, named_model_query: model})
+    result = await make(vector).retrieve_dual(request(named_model_query), QUESTION)
+    assert per_file(result.chunks)[1] > 3
+
+
+@pytest.mark.asyncio
+async def test_a_per_file_limit_of_zero_in_settings_turns_the_merge_cap_off() -> None:
+    question = [file_chunk(10 + i, 1, 0.9 - 0.01 * i) for i in range(4)] + [
+        file_chunk(20 + i, 100 + i, 0.5 - 0.01 * i) for i in range(4)
+    ]
+    model = [file_chunk(30 + i, 1, 0.9 - 0.01 * i) for i in range(4)] + [
+        file_chunk(40 + i, 200 + i, 0.5 - 0.01 * i) for i in range(4)
+    ]
+    vector = Source({QUESTION: question, MODEL_QUERY: model})
+    result = await make(vector, retrieval_max_chunks_per_file=0).retrieve_dual(request(), QUESTION)
+    assert per_file(result.chunks) == {
+        1: 8
+    }  # plain round-robin: 10, 30, 11, 31, 12, 32, 13, 33 are all file 1
+
+
+@pytest.mark.asyncio
+async def test_the_merge_recovers_a_file_the_uncapped_merge_would_displace() -> None:
+    # mx07-style: both lists are dominated by files 144 and 146; the expected file sits last in the model list and
+    # the question adds a fourth chunk of file 144 that would take its slot without the cap.
+    f144, f146, expected = 144, 146, 999
+    model = [
+        file_chunk(1, f144, 0.90),
+        file_chunk(2, f146, 0.89),
+        file_chunk(3, f146, 0.88),
+        file_chunk(4, f144, 0.87),
+        file_chunk(5, f146, 0.86),
+        file_chunk(6, f144, 0.85),
+        file_chunk(7, f146, 0.84),
+        file_chunk(8, expected, 0.83),
+    ]
+    question = [model[0], model[1], model[2], model[3], model[4], file_chunk(20, f144, 0.82)]
+    vector = Source({QUESTION: question, MODEL_QUERY: model})
+    result = await make(vector, retrieval_max_chunks_per_file=0).retrieve_dual(request(), QUESTION)
+    assert expected not in per_file(result.chunks)  # no cap: the displacement happens
+    vector = Source({QUESTION: question, MODEL_QUERY: model})
+    capped = await make(vector).retrieve_dual(request(), QUESTION)
+    assert expected in per_file(capped.chunks)
 
 
 @pytest.mark.asyncio

@@ -76,6 +76,22 @@ class HybridRetriever:
             return 0
         return self.settings.retrieval_max_chunks_per_file
 
+    def _merge_max_per_file(
+        self, model_request: RetrievalRequest, original_request: RetrievalRequest
+    ) -> int:
+        """Soft per-file cap for the C2 merge (strategy C2-cap3).
+
+        Only the collection-wide case was evaluated, so the cap applies only when both searches ran under the
+        per-file limit. An exact-file scope or a file named in either query switches that limit off for that
+        search (the user chose the file, so many chunks of it is what they want); then the merge stays the plain
+        round-robin. A setting of 0 turns the limit, and so this cap, off.
+        """
+        caps = (
+            self._max_chunks_per_file(model_request, model_request.query.strip()),
+            self._max_chunks_per_file(original_request, original_request.query.strip()),
+        )
+        return min(caps) if all(cap > 0 for cap in caps) else 0
+
     async def retrieve_with_grade(
         self,
         request: RetrievalRequest,
@@ -170,7 +186,8 @@ class HybridRetriever:
     async def retrieve_dual(
         self, request: RetrievalRequest, original_question: str
     ) -> DualRetrieval:
-        """C2: search the model's query (``request``) and the user's own question, then round-robin the two lists.
+        """C2: search the model's query (``request``) and the user's own question, then round-robin the two lists
+        with a soft per-file cap (C2-cap3; see ``_merge_max_per_file`` for when it applies).
 
         The question search is the same request with only the query text replaced, so user, scope, candidate
         limit and policy cannot differ, and each search runs the full pipeline (fusion, rerank, evidence grading)
@@ -224,7 +241,10 @@ class HybridRetriever:
             await asyncio.gather(model_task, original_task, return_exceptions=True)
 
         merged = round_robin_merge(
-            original_chunks, model_chunks, limit=self.settings.retrieval_top_k
+            original_chunks,
+            model_chunks,
+            limit=self.settings.retrieval_top_k,
+            max_per_file=self._merge_max_per_file(request, original_request),
         )
         model_ids = {chunk.chunk_id for chunk in model_chunks}
         return DualRetrieval(

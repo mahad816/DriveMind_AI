@@ -2,6 +2,16 @@
 
 Short, dated records of engineering decisions with the evidence behind them. Newest first.
 
+## 2026-11-24 — C2 uses a soft per-file cap of 3 in its merge (C2-cap3); the flag stays off
+
+**Decision.** `round_robin_merge` applies the existing soft per-file cap (`retrieval_max_chunks_per_file`, default 3) during the C2 round-robin: an over-cap chunk is deferred and the turn continues with the list's next chunk; deferred chunks refill the top 8 in the order they were met and come last. It applies only when both searches ran under the per-file limit (not for an exact-file scope, a file named in either query, or a setting of 0), because only the whole-collection case was evaluated. No new setting or flag; `RETRIEVAL_DUAL_QUERY_ENABLED` stays off.
+
+**Why.** On 182 English cases (stored model queries, retrieval only) the committed C2 lost `mx07`, a case A finds, because the question list added a fourth chunk of one file that took the slot of the model list's last chunk. A capture of both candidate lists (364 embeddings, 0.00009 USD) allowed A, C2, cap3 and cap4 to be compared on identical lists. Under the pre-registered rule (development selects, simplest first; no A hit lost, Recall@8 or MRR above A, passage not reduced; regression checked once) only cap3 qualified: development Recall@8 123 / 127 / 129 for A / C2 / cap3, regression 51 / 52 / 52, `mx07` and `id11` recovered, passage recall not lower. Numbers and case ids are in the ticket `docs/tickets/hybrid-retrieval-comparison/01-fusion-and-query-source-comparison.md`.
+
+**Not shown.** Final-answer quality (never measured with the flag on), held-out English acceptance, any benefit beyond 6 differing development cases (p 0.031 for one strategy among three; treat as encouraging). `px03` is still not retrieved.
+
+**Reconsider if** the real-agent evaluation or the held-out check shows the cap loses an expected document, or a measurement outside the whole-collection case contradicts it.
+
 ## 2026-11-24 — Qdrant: one managed client per event loop; the loopback keep-alive override was tried and removed
 
 **Decision.** Vector stores that are not given a client share one `AsyncQdrantClient` per running event loop and
