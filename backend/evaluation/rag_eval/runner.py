@@ -18,6 +18,7 @@ from .judge import judge
 from .meter import BudgetExceeded, CostMeter, case_var, label_var
 from .pools import pool_of
 from .schema_v3 import gate_groups
+from .claim_trace import attach_metering
 from .score import Observed, answer_score, clean_score, evidence_score, summarise
 from .target import EVAL_USER_ID, session_factory
 from .trace import (
@@ -161,11 +162,13 @@ async def run_case(
     pipeline: str,
     sessions: Any,
     meter: CostMeter | None = None,
+    *,
+    trace_claim_check: bool = False,
 ) -> dict[str, Any]:
     by_name = {f.name: f.path for f in files}
     # A key unique to this attempt: the same case id recurs across pipelines and repeats.
     key = f"{pipeline}/{case['id']}/{uuid.uuid4().hex[:8]}"
-    trace = CaseTrace()
+    trace = CaseTrace(claim_detail=trace_claim_check)
     case_token, trace_token = case_var.set(key), trace_var.set(trace)
     try:
         row = await answer_case(settings, case, by_name, pipeline, sessions)
@@ -176,9 +179,13 @@ async def run_case(
         case_var.reset(case_token)
         trace_var.reset(trace_token)
     row["execution"] = execution_summary(trace)
-    row["trace"] = trace.as_dict()
     if meter is not None:
         row["accounting"] = meter.case_accounting(key)
+        attach_metering(
+            trace, row["accounting"]
+        )  # a no-op unless the claim-check diagnostics are on
+    row["trace"] = trace.as_dict()
+    if meter is not None:
         if key in meter.stopped_cases and not row.get("cap_stopped"):
             stopped_row(
                 row
@@ -294,8 +301,11 @@ async def run_pipeline(
     concurrency: int = 3,
     repeat: int = 1,
     meter: CostMeter | None = None,
+    trace_claim_check: bool = False,
 ) -> dict[str, Any]:
     chosen = pipeline_settings(settings, pipeline)
+    # Only an explicit request adds the keyword, so a stand-in ``run_case`` and every ordinary run stay as before.
+    extra: dict[str, bool] = {"trace_claim_check": True} if trace_claim_check else {}
     sessions = session_factory(chosen)
     gate = asyncio.Semaphore(concurrency)
     total = len(files)
@@ -306,7 +316,7 @@ async def run_pipeline(
             if meter is not None and meter.exhausted:  # the cap was reached: start nothing new
                 row = stopped_row(base_row(case))
                 return {**row, "accounting": None, "execution": None, "trace": None}
-            return await run_case(chosen, case, files, pipeline, sessions, meter)
+            return await run_case(chosen, case, files, pipeline, sessions, meter, **extra)
 
     started = datetime.now(UTC)
     tasks = [asyncio.ensure_future(one(c)) for c in prepared]
@@ -325,10 +335,13 @@ async def run_pipeline(
     except Exception as exc:  # the answers are paid for: keep them, say the free scores are missing
         for row in rows:
             row["extend_error"] = describe_error(exc)
-    return {
+    result: dict[str, Any] = {
         "pipeline": pipeline,
         "model": settings.chat_model,
         "started": started.isoformat(),
         "summary": summarise(list(rows)),
         "rows": list(rows),
     }
+    if trace_claim_check:  # the file holds draft answers: say so, and say it must stay out of Git
+        result["diagnostics"] = {"claim_check_trace": True, "contains_draft_answers": True}
+    return result

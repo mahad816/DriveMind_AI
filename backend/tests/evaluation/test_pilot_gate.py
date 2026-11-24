@@ -218,3 +218,164 @@ def test_preflight_refuses_a_run_id_that_already_has_results(
     assert (
         run_main(monkeypatch, tmp_path, "--preflight", "--run-id", "pilot_20261125_999999_1") == 0
     )
+
+
+# --- claim-check diagnostics: required where a check must have run (``--require-claim-trace``) ---------------
+
+
+def check_record(
+    result: str = "unchanged", *, checked: bool = True, reason: str | None = None
+) -> dict[str, Any]:
+    return {
+        "index": 1,
+        "outcome": {"result": result, "checked": checked, "fail_open_reason": reason},
+    }
+
+
+def traced_row(
+    case_id: str,
+    *,
+    evidence: bool = True,
+    records: list[dict[str, Any]] | None = None,
+    key: bool = True,
+    outcome: str = "COMPLETED",
+    path: str = "tool_agent",
+) -> dict[str, Any]:
+    trace: dict[str, Any] = {
+        "searches": [{"chunks": [{"chunk_id": "x"}] if evidence else []}],
+        "tool_calls": [],
+    }
+    if key:
+        trace["claim_checks"] = [check_record()] if records is None else records
+    return {
+        "id": case_id,
+        "error": None,
+        "accounting": {"total": {}},
+        "execution": {"path": path, "outcome": outcome},
+        "trace": trace,
+    }
+
+
+def traced_arm(*rows: dict[str, Any], diagnostics: bool = True, **settings: Any) -> dict[str, Any]:
+    data = arm("A", False)
+    data["rows"] = list(rows)
+    data["manifest"]["settings"].update(settings)
+    if diagnostics:
+        data["diagnostics"] = {"claim_check_trace": True, "contains_draft_answers": True}
+    return data
+
+
+def test_complete_diagnostics_pass_the_requirement() -> None:
+    data = traced_arm(traced_row("a1"), traced_row("a2"))
+    assert gate.claim_trace_problems(data) == []
+
+
+def test_a_result_written_without_the_switch_is_stopped() -> None:
+    data = traced_arm(traced_row("a1"), traced_row("a2"), diagnostics=False)
+    assert any("--trace-claim-check" in p for p in gate.claim_trace_problems(data))
+
+
+def test_a_row_without_the_diagnostics_block_is_named() -> None:
+    data = traced_arm(traced_row("a1"), traced_row("a2", key=False))
+    found = gate.claim_trace_problems(data)
+    assert len(found) == 1 and "a2" in found[0] and "no claim_checks" in found[0]
+
+
+def test_a_completed_run_with_evidence_and_no_record_is_stopped() -> None:
+    data = traced_arm(traced_row("a1", records=[]), traced_row("a2"))
+    found = gate.claim_trace_problems(data)
+    assert len(found) == 1 and "a1" in found[0] and "no claim-check record" in found[0]
+
+
+def test_a_tool_result_with_chunks_counts_as_evidence_too() -> None:
+    row = traced_row("a1", evidence=False, records=[])
+    row["trace"]["tool_calls"] = [{"result": {"chunk_ids": ["c1"]}}]
+    assert gate.claim_trace_problems(traced_arm(row, traced_row("a2")))
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        traced_row("a1", evidence=False, records=[]),  # no evidence: the checker is never reached
+        traced_row("a1", records=[], outcome="CYCLE_LIMIT"),  # no final answer to check
+        traced_row("a1", records=[], path="intent"),  # answered by the intent gate, no agent
+    ],
+)
+def test_legitimate_runs_without_a_check_are_allowed(row: dict[str, Any]) -> None:
+    assert gate.claim_trace_problems(traced_arm(row, traced_row("a2"))) == []
+
+
+def test_a_disabled_claim_check_expects_no_record() -> None:
+    data = traced_arm(
+        traced_row("a1", records=[]), traced_row("a2", records=[]), claim_check_enabled=False
+    )
+    assert gate.claim_trace_problems(data) == []
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        check_record("unchecked", checked=False, reason="call_error:TimeoutError"),
+        check_record("unchecked", checked=False, reason="marker_only_answer"),
+        check_record("unchecked", checked=False, reason="no_evidence"),
+        check_record("whole_answer_replaced"),
+        check_record("flagged_none_removed"),
+    ],
+)
+def test_checker_skipped_or_failed_open_outcomes_are_legitimate(record: dict[str, Any]) -> None:
+    assert (
+        gate.claim_trace_problems(traced_arm(traced_row("a1", records=[record]), traced_row("a2")))
+        == []
+    )
+
+
+def test_a_record_that_never_finished_is_stopped() -> None:
+    data = traced_arm(traced_row("a1", records=[{"index": 1, "outcome": {}}]), traced_row("a2"))
+    found = gate.claim_trace_problems(data)
+    assert len(found) == 1 and "a1" in found[0] and "incomplete" in found[0]
+
+
+def test_an_unchecked_record_must_say_why() -> None:
+    record = check_record("unchecked", checked=False, reason=None)
+    found = gate.claim_trace_problems(
+        traced_arm(traced_row("a1", records=[record]), traced_row("a2"))
+    )
+    assert len(found) == 1 and "fail_open_reason" in found[0]
+
+
+def test_cap_stopped_rows_are_not_expected_to_have_records() -> None:
+    stopped = {"id": "a1", "error": None, "cap_stopped": True, "accounting": None, "trace": None}
+    assert gate.claim_trace_problems(traced_arm(stopped, traced_row("a2"))) == []
+
+
+def test_the_command_requires_the_diagnostics_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ask = ("--run-id", RUN, "--strategy", "A", "--ids", *IDS)
+    plain = traced_arm(traced_row("a1"), traced_row("a2"), diagnostics=False)
+    plain["tag"] = gate.tag_for(RUN, "A")
+    write(tmp_path, f"rag_v2_1_tool_agent_m_dev_{RUN}_A.json", plain)
+    assert run_main(monkeypatch, tmp_path, *ask) == 0  # the existing behaviour is unchanged
+    assert run_main(monkeypatch, tmp_path, *ask, "--require-claim-trace") == 1
+    good = traced_arm(traced_row("a1"), traced_row("a2"))
+    good["tag"] = gate.tag_for(RUN, "A")
+    write(tmp_path, f"rag_v2_1_tool_agent_m_dev_{RUN}_A.json", good)
+    assert run_main(monkeypatch, tmp_path, *ask, "--require-claim-trace") == 0
+
+
+def test_the_gate_messages_carry_case_ids_only() -> None:
+    row = traced_row("a1", records=[{"index": 1, "outcome": {}, "draft_answer": "SECRET DRAFT"}])
+    assert all(
+        "SECRET DRAFT" not in p
+        for p in gate.claim_trace_problems(traced_arm(row, traced_row("a2")))
+    )
+
+
+def test_the_requirement_is_refused_with_the_pair_check(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        run_main(
+            monkeypatch, tmp_path, "--run-id", RUN, "--pair", "--ids", *IDS, "--require-claim-trace"
+        )
+    assert caught.value.code == 2

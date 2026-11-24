@@ -7,8 +7,10 @@ Four things are scored separately so one weak stage cannot hide behind another:
   clean     - no citation attached to a reply that should have none (chitchat, inventory, refusals)?
 """
 
+import re
+import unicodedata
 from collections import Counter, defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import sqrt
 from typing import Any
@@ -21,6 +23,9 @@ SUMMARY_VERSION = 2
 ANSWERED = {"answer", "partial", "inventory", "correct_premise"}  # behaviours scored for facts
 ANSWERABLE = {"answer", "partial"}  # the files hold (some of) the answer
 REFUSALS = {"not_found", "decline_or_not_found", "correct_premise"}
+NEGATION_FORMS = frozenset({"not", "no"})
+# A contracted negation: "don't", "doesn’t", "can't", "won't", "isn’t" (either apostrophe).
+CONTRACTED_NEGATION = re.compile(r"\b[a-z]+n['’]t\b", re.IGNORECASE)
 ROLLUPS = ("category", "format", "pool", "split", "language", "expected_behavior", "critical_tag")
 
 
@@ -42,6 +47,23 @@ class Observed:
     error: str | None = None
 
 
+def group_satisfied(answer: str, group: Sequence[str]) -> bool:
+    """A must-include group is met by any accepted surface form of it.
+
+    A group made only of "not" / "no" asks for a negation (a corrected false premise); a contraction such as
+    "don’t" is the same word in another form, but ``text.norm`` turns its apostrophe into a space, so the shared
+    whole-token matcher cannot see it. This extra form applies to such groups only: every other group, and
+    ``text.contains`` itself (also used by dataset validation), keep the literal rule. It is a lexical check, not
+    a judgement that the premise was corrected; the refusal judge decides that.
+    """
+    if satisfies(answer, list(group)):
+        return True
+    negation_group = bool(group) and {a.strip().casefold() for a in group} <= NEGATION_FORMS
+    return negation_group and bool(
+        CONTRACTED_NEGATION.search(unicodedata.normalize("NFKC", answer))
+    )
+
+
 def evidence_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | None:
     expected = case["expected_files"]
     if case["expected_behavior"] not in {"answer", "partial"} or not expected:
@@ -55,7 +77,7 @@ def evidence_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | Non
 def answer_score(case: dict[str, Any], seen: Observed) -> dict[str, Any] | None:
     if case["expected_behavior"] not in ANSWERED:
         return None
-    missing = [g for g in case["must_include"] if not satisfies(seen.answer, g)]
+    missing = [g for g in case["must_include"] if not group_satisfied(seen.answer, g)]
     forbidden = [c for c in case["must_not_include"] if contains(seen.answer, c)]
     return {
         "correct": not missing and not forbidden and seen.error is None,
@@ -69,7 +91,7 @@ def fact_recall(case: Mapping[str, Any], seen: Observed) -> dict[str, Any] | Non
     if case["expected_behavior"] not in ANSWERED:
         return None
     groups = case["must_include"]
-    present = sum(satisfies(seen.answer, g) for g in groups)
+    present = sum(group_satisfied(seen.answer, g) for g in groups)
     return {
         "required": len(groups),
         "present": present,

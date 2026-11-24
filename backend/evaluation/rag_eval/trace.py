@@ -43,14 +43,27 @@ class CaseTrace:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     current_tool: dict[str, Any] | None = None  # tools of one case run one after another
+    # Opt-in diagnostics of the runtime claim check (``claim_trace``). Off unless the run asked for them
+    # (``cli run --trace-claim-check``); then they hold the draft answer and the checker's decisions.
+    claim_detail: bool = False
+    claim_checks: list[dict[str, Any]] = field(default_factory=list)
+    claim_metering: dict[str, Any] | None = None
+    pending_evidence: dict[str, Any] | None = None  # between ``evidence_text`` and the checker call
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "schema_version": TRACE_SCHEMA_VERSION,
             "searches": self.searches,
             "tool_calls": self.tool_calls,
             "events": self.events,
         }
+        if (
+            self.claim_detail
+        ):  # an optional block: absent from every ordinary run and from older results
+            out["claim_checks"] = self.claim_checks
+            if self.claim_metering is not None:
+                out["claim_check_metering"] = self.claim_metering
+        return out
 
 
 trace_var: ContextVar[CaseTrace | None] = ContextVar("case_trace", default=None)
@@ -233,6 +246,10 @@ def tracing_installed() -> Iterator[None]:
 
     ToolExecutor.execute = execute  # type: ignore[method-assign]
     executor_module.full_document = full_document
+    from .claim_trace import claim_check_tracing  # local: claim_trace imports this module
+
+    claim_tracing = claim_check_tracing()
+    claim_tracing.__enter__()
     handler = _ExecutionLog()
     app_logger = logging.getLogger("app")
     level = app_logger.level
@@ -244,6 +261,7 @@ def tracing_installed() -> Iterator[None]:
     finally:
         app_logger.removeHandler(handler)
         app_logger.setLevel(level)
+        claim_tracing.__exit__(None, None, None)
         ToolExecutor.execute = original_execute  # type: ignore[method-assign]
         executor_module.full_document = original_read
 

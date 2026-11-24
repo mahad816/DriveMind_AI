@@ -1,7 +1,7 @@
 """Free checks around the two paid arms of the answer-quality pilot (ticket hybrid-retrieval-comparison/02).
 
     python -m evaluation.rag_eval.pilot_gate --preflight --run-id RUN
-    python -m evaluation.rag_eval.pilot_gate --run-id RUN --strategy A|C2-cap3 --ids ID [ID ...]
+    python -m evaluation.rag_eval.pilot_gate --run-id RUN --strategy A|C2-cap3 --ids ID [ID ...] [--require-claim-trace]
     python -m evaluation.rag_eval.pilot_gate --run-id RUN --pair
 
 Each paired evaluation has one unique run id (RUN). Both arms are started with ``--tag RUN_<strategy>``, and the
@@ -133,6 +133,59 @@ def arm_problems(
     return problems
 
 
+def _saw_evidence(trace: dict[str, Any]) -> bool:
+    """Did any search or tool call of the case return chunks? Only then the agent has evidence to check against."""
+    if any(search.get("chunks") for search in trace.get("searches") or []):
+        return True
+    return any(
+        (call.get("result") or {}).get("chunk_ids") for call in trace.get("tool_calls") or []
+    )
+
+
+def claim_trace_problems(data: dict[str, Any]) -> list[str]:
+    """Are the claim-check diagnostics there where a check must have run? (``--require-claim-trace``)
+
+    A row is expected to hold at least one record when it finished a tool-agent run (``COMPLETED``) after the
+    agent retrieved chunks and the claim check was enabled: the graph checks every final answer that has evidence.
+    A row without evidence, a run that ended in a failure or by the intent gate, a cap-stopped row, and a disabled
+    check are legitimate without records. A record whose outcome is ``unchecked`` (skipped or failed open) is
+    legitimate when it says why; a record with no outcome never finished. Messages name case ids only.
+    """
+    problems: list[str] = []
+    if (data.get("diagnostics") or {}).get("claim_check_trace") is not True:
+        return ["the result was written without --trace-claim-check: no claim-check diagnostics"]
+    enabled = (data.get("manifest", {}).get("settings") or {}).get("claim_check_enabled", True)
+    for row in data.get("rows", []):
+        if row.get("cap_stopped") or row.get("trace") is None:
+            continue
+        case = str(row.get("id"))
+        trace = row["trace"]
+        if "claim_checks" not in trace:
+            problems.append(f"case {case}: the trace has no claim_checks block")
+            continue
+        records = trace["claim_checks"]
+        execution = row.get("execution") or {}
+        expected = (
+            enabled
+            and execution.get("path") == "tool_agent"
+            and execution.get("outcome") == "COMPLETED"
+            and _saw_evidence(trace)
+        )
+        if expected and not records:
+            problems.append(
+                f"case {case}: evidence was retrieved but there is no claim-check record"
+            )
+        for record in records:
+            outcome = record.get("outcome") or {}
+            if not outcome.get("result"):
+                problems.append(
+                    f"case {case}: claim-check record {record.get('index')} is incomplete"
+                )
+            elif outcome.get("result") == "unchecked" and not outcome.get("fail_open_reason"):
+                problems.append(f"case {case}: an unchecked record gives no fail_open_reason")
+    return problems
+
+
 def pair_problems(a: dict[str, Any], c2: dict[str, Any]) -> list[str]:
     """Why the two arms are not a fair pair."""
     ma, mc = a.get("manifest") or {}, c2.get("manifest") or {}
@@ -174,6 +227,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="check both arms of the run and that they are a fair pair",
     )
+    parser.add_argument(
+        "--require-claim-trace",
+        action="store_true",
+        help="also require the claim-check diagnostics (the run used --trace-claim-check) where a check must have run",
+    )
     parser.add_argument("--results-dir", type=Path, default=RESULTS)
     args = parser.parse_args(argv)
     state = git_state()
@@ -194,6 +252,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.run_id:
         parser.error("--run-id is required")
     head = state.get("commit")
+    if args.pair and args.require_claim_trace:
+        parser.error("--require-claim-trace checks one arm: use it with --strategy, not --pair")
     if args.pair:
         if not args.ids:
             parser.error("--pair needs --ids")
@@ -214,7 +274,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     path, problems = find_result(args.results_dir, args.run_id, args.strategy)
     if path is not None:
         problems += preflight_problems(state)
-        problems += arm_problems(load(path), args.strategy, args.ids, run_id=args.run_id, head=head)
+        data = load(path)
+        problems += arm_problems(data, args.strategy, args.ids, run_id=args.run_id, head=head)
+        if args.require_claim_trace:
+            problems += claim_trace_problems(data)
     return report(problems)
 
 

@@ -241,6 +241,11 @@ async def run(args: argparse.Namespace) -> None:
                 "STOPPED: the held-out pool is measured once, at the settings under test; it is never "
                 f"combined with {', '.join(tuned)}."
             )
+    if sealed and getattr(args, "trace_claim_check", False):
+        # The diagnostics keep draft answers and the user's messages; none of that may be written for the sealed pool.
+        raise SystemExit(
+            "STOPPED: --trace-claim-check records draft answers and is never used with the held-out pool."
+        )
     unsupported = sorted(
         set(args.pipelines) - DUAL_QUERY_PIPELINES
         if RETRIEVAL_STRATEGIES.get(getattr(args, "retrieval_strategy", None) or "", False)
@@ -329,6 +334,10 @@ async def run(args: argparse.Namespace) -> None:
         settings.chat_model, settings.claim_check_model, settings.embedding_model, JUDGE_MODEL
     )
     meter = CostMeter(args.cap)
+    # Only an explicit request adds the keyword: an ordinary run calls ``run_pipeline`` exactly as before.
+    diagnostics: dict[str, bool] = (
+        {"trace_claim_check": True} if getattr(args, "trace_claim_check", False) else {}
+    )
     stamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     RESULTS.mkdir(exist_ok=True)
     stopped = None
@@ -344,6 +353,7 @@ async def run(args: argparse.Namespace) -> None:
                         concurrency=args.concurrency,
                         repeat=repeat,
                         meter=meter,
+                        **diagnostics,
                     )
                     manifest = build_manifest(
                         pipeline_settings(settings, pipeline),
@@ -515,6 +525,14 @@ def main() -> None:
         "with the same cases and a --tag. Default: the application default (A); recorded in the manifest",
     )
     parser.add_argument("--tag", help="suffix for the result file name, e.g. claimcheck")
+    parser.add_argument(
+        "--trace-claim-check",
+        action="store_true",
+        help="DIAGNOSTIC, off by default: record, per case, the draft answer before the claim check, its statements, "
+        "the checker's raw reply and the statements removed, with the evidence identified by chunk. The result "
+        "file then holds draft answers and the user's messages: keep it outside Git (results/ is ignored). "
+        "Refused for the held-out pool; changes no answer",
+    )
     parser.add_argument(
         "--no-claim-check",
         action="store_true",
