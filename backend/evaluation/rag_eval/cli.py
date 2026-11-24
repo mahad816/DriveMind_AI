@@ -46,7 +46,14 @@ from .meter import (
     refuse_over_cap,
     require_prices,
 )
-from .pools import SPLIT_CHOICES, SealedAccessRefused, held_out_path, load_held_out, select
+from .pools import (
+    SPLIT_CHOICES,
+    SealedAccessRefused,
+    held_out_path,
+    injection_files,
+    load_held_out,
+    select,
+)
 from .runner import (
     JUDGED,
     PIPELINES,
@@ -60,6 +67,7 @@ from .runner import (
 from .score import summarise
 from .sealing import private_folder, reduce_row, write_private
 from .target import (
+    RETRIEVAL_STRATEGIES,
     application_defaults,
     ensure_database,
     eval_settings,
@@ -67,6 +75,7 @@ from .target import (
     migrate,
     session_factory,
     store_for,
+    with_retrieval_strategy,
 )
 
 
@@ -206,7 +215,15 @@ async def run_settings(args: argparse.Namespace, *, chat_model: str | None) -> A
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 HELD_OUT_RESULTS = "heldout_results"  # a folder next to the sealed file, outside the repository
 # Overrides that change what is measured. Against the held-out pool they are tuning, so they are refused.
-HELD_OUT_TUNING = (("--threshold", "threshold"), ("--relative", "relative"))
+HELD_OUT_TUNING = (
+    ("--threshold", "threshold"),
+    ("--relative", "relative"),
+    # A strategy comparison on the sealed pool needs its own approved protocol; until then it is refused.
+    ("--retrieval-strategy", "retrieval_strategy"),
+)
+# Pipelines that read ``retrieval_dual_query_enabled``. The legacy pipeline ignores it, so a result from it
+# must never be labelled C2-cap3.
+DUAL_QUERY_PIPELINES = frozenset({"tool_agent"})
 
 
 def withheld(what: str, exc: BaseException) -> str:
@@ -224,6 +241,16 @@ async def run(args: argparse.Namespace) -> None:
                 "STOPPED: the held-out pool is measured once, at the settings under test; it is never "
                 f"combined with {', '.join(tuned)}."
             )
+    unsupported = sorted(
+        set(args.pipelines) - DUAL_QUERY_PIPELINES
+        if RETRIEVAL_STRATEGIES.get(getattr(args, "retrieval_strategy", None) or "", False)
+        else ()
+    )
+    if unsupported:
+        raise SystemExit(
+            f"STOPPED: --retrieval-strategy C2-cap3 only applies to the {sorted(DUAL_QUERY_PIPELINES)} pipeline; "
+            f"{', '.join(unsupported)} would run single-query retrieval under a C2-cap3 label. Nothing was called."
+        )
     files = selected_files(args)
     verify(files)
     if sealed and (args.ids or args.category or args.limit or args.repeats != 1):
@@ -256,7 +283,9 @@ async def run(args: argparse.Namespace) -> None:
         ) as exc:  # a name outside evaluation/datasets, or a file holding held-out cases
             raise SystemExit(f"STOPPED: {exc}.") from None
     try:
-        problems = validate(dataset, files_to_check(dataset, files))
+        problems = validate(
+            dataset, files_to_check(dataset, files), injection_files=injection_files()
+        )
     except Exception as exc:
         if not sealed:
             raise
@@ -293,6 +322,9 @@ async def run(args: argparse.Namespace) -> None:
         if value is not None
     }
     settings = settings.model_copy(update=overrides)
+    # Explicit and recorded; absent means the application default, exactly as before.
+    selected_strategy = getattr(args, "retrieval_strategy", None)
+    settings = with_retrieval_strategy(settings, selected_strategy)
     require_prices(
         settings.chat_model, settings.claim_check_model, settings.embedding_model, JUDGE_MODEL
     )
@@ -323,14 +355,19 @@ async def run(args: argparse.Namespace) -> None:
                         repeat_index=repeat,
                         repeat_count=args.repeats,
                         cap_usd=args.cap,
+                        retrieval_strategy_selected=selected_strategy,
                     )
                     manifest["spend"] = meter.summary()
+                    if held_file is None:  # the sealed pool's ids are never written
+                        manifest["case_ids"] = [c["id"] for c in cases]
                     if held_file is not None:
                         manifest["dataset"]["held_out_sha256"] = sha256_of(held_file)
                     result.update(
                         manifest=manifest,
                         split=args.split,
                         datasets=[] if sealed else args.dataset,
+                        retrieval_strategy=manifest["retrieval_strategy"],
+                        tag=args.tag,  # the run id of a paired evaluation (pilot_gate)
                         retrieval={
                             "score_threshold": settings.retrieval_score_threshold,
                             "relative_threshold": settings.retrieval_relative_threshold,
@@ -470,6 +507,13 @@ def main() -> None:
     )
     parser.add_argument("--threshold", type=float, help="override retrieval_score_threshold")
     parser.add_argument("--relative", type=float, help="override retrieval_relative_threshold")
+    parser.add_argument(
+        "--retrieval-strategy",
+        choices=sorted(RETRIEVAL_STRATEGIES),
+        help="first-search retrieval of the tool agent: A = the model's query alone, C2-cap3 = the model's query "
+        "plus the user's question, merged round-robin with a per-file cap of 3. Run each arm as its own command "
+        "with the same cases and a --tag. Default: the application default (A); recorded in the manifest",
+    )
     parser.add_argument("--tag", help="suffix for the result file name, e.g. claimcheck")
     parser.add_argument(
         "--no-claim-check",

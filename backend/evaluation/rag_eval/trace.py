@@ -28,7 +28,7 @@ from app.agents.tool_rag.execution.context import ExecutionContext
 from app.agents.tool_rag.execution.executor import ToolExecutionResult, ToolExecutor
 from app.evaluation.trace import EvalTraceCollector
 from app.retrieval.grade import EvidenceGrade
-from app.retrieval.hybrid import HybridRetriever
+from app.retrieval.hybrid import DualRetrieval, HybridRetriever
 from app.routing.intent_frame.execution import RetrievalRequest
 from app.routing.intent_frame.scope import ResolvedFileScope
 
@@ -68,16 +68,22 @@ def chunk_entry(rank: int, chunk: Any) -> dict[str, Any]:
     }
 
 
+# True while ``retrieve_dual`` runs: its two inner ``retrieve_with_grade`` calls are one logical search, recorded
+# once by ``retrieve_dual``. The two tasks it creates inherit this value when they are created.
+_inside_dual: ContextVar[bool] = ContextVar("recording_inside_dual", default=False)
+
+
 class RecordingRetriever(HybridRetriever):
     """A hybrid retriever that notes each search and returns exactly what the real one returns.
 
     ``retrieve`` delegates to ``retrieve_with_grade``, and the legacy paths call that one directly, so it
-    is the single place every search passes through.
+    is the single place every single-query search passes through. ``retrieve_dual`` (C2) runs that stage twice
+    on purpose; it records ONE search instead: the model's query, the merged chunks the agent receives, and under
+    ``dual`` how they were found. Provider calls are never skipped or hidden: both inner searches still run, and
+    the meter sees them as before.
     """
 
-    async def retrieve_with_grade(
-        self, request: RetrievalRequest, *, trace: EvalTraceCollector | None = None
-    ) -> EvidenceGrade:
+    def _open_record(self, request: RetrievalRequest, case: CaseTrace | None) -> dict[str, Any]:
         record: dict[str, Any] = {
             "query": request.query,
             "scope": "files" if isinstance(request.scope, ResolvedFileScope) else "collection",
@@ -86,12 +92,19 @@ class RecordingRetriever(HybridRetriever):
             else None,
             "candidate_limit": request.candidate_limit,
         }
-        case = trace_var.get()
         if case is not None:
             record["tool_call"] = case.current_tool["index"] if case.current_tool else None
             case.searches.append(record)
             if case.current_tool is not None:
                 case.current_tool["searches"].append(len(case.searches))
+        return record
+
+    async def retrieve_with_grade(
+        self, request: RetrievalRequest, *, trace: EvalTraceCollector | None = None
+    ) -> EvidenceGrade:
+        if _inside_dual.get():  # a part of a dual search: ``retrieve_dual`` records the whole
+            return await super().retrieve_with_grade(request, trace=trace)
+        record = self._open_record(request, trace_var.get())
         started = perf_counter()
         try:
             grade = await super().retrieve_with_grade(request, trace=trace)
@@ -105,6 +118,41 @@ class RecordingRetriever(HybridRetriever):
             chunks=[chunk_entry(rank, chunk) for rank, chunk in enumerate(grade.chunks, 1)],
         )
         return grade
+
+    async def retrieve_dual(
+        self, request: RetrievalRequest, original_question: str
+    ) -> DualRetrieval:
+        case = trace_var.get()
+        if case is None:
+            return await super().retrieve_dual(request, original_question)
+        record = self._open_record(request, case)
+        started = perf_counter()
+        token = _inside_dual.set(True)
+        try:
+            found = await super().retrieve_dual(request, original_question)
+        except Exception as exc:
+            record.update(error=type(exc).__name__, duration_ms=_ms(started))
+            raise
+        finally:
+            _inside_dual.reset(token)
+        record.update(
+            duration_ms=_ms(started),
+            # What the agent receives: the merged list. The two candidate lists are only identified.
+            chunks=[chunk_entry(rank, chunk) for rank, chunk in enumerate(found.chunks, 1)],
+            dual={
+                "strategy": found.strategy,
+                # The user's own question is the supplemental query. Its text is not copied (the row has it).
+                "supplemental_query": {"source": "user_question"},
+                "skipped_reason": found.skipped_reason,
+                "degraded_reason": found.degraded_reason,
+                "retrieval_calls": found.retrieval_calls,
+                "embedding_calls": found.embedding_calls,
+                "overlap": found.overlap,
+                "model_chunk_ids": [str(chunk.chunk_id) for chunk in found.model_chunks],
+                "original_chunk_ids": [str(chunk.chunk_id) for chunk in found.original_chunks],
+            },
+        )
+        return found
 
 
 def _ms(started: float) -> float:

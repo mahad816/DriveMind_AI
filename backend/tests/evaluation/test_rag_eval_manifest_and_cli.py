@@ -275,7 +275,7 @@ def offline_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, An
     monkeypatch.setattr(cli, "corpus_files", lambda *, with_messy: synthetic_files())
     monkeypatch.setattr(cli, "verify", lambda files: None)
     monkeypatch.setattr(cli, "files_to_check", lambda dataset, files: [])
-    monkeypatch.setattr(cli, "validate", lambda dataset, files: [])
+    monkeypatch.setattr(cli, "validate", lambda dataset, files, **kwargs: [])
     monkeypatch.setattr(cli, "run_pipeline", fake_pipeline)
     monkeypatch.setattr(cli, "RESULTS", tmp_path / "results")
     calls["results"] = tmp_path / "results"
@@ -586,3 +586,154 @@ def test_run_refuses_an_unpriced_chat_model_before_any_spend(
     with pytest.raises(SystemExit, match="No price recorded"):
         invoke(monkeypatch, "run", "--cap", "5", "--limit", "2", "--model", "gpt-7-new")
     assert offline_run["pipelines"] == []
+
+
+# --- explicit retrieval strategy (A against C2-cap3) --------------------------------------------
+
+
+def test_the_default_run_is_strategy_a_and_not_explicit(
+    pristine_environment: Settings,
+) -> None:
+    m = make_manifest()
+    assert m["retrieval_strategy"] == {"label": "A", "selected_explicitly": False}
+    assert m["deviations_from_default"] == {"tool_rag_agent_enabled": True}
+    settings = target.eval_settings()
+    assert target.with_retrieval_strategy(settings, None) is settings
+
+
+def test_a_local_environment_cannot_switch_the_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RETRIEVAL_DUAL_QUERY_ENABLED", "true")
+    monkeypatch.setenv("RETRIEVAL_MAX_CHUNKS_PER_FILE", "5")
+    local = Settings()  # what a developer's environment produces (no cache involved)
+    assert local.retrieval_dual_query_enabled is True and local.retrieval_max_chunks_per_file == 5
+    monkeypatch.setattr(target, "get_settings", lambda: local)
+    settings = target.eval_settings()
+    assert target.retrieval_strategy_label(settings) == "A"
+    assert settings.retrieval_max_chunks_per_file == 3
+
+
+def test_the_two_arms_differ_only_in_the_retrieval_flag(
+    pristine_environment: Settings,
+) -> None:
+    base = target.eval_settings()
+    arm_a = target.with_retrieval_strategy(base, "A")
+    arm_c = target.with_retrieval_strategy(base, "C2-cap3")
+    differing = {
+        name for name in Settings.model_fields if getattr(arm_a, name) != getattr(arm_c, name)
+    }
+    assert differing == {"retrieval_dual_query_enabled"}
+    assert base.retrieval_dual_query_enabled is False  # the input is never mutated
+    ma = make_manifest(arm_a, retrieval_strategy_selected="A")
+    mc = make_manifest(arm_c, retrieval_strategy_selected="C2-cap3")
+    assert ma["retrieval_strategy"] == {"label": "A", "selected_explicitly": True}
+    assert mc["retrieval_strategy"] == {"label": "C2-cap3", "selected_explicitly": True}
+    assert mc["deviations_from_default"] == {
+        "tool_rag_agent_enabled": True,
+        "retrieval_dual_query_enabled": True,
+    }
+    assert {k: v for k, v in ma["settings"].items() if k != "retrieval_dual_query_enabled"} == {
+        k: v for k, v in mc["settings"].items() if k != "retrieval_dual_query_enabled"
+    }
+
+
+def test_c2_cap3_is_refused_when_the_cap_is_not_three(pristine_environment: Settings) -> None:
+    odd = target.eval_settings().model_copy(update={"retrieval_max_chunks_per_file": 4})
+    with pytest.raises(ValueError, match="retrieval_max_chunks_per_file"):
+        target.with_retrieval_strategy(odd, "C2-cap3")
+    with pytest.raises(ValueError, match="unknown retrieval strategy"):
+        target.with_retrieval_strategy(odd, "C3")
+    assert (
+        target.retrieval_strategy_label(
+            odd.model_copy(update={"retrieval_dual_query_enabled": True})
+        )
+        == "C2-cap4"
+    )
+
+
+def test_an_unknown_strategy_is_rejected_by_the_command_line(
+    monkeypatch: pytest.MonkeyPatch, offline_run: dict[str, Any]
+) -> None:
+    with pytest.raises(SystemExit):
+        invoke(monkeypatch, "run", "--cap", "5", "--retrieval-strategy", "C2")
+    assert offline_run["pipelines"] == []
+
+
+@pytest.mark.parametrize(("strategy", "dual"), [("A", False), ("C2-cap3", True)])
+def test_a_run_records_the_selected_strategy_in_the_manifest_and_the_result(
+    monkeypatch: pytest.MonkeyPatch,
+    offline_run: dict[str, Any],
+    strategy: str,
+    dual: bool,
+) -> None:
+    invoke(
+        monkeypatch,
+        *("run", "--cap", "5", "--limit", "2", "--retrieval-strategy", strategy),
+        *("--tag", f"pilot_20261125_101500_1_{strategy}"),
+    )
+    (path,) = offline_run["results"].glob("*.json")
+    data = json.loads(path.read_text())
+    expected = {"label": strategy, "selected_explicitly": True}
+    assert data["retrieval_strategy"] == expected
+    assert data["manifest"]["retrieval_strategy"] == expected
+    assert data["manifest"]["settings"]["retrieval_dual_query_enabled"] is dual
+    assert data["manifest"]["case_ids"] == [r["id"] for r in data["rows"]] and data["rows"]
+    assert data["tag"] == f"pilot_20261125_101500_1_{strategy}"  # the run id the gate looks for
+
+
+def test_a_run_without_the_option_records_the_default_strategy(
+    monkeypatch: pytest.MonkeyPatch, offline_run: dict[str, Any]
+) -> None:
+    invoke(monkeypatch, "run", "--cap", "5", "--limit", "2")
+    (path,) = offline_run["results"].glob("*.json")
+    data = json.loads(path.read_text())
+    assert data["retrieval_strategy"] == {"label": "A", "selected_explicitly": False}
+
+
+def test_run_validates_the_v3_development_cases_with_the_injection_documents(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ``cli run`` once validated without the injection map, so every injection case of
+    ``rag_v3_dev_cases.json`` failed and the file could not be run through the standard command."""
+    from evaluation.rag_eval import pools
+
+    monkeypatch.setattr(cli, "corpus_files", lambda *, with_messy: pools.frozen_corpus_files())
+    monkeypatch.setattr(cli, "verify", lambda files: None)
+    invoke(
+        monkeypatch,
+        *("run", "--plan", "--cap", "1", "--split", "dev", "--dataset", "rag_v3_dev_cases.json"),
+        *("--ids", "an05"),
+    )
+    out = capsys.readouterr().out
+    assert '"cases": 1' in out and "Dataset invalid" not in out
+
+
+@pytest.mark.parametrize("pipelines", [["legacy"], ["tool_agent", "legacy"]])
+def test_c2_cap3_is_refused_before_any_work_when_a_pipeline_cannot_run_it(
+    monkeypatch: pytest.MonkeyPatch, offline_run: dict[str, Any], pipelines: list[str]
+) -> None:
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("nothing may be built, read or called")
+
+    monkeypatch.setattr(cli, "corpus_files", forbidden)
+    monkeypatch.setattr(cli, "CostMeter", forbidden)
+    monkeypatch.setattr(cli, "eval_settings", forbidden)
+    for plan in ([], ["--plan"]):
+        with pytest.raises(SystemExit, match="legacy"):
+            invoke(
+                monkeypatch,
+                *("run", "--cap", "5", "--limit", "2", "--retrieval-strategy", "C2-cap3", *plan),
+                *("--pipelines", *pipelines),
+            )
+    assert offline_run["pipelines"] == [] and not offline_run["results"].exists()
+
+
+def test_strategy_a_and_the_tool_agent_pipeline_stay_allowed(
+    monkeypatch: pytest.MonkeyPatch, offline_run: dict[str, Any]
+) -> None:
+    invoke(monkeypatch, *("run", "--cap", "5", "--limit", "2", "--retrieval-strategy", "A"))
+    invoke(
+        monkeypatch,
+        *("run", "--cap", "5", "--limit", "2", "--retrieval-strategy", "A"),
+        *("--pipelines", "legacy"),
+    )
+    assert [p for p, _ in offline_run["pipelines"]] == ["tool_agent", "legacy"]

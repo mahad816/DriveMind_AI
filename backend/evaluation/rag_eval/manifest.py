@@ -25,7 +25,7 @@ from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
 from .corpus import CorpusFile
 from .dataset import resolve_case_file
 from .meter import METERING_LIMITS, PRICE_TABLE_DATE
-from .target import ANSWER_FIELDS, BACKEND, application_defaults
+from .target import ANSWER_FIELDS, BACKEND, application_defaults, retrieval_strategy_label
 
 SCHEMA_VERSION = 1
 
@@ -60,6 +60,7 @@ def build_manifest(
     repeat_index: int,
     repeat_count: int,
     cap_usd: float,
+    retrieval_strategy_selected: str | None = None,
 ) -> dict[str, Any]:
     """Everything that can change an answer or its cost, for one pipeline run.
 
@@ -71,6 +72,10 @@ def build_manifest(
         "schema_version": SCHEMA_VERSION,
         **git_state(),
         "settings": values,
+        "retrieval_strategy": {
+            "label": retrieval_strategy_label(settings),
+            "selected_explicitly": retrieval_strategy_selected is not None,
+        },
         "deviations_from_default": {k: v for k, v in values.items() if v != defaults[k]},
         "embedding_dimension": resolve_embedding_dimension(settings.embedding_model),
         "prompts": {

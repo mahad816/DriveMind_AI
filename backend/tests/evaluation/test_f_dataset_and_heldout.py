@@ -199,6 +199,30 @@ def test_the_held_out_run_refuses_threshold_overrides_before_reading_anything(
     assert events == []  # not even the corpus was read
 
 
+@pytest.mark.parametrize("strategy", ["A", "C2-cap3"])
+def test_the_held_out_run_refuses_a_retrieval_strategy_before_reading_anything(
+    strategy: str, monkeypatch: pytest.MonkeyPatch
+):
+    events: list[str] = []
+    stub_for_run(monkeypatch, events)
+    monkeypatch.setattr(cli, "held_out_path", lambda: pytest.fail("the sealed path was looked up"))
+    for plan in (False, True):  # --plan loads the pool too, so it is refused as well
+        with pytest.raises(SystemExit, match="held-out") as caught:
+            asyncio.run(cli.run(run_args(retrieval_strategy=strategy, plan=plan)))
+        assert "--retrieval-strategy" in str(caught.value)
+    assert events == []
+
+
+def test_a_retrieval_strategy_stays_allowed_on_development(monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    stub_for_run(monkeypatch, events)
+    monkeypatch.setattr(cli, "load_many", lambda _n: {"cases": []})
+    monkeypatch.setattr(cli, "validate", lambda *_a, **_k: [])
+    monkeypatch.setattr(cli, "files_to_check", lambda *_a: [])
+    with pytest.raises(SystemExit, match="No cases selected"):  # got past both guards
+        asyncio.run(cli.run(run_args(split="dev", retrieval_strategy="C2-cap3")))
+
+
 def test_threshold_overrides_stay_allowed_on_development(monkeypatch: pytest.MonkeyPatch):
     events: list[str] = []
     stub_for_run(monkeypatch, events)

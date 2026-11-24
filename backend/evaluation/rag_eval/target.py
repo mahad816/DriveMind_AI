@@ -111,6 +111,39 @@ def application_defaults() -> dict[str, Any]:
     return {name: Settings.model_fields[name].get_default() for name in ANSWER_FIELDS}
 
 
+# The two first-search retrieval strategies an evaluation run can select explicitly (ticket
+# docs/tickets/hybrid-retrieval-comparison/01-...). The value is ``retrieval_dual_query_enabled``.
+# C2-cap3 also needs the soft per-file cap at 3, the application default; ``with_retrieval_strategy`` checks it.
+RETRIEVAL_STRATEGIES = {"A": False, "C2-cap3": True}
+C2_CAP = 3
+
+
+def retrieval_strategy_label(settings: Settings) -> str:
+    """The strategy these settings run, derived from the settings and never from a command-line word."""
+    if not settings.retrieval_dual_query_enabled:
+        return "A"
+    return f"C2-cap{settings.retrieval_max_chunks_per_file}"
+
+
+def with_retrieval_strategy(settings: Settings, strategy: str | None) -> Settings:
+    """``settings`` with the strategy chosen explicitly. ``None`` leaves them untouched (the default run).
+
+    Only ``retrieval_dual_query_enabled`` changes; every other setting stays as pinned. C2-cap3 is refused
+    unless the per-file cap really is 3, so a label can never describe a different merge.
+    """
+    if strategy is None:
+        return settings
+    if strategy not in RETRIEVAL_STRATEGIES:
+        raise ValueError(
+            f"unknown retrieval strategy {strategy!r}; choose {sorted(RETRIEVAL_STRATEGIES)}"
+        )
+    if RETRIEVAL_STRATEGIES[strategy] and settings.retrieval_max_chunks_per_file != C2_CAP:
+        raise ValueError(f"{strategy} needs retrieval_max_chunks_per_file == {C2_CAP}")
+    return settings.model_copy(
+        update={"retrieval_dual_query_enabled": RETRIEVAL_STRATEGIES[strategy]}
+    )
+
+
 def store_for(*, frozen: bool, name: str | None = None) -> EvalStore:
     """The store a command works on. Legacy commands use v2; frozen commands use v3 or the store they name,
     and can never select v2."""

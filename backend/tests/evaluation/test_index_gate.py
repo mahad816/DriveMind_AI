@@ -392,7 +392,7 @@ def stub_cli(monkeypatch):
     monkeypatch.setattr(cli, "corpus_files", lambda **k: [])
     monkeypatch.setattr(cli, "verify", lambda files: None)
     monkeypatch.setattr(cli, "load_many", lambda names: {"cases": [case]})
-    monkeypatch.setattr(cli, "validate", lambda *a: [])
+    monkeypatch.setattr(cli, "validate", lambda *a, **k: [])
     monkeypatch.setattr(cli, "files_to_check", lambda *a: [])
     monkeypatch.setattr(cli, "select", lambda cases, split: cases)
     monkeypatch.setattr(cli, "CostMeter", lambda cap: pytest.fail("no spend before the gate"))
