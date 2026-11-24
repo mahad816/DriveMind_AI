@@ -2,6 +2,18 @@
 
 Short, dated records of engineering decisions with the evidence behind them. Newest first.
 
+## 2026-11-24 — Narrow M1 exception for three targeted answer-reliability fixes
+
+**Decision (Owner, 2026-11-24).** The M1 boundary "no change to prompts, the claim check or the application package" (`docs/specs/m1-rag-evaluation.md`, Boundaries) is relaxed for exactly three production changes, and for nothing else:
+
+1. **False-premise handling** in the agent system prompt (`AGENT_SYSTEM_PROMPT`).
+2. **Material-assertion verification** in the runtime claim checker's instructions (`SYSTEM_PROMPT` in `claim_check.py`). No new model call; model, timeout, evidence budget and fail-open policy unchanged; the checker stays on.
+3. **KI-035** statement-removal correctness in `enforce_claims`.
+
+**Why.** All three address confirmed defects found while evaluating in M1 (the claim-check diagnostic of 2026-11-24: an invented rejection accepted by the checker; flagged statements that stay in the answer while a removal is counted). They should be fixed before the formal production-quality baseline is measured, so the baseline describes the system that will ship. The wider roadmap is unchanged; the tickets stay in `docs/tickets/answer-reliability/` (they are not moved to M3); the exception does not cover retrieval, models, feature-flag defaults, thresholds or any other production work.
+
+**Consequences.** The agent policy hash (the evaluation's prompt id) and the checker prompt change at this commit. The completed answer-quality pilot (run `pilot_20261124_200518_75246`, commit `59aab8f`, A 13/18 and C2-cap3 15/18 overall passes, about 0.150 USD metered, a diagnostic and not an accuracy estimate) is the **historical pre-fix baseline**; later results must name the commit and the changed prompts and must not be pooled with it as one system. The prompt changes have **no real-model evidence yet**; the validation in `docs/tickets/answer-reliability/04-targeted-real-model-validation.md` is prepared and not authorized. KI-028 stays open.
+
 ## 2026-11-24 — C2 uses a soft per-file cap of 3 in its merge (C2-cap3); the flag stays off
 
 **Decision.** `round_robin_merge` applies the existing soft per-file cap (`retrieval_max_chunks_per_file`, default 3) during the C2 round-robin: an over-cap chunk is deferred and the turn continues with the list's next chunk; deferred chunks refill the top 8 in the order they were met and come last. It applies only when both searches ran under the per-file limit (not for an exact-file scope, a file named in either query, or a setting of 0), because only the whole-collection case was evaluated. No new setting or flag; `RETRIEVAL_DUAL_QUERY_ENABLED` stays off.

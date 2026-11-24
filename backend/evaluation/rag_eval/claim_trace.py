@@ -228,9 +228,10 @@ def attribute_removals(
 ) -> dict[str, Any]:
     """What happened to each statement, read from the answer text before and after, not from the checker's labels.
 
-    ``enforce_claims`` drops a flagged statement only when its text equals a whole line or sentence it finds, and
-    it drops every statement with that text. So a flagged statement can stay (a numbered line such as
-    "1. Text. More text." is not matched), and an unflagged copy of a flagged text can go. Each statement is
+    Since KI-035 was fixed, ``enforce_claims`` removes exactly the flagged units, so a non-empty
+    ``flagged_not_removed`` or ``collateral_removed`` in a new run means a new defect, not normal behaviour (older
+    result files can contain them: the old code kept a flagged numbered statement and dropped every copy of a
+    flagged text). This function still reads only the text before and after. Each statement is
     judged by how many copies of its text (as a whole statement unit, whitespace squashed) the remaining answer
     holds compared with the draft:
 

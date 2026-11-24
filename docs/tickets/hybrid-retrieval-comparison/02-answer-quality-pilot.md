@@ -3,13 +3,13 @@
 **Spec:** docs/specs/m1-rag-evaluation.md; follows `01-fusion-and-query-source-comparison.md` (retrieval only)
 **What to build:** (1) an explicit, recorded retrieval-strategy option for `cli run`; (2) a small, documented pilot of 18 English development cases, so the Owner can read real DriveMind answers under both strategies and see their weaknesses. **Not** an accuracy estimate and not the M1 baseline (ticket 11).
 **Blocked by:** None for the free work. The paid run needs the Owner's explicit go-ahead.
-**Status:** ready-for-human (paid run awaits the Owner)
-**Progress:** claimed
+**Status:** ready-for-human (paid run completed 2026-11-24; see Comments)
+**Progress:** resolved
 **Risk:** high (paid evaluation path and spending safeguards)
 
 ## Boundaries
 
-No paid call has been made by this ticket. No held-out or regression question was used to choose cases. No index change, no production enablement (`RETRIEVAL_DUAL_QUERY_ENABLED` stays false by default), no change to frozen results, no push.
+At the time of writing no paid call had been made by this ticket (the paid run was done later; see Comments). No held-out or regression question was used to choose cases. No index change, no production enablement (`RETRIEVAL_DUAL_QUERY_ENABLED` stays false by default), no change to frozen results, no push.
 
 ## 1. Evaluation configuration change
 
@@ -96,7 +96,7 @@ Basis: planning constant 0.0025 USD per tool-agent question plus 0.0012 per judg
 
 Multi-document and follow-up questions can take more agent steps than the average, and the Owner will read all answers, so each cap carries a 5 times margin. **Application-side cap: 0.25 USD per arm (one `--cap` per command), 0.50 USD in total.** The cap is checked between calls and is not a provider-side limit; with `--concurrency 1` the overshoot is at most the calls in flight (two tiny embedding calls run together in C2). Expected actual: about 0.10 USD for both arms. No retry or extra run happens without new authorization (`--repeats 1`; the SDK's own automatic retries are invisible to the meter, see `METERING_LIMITS`).
 
-## 6. Proposed paid commands (not run; the Owner decides)
+## 6. Paid commands (run once on 2026-11-24 after the Owner's go-ahead; see Comments; not to be repeated)
 
 Preconditions: containers up; `index_verify verify --store v3` passes; **the working tree is clean and the change is committed** (the gate refuses otherwise, so the manifest names the code that ran); `OPENAI_API_KEY` exported for this command only and unexported afterwards. Run from `backend/`.
 
@@ -127,3 +127,4 @@ Run it in `bash` (in interactive zsh the `# PILOT-CHAIN` comment line prints a h
 
 - 2026-11-24: written. Free work only.
 - 2026-11-24: first review **BLOCK** (P1 recorder, two P2). Owner authorized the corrections; this version contains them (recorder, `id11` wording, legacy and held-out refusal, controls, gate, terminology). Second review **BLOCK** (the paid sequence did not stop itself; stale-file risk). Fixed: unique run id, result found by tag, clean tree and HEAD checks, `&&` chain tested by running the real block. Third (focused) review **APPROVE**; open P3: the gate does not check row `extend_error`.
+- 2026-11-24: **the paid run was made and completed** (Owner-authorized): run `pilot_20261124_200518_75246`, commit `59aab8f`, tree clean, 18 cases per arm, one repeat. Both arm gates and the pair gate passed, chain exit code 0, no cap stop. Overall passes: A 13/18, C2-cap3 15/18 (diagnostic, not an accuracy estimate). Metered spend A 0.0822 USD, C2-cap3 0.0677 USD (about 0.150 USD in total, caps 0.25 each). Raw files, gate output and per-case comparison are in the Owner's evidence folder `answer_pilot/` (outside Git). This run is the **historical pre-fix answer-quality baseline**: the agent prompt and the checker prompt changed afterwards (`docs/tickets/answer-reliability/`), so later results must name their commit and must not be pooled with it. It must not be repeated.

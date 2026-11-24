@@ -551,24 +551,21 @@ async def test_the_adapters_own_checker_path_is_traced_and_names_its_model(
 NUMBERED = "1. Authoritative refund policy text. Refunds take 90 days. [source_1]"
 
 
-async def test_a_flagged_numbered_sentence_that_stays_in_the_answer_is_not_recorded_as_removed():
-    """Reviewer's reproduced example. ``enforce_claims`` matches against ``sentences(line)``, which keeps the list
-    number apart ("1."), so the flagged unit "1. Authoritative ..." is never found and nothing is dropped, while the
-    application still counts one removal. The record must say what happened to the text."""
+async def test_a_flagged_numbered_sentence_is_removed_and_the_trace_stays_honest_about_the_moved_list_number():
+    """KI-035 fixed: the flagged unit "1. Authoritative ..." is now removed (removal works by statement index) and its
+    list number moves to the surviving sentence. The text-based attribution cannot call that a pure removal, so it
+    records uncertainty instead of inventing a removal; the application's own count is exact."""
     result, trace = await traced(NUMBERED, fake_checker(flags("S1")))
     rec = only(trace)
     out = rec["outcome"]
     assert rec["statements"][0] == "1. Authoritative refund policy text."
-    assert rec["decisions"]["flagged"] == ["S1"]  # what the checker decided is unchanged
-    assert (
-        out["remaining_answer"] == NUMBERED and "Authoritative refund policy text." in result.answer
-    )
-    assert out["result"] == "flagged_none_removed"
-    assert out["removed_statements"] == []
-    assert [s["label"] for s in out["flagged_not_removed"]] == ["S1"]
-    assert out["reported_removed_count"] == 1 and out["observed_removed_count"] == 0
-    assert out["counter_matches_observation"] is False
-    assert out["replaced_entire_answer"] is False
+    assert rec["decisions"]["flagged"] == ["S1"]
+    assert out["remaining_answer"] == "1. Refunds take 90 days. [source_1]"
+    assert "Authoritative refund policy text." not in result.answer
+    assert "Refunds take 90 days." in result.answer
+    assert out["flagged_not_removed"] == [] and out["unattributed_change"] is True
+    assert [s["label"] for s in out["uncertain"]] == ["S1", "S2"]
+    assert out["reported_removed_count"] == 1 and out["replaced_entire_answer"] is False
 
 
 async def test_a_flagged_sentence_after_a_list_number_is_removed_and_recorded():
@@ -593,20 +590,19 @@ async def test_one_sentence_cut_from_a_line_is_recorded_as_removed():
     assert out["collateral_removed"] == [] and out["counter_matches_observation"] is True
 
 
-async def test_a_repeated_statement_is_removed_everywhere_and_the_extra_copy_is_reported():
-    """The application drops every statement with the flagged text: the unflagged copy is collateral."""
+async def test_only_the_flagged_copy_of_a_repeated_statement_is_removed():
+    """KI-035 fixed: removal is by statement index, so the unflagged copy stays. Which copy went cannot be read from
+    the text alone, so the trace says so rather than guessing."""
     line = "Refunds take 90 days. [source_1]"
     draft = f"{line}\n{SUPPORTED}\n{line}"
     result, trace = await traced(draft, fake_checker(flags("S1")))
     rec = only(trace)
     out = rec["outcome"]
     assert rec["statements"] == [line, SUPPORTED, line]
-    assert "90 days" not in result.answer
-    assert [s["label"] for s in out["removed_statements"]] == ["S1"]
-    assert [s["label"] for s in out["collateral_removed"]] == ["S3"]
-    assert out["reported_removed_count"] == 1 and out["observed_removed_count"] == 2
-    assert out["counter_matches_observation"] is False
-    assert out["remaining_answer"] == SUPPORTED
+    assert result.answer.count("90 days") == 1
+    assert out["collateral_removed"] == [] and out["flagged_not_removed"] == []
+    assert [s["label"] for s in out["uncertain"]] == ["S1"]
+    assert out["reported_removed_count"] == 1
 
 
 async def test_whole_answer_replacement_is_still_recorded_when_every_statement_is_gone():
@@ -678,3 +674,20 @@ def test_whitespace_differences_between_draft_and_remaining_text_do_not_hide_a_r
         "Alpha  is 1.\n\nBeta is 2.", ["Alpha  is 1.", "Beta is 2."], ["S2"], "Alpha is 1."
     )
     assert [r["label"] for r in got["removed"]] == ["S2"] and got["flagged_not_removed"] == []
+
+
+def test_attribution_still_detects_a_flagged_statement_that_stayed_and_an_unflagged_copy_that_went():
+    """The detectors behind ``flagged_not_removed`` and ``collateral_removed``. Since KI-035 was fixed the
+    application no longer produces either, so these call the attribution directly: a non-empty result in a real
+    run would now mean a new defect, and this keeps the detector from passing vacuously."""
+    from evaluation.rag_eval.claim_trace import attribute_removals
+
+    statements = ["1. Authoritative refund policy text.", "Refunds take 90 days. [source_1]"]
+    stayed = attribute_removals(NUMBERED, statements, ["S1"], NUMBERED)
+    assert [u["label"] for u in stayed["flagged_not_removed"]] == ["S1"]
+    assert stayed["removed"] == []
+
+    copies = ["A is 1.", "B is 2.", "A is 1."]
+    went = attribute_removals("A is 1.\nB is 2.\nA is 1.", copies, ["S1"], "B is 2.")
+    assert [u["label"] for u in went["removed"]] == ["S1"]
+    assert [u["label"] for u in went["collateral_removed"]] == ["S3"]

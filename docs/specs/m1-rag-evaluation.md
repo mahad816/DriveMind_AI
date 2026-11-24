@@ -43,6 +43,7 @@ No file paths or code snippets in this section. Evidence pointers are in Further
 
 ### Boundaries
 
+- **Owner-approved exception (2026-11-24, `docs/DECISIONS.md`, "Narrow M1 exception for three targeted answer-reliability fixes"):** exactly three production changes (false-premise prompt rule, claim-check material-assertion instructions, KI-035 removal), tickets `docs/tickets/answer-reliability/01` to `03`. Nothing else in this section is relaxed.
 - M1 is measurement. No change to prompts, tool descriptions, retrieval settings, thresholds, the claim check, models or any file under the application package. Every ticket's acceptance includes an empty diff of the application package. A harness defect found during M1 is fixed in M1; a product defect found is registered (registry entry whose reproduction is the named evaluation cases, the precedent of KI-027 to KI-029) and handed to its milestone, never fixed in M1.
 - No Railway access, push, deploy or real Google call by any ticket. Provider calls happen only in the paid steps named in the tickets, each with a stated estimate and cap, each approved by the Owner when it starts.
 - No new dependency or external service is planned. Anything that turns out to need one stops the ticket for an Owner decision.

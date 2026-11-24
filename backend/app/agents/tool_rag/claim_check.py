@@ -36,17 +36,29 @@ SYSTEM_PROMPT = (
     "You check an assistant's answer against the evidence passages it was given. Statements are "
     "labelled [S1], [S2], and so on; ignore any other numbers. Reply with JSON only: "
     '{"unsupported": ["S3", "S5"]} using those labels, or {"unsupported": []}.\n'
-    "Flag a statement ONLY when it states a specific fact (a number, date, name, quantity, rule or "
-    "other concrete claim) that is missing from the evidence or contradicted by it.\n"
+    "Flag a statement when it asserts a specific fact (a number, date, name, quantity, rule) or an "
+    "event, decision, cause, relationship or conclusion that is missing from the evidence or "
+    "contradicted by it. Check each material assertion in a statement on its own: a detail that is "
+    "in the evidence (a name, a date, a document title) does not make an unsupported event, "
+    "decision, cause or conclusion in the same statement supported. If any material assertion is "
+    "unsupported, flag the statement, even when the rest of it is supported.\n"
     "Do NOT flag a statement for any of these: a paraphrase or summary of the evidence; a "
-    "reasonable inference from it; framing, a caveat, a conclusion or a heading; simple arithmetic "
-    "on numbers in the evidence; a statement that something is not in the documents; an offer to "
-    "help; wording that is more or less specific than the evidence but not contradicted by it; "
-    "partial support (if most of the statement is in the evidence, it is supported).\n"
+    "reasonable inference from it that adds no new event, decision or cause; framing, a caveat or a "
+    "heading; simple arithmetic on numbers in the evidence; a statement that something is not in "
+    "the documents, or that the documents do not establish it; a claim that is qualified the way "
+    "the evidence qualifies it (a draft described as a draft, a scheduled decision described as "
+    "scheduled); ordinary conversational wording or an explanation of what the evidence does say; "
+    "an offer to help; wording that is more or less specific than the evidence but not "
+    "contradicted by it.\n"
     "Judge meaning, not word overlap, and ignore citation markers like [1] or [source_1]. "
-    "When in doubt, the statement is supported.\n"
+    "When in doubt about wording or level of detail, the statement is supported; but never when it "
+    "asserts something that happened, was decided or caused something that the evidence does not "
+    "state.\n"
     "The user's own messages are given too. Numbers the user wrote are not claims, and arithmetic "
-    "on them together with numbers from the evidence is fine.\n"
+    "on them together with numbers from the evidence is fine. Anything else the user's question "
+    "assumes (that an event happened, a decision was made, one thing caused another) is not "
+    "evidence: if the answer repeats or builds on such an assumption and the evidence does not "
+    "establish it, flag the statement.\n"
     "After the statements there may be a list headed 'Numbers written in a statement that appear "
     "nowhere in the evidence or the user's messages'. Check each one carefully: flag that statement "
     "unless the number is the plain result of arithmetic or a date calculation on numbers or dates "
@@ -79,17 +91,19 @@ _LIST_MARKER = re.compile(
 )  # a bare "1." left over from a numbered list
 
 
+def _line_pieces(line: str) -> list[list[str]]:
+    """The statements of one physical line, grouped by the piece they came from.
+
+    A colon before a numbered item ("...the following: 1. Open") starts a new piece. This is the
+    single place where statement boundaries are decided: extraction, checking and removal all use it.
+    """
+    stripped = _COLON_BEFORE_LIST.sub("\n", line.strip())
+    return [units for piece in stripped.splitlines() if (units := _merge_markers(sentences(piece)))]
+
+
 def split_statements(text: str) -> list[str]:
     """Split an answer into statements: one per non-empty line, long lines also per sentence."""
-    units: list[str] = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        line = _COLON_BEFORE_LIST.sub("\n", line)
-        for piece in line.splitlines():
-            units.extend(_merge_markers(sentences(piece)))
-    return units
+    return [unit for line in text.splitlines() for piece in _line_pieces(line) for unit in piece]
 
 
 def _merge_markers(parts: list[str]) -> list[str]:
@@ -234,21 +248,56 @@ async def enforce_claims(
         return ClaimCheckResult(answer, 0, False)
     if not flagged:
         return ClaimCheckResult(answer, 0, True)
-    dropped = {statements[i] for i in flagged}
     kept_lines: list[str] = []
+    removed = 0
+    index = 0  # position of the next statement, in the numbering the checker was shown
     for line in lines:
-        stripped = line.strip()
-        if stripped in dropped:
-            continue
-        parts = sentences(stripped)
-        if len(parts) > 1 and any(p.strip() in dropped for p in parts):
-            line = " ".join(p.strip() for p in parts if p.strip() not in dropped)
-        kept_lines.append(line)
+        pieces = _line_pieces(line)
+        count = sum(len(piece) for piece in pieces)
+        hits = {i - index for i in flagged if index <= i < index + count}
+        if not hits:
+            kept_lines.append(line)
+        else:
+            rebuilt = _rebuild_line(line, pieces, hits)
+            if rebuilt:
+                kept_lines.append(rebuilt)
+            removed += len(hits)
+        index += count
     text = re.sub(r"\n{3,}", "\n\n", "\n".join(kept_lines)).strip()
     if _is_only_markers(text):
         text = ""
-    logger.info("rag_execution path=claim_check outcome=REMOVED count=%d", len(flagged))
-    return ClaimCheckResult(text, len(flagged), True)
+    logger.info("rag_execution path=claim_check outcome=REMOVED count=%d", removed)
+    return ClaimCheckResult(text, removed, True)
+
+
+_LIST_PREFIX = re.compile(r"^(?:[-*]\s+)?(?:\(?\d{1,2}[.)]\s+)?")
+
+
+def _leading_prefix(statement: str) -> str:
+    """The bullet and/or list number a statement starts with ("" if none)."""
+    match = _LIST_PREFIX.match(statement)
+    return match.group(0) if match else ""
+
+
+def _rebuild_line(line: str, pieces: list[list[str]], hits: set[int]) -> str:
+    """The line without the statements at ``hits`` (line-relative indexes); "" if none survive.
+
+    Statements keep their own text, so a citation marker stays with the sentence it follows. When
+    the first statement of a piece goes, its bullet or list number moves to the next survivor.
+    """
+    indent = line[: len(line) - len(line.lstrip())]
+    out: list[str] = []
+    offset = 0
+    for piece in pieces:
+        kept = [u for n, u in enumerate(piece) if offset + n not in hits]
+        if kept and offset in hits:  # the piece's first statement went: keep its bullet or number
+            lead = _leading_prefix(piece[0])
+            if lead and not _leading_prefix(kept[0]):
+                kept[0] = lead + kept[0]
+        offset += len(piece)
+        if kept:
+            out.append(" ".join(kept))
+    return indent + "\n".join(out) if out else ""
 
 
 def _is_only_markers(text: str) -> bool:
