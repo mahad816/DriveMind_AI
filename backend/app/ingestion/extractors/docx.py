@@ -28,7 +28,7 @@ from docx.oxml.text.paragraph import CT_P
 from docx.text.paragraph import Paragraph
 
 from app.connectors.google_drive.constants import DOCX_MIME
-from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.base import classify_unexpected, ExtractionError, ExtractionResult
 from app.ingestion.extractors.light_markdown import (
     Block,
     join_blocks,
@@ -178,7 +178,7 @@ class DocxTextExtractor:
         except ExtractionError:
             raise
         except Exception as exc:
-            raise ExtractionError(f"Failed to extract text from DOCX: {filename}") from exc
+            raise classify_unexpected(exc, f"Failed to extract text from DOCX: {filename}") from exc
 
         return ExtractionResult(
             text=text,

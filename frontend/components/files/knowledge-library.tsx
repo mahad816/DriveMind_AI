@@ -195,7 +195,10 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
   const currentPage = Math.min(page, lastPage);
   const pageFiles = filteredFiles.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   const hiddenSelections = draft.filter(file => !pageFiles.some(row => row.id === file.id)).length;
-  const selectionDisabled = gate !== "empty" || !live() || !connection?.connected || !!connectionError || filesState.isLoading || !!filesState.error;
+  // Only the first load (no inventory yet) blocks selection. A background refresh keeps the loaded rows selectable;
+  // reserve() re-reads the inventory and draftNeedsAttention re-checks every selected file once fresh data lands.
+  const inventoryUnknown = filesState.isLoading && !filesState.data;
+  const selectionDisabled = gate !== "empty" || !live() || !connection?.connected || !!connectionError || inventoryUnknown || !!filesState.error;
   const selectionDisabledReason = !connection?.connected || connectionError ? "Check Drive access before selecting documents for preparation." : "Check file inventory and existing preparation before making another selection.";
 
   const draftNeedsAttention = draft.some(selected => {
@@ -210,7 +213,7 @@ export function KnowledgeLibrary({ className }: KnowledgeLibraryProps) {
     else filesHeading.current?.focus();
   }, [reviewing, filesState.isLoading]);
   const togglePreparation = (file: DriveFileRead) => {
-    if (!live() || !scope.owner || gate !== "empty" || !connection?.connected || connectionError || filesState.isLoading || filesState.error) return;
+    if (!live() || !scope.owner || gate !== "empty" || !connection?.connected || connectionError || inventoryUnknown || filesState.error) return;
     setDraft(before => before.some(f => f.id === file.id) ? before.filter(f => f.id !== file.id) :
       before.length < 5 && file.user_id === scope.owner && preparationEligibility(file) === null ? [...before, { ...file }] : before);
   };

@@ -34,6 +34,7 @@ function NormalSessionProvider({ children }: {
   const logoutPending = useRef(false);
   const loginPending = useRef(false);
   const reverifyPending = useRef(false);
+  const revalidating = useRef(false);
   const clear = useCallback((status: State["status"], error: string | null = null) => {
     sequence.current += 1;
     currentOwner.current = null;
@@ -71,7 +72,16 @@ function NormalSessionProvider({ children }: {
   useEffect(() => {
     const invalid = () => { const hadOwner = currentOwner.current !== null; clear("signed_out", hadOwner ? "Your session expired. Sign in again to continue." : null); if (hadOwner) broadcastSessionTransition(); };
     const verify = () => { void refresh(); };
-    const focus = () => { if (logoutPending.current || loginPending.current) return; clear("checking"); void refresh(); };
+    // Returning to the tab revalidates silently. It must not clear the session: clearing unmounts the whole
+    // app (the visible blink), aborts in-flight requests, bumps the revision and wipes selection and drafts.
+    // refresh() still hides private content on a 401, on any verification failure and on an owner change
+    // (the children are keyed by owner and revision, so a new owner always gets a fresh mount). The server
+    // authorizes every private request, so the UI is not the authority during the brief verification.
+    const focus = () => {
+      if (logoutPending.current || loginPending.current || document.hidden || revalidating.current) return;
+      revalidating.current = true;
+      void refresh().finally(() => { revalidating.current = false; });
+    };
     let channel: BroadcastChannel | null = null;
     try { if (typeof BroadcastChannel !== "undefined") channel = new BroadcastChannel("drivemind:application-session:v1"); } catch { /* Storage events and focus verification remain available. */ }
     let seen: string | null = null;

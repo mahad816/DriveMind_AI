@@ -103,8 +103,9 @@ async def test_migrations_preserve_password_and_do_not_leak(migration_database, 
         code, _ = await migrate(url)
         assert code == 0, "Migration failed; output withheld to protect credentials"
         async with engine.connect() as db:
+            # The current single head (indexing_jobs.failure_class, Checkpoint A); it was 20261121_1200 before.
             assert (
-                await db.scalar(text("SELECT version_num FROM alembic_version")) == "20261121_1200"
+                await db.scalar(text("SELECT version_num FROM alembic_version")) == "20261125_1200"
             )
             assert await db.scalar(text("SELECT count(*) FROM conversations")) == 0
             assert await db.scalar(text("SELECT count(*) FROM conversation_turns")) == 0

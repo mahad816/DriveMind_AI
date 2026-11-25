@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Circle, CircleAlert, Loader
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { DriveFileRead, IndexingJobRead } from "@/lib/api/types";
 import { fileTypeIcon, fileTypeLabel } from "@/lib/files/utils";
-import type { PreparationQueueState } from "@/lib/knowledge/preparation-queue";
+import { childBelongsTo, lastJobHasEnded, type PreparationQueueState } from "@/lib/knowledge/preparation-queue";
 import { preparationFrame, stages, type PreparationState } from "@/lib/knowledge/single-file-preparation";
 
 const stageLabels = { INGEST: "Reading document", CHUNK: "Preparing searchable text", BUILD: "Building search index" };
@@ -64,7 +64,9 @@ export function PreparationProgress({ owner, state, inventory, metadataError, ac
     const ready = entry.result === "ready" && unchanged && file?.status === "indexed" && !blocked;
     const exactJob = unchanged && child?.file?.id === entry.fileId && child.file.user_id === owner && preparationFrame(child.file) === entry.frame &&
       child.job?.id === entry.receipts.at(-1)?.jobId && entry.receipts.at(-1)?.stage === child.stage && child.job?.user_id === owner && child.job.file_id === entry.fileId && child.job.operation === child.stage ? child.job : null;
-    const outcome = entry.result === "failed" || child?.phase === "failed" ? "failed" : entry.result === "skipped" || child?.phase === "skipped" ? "skipped" : null;
+    // A child's failed/skipped phase counts only if the child really is this entry's current document and latest job.
+    const childPhase = child && childBelongsTo(queue, child) ? child.phase : null;
+    const outcome = entry.result === "failed" || childPhase === "failed" ? "failed" : entry.result === "skipped" || childPhase === "skipped" ? "skipped" : null;
     const label = !file && loading ? "Checking" : ready ? "Ready" : outcome === "failed" ? "Failed" : outcome === "skipped" ? "Skipped" : !unchanged || blocked ? "Needs review" :
       current && child?.phase === "submitting" ? "Requesting" : current && child?.phase === "active" ? exactJob?.status === "queued" ? "Queued" : "Preparing" :
       current && (child?.phase === "continue" || canConfirm) ? "Awaiting confirmation" : stopped ? "Not started" : "Waiting";
@@ -72,18 +74,28 @@ export function PreparationProgress({ owner, state, inventory, metadataError, ac
   });
   const completed = rows.filter(row => row.ready).length;
   const complete = state.phase === "complete" && completed === queue.entries.length && !metadataError;
-  const attention = blocked || stopped || metadataError || !!actionError || state.phase === "complete" && !complete && !loading;
+  // A finished batch where some documents could not be prepared is honest and final, not an alarm and not "all ready".
+  const unprepared = queue.entries.filter(entry => entry.result === "failed" || entry.result === "skipped").length;
+  const finishedWithFailures = state.phase === "complete" && !complete && !metadataError && !loading && unprepared > 0 && completed + unprepared === queue.entries.length;
+  const attention = blocked || stopped || metadataError || !!actionError || state.phase === "complete" && !complete && !loading && !finishedWithFailures;
   const activeCount = rows.filter(row => row.label === "Preparing" || row.label === "Requesting").length;
   const queuedCount = rows.filter(row => row.label === "Queued").length;
   const waitingCount = rows.filter(row => row.label === "Waiting" || row.label === "Awaiting confirmation").length;
   const error = actionError ?? (metadataError ? "Document details could not be verified. Processing is paused. Check status before continuing." :
     blocked || stopped ? state.message : attention ? "Completed document details need verification. Check status before continuing." : null);
-  const phase = complete ? "complete" : attention ? "attention" : activeCount || queuedCount ? "active" : "waiting";
-  const title = attention ? "Preparation needs attention" : loading || state.phase === "checking" ? "Checking preparation" : complete ? "Documents ready" : canConfirm ? state.child?.phase === "continue" ? "Confirm to continue" : queue.current === 0 ? "Confirm to start preparation" : "Ready for the next document" : "Preparing your documents";
-  const description = attention ? "Saved outcomes remain below. Review the details before continuing." : loading || state.phase === "checking" ? "Verifying saved work before showing progress." : complete ? "You can now find and ask questions about these documents." : canConfirm ? "Preparation continues only after your confirmation." : "Making your selection searchable in DriveMind.";
+  const phase = complete ? "complete" : attention || finishedWithFailures ? "attention" : activeCount || queuedCount ? "active" : "waiting";
+  const title = attention ? "Preparation needs attention" : loading || state.phase === "checking" ? "Checking preparation" : complete ? "Documents ready" : finishedWithFailures ? "Preparation finished" : canConfirm ? state.child?.phase === "continue" ? "Confirm to continue" : queue.current === 0 ? "Confirm to start preparation" : "Ready for the next document" : "Preparing your documents";
+  const description = attention ? "Saved outcomes remain below. Review the details before continuing." : complete ? "You can now find and ask questions about these documents." : finishedWithFailures ? `${completed} ready, ${unprepared} could not be prepared. Ready documents are available in chat; your Drive was not changed.` : canConfirm ? "Preparation continues only after your confirmation." : "Making your selection searchable in DriveMind.";
   const chatReady = files.some(file => file.user_id === owner && file.status === "indexed");
   const needsCheck = attention || state.child?.phase === "continue";
-  const canClose = state.phase === "complete" || stopped && state.child?.canRelease;
+  // Endable with nothing in flight: finished, or waiting between documents (nothing submitted for the current one).
+  const waitingToEnd = !blocked && !metadataError && !loading && ["review", "awaiting_next"].includes(state.phase) &&
+    !!queue.entries[queue.current] && queue.entries[queue.current].receipts.length === 0;
+  // A paused queue (blocked or stopped) can always be ended: ending is local, so it must not wait for metadata,
+  // Drive or the backend. It never submits anything and never cancels a server job.
+  const paused = blocked || stopped;
+  const lastJobEnded = lastJobHasEnded(queue, state.child);
+  const canClose = state.phase === "complete" || waitingToEnd || paused;
   return <section className="preparation-workspace" aria-label="Preparation progress" aria-busy={working}>
     <header className="files-page-header"><div><h1 ref={heading} tabIndex={-1} className="editorial-display">Document preparation</h1><p>Follow your documents from Drive to searchable knowledge.</p></div></header>
     <div className="preparation-panel">
@@ -104,6 +116,7 @@ export function PreparationProgress({ owner, state, inventory, metadataError, ac
               <span className={`preparation-file-status ${row.ready ? "is-ready" : row.outcome ? "is-error" : ""}`}><span key={row.label}>{row.ready ? <Check aria-hidden="true" className="size-3" /> : row.outcome || row.label === "Needs review" ? <CircleAlert aria-hidden="true" className="size-3" /> : row.label === "Preparing" || row.label === "Requesting" ? <Loader2 aria-hidden="true" className="size-3 preparation-spinner" /> : <Circle aria-hidden="true" className="size-3" />}{row.label}</span></span>
             </div>
             {showStages && row.child?.stage && row.exactJob && <ProcessingStages stage={row.child.stage} phase={row.child.phase} job={row.exactJob} />}
+            {row.outcome && !row.ready && <p className="preparation-file-note px-4 pb-3 pl-[4.25rem] text-xs text-muted-foreground">{row.outcome === "failed" ? "This document could not be prepared. Your Drive was not changed. Your other documents are not affected." : "This document was skipped because it may not contain searchable text. Your other documents are not affected."}</p>}
           </li>;
         })}
       </ol>
@@ -117,7 +130,9 @@ export function PreparationProgress({ owner, state, inventory, metadataError, ac
       {checkNote && <p className="text-xs text-muted-foreground" role="status" aria-live="polite">{checkNote}</p>}
       {(needsCheck || canClose) && <div className="preparation-recovery-actions">
         {needsCheck && <Button variant="ghost" size="sm" disabled={working || checking} onClick={onCheck}>Check status</Button>}
-        {canClose && <Button variant="ghost" size="sm" disabled={working || metadataError || loading || state.phase === "complete" && !complete} onClick={onClose}>{state.phase === "complete" ? "Close completed preparation" : "End preparation"}</Button>}
+        {canClose && <Button variant="ghost" size="sm" disabled={working || !paused && (metadataError || loading) || state.phase === "complete" && !complete && !finishedWithFailures} onClick={onClose}>{finishedWithFailures ? "Close preparation" : state.phase === "complete" ? "Close completed preparation" : "End preparation"}</Button>}
+        {paused && <p className="text-xs text-muted-foreground">{lastJobEnded ? "Ending only closes this queue here. The last server job has already ended, and ending deletes nothing." : "Ending only closes this queue here. It does not cancel a job already sent to the server, which may still finish, and it deletes nothing."} Documents that have not started can be selected again from Files.</p>}
+        {waitingToEnd && state.phase !== "complete" && <p className="text-xs text-muted-foreground">Ending now leaves the documents that have not started unprepared. You can select them again from Files.</p>}
         {blocked && <Link href="/settings" onClick={onLeave} className={buttonVariants({ variant: "ghost", size: "sm" })}>Settings</Link>}
       </div>}
     </div>

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.credential_diagnostics import safe_failure
+from app.services import indexing_failure_class as failure_class
 from app.connectors.google_drive.constants import SUPPORTED_MIME_TYPES
 from app.db.enums import DriveFileStatus, IndexingJobStatus, IndexingOperation
 from app.db.models.chunk import Chunk
@@ -94,6 +95,11 @@ class StageProgress:
     succeeded: int = 0
     failed: int = 0
     skipped: int = 0
+    # Structured cause of file failures in this stage; merged to UNKNOWN when files failed for different reasons.
+    failure_class: str | None = None
+
+    def record_failure(self, cause: str) -> None:
+        self.failure_class = failure_class.merge(self.failure_class, cause)
 
 
 class _IndependentContent:
@@ -302,7 +308,12 @@ class IndexingWorker:
                     await self.renew_lease(claim)
 
     async def finalize(
-        self, claim: IndexingClaim, progress: StageProgress, *, error: str | None = None
+        self,
+        claim: IndexingClaim,
+        progress: StageProgress,
+        *,
+        error: str | None = None,
+        cause: str | None = None,
     ) -> bool:
         # Always a fresh session: stage SQL failure may have poisoned its session.
         async with self.sessions() as db, db.begin():
@@ -319,6 +330,7 @@ class IndexingWorker:
                     await self._verify_build_sql(db, claim, attempt)
                 except AttemptEvidenceError:
                     error = "BUILD completion evidence is incomplete."
+                    cause = failure_class.UNKNOWN
                     job.recovery_required = True
             try:
                 await self._guard(db, claim)
@@ -348,6 +360,8 @@ class IndexingWorker:
                 .values(
                     status=IndexingJobStatus.FAILED if error else IndexingJobStatus.COMPLETED,
                     error=error,
+                    # A failed job always carries a class; unclassified causes are recorded as unknown.
+                    failure_class=(cause or failure_class.UNKNOWN) if error else None,
                     completed_at=func.clock_timestamp(),
                     total=progress.total,
                     processed=progress.processed,
@@ -476,6 +490,7 @@ class IndexingWorker:
             self._execute_stage(claim, progress, poisoned), name="indexing-stage"
         )
         error: str | None = None
+        cause: str | None = None
         interrupted = False
 
         async def join_owned(task: asyncio.Task[None]) -> tuple[None | BaseException, ...]:
@@ -498,6 +513,7 @@ class IndexingWorker:
                 stage.cancel()
                 await join_owned(stage)
                 error = "Indexing heartbeat failed."
+                cause = failure_class.INFRASTRUCTURE
                 # Retrieve the exception without exposing database/provider detail.
                 await join_owned(heartbeat)
             else:
@@ -507,14 +523,17 @@ class IndexingWorker:
                         f"{progress.failed} of {progress.total} files failed "
                         f"during {_STAGE_NAMES[claim.operation]}."
                     )
+                    cause = progress.failure_class
         except asyncio.CancelledError:
             interrupted = True
             poisoned.set()
             stage.cancel()
             await join_owned(stage)
             error = "Indexing execution interrupted."
+            cause = failure_class.INFRASTRUCTURE
         except Exception as exc:
             error = safe_failure(exc, _STAGE_NAMES[claim.operation])
+            cause = failure_class.from_exception(exc)
         finally:
             # Stage sessions are closed before joining heartbeat. Never wait for
             # renewal while holding the row lock it needs. Join before finalizing.
@@ -522,9 +541,11 @@ class IndexingWorker:
             heartbeat_result = await join_owned(heartbeat)
             if isinstance(heartbeat_result[0], BaseException) and error is None:
                 error = "Indexing heartbeat failed."
+                cause = failure_class.INFRASTRUCTURE
         if interrupted:
             error = "Indexing execution interrupted."
-        if not await self.finalize(claim, progress, error=error):
+            cause = failure_class.INFRASTRUCTURE
+        if not await self.finalize(claim, progress, error=error, cause=cause):
             logger.warning("Indexing attempt no longer authorized for terminal publication")
         if interrupted:
             raise asyncio.CancelledError
@@ -821,6 +842,7 @@ class IndexingWorker:
                 job.recovery_required = True
             await self._commit(db, claim)
 
+        failure_cause: str | None = None
         if claim.operation == IndexingOperation.INGEST:
             service = IngestionService(db, self.settings)
             service.content_service = content_reader
@@ -829,6 +851,8 @@ class IndexingWorker:
                 before_external=release,
                 before_persist=validate,
             )
+            if outcome == "failed":
+                failure_cause = service.last_failure_class
         elif file.status != DriveFileStatus.INDEXING or document is None:
             outcome = "skipped"
         else:
@@ -990,11 +1014,18 @@ class IndexingWorker:
                             active_job.recovery_required = False
                     file.status = DriveFileStatus.FAILED
                     outcome = "failed"
+                    # Embedding and vector-store faults are never specific to the document.
+                    failure_cause = (
+                        failure_class.CONFIGURATION
+                        if isinstance(exc, CollectionCompatibilityError)
+                        else failure_class.PROVIDER
+                    )
                 finally:
                     await client.close()
         committed = replace(progress, processed=progress.processed + 1)
         if outcome == "failed":
             committed.failed += 1
+            progress.record_failure(failure_cause or failure_class.UNKNOWN)
         elif outcome == "skipped":
             committed.skipped += 1
         else:

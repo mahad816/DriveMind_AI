@@ -49,17 +49,53 @@ it("does not mark an intermediate completed job Ready and requires keyboard conf
   const action = screen.getByRole("button", { name: "Continue preparation" }); action.focus(); await userEvent.keyboard("{Enter}");
   expect(f.props.onConfirm).toHaveBeenCalledOnce();
 });
-it.each(["failed", "skipped"] as const)("keeps %s persistent and preserves earlier Ready results without Retry", result => {
-  const f = fixture(); f.files[0].status = "indexed"; f.state.queue!.entries[0].result = "ready"; f.state.queue!.current = 1;
-  f.state.queue!.entries[1].result = result; f.state.phase = "stopped"; f.state.child = { ...f.state.child!, file: f.files[1], phase: result, canRelease: true };
-  f.state.message = result === "failed" ? "This stage failed. Ask the beta owner to review it before retrying." : "This document was skipped. It may not contain searchable text.";
-  render(<PreparationProgress {...f.props} />);
-  expect(screen.getByRole("alert")).toHaveTextContent(f.state.message);
+// Checkpoint A: the cursor now moves past a file-specific failure. The failed row stays visible with its outcome and a plain
+// explanation, earlier Ready rows are preserved, there is still no Retry, and the next document waits for confirmation.
+it.each(["failed", "skipped"] as const)("keeps %s persistent, preserves earlier Ready results, offers the next document and no Retry", result => {
+  const f = fixture(); f.files[0].status = "indexed"; f.state.queue!.entries[0].result = "ready"; f.state.queue!.current = 2;
+  f.state.queue!.entries[1].result = result; f.state.phase = "awaiting_next"; f.state.child = null; f.files[2].status = "discovered";
+  render(<PreparationProgress {...f.props} canConfirm />);
   expect(screen.getByText("Ready", { selector: ".preparation-file-status span" })).toBeInTheDocument();
   expect(screen.getByText(result === "failed" ? "Failed" : "Skipped", { selector: ".preparation-file-status span" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /Retry|Prepare next/ })).toBeNull();
+  expect(screen.getByText(result === "failed" ? /could not be prepared\. Your Drive was not changed/ : /skipped because it may not contain searchable text/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  expect(screen.getByRole("button", { name: "Prepare next document" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "End preparation" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Start chatting" })).toHaveAttribute("href", "/chat");
+  expect(screen.queryByRole("heading", { name: "Documents ready" })).toBeNull();
+});
+it("a finished batch with failures says so honestly, offers Close, and never claims all documents are ready", () => {
+  const f = fixture(); f.files[0].status = "indexed"; f.files[1].status = "failed"; f.files[2].status = "discovered";
+  f.state.queue!.entries[0].result = "ready"; f.state.queue!.entries[1].result = "failed"; f.state.queue!.entries[2].result = "skipped"; f.state.queue!.current = 3;
+  f.state.phase = "complete"; f.state.child = null; f.state.message = "1 ready, 2 could not be prepared.";
+  render(<PreparationProgress {...f.props} />);
+  expect(screen.getByRole("heading", { name: "Preparation finished" })).toBeInTheDocument();
+  expect(screen.getByText(/1 ready, 2 could not be prepared/)).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Documents ready" })).toBeNull(); expect(screen.queryByRole("alert")).toBeNull();
+  const close = screen.getByRole("button", { name: "Close preparation" }); expect(close).toBeEnabled(); fireEvent.click(close); expect(f.props.onClose).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: /Retry|Prepare next/ })).toBeNull();
+});
+it("End preparation is not offered while a stage is observed running", () => {
+  const f = fixture(); f.state.queue!.entries[0].receipts = [{ stage: "INGEST", submissionId: id(300), jobId: id(100) }];
+  render(<PreparationProgress {...f.props} />); expect(screen.queryByRole("button", { name: "End preparation" })).toBeNull();
+});
+it("a paused queue can be ended even when document details cannot be loaded, and the warning is honest", () => {
+  const f = fixture(); f.state.phase = "blocked"; f.state.child!.phase = "unknown"; f.state.message = "Google Drive is not connected, so preparation is paused.";
+  render(<PreparationProgress {...f.props} inventory={null} metadataError />);
+  const end = screen.getByRole("button", { name: "End preparation" }); expect(end).toBeEnabled();
+  expect(screen.getByText(/does not cancel a job already sent to the server/i)).toBeInTheDocument();
+  fireEvent.click(end); expect(f.props.onClose).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: /Retry|Prepare next|Continue/ })).toBeNull();
+});
+it("when the last server job is known to have ended, the warning says so instead of suggesting it may still finish", () => {
+  const f = fixture(); f.state.phase = "blocked"; f.state.child!.phase = "unknown"; f.job.status = "failed"; f.state.child!.job = f.job;
+  render(<PreparationProgress {...f.props} />);
+  expect(screen.getByText(/last server job has already ended/i)).toBeInTheDocument();
+  expect(screen.queryByText(/may still finish/i)).toBeNull();
+});
+it("ending is disabled only while an action is already running", () => {
+  const f = fixture(); f.state.phase = "blocked"; f.state.child!.phase = "unknown";
+  render(<PreparationProgress {...f.props} working />); expect(screen.getByRole("button", { name: "End preparation" })).toBeDisabled();
 });
 it("shows clean completion with Ready rows, chat and one Back action while retaining safe release", () => {
   const f = fixture(); f.state.phase = "complete"; f.state.child = null; f.state.queue!.current = 3;
@@ -78,7 +114,8 @@ it("suppresses stage and success claims on uncertain responses or missing metada
   const view = render(<PreparationProgress {...f.props} />);
   expect(screen.getByRole("alert")).toHaveTextContent(f.state.message);
   expect(screen.queryByRole("list", { name: "Processing stages" })).toBeNull();
-  expect(screen.queryByRole("button", { name: /Continue|Retry|End preparation/ })).toBeNull();
+  // Superseded (owner review fix 2026-11-25): a paused queue offers a local End preparation. Continue and Retry stay absent.
+  expect(screen.queryByRole("button", { name: /Continue|Retry/ })).toBeNull(); expect(screen.getByRole("button", { name: "End preparation" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Check status" })); expect(f.props.onCheck).toHaveBeenCalledOnce();
   view.rerender(<PreparationProgress {...f.props} inventory={null} metadataError />);
   expect(screen.getAllByRole("alert")).toHaveLength(1);
@@ -119,4 +156,24 @@ it("KI-012: shows the outcome note of the last check even after the Check status
   rerender(<PreparationProgress {...healed.props} checkNote="Checked at 10:00:04 AM. Status updated." />);
   expect(screen.queryByRole("button", { name: "Check status" })).toBeNull();
   expect(screen.getByText("Checked at 10:00:04 AM. Status updated.")).toBeVisible();
+});
+it("a blocked queue whose controller has no child still offers End preparation and never crashes", () => {
+  const f = fixture(); f.state.phase = "blocked"; f.state.child = null; f.state.message = "Queue status could not be verified.";
+  render(<PreparationProgress {...f.props} />);
+  const end = screen.getByRole("button", { name: "End preparation" }); expect(end).toBeEnabled();
+  fireEvent.click(end); expect(f.props.onClose).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: /Retry|Prepare next|Continue/ })).toBeNull();
+});
+it("a child failure counts for the row only when its job is the entry's latest receipt", () => {
+  const f = fixture(); const child = f.state.child!; child.phase = "failed";
+  child.job = { ...f.job, id: id(101), status: "failed", failed: 1, processed: 1 };   // some other job, not the latest receipt
+  const { unmount } = render(<PreparationProgress {...f.props} />);
+  expect(screen.queryByText("Failed")).toBeNull(); unmount();
+  const g = fixture(); g.state.child!.phase = "failed"; g.state.child!.job = { ...g.job, status: "failed", failed: 1, processed: 1 };   // the latest receipt's job
+  render(<PreparationProgress {...g.props} />); expect(screen.getByText("Failed")).toBeInTheDocument();
+});
+it("the warning never says the server job ended when the finished job is not the entry's latest receipt", () => {
+  const f = fixture(); f.state.phase = "blocked"; f.state.child!.phase = "unknown"; f.state.child!.job = { ...f.job, id: id(101), status: "failed" };
+  render(<PreparationProgress {...f.props} />);
+  expect(screen.queryByText(/last server job has already ended/i)).toBeNull(); expect(screen.getByText(/may still finish/i)).toBeInTheDocument();
 });

@@ -27,7 +27,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 from app.connectors.google_drive.constants import XLSX_MIME
-from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.base import classify_unexpected, ExtractionError, ExtractionResult
 from app.ingestion.extractors.light_markdown import Block, join_blocks, one_line
 from app.ingestion.extractors.plain_text import normalize_extracted_text
 from app.ingestion.extractors.registry import register_extractor
@@ -66,7 +66,7 @@ def extract_xlsx_text(data: bytes) -> tuple[str, int]:
 
     try:
         workbook = load_workbook(BytesIO(data), read_only=True, data_only=True)
-    except (InvalidFileException, BadZipFile, KeyError, ValueError, OSError) as exc:
+    except (InvalidFileException, BadZipFile, KeyError, ValueError) as exc:
         raise ExtractionError("Failed to read XLSX content") from exc
 
     blocks: list[Block] = []
@@ -98,7 +98,7 @@ def extract_xlsx_text(data: bytes) -> tuple[str, int]:
                     f"Note: sheets not indexed because of the size limit: {listed}{suffix}.",
                 )
             )
-    except (BadZipFile, KeyError, ValueError, OSError) as exc:
+    except (BadZipFile, KeyError, ValueError) as exc:
         raise ExtractionError("Failed to read XLSX content") from exc
     finally:
         workbook.close()
@@ -117,7 +117,7 @@ class XlsxTextExtractor:
         except ExtractionError:
             raise
         except Exception as exc:
-            raise ExtractionError(f"Failed to extract text from XLSX: {filename}") from exc
+            raise classify_unexpected(exc, f"Failed to extract text from XLSX: {filename}") from exc
 
         return ExtractionResult(
             text=text,

@@ -2,6 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, expect, it, vi } from "vitest";
 import { ApplicationSessionProvider, useApplicationSession } from "./application-session-provider";
 import { apiFetch } from "@/lib/api/client";
+import { sessionRevision } from "@/lib/api/session-events";
+import { useEffect } from "react";
 const mode = vi.hoisted(() => ({ demo: false }));
 vi.mock("@/lib/demo", () => ({ get DEMO_MODE() { return mode.demo; } }));
 const a = "00000000-0000-0000-0000-000000000065", b = "00000000-0000-0000-0000-000000000066";
@@ -108,4 +110,63 @@ it("focus verification cannot cancel a pending LOGIN; failure remains retryable"
   expect(await screen.findByText(/Google sign-in could not be started/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url === "/api/v1/auth/google")).toBe(false);
+});
+
+// Checkpoint A (A5): returning to the tab must revalidate silently. Before this change the focus
+// handler cleared the session to "checking", which unmounted the whole app (the visible blink),
+// aborted in-flight requests, bumped the session revision and wiped selection and drafts.
+const mounts = { n: 0 };
+function Counted() { const s = useApplicationSession(); useEffect(() => { mounts.n += 1; }, []); return <p>Private account {s.userId}</p>; }
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, "hidden", { configurable: true, value: hidden });
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: hidden ? "hidden" : "visible" });
+}
+it("returning to the tab keeps private content mounted, does not invalidate requests, and verifies once", async () => {
+  mounts.n = 0; let release!: (r: Response) => void; let calls = 0;
+  const fetch = vi.fn().mockImplementation(() => ++calls === 1 ? Promise.resolve(who()) : new Promise(r => { release = r; }));
+  vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Counted /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a}`);
+  const revision = sessionRevision();
+  fireEvent(window, new Event("focus")); document.dispatchEvent(new Event("visibilitychange"));
+  expect(screen.getByText(`Private account ${a}`)).toBeInTheDocument();
+  expect(screen.queryByText("Checking your sign-in…")).not.toBeInTheDocument();
+  expect(sessionRevision()).toBe(revision);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  await act(async () => release(who()));
+  expect(screen.getByText(`Private account ${a}`)).toBeInTheDocument();
+  expect(sessionRevision()).toBe(revision); expect(mounts.n).toBe(1);
+});
+it("a hidden tab does not verify, and becoming hidden never signs out", async () => {
+  const fetch = vi.fn().mockImplementation(() => Promise.resolve(who())); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Private /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a}`); const calls = fetch.mock.calls.length;
+  setHidden(true);
+  try { document.dispatchEvent(new Event("visibilitychange")); } finally { setHidden(false); }
+  expect(fetch).toHaveBeenCalledTimes(calls); expect(screen.getByText(`Private account ${a}`)).toBeInTheDocument();
+});
+it("an expired session found on return hides private content and says so", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(who()).mockResolvedValueOnce(json({ detail: "Session expired" }, 401)); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Private /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a}`);
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByText(/Your session expired/)).toBeInTheDocument();
+  expect(screen.queryByText(/Private account/)).not.toBeInTheDocument();
+});
+it("a different owner found on return invalidates requests and gives the new owner a fresh mount", async () => {
+  mounts.n = 0; const fetch = vi.fn().mockResolvedValueOnce(who(a)).mockResolvedValueOnce(who(b)); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Counted /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a}`); const revision = sessionRevision();
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByText(`Private account ${b}`)).toBeInTheDocument();
+  expect(sessionRevision()).toBeGreaterThan(revision); expect(mounts.n).toBe(2);
+  expect(screen.queryByText(`Private account ${a}`)).not.toBeInTheDocument();
+});
+it("a failed verification on return fails closed instead of keeping private content", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(who()).mockResolvedValueOnce(json({ detail: "down" }, 503)); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Private /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a}`);
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByRole("button", { name: "Verify session again" })).toBeInTheDocument();
+  expect(screen.queryByText(/Private account/)).not.toBeInTheDocument();
 });

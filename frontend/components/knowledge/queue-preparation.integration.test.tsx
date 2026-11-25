@@ -53,7 +53,8 @@ async function review(number = 3) {
 async function finishStage(extra: Partial<IndexingJobRead> = {}) {
   await act(async () => {
     Object.assign(latest!, { status: "completed", processed: 1, succeeded: 1, ...extra });
-    files.find(f => f.id === latest!.file_id)!.status = latest!.operation === "BUILD" ? "indexed" : "indexing";
+    // Model what the backend does to the file: a failed or skipped document ends in that state (the queue verifies it).
+    files.find(f => f.id === latest!.file_id)!.status = latest!.status === "failed" ? "failed" : latest!.skipped === 1 ? "skipped" : latest!.operation === "BUILD" ? "indexed" : "indexing";
     window.dispatchEvent(new Event("storage"));
   });
 }
@@ -118,13 +119,18 @@ it("duplicate confirmation cannot duplicate the actual targeted POST", async () 
   const start = await review(1); fireEvent.click(start); fireEvent.click(start);
   await waitFor(() => expect(posts()).toHaveLength(1)); expect(stored().entries[0].receipts).toHaveLength(1); expect(stored().entries[0].receipts[0].jobId).toBe(latest!.id);
 });
-it("partial failure preserves ready results and never starts the third document", async () => {
+// Checkpoint A: a file-specific failure no longer stops the queue. Earlier results are preserved, the third document is
+// offered (never started automatically), and it needs its own explicit confirmation.
+it("partial failure preserves ready results and offers the third document without starting it", async () => {
   await userEvent.click(await review(3)); await waitFor(() => expect(posts()).toHaveLength(1)); await finishFile();
   await userEvent.click(await screen.findByRole("button", { name: "Prepare next document" })); await waitFor(() => expect(posts()).toHaveLength(4));
-  await finishStage({ status: "failed", failed: 1, succeeded: 0 });
-  await waitFor(() => expect(screen.getByRole("button", { name: "End preparation" })).toBeInTheDocument());
-  expect(stored().entries.map((e: { result: string }) => e.result)).toEqual(["ready", "failed", "pending"]); expect(screen.queryByRole("heading", { name: "Documents ready" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Prepare next document" })).toBeNull(); expect(screen.getByRole("link", { name: "Start chatting" })).toBeInTheDocument(); expect(posts()).toHaveLength(4);
+  await finishStage({ status: "failed", failed: 1, succeeded: 0, failure_class: "document" });
+  await waitFor(() => expect(stored().entries.map((e: { result: string }) => e.result)).toEqual(["ready", "failed", "pending"]));
+  expect(stored().current).toBe(2); expect(screen.queryByRole("heading", { name: "Documents ready" })).toBeNull();
+  expect(await screen.findByRole("button", { name: "Prepare next document" })).toBeEnabled(); expect(screen.getByRole("button", { name: "End preparation" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Start chatting" })).toBeInTheDocument(); expect(posts()).toHaveLength(4);
+  await userEvent.click(screen.getByRole("button", { name: "Prepare next document" })); await waitFor(() => expect(posts()).toHaveLength(5));
+  expect(posts().at(-1)).toContain(files[2].id);
 });
 it("unmount during preflight prevents POST; remount observes the saved queue without authorization", async () => {
   const entered = deferred<void>(), response = deferred<Response>(); const start = await review(2);
@@ -290,14 +296,13 @@ it("shows exact queued and running jobs without promoting an intermediate comple
   expect(screen.queryByText("Ready", { selector: ".preparation-file-status span" })).toBeNull();
   expect(screen.getByText("0 of 2")).toBeInTheDocument();
 });
-it("keeps a skipped outcome and later files unstarted, with no Retry or success claim", async () => {
+it("keeps a skipped outcome visible, offers the later file, and has no Retry or success claim", async () => {
   await userEvent.click(await review(2)); await waitFor(() => expect(posts()).toHaveLength(1));
   await finishStage({ skipped: 1, succeeded: 0 });
-  await screen.findByRole("button", { name: "End preparation" });
-  expect(stored().entries.map((e: { result: string }) => e.result)).toEqual(["skipped", "pending"]);
+  await waitFor(() => expect(stored().entries.map((e: { result: string }) => e.result)).toEqual(["skipped", "pending"]));
   expect(screen.getByText("Skipped", { selector: ".preparation-file-status span" })).toBeInTheDocument();
-  expect(screen.getAllByRole("alert")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: /Retry|Prepare next document/ })).toBeNull();
+  expect(await screen.findByRole("button", { name: "Prepare next document" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
   expect(screen.queryByRole("heading", { name: "Documents ready" })).toBeNull(); expect(posts()).toHaveLength(1);
 });
 it("Back to files pauses permission and reopening the saved batch only observes its exact receipt", async () => {

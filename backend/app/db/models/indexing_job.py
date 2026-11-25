@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Text,
     text,
 )
@@ -76,6 +77,9 @@ class IndexingJob(TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Structured cause of a FAILED job (see app/services/indexing_failure_class.py). NULL means unclassified,
+    # which clients must treat as "pause", never as "safe to continue".
+    failure_class: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # NULL operation is historical, never an executable managed job. file_id is
     # a historical target: deleting it must never turn this into an all-files job.

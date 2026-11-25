@@ -35,7 +35,7 @@ from pptx.slide import Slide
 from pptx.text.text import _Paragraph  # noqa: PLC2701
 
 from app.connectors.google_drive.constants import PPTX_MIME
-from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.base import classify_unexpected, ExtractionError, ExtractionResult
 from app.ingestion.extractors.light_markdown import (
     Block,
     join_blocks,
@@ -184,7 +184,7 @@ class PptxTextExtractor:
         except ExtractionError:
             raise
         except Exception as exc:
-            raise ExtractionError(f"Failed to extract text from PPTX: {filename}") from exc
+            raise classify_unexpected(exc, f"Failed to extract text from PPTX: {filename}") from exc
 
         return ExtractionResult(
             text=text,

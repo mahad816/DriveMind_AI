@@ -12,7 +12,7 @@ import csv
 import io
 
 from app.connectors.google_drive.constants import CSV_MIME
-from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.base import classify_unexpected, ExtractionError, ExtractionResult
 from app.ingestion.extractors.light_markdown import Block, join_blocks
 from app.ingestion.extractors.plain_text import decode_plain_text_bytes, normalize_extracted_text
 from app.ingestion.extractors.registry import register_extractor
@@ -59,7 +59,7 @@ class CsvTextExtractor:
         except ExtractionError:
             raise
         except Exception as exc:
-            raise ExtractionError(f"Failed to extract text from CSV: {filename}") from exc
+            raise classify_unexpected(exc, f"Failed to extract text from CSV: {filename}") from exc
 
         return ExtractionResult(
             text=text,

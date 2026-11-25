@@ -136,14 +136,29 @@ it.each(["lost acknowledgement", "timeout", "generic 503"])("%s blocks later sta
   const q = await queue();
   intercept = (_p, i) => i.method === "POST" ? failure === "generic 503" ? Promise.resolve(json({}, 503)) : Promise.reject(failure === "timeout" ? new DOMException("Timed out", "TimeoutError") : new TypeError("Connection reset")) : undefined;
   await q.confirm(); const before = values.get(key); q.dispose(); const remount = new PreparationQueue(owner); await remount.check(); await remount.confirm();
-  expect(posts()).toHaveLength(1); expect(stored().current).toBe(0); expect(stored().entries[0].receipts[0].jobId).toBeNull(); expect(values.get(key)).toBe(before); expect(await remount.finish()).toBe(false);
+  expect(posts()).toHaveLength(1); expect(stored().current).toBe(0); expect(stored().entries[0].receipts[0].jobId).toBeNull(); expect(values.get(key)).toBe(before);
+  // Superseded (owner review fix 2026-11-25): a PAUSED queue can now be ended locally, with no request. It still cannot
+  // advance or resubmit; the assertions that nothing was posted are kept and extended.
+  expect(await remount.finish()).toBe(true); expect(posts()).toHaveLength(1); expect(values.has(key)).toBe(false);
 });
-it.each(["failed", "skipped", "recovery"])("%s on second file stops queue and preserves previous success", async outcome => {
+// Superseded by the owner-approved Checkpoint A contract (2026-11-25, docs/tickets/ux-checkpoint-a/): a confirmed
+// file-specific failure or skip no longer stops the queue. Its result and receipt are kept, the cursor moves past it
+// in one write and nothing starts without another explicit confirmation. Full coverage: preparation-queue.failure-isolation.test.tsx.
+it.each(["failed", "skipped"] as const)("%s on second file is recorded and the queue moves on, preserving previous success", async outcome => {
   const q = await queue(3); await q.confirm(); await ready(q); const first = stored().entries[0]; await q.confirm();
-  complete(outcome === "failed" ? { status: "failed", failed: 1, succeeded: 0 } : outcome === "skipped" ? { skipped: 1, succeeded: 0 } : { recovery_required: true });
-  if (outcome === "failed" || outcome === "skipped") files[1].status = outcome;
+  complete(outcome === "failed" ? { status: "failed", failed: 1, succeeded: 0, failure_class: "document" } : { skipped: 1, succeeded: 0 }); files[1].status = outcome;
+  await q.check(); expect(posts()).toHaveLength(4); expect(stored().current).toBe(2); expect(stored().entries[0]).toEqual(first);
+  expect(stored().entries[1].result).toBe(outcome); expect(stored().entries[2].receipts).toEqual([]); expect(q.getSnapshot().phase).toBe("awaiting_next");
+});
+// Unchanged contract: a recovery-required job is NOT a file-specific outcome. It still blocks and never advances.
+it("recovery on second file stops queue and preserves previous success", async () => {
+  const q = await queue(3); await q.confirm(); await ready(q); const first = stored().entries[0]; await q.confirm();
+  complete({ recovery_required: true });
   await q.check(); await q.confirm(); await q.check(); expect(posts()).toHaveLength(4); expect(stored().current).toBe(1); expect(stored().entries[0]).toEqual(first); expect(stored().entries[2].receipts).toEqual([]);
-  expect(q.getSnapshot().phase).toBe(outcome === "recovery" ? "blocked" : "stopped"); if (outcome === "recovery") expect(await q.finish()).toBe(false);
+  expect(q.getSnapshot().phase).toBe("blocked");
+  // Superseded (owner review fix 2026-11-25): a PAUSED queue can now be ended locally, with no request. It still cannot
+  // advance or resubmit; the assertions that nothing was posted are kept and extended.
+  expect(await q.finish()).toBe(true); expect(posts()).toHaveLength(4);
 });
 it("BUILD completion without indexed inventory cannot advance", async () => {
   const q = await queue(); await q.confirm(); complete(); await q.check(); complete(); await q.check(); complete(); files[0].status = "indexing";
@@ -277,7 +292,10 @@ it("unknown acknowledgement on a later file preserves successful entries and blo
   const q = await queue(3); await q.confirm(); await ready(q); const first = stored().entries[0];
   intercept = (_p, i) => i.method === "POST" ? Promise.reject(new TypeError("Lost")) : undefined;
   await q.confirm(); q.dispose(); const remount = new PreparationQueue(owner); await remount.check(); await remount.confirm();
-  expect(posts()).toHaveLength(4); expect(stored().entries[0]).toEqual(first); expect(stored().current).toBe(1); expect(stored().entries[2].receipts).toEqual([]); expect(await remount.finish()).toBe(false);
+  expect(posts()).toHaveLength(4); expect(stored().entries[0]).toEqual(first); expect(stored().current).toBe(1); expect(stored().entries[2].receipts).toEqual([]);
+  // Superseded (owner review fix 2026-11-25): a PAUSED queue can now be ended locally, with no request. It still cannot
+  // advance or resubmit; the assertions that nothing was posted are kept and extended.
+  expect(await remount.finish()).toBe(true); expect(posts()).toHaveLength(4);
 });
 it("missing CSRF before POST restores the empty active child and requires explicit retry", async () => {
   const q = await queue(); intercept = p => p.endsWith("/auth/session") ? Promise.resolve(json({ user_id: owner })) : undefined;
@@ -302,7 +320,7 @@ it("an older controller with retained permission fails closed on a new queue env
   await old.check(); await old.confirm(); expect(await old.finish()).toBe(false); expect(values.get(key)).toBe(before); expect(posts()).toHaveLength(3);
 });
 it("known failed queue can be explicitly closed without retrying the unstarted tail", async () => {
-  const q = await queue(3); await q.confirm(); await ready(q); await q.confirm(); complete({ status: "failed", failed: 1, succeeded: 0 }); files[1].status = "failed";
+  const q = await queue(3); await q.confirm(); await ready(q); await q.confirm(); complete({ status: "failed", failed: 1, succeeded: 0, failure_class: "document" }); files[1].status = "failed";
   await q.check(); expect(stored().entries[0].result).toBe("ready"); expect(await q.finish()).toBe(true); expect(values.has(key)).toBe(false); expect(files[0].status).toBe("indexed"); expect(posts()).toHaveLength(4);
 });
 

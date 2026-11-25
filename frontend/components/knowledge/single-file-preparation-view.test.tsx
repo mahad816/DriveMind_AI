@@ -51,3 +51,17 @@ it("unknown acceptance never presents the owner's latest job as this document's 
   expect(screen.getByRole('list',{name:'Documents in preparation order'})).toHaveTextContent('Needs review');
   expect(screen.queryByRole('button',{name:'Continue preparation'})).toBeNull();
 });
+// Checkpoint A final review (P1): an unclassified terminal failure must leave the legacy screen an exit.
+it("an unclassified failed job offers Back to files, which releases only the local record and sends nothing",async()=>{
+  const base=vi.mocked(fetch).getMockImplementation()!;let failed=false;
+  vi.stubGlobal("fetch",vi.fn(async(path:string,init:RequestInit={})=>failed&&path.startsWith("/api/v1/index/status")
+    ?json({connected:true,job:{id:jobId,user_id:fixture.owner,file_id:fixture.id,operation:"INGEST",status:"failed",failure_class:null,recovery_required:false,total:1,processed:1,failed:1,skipped:0,succeeded:0,started_at:null,completed_at:null,error:"x",created_at:"",updated_at:""}})
+    :base(path,init)));
+  render(<SingleFilePreparationView/>);await userEvent.click(await screen.findByRole("button",{name:"Prepare this document"}));
+  await waitFor(()=>expect(screen.getByText(/Preparation stage in progress/)).toBeInTheDocument());
+  failed=true;status="failed"; // the screen's own 3 s poll observes the terminal job
+  const back=await screen.findByRole("button",{name:"Back to files"},{timeout:6000});expect(screen.getByRole("alert")).toHaveTextContent(/could not be confirmed as specific/);
+  await userEvent.click(back);await waitFor(()=>expect(fixture.push).toHaveBeenCalledWith("/files"));
+  expect(window.localStorage.getItem(`drivemind:preparation:v1:${fixture.owner}`)).toBeNull();
+  expect(vi.mocked(fetch).mock.calls.filter(([,i])=>i?.method==="POST").map(([p])=>p)).toEqual([`/api/v1/index/ingest?file_id=${fixture.id}`]);
+});

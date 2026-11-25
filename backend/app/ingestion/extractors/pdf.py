@@ -28,7 +28,7 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
 from app.connectors.google_drive.constants import PDF_MIME
-from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.base import classify_unexpected, ExtractionError, ExtractionResult
 from app.ingestion.extractors.pdf_furniture import (
     BandLine,
     band_lines,
@@ -224,7 +224,7 @@ class PdfTextExtractor:
         except ExtractionError:
             raise
         except Exception as exc:
-            raise ExtractionError(f"Failed to extract text from PDF: {filename}") from exc
+            raise classify_unexpected(exc, f"Failed to extract text from PDF: {filename}") from exc
 
         return ExtractionResult(
             text=text,

@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from app.db.enums import IndexingJobStatus, IndexingOperation
+from app.services.indexing_failure_class import FAILURE_CLASSES
 from app.schemas.common import IdentifierSchema, SchemaBase, TimestampedSchema
 
 
@@ -25,6 +26,7 @@ class IndexingJobRead(IdentifierSchema, TimestampedSchema):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None
+    failure_class: str | None = None
 
     operation: IndexingOperation | None = None
     file_id: UUID | None = None
@@ -35,6 +37,12 @@ class IndexingJobRead(IdentifierSchema, TimestampedSchema):
     succeeded: int = 0
     failed: int = 0
     skipped: int = 0
+
+    @field_validator("failure_class", mode="before")
+    @classmethod
+    def known_failure_class(cls, value: object) -> str | None:
+        # Fixed vocabulary only; anything else reads as unclassified.
+        return value if isinstance(value, str) and value in FAILURE_CLASSES else None
 
     @field_validator("error", mode="before")
     @classmethod

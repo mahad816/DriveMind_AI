@@ -1,9 +1,11 @@
 """File-type-specific text extractors (PDF, DOCX, PPTX, XLSX, CSV, OCR, etc.)."""
 
 from app.ingestion.extractors.base import (
+    ExtractionEnvironmentError,
     ExtractionError,
     ExtractionResult,
     TextExtractor,
+    UnclassifiedExtractionError,
     UnsupportedMimeTypeError,
 )
 from app.ingestion.extractors.bootstrap import register_builtin_extractors, reset_builtin_extractors
@@ -55,6 +57,7 @@ register_builtin_extractors()
 __all__ = [
     "CsvTextExtractor",
     "DocxTextExtractor",
+    "ExtractionEnvironmentError",
     "ExtractionError",
     "ExtractionResult",
     "PdfTextExtractor",
@@ -62,6 +65,7 @@ __all__ = [
     "ImageOcrExtractor",
     "PlainTextExtractor",
     "TextExtractor",
+    "UnclassifiedExtractionError",
     "UnsupportedMimeTypeError",
     "XlsxTextExtractor",
     "clear_extractors",

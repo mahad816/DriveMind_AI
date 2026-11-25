@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.db.enums import IndexingJobStatus, IndexingOperation
 from app.db.models.indexing_job import IndexingJob
 from app.db.models.user import User
+from app.services import indexing_failure_class as failure_class
 from app.services.indexing_attempt import AttemptEvidenceError, read_attempt
 from app.services.indexing_worker import IndexingWorker
 
@@ -55,6 +56,7 @@ class IndexingClassifier:
                 else "Indexing lease expired; execution interrupted."
             )
             job.recovery_required = recovery
+            job.failure_class = failure_class.INFRASTRUCTURE  # lease loss: worker crash or restart
             job.completed_at = now
             # Row lock fences the exact loaded attempt until commit. Retain its
             # claim identity and evidence for audit; RUNNING guards now reject it.

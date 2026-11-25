@@ -150,3 +150,52 @@ it("Files shows contextual selection only when needed, and refresh only reloads 
   expect(screen.getByRole("textbox", { name: "Search files" })).toBeInTheDocument();
   cleanup(); setSessionOwner(null);
 });
+
+// Checkpoint A (A4): a background refresh of already-loaded rows must not lock selection, and a
+// selection that became ineligible during the refresh must still be caught before review.
+afterEach(() => { cleanup(); setSessionOwner(null); });
+const notes: DriveFileRead = { ...roadmap, id: "notes-id", drive_file_id: "notes-drive-id", name: "Notes.txt", mime_type: "text/plain" };
+async function selectBoth() {
+  Object.defineProperty(window, "localStorage", { configurable: true, value: { getItem: () => null } });
+  setSessionOwner("user-id"); connection(true);
+  vi.mocked(listDriveFiles).mockResolvedValue({ files: [roadmap, notes], total: 2 });
+  render(<KnowledgeLibrary />); await screen.findByText("Roadmap.docx");
+  fireEvent.click(await screen.findByRole("checkbox", { name: "Select Roadmap.docx for preparation" }));
+}
+it("keeps loaded rows selectable and the selection intact while a background refresh runs", async () => {
+  await selectBoth();
+  expect(screen.getByRole("button", { name: "Review 1 document" })).toBeEnabled();
+  let resolve!: (value: DriveFileListResponse) => void;
+  vi.mocked(listDriveFiles).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh list" }));
+  expect(screen.getByRole("checkbox", { name: "Select Roadmap.docx for preparation" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Select Notes.txt for preparation" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Review 1 document" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Notes.txt for preparation" }));
+  expect(screen.getByText("2 of 5 documents selected")).toBeInTheDocument();
+  resolve({ files: [roadmap, notes], total: 2 });
+  await waitFor(() => expect(screen.queryByText("Loading files…")).toBeNull());
+  expect(screen.getByText("2 of 5 documents selected")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Review 2 documents" })).toBeEnabled();
+  cleanup(); setSessionOwner(null);
+});
+it("rejects a selected document that became ineligible during the refresh", async () => {
+  await selectBoth();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select Notes.txt for preparation" }));
+  let resolve!: (value: DriveFileListResponse) => void;
+  vi.mocked(listDriveFiles).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh list" }));
+  resolve({ files: [roadmap, { ...notes, status: "indexed" }], total: 2 });
+  expect(await screen.findByRole("alert")).toHaveTextContent("A selected document changed or is no longer eligible");
+  expect(screen.getByRole("button", { name: "Review 2 documents" })).toBeDisabled();
+  cleanup(); setSessionOwner(null);
+});
+it("still blocks selection until the first inventory has loaded", async () => {
+  Object.defineProperty(window, "localStorage", { configurable: true, value: { getItem: () => null } });
+  setSessionOwner("user-id"); connection(true);
+  vi.mocked(listDriveFiles).mockReturnValue(new Promise(() => {}));
+  render(<KnowledgeLibrary />);
+  expect(screen.queryByRole("checkbox")).toBeNull();
+  expect(screen.getByText("Loading files…")).toBeInTheDocument();
+  cleanup(); setSessionOwner(null);
+});

@@ -31,6 +31,8 @@ export type PreparationState = {
   phase: "checking" | "review" | "submitting" | "active" | "continue" | "ready" | "failed" | "skipped" | "ineligible" | "blocked" | "unknown";
   file: DriveFileRead | null; job: IndexingJobRead | null; stage: Stage | null; message: string;
   canRelease: boolean;
+  /** Drive connection as reported by the same status read that produced this state; null before the first read. */
+  connected?: boolean | null;
 };
 const supported = new Set([
   "application/vnd.google-apps.document", "text/plain", "application/pdf",
@@ -43,17 +45,29 @@ const supported = new Set([
   "image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif", "image/tiff", "image/bmp",
 ]);
 /** Conservative beta policy: failures/skips need investigation, never a blind rebuild. */
+/** The only failure the queue may move past: this exact job failed one document for a reason recorded as the
+ *  document's own (an unreadable file). Counters alone never prove the cause; a missing or other class, a canceled or
+ *  recovery-flagged job, or any other counter shape is NOT definite and must pause. */
+export function isDefiniteDocumentFailure(job: IndexingJobRead | null | undefined): boolean {
+  return !!job && job.status === "failed" && job.failure_class === "document" && !job.recovery_required &&
+    job.total === 1 && job.processed === 1 && job.failed === 1 && job.succeeded === 0 && job.skipped === 0;
+}
+/** A completed single-file job that skipped exactly its one document (no searchable text) and the file says so. */
+export function isDefiniteSkip(job: IndexingJobRead | null | undefined, file: DriveFileRead | null | undefined): boolean {
+  return !!job && job.status === "completed" && !job.recovery_required && file?.status === "skipped" &&
+    job.total === 1 && job.processed === 1 && job.skipped === 1 && job.failed === 0 && job.succeeded === 0;
+}
 export function preparationEligibility(file: DriveFileRead): string | null {
   if (!supported.has(file.mime_type)) return "This document type is not supported.";
   if (file.status === "indexed") return "This document is already ready for chat.";
   if (file.status === "indexing") return "This document has processing state. Open preparation progress; do not start it again.";
-  if (file.status === "failed") return "Previous preparation failed. Ask the beta owner to review the job before trying again.";
-  if (file.status === "skipped") return "This document was skipped. It may have no searchable text or no longer be eligible. Ask the beta owner to review it.";
+  if (file.status === "failed") return "This document could not be prepared before. Retrying is not available yet.";
+  if (file.status === "skipped") return "This document was skipped. It may have no searchable text, so it cannot be prepared.";
   return file.status === "discovered" ? null : "Document eligibility could not be established.";
 }
 export const preparationFrame = (f: DriveFileRead) => JSON.stringify([f.drive_file_id, f.mime_type, f.modified_at]);
 const frame = preparationFrame;
-const initial: PreparationState = { phase: "checking", file: null, job: null, stage: null, message: "Checking document and preparation status…", canRelease: false };
+const initial: PreparationState = { phase: "checking", file: null, job: null, stage: null, message: "Checking document and preparation status…", canRelease: false, connected: null };
 
 /** A single immutable target. Remounted observers never resume mutations by themselves. */
 export class SingleFilePreparation {
@@ -126,7 +140,7 @@ export class SingleFilePreparation {
       if (receipt?.jobId && (!exact?.job || exact.job.id !== receipt.jobId || exact.job.file_id !== record?.fileId || exact.job.operation !== receipt.stage)) throw new Error("Job target mismatch");
       const job = exact?.job;
       // Latest-owner evidence cannot stand in for this stage's lost receipt.
-      this.publish({ file, job: record ? job ?? null : latest.job, stage: receipt?.stage ?? null, canRelease: false });
+      this.publish({ file, job: record ? job ?? null : latest.job, stage: receipt?.stage ?? null, canRelease: false, connected: latest.connected });
       // A running BUILD can carry recovery protection while external writes are
       // in flight. Observe that exact active job; never release/retry it. A
       // terminal flag (or a different recovery blocker) needs operator review.
@@ -138,10 +152,20 @@ export class SingleFilePreparation {
         this.publish({ phase: "unknown", message: "The request could not be confirmed. Check status; do not submit it again. Ask the beta owner to investigate if this persists." });
       } else if (job && ["queued", "running"].includes(job.status)) {
         this.publish({ phase: "active", message: job.status === "queued" ? "Preparation stage queued." : "Preparation stage in progress. You can leave this page; the server job may continue." });
+      } else if (job && isDefiniteDocumentFailure(job) && file?.status === "failed") {
+        this.publish({ phase: "failed", canRelease: true, message: "This document could not be prepared. No further stages will start for it, and your Drive was not changed. Retrying is not available yet." });
       } else if (job && ["failed", "canceled"].includes(job.status)) {
-        this.publish({ phase: "failed", canRelease: true, message: "This stage did not complete successfully. No further stages will start. Ask the beta owner to review it before retrying." });
+        // Failed, but the backend did not establish that the document itself is the cause (restart, lost lease,
+        // provider or storage outage, expired access, unclassified or older job). "blocked" keeps a queue paused.
+        // The exact receipted job has ended, so releasing is safe: it only deletes this browser's record and neither
+        // cancels nor resubmits anything. Without it the legacy single-document screen has no exit.
+        this.publish({ phase: "blocked", canRelease: true, message: "Preparation stopped on the server, and the cause could not be confirmed as specific to this document, so nothing else will start. Your Drive was not changed. Check status, or end preparation here; the Files page shows the document's current state." });
+      } else if (isDefiniteSkip(job, file)) {
+        this.publish({ phase: "skipped", canRelease: true, message: "This document was skipped because it may not contain searchable text. No further stages will start for it." });
       } else if (job?.status === "completed" && (job.skipped === 1 || file?.status === "skipped")) {
-        this.publish({ phase: "skipped", canRelease: true, message: "This document was skipped. No further stages will start. It may not contain searchable text." });
+        // A completed stage that skipped, without exact current evidence (for example a later Drive sync re-enabled
+        // the file). Not definite, so a queue pauses; the job has ended, so the local record can still be released.
+        this.publish({ phase: "blocked", canRelease: true, message: "This stage finished without preparing the document, and its current state could not be confirmed, so nothing else will start. Check status, or end preparation here; the Files page shows the document's current state." });
       } else if (record && job) {
         if (job.status !== "completed" || job.total !== 1 || job.processed !== 1 || job.succeeded !== 1 || job.failed !== 0 || job.skipped !== 0) throw new Error("Incomplete single-file evidence");
         if (!file || frame(file) !== record.frame) throw new Error("Document changed");

@@ -5,7 +5,9 @@ import {
 
 export type QueueEntry = PreparationRecord & { result: "pending" | "ready" | "failed" | "skipped" };
 export type PreparationQueueRecord = {
-  schemaVersion: 2;
+  /** 2: a failed/skipped entry could sit on the cursor (the queue stopped). 3: a file-specific failure is recorded
+   *  with its receipt and the cursor moves past it in one write. Version 2 stays readable and is upgraded on the next write. */
+  schemaVersion: 2 | 3;
   batchId: string;
   owner: string;
   entries: QueueEntry[];
@@ -21,7 +23,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 function validateQueue(value: unknown, owner: string): asserts value is PreparationQueueRecord {
   const r = value as PreparationQueueRecord;
-  if (!r || r.schemaVersion !== 2 || !uuid.test(r.batchId) || r.owner !== owner || !uuid.test(owner) ||
+  if (!r || (r.schemaVersion !== 2 && r.schemaVersion !== 3) || !uuid.test(r.batchId) || r.owner !== owner || !uuid.test(owner) ||
       !Array.isArray(r.entries) || r.entries.length < 1 || r.entries.length > 5 ||
       !Number.isInteger(r.current) || r.current < 0 || r.current > r.entries.length ||
       // Intentionally incompatible with Checkpoint B's top-level record shape.
@@ -31,8 +33,10 @@ function validateQueue(value: unknown, owner: string): asserts value is Preparat
     validatePreparationRecord(entry, true);
     if (files.has(entry.fileId) || runs.has(entry.runId) ||
         !["pending", "ready", "failed", "skipped"].includes(entry.result) ||
-        (index < r.current && entry.result !== "ready") ||
+        (index < r.current && entry.result === "pending") ||
         (index >= r.current && entry.result === "ready") ||
+        // v3: the cursor always rests on a pending entry. Only a saved v2 record may rest on a failed/skipped one.
+        (index === r.current && entry.result !== "pending" && !(r.schemaVersion === 2 && ["failed", "skipped"].includes(entry.result))) ||
         (index > r.current && (entry.result !== "pending" || entry.receipts.length !== 0)) ||
         (entry.result === "ready" && (entry.receipts.length !== 3 || entry.receipts.some(v => !v.jobId))) ||
         (["failed", "skipped"].includes(entry.result) && !entry.receipts.at(-1)?.jobId)) throw new Error("Invalid queue entry");

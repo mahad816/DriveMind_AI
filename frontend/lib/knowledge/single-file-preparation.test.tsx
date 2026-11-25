@@ -185,3 +185,43 @@ it("a read timeout retains the exact receipt and does not resubmit or advance",a
   await c.check();expect(c.getSnapshot().phase).toBe('unknown');expect(JSON.parse(values.get(key)!).receipts[0].jobId).toBe(ids[0]);expect(writes()).toHaveLength(1);
   intercept=()=>undefined;await c.check();expect(c.getSnapshot().phase).toBe('active');expect(writes()).toHaveLength(1);
 });
+// Checkpoint A final review (P1): a terminal job that is not a definite document failure must pause any queue (phase
+// "blocked"), but the legacy single-document screen must still be able to release its own local record. Releasing only
+// deletes this browser's record; the job has already ended on the server, so nothing is cancelled or resubmitted.
+it.each([
+  ["provider-class failure", { status: "failed", failure_class: "provider", processed: 1, failed: 1 }],
+  ["legacy failure without a class", { status: "failed", failure_class: null, processed: 1, failed: 1 }],
+  ["canceled document-class job", { status: "canceled", failure_class: "document", processed: 1, failed: 1 }],
+] as const)("legacy %s pauses but can release its local record without any request", async (_name, terminal) => {
+  const c = await controller(); await c.confirm(); expect(writes()).toHaveLength(1);
+  Object.assign(latest!, terminal); file.status = "failed";
+  await c.check();
+  const state = c.getSnapshot();
+  expect(state.phase).toBe("blocked"); expect(state.canRelease).toBe(true);
+  expect(state.message).not.toMatch(/beta owner/i); expect(state.message).not.toMatch(/was cancelled|has been cancelled/i);
+  await c.confirm(); expect(writes()).toHaveLength(1);
+  expect(await c.finish()).toBe(true); expect(values.has(key)).toBe(false); expect(writes()).toHaveLength(1);
+  // The released gate is gone: a fresh controller sees no saved work and the (failed) file stays ineligible.
+  const next = await controller(); expect(next.getSnapshot().phase).toBe("ineligible"); expect(writes()).toHaveLength(1);
+});
+it("a skipped legacy document stays releasable after a Drive sync re-enables the file", async () => {
+  const c = await controller(); await c.confirm();
+  Object.assign(latest!, { status: "completed", processed: 1, skipped: 1 }); file.status = "skipped";
+  await c.check(); expect(c.getSnapshot().phase).toBe("skipped");
+  file.status = "discovered"; // drive_sync_service re-enables a skipped file on the next sync
+  await c.check();
+  expect(c.getSnapshot().phase).toBe("blocked"); expect(c.getSnapshot().canRelease).toBe(true);
+  await c.confirm(); expect(writes()).toHaveLength(1);
+  expect(await c.finish()).toBe(true); expect(values.has(key)).toBe(false); expect(writes()).toHaveLength(1);
+});
+it.each(["queued", "running"] as const)("a %s legacy job is never released", async status => {
+  const c = await controller(); await c.confirm(); latest!.status = status;
+  await c.check(); expect(c.getSnapshot().canRelease).toBe(false);
+  expect(await c.finish()).toBe(false); expect(values.has(key)).toBe(true); expect(writes()).toHaveLength(1);
+});
+it("a recovery-flagged failed legacy job stays locked for review", async () => {
+  const c = await controller(); await c.confirm();
+  Object.assign(latest!, { status: "failed", failure_class: "provider", processed: 1, failed: 1, recovery_required: true }); file.status = "failed";
+  await c.check(); expect(c.getSnapshot().phase).toBe("blocked"); expect(c.getSnapshot().canRelease).toBe(false);
+  expect(await c.finish()).toBe(false); expect(values.has(key)).toBe(true);
+});

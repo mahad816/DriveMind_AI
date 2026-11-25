@@ -25,6 +25,7 @@ BASE_REVISION = "20260708_1400"
 SESSION_REVISION = "20261009_1200"
 PIPELINE_VERSION_REVISION = "20261120_1200"  # documents.pipeline_version
 PAID_QUESTION_REVISION = "20261121_1200"  # paid_question_attempts
+FAILURE_CLASS_REVISION = "20261125_1200"  # indexing_jobs.failure_class
 # The shared sign-in allow-list for every test that completes a sign-in or holds a session
 # (M0-SEC ticket 03). An unset list denies everyone, so nothing may rely on a default.
 TEST_ALLOWED_EMAILS = (
@@ -100,6 +101,7 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
             await connection.run_sync(apply_revision, SESSION_REVISION)
             await connection.run_sync(apply_revision, PIPELINE_VERSION_REVISION)
             await connection.run_sync(apply_revision, PAID_QUESTION_REVISION)
+            await connection.run_sync(apply_revision, FAILURE_CLASS_REVISION)
         yield engine
     finally:
         try:

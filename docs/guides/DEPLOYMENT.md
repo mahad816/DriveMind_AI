@@ -64,6 +64,24 @@ DATABASE_URL=postgresql+asyncpg://user:pass@ep-....neon.tech/drivemind?sslmode=r
 cd backend && uv run alembic upgrade head
 ```
 
+### Migration before the new backend starts (required)
+
+**Apply and verify the database migration before starting the new backend version.** Revision `20261125_1200` adds
+`indexing_jobs.failure_class`, and the application's ORM model now maps that column. A new backend started against a
+database that has not been migrated is **not** a "safe, paused" state: every read and write of `indexing_jobs` fails
+(indexing status, job admission, the worker). Order of a release that includes this revision:
+
+1. Back up or snapshot the database (your provider's normal procedure).
+2. Run `uv run alembic upgrade head` against the target database.
+3. Verify: `uv run alembic current` prints `20261125_1200 (head)`, and the column exists
+   (`indexing_jobs.failure_class`, `character varying(32)`, nullable).
+4. Only then start the new backend (and deploy the new frontend).
+
+The column is nullable and added without a table rewrite, so existing rows stay valid. They read as "unclassified", which
+the preparation queue treats as "pause, do not continue". Rolling back: stop the new backend first, then
+`uv run alembic downgrade -1`. `alembic check` still reports pre-existing drift on `users` and `chunks`; it reports
+nothing for `indexing_jobs`. Never run these commands against a database you did not intend to change.
+
 ---
 
 ## Step 2: Deploy Qdrant

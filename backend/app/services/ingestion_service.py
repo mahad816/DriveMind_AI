@@ -29,6 +29,7 @@ from app.ingestion.extractors import (
 )
 from app.ingestion.hash_util import compute_extracted_text_hash
 from app.ingestion.pipeline_version import EXTRACTION_PIPELINE_VERSION
+from app.services import indexing_failure_class as failure_class
 from app.services.ingestion_queries import stale_pipeline_clause
 from app.services.drive_content_service import DriveContentService, DriveFileContent
 
@@ -62,6 +63,7 @@ class IngestionService:
         content_service: ContentFetcher | None = None,
     ) -> None:
         self.db = db
+        self.last_failure_class: str | None = None  # set when _ingest_single_file returns "failed"
         self.settings = settings or get_settings()
         self.content_service: ContentFetcher = content_service or DriveContentService(
             db, self.settings
@@ -178,10 +180,12 @@ class IngestionService:
                 mime_type=content.mime_type,
                 filename=drive_file.name,
             )
-        except (ValueError, DriveClientError, UnsupportedMimeTypeError, ExtractionError):
+        except (ValueError, DriveClientError, UnsupportedMimeTypeError, ExtractionError) as exc:
             if before_persist is not None:
                 await before_persist()
             drive_file.status = DriveFileStatus.FAILED
+            # Structured cause for the job record; only an extraction failure is document-specific.
+            self.last_failure_class = failure_class.from_exception(exc)
             return "failed"
 
         if before_persist is not None:

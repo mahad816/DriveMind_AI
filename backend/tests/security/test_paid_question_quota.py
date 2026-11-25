@@ -28,6 +28,7 @@ from app.services.paid_question_quota import (
 )
 from tests.security.conftest import (
     BACKEND,
+    FAILURE_CLASS_REVISION,
     PAID_QUESTION_REVISION,
     USER_A,
     USER_B,
@@ -427,10 +428,14 @@ async def test_model_matches_the_migrated_table(pg_engine):
     assert row is not None and row.owner_id == USER_A and row.finished_at is None
 
 
-def test_alembic_has_a_single_head_and_it_is_this_revision():
+def test_alembic_has_a_single_head_and_this_revision_is_in_its_history():
+    # Superseded assertion: this revision used to be the head. A later revision (indexing_jobs.failure_class,
+    # Checkpoint A) is now the head, so the test still guarantees one head and that this revision is an ancestor of it.
     config = Config(str(BACKEND / "alembic.ini"))
     config.set_main_option("path_separator", "os")
-    assert ScriptDirectory.from_config(config).get_heads() == [PAID_QUESTION_REVISION]
+    scripts = ScriptDirectory.from_config(config)
+    assert scripts.get_heads() == [FAILURE_CLASS_REVISION]
+    assert PAID_QUESTION_REVISION in {r.revision for r in scripts.walk_revisions()}
 
 
 async def test_upgrade_and_downgrade_both_run(pg_engine):

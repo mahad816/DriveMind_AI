@@ -88,6 +88,8 @@ export type IndexingJobRead = {
   file_id?: string | null;
   full_sync?: boolean;
   recovery_required?: boolean;
+  /** Backend-recorded cause of a failed job. Only "document" means the failure is specific to the document; missing means unclassified. */
+  failure_class?: string | null;
   total?: number;
   processed?: number;
   succeeded?: number;

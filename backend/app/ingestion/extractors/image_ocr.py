@@ -9,7 +9,12 @@ from PIL import Image, UnidentifiedImageError
 from pytesseract import TesseractNotFoundError
 
 from app.connectors.google_drive.constants import IMAGE_MIME_TYPES
-from app.ingestion.extractors.base import ExtractionError, ExtractionResult
+from app.ingestion.extractors.base import (
+    ExtractionEnvironmentError,
+    ExtractionError,
+    ExtractionResult,
+    classify_unexpected,
+)
 from app.ingestion.extractors.plain_text import normalize_extracted_text
 from app.ingestion.extractors.registry import register_extractor
 
@@ -26,8 +31,10 @@ def extract_image_ocr_text(data: bytes) -> str:
     except UnidentifiedImageError as exc:
         raise ExtractionError("Failed to read image content") from exc
     except TesseractNotFoundError as exc:
-        raise ExtractionError(
-            "Tesseract OCR engine is not installed or not available on PATH"
+        # An environment fault, not a bad image: it must never read as the document's own failure.
+        raise ExtractionEnvironmentError(
+            "Tesseract OCR engine is not installed or not available on PATH",
+            failure_class="configuration",
         ) from exc
 
     return normalize_extracted_text(ocr_text)
@@ -45,7 +52,9 @@ class ImageOcrExtractor:
         except ExtractionError:
             raise
         except Exception as exc:
-            raise ExtractionError(f"Failed to extract text from image: {filename}") from exc
+            raise classify_unexpected(
+                exc, f"Failed to extract text from image: {filename}"
+            ) from exc
 
         return ExtractionResult(
             text=text,

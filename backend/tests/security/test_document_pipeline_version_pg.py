@@ -40,6 +40,7 @@ from app.services.ingestion_service import IngestionService
 from .conftest import (
     BACKEND,
     BASE_REVISION,
+    FAILURE_CLASS_REVISION,
     PAID_QUESTION_REVISION,
     PIPELINE_VERSION_REVISION,
     SESSION_REVISION,
@@ -128,6 +129,7 @@ async def full_schema(pg_engine):
         SESSION_REVISION,
         PIPELINE_VERSION_REVISION,
         PAID_QUESTION_REVISION,
+        FAILURE_CLASS_REVISION,  # the shared fixture already applied it
     }
     async with pg_engine.begin() as connection:
         for revision in order:
