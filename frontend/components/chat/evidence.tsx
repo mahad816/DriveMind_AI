@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { ExternalLink, FileText, Maximize2 } from "lucide-react";
+import { ChevronRight, ExternalLink, FileText, Maximize2 } from "lucide-react";
 import type { CitationItem, DriveFileRead, SourceChunkRead } from "@/lib/api/types";
 import { getSourceChunk } from "@/lib/api/sources";
 import { isApiError } from "@/lib/api/errors";
@@ -118,18 +118,38 @@ export function EvidenceNote({ citation, n, turnId, active, expanded, onExpand, 
 }
 
 /** ≥1280 px: notes sit beside the answer that cites them, sticky within it. */
-export function EvidenceMargin({ citations, turnId, active, setActive, expanded, setExpanded, conversationId }: {
-  citations: readonly CitationItem[]; turnId: string; active: number | null; setActive: (n: number | null) => void;
+export function EvidenceMargin({ citations, turnId, question, shown, onToggle, active, setActive, expanded, setExpanded, conversationId }: {
+  citations: readonly CitationItem[]; turnId: string; question: string; shown: boolean; onToggle: () => void;
+  active: number | null; setActive: (n: number | null) => void;
   expanded: number | null; setExpanded: (n: number | null) => void; conversationId: string | null;
 }) {
+  const files = new Set(citations.map(c => c.drive_file_id)).size;
+  const summary = `${citations.length} ${citations.length === 1 ? "passage" : "passages"} from ${files} ${files === 1 ? "document" : "documents"}`;
+  const panel = `${turnId}-sources`;
+  // One short line: whitespace collapsed, long questions cut at a word, never the whole text.
+  const flat = question.replace(/\s+/g, " ").trim();
+  const short = flat.length > 48 ? `${flat.slice(0, 48).replace(/\s+\S*$/, "")}…` : flat;
   return (
     <aside aria-label="Sources for this answer" className="hidden xl:block">
-      <div className="sticky top-6 space-y-1">
-        {citations.map((citation, i) => (
-          <EvidenceNote key={`${citation.chunk_id}-${i}`} citation={citation} n={i + 1} turnId={turnId} active={active === i + 1}
-            expanded={expanded === i + 1} onExpand={open => setExpanded(open ? i + 1 : null)} onHover={setActive}
-            conversationId={conversationId} variant="margin" />
-        ))}
+      <div className="sticky top-6">
+        {/* Every list says which question it belongs to, so lists from several answers never run together. */}
+        <button type="button" onClick={onToggle} aria-expanded={shown} aria-controls={panel}
+          className="press group flex w-full items-start gap-2 rounded-control px-1 py-1 text-left hover:bg-well/70">
+          <ChevronRight aria-hidden="true" className={cn("mt-0.5 size-3.5 shrink-0 text-faint transition-transform duration-150", shown && "rotate-90")} />
+          <span className="min-w-0">
+            <span className="block text-meta font-medium text-graphite">Sources · {summary}</span>
+            <span className="mt-0.5 block truncate text-meta text-faint" title={short}>For “{short}”</span>
+          </span>
+        </button>
+        {shown ? (
+          <div id={panel} className="mt-2 space-y-1">
+            {citations.map((citation, i) => (
+              <EvidenceNote key={`${citation.chunk_id}-${i}`} citation={citation} n={i + 1} turnId={turnId} active={active === i + 1}
+                expanded={expanded === i + 1} onExpand={open => setExpanded(open ? i + 1 : null)} onHover={setActive}
+                conversationId={conversationId} variant="margin" />
+            ))}
+          </div>
+        ) : null}
       </div>
     </aside>
   );

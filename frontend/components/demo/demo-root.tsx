@@ -189,14 +189,14 @@ function DemoChat() {
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
           <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto" aria-label="Conversation">
-            <div className="mx-auto flex min-h-full w-full max-w-[var(--column)] flex-col px-5 pb-6 md:px-8 xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]">
+            <div className={cn("mx-auto flex min-h-full w-full flex-col px-5 pb-6 md:px-8", isNew && !notFound ? "max-w-[var(--column-wide)]" : "max-w-[var(--column)] "+"xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]")}>
               {notFound ? (
                 <div className="pt-16"><h1 className="font-serif text-title font-medium">This conversation isn&apos;t in this browser.</h1>
                   <p className="mt-2 text-body text-graphite">Sample conversations are kept only in the browser that started them.</p>
                   <Link href="/chat" className={buttonClass("primary", "md", "mt-5")}>Start a new chat</Link></div>
               ) : isNew ? (
                 <TurnFrame>
-                  <div className="pt-[14dvh]">
+                  <div className="flex min-h-[55dvh] flex-col justify-center pb-6">
                     <h1 className="font-serif text-display font-medium">Ask the sample library.</h1>
                     <p className="mt-3 text-body text-graphite">
                       This demo answers from seven fictional documents about HarborDesk, a made-up bicycle-shop support inbox, and cites the passages it used. Nothing here is real customer data.
@@ -223,7 +223,8 @@ function DemoChat() {
               ) : null}
               <div className="space-y-12 pt-6">
                 {messages.map(m => m.status === "done"
-                  ? <CompletedTurn key={m.id} id={m.id} question={m.question} answer={m.answer ?? ""} citations={m.citations} conversationId={null} wide={wide}
+                  ? <CompletedTurn key={m.id} id={m.id} question={m.question} answer={m.answer ?? ""} citations={m.citations} conversationId={null} wide={wide} current={m.id === messages.at(-1)?.id}
+                      onAskAgain={m.id === messages.at(-1)?.id && !inFlight && ready ? () => void send(m.question) : undefined}
                       onOpenSources={(id, citations, focus) => setSheet({ id, citations: [...citations], focus })} />
                   : m.status === "pending"
                     ? <PendingTurn key={m.id} question={m.question} phase="timer" />
@@ -236,8 +237,8 @@ function DemoChat() {
           </div>
           {!notFound ? (
             <div className="shrink-0 bg-gradient-to-t from-paper from-70% to-transparent pt-2 safe-bottom">
-              <div className="mx-auto w-full max-w-[var(--column)] px-5 pb-4 md:px-8 xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]">
-                <TurnFrame>
+              <div className={cn("mx-auto w-full px-5 pb-4 md:px-8", isNew ? "max-w-[var(--column-wide)]" : "max-w-[var(--column)] "+"xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]")}>
+                <TurnFrame solo={isNew}>
                   <Composer ref={composer} value={draft} onChange={setDraft} onSend={() => void send(draft)}
                     onStop={waiting ? () => inFlight?.controller.abort() : undefined} waiting={waiting} sending={false} blocked={blocked}
                     placeholder="Ask about the sample documents…"

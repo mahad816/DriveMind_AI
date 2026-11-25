@@ -34,6 +34,7 @@
   --rail: 256px;
   --rail-compact: 60px;
   --column: 44rem;
+  --column-wide: 50rem;
   --margin-col: 20rem;
   --panel: 26.25rem;
   --tray: 22.5rem;
@@ -208,6 +209,9 @@
    The one memorable thing: cited words are marked like a highlighter pen, drawn left to right when they become
    active. Colour is never the only signal: the mark also carries an underline. */
 .mark {
+  /* <mark> ships a solid yellow background and black text in every browser; neither may show through. */
+  background-color: transparent;
+  color: inherit;
   background-image: linear-gradient(var(--highlight), var(--highlight));
   background-repeat: no-repeat;
   background-size: 100% 100%;

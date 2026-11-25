@@ -1,4 +1,4 @@
-import { chromium, context, stub, shot, APP } from "./pw.mjs";
+import { chromium, context, stub, shot, APP, STUB } from "./pw.mjs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { default: AxeBuilder } = require("@axe-core/playwright");
@@ -202,11 +202,23 @@ await J("send-and-cite", async page => {
   await page.waitForURL(/\/chat\/.+/); await page.waitForSelector("button[data-citation]", { timeout: 15000 });
   const posts = (await stub("log")).filter(e => e.method === "POST").map(e => e.path);
   ok("duplicate Enter + click: one create, one question", posts.filter(p => p === "/conversations").length === 1 && posts.filter(p => /\/turns(\/stream)?$/.test(p)).length === 1, JSON.stringify(posts));
-  const files = (await (await fetch("http://127.0.0.1:8100/api/v1/files")).json()).files;
+  const files = (await (await fetch(`${STUB}/files`)).json()).files;
   const hrefs = await page.locator('a[href*="drive.google.com"]').evaluateAll(as => as.map(a => a.getAttribute("href")));
   const internal = new Set(files.map(f => f.id)), google = new Set(files.map(f => f.drive_file_id));
   ok("citation Drive links use Google's file id, never DriveMind's internal id",
     hrefs.length > 0 && hrefs.every(h => [...google].some(g => h.includes(g)) && ![...internal].some(i => h.includes(i))), JSON.stringify(hrefs));
+  await page.getByRole("button", { name: "Ask again", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('aside[aria-label="Sources for this answer"]').length === 2);
+  const folds = page.getByRole("button", { name: /^Sources ·/ });
+  ok("polish: Ask again sends one new turn and folds the old sources", (await stub("log")).filter(e => e.method === "POST" && /\/turns$/.test(e.path)).length === 2 && await folds.first().getAttribute("aria-expanded") === "false" && await folds.last().getAttribute("aria-expanded") === "true");
+  await page.locator("button[data-citation]").first().click();
+  ok("polish: following an old citation reopens its sources", await folds.first().getAttribute("aria-expanded") === "true");
+  await page.locator("#composer").blur();
+  await page.keyboard.press("?");
+  await page.getByRole("dialog", { name: "Keyboard shortcuts" }).waitFor();
+  ok("polish: keyboard shortcut opens help", await page.getByText("Send the question", { exact: true }).isVisible());
+  await page.keyboard.press("Escape");
+
 });
 
 await J("axe", async (page) => {
@@ -219,7 +231,7 @@ await J("axe", async (page) => {
       const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
       ok(`axe ${theme} ${p}`, r.violations.length === 0, r.violations.map(v => `${v.id}(${v.nodes.length}): ${v.nodes[0]?.target}`).join("; "));
     }
-    const id = (await (await fetch("http://127.0.0.1:8100/api/v1/conversations?limit=1")).json()).conversations[0].id;
+    const id = (await (await fetch(`${STUB}/conversations?limit=1`)).json()).conversations[0].id;
     await page.goto(`${APP}/chat/${id}`); await page.waitForSelector("button[data-citation]");
     const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     ok(`axe ${theme} conversation`, r.violations.length === 0, r.violations.map(v => `${v.id}(${v.nodes.length}): ${v.nodes[0]?.target}`).join("; "));

@@ -1,4 +1,4 @@
-import { chromium, context, stub, shot, APP } from "./pw.mjs";
+import { chromium, context, stub, shot, APP, STUB } from "./pw.mjs";
 const browser = await chromium.launch();
 const widths = (process.env.WIDTHS ?? "1100,820,390,320").split(",").map(Number);
 const themes = (process.env.THEMES ?? "light,dark").split(",");
@@ -13,7 +13,7 @@ for (const theme of themes) for (const width of widths) {
     await shot(page, `${theme}-${width}-${name}`);
   };
   await page.goto(`${APP}/chat`); await page.waitForSelector("#composer"); await page.waitForTimeout(900); await check("newchat");
-  const id = (await (await fetch("http://127.0.0.1:8100/api/v1/conversations?limit=2")).json()).conversations[0].id;
+  const id = (await (await fetch(`${STUB}/conversations?limit=2`)).json()).conversations[0].id;
   await page.goto(`${APP}/chat/${id}`); await page.waitForSelector("button[data-citation]"); await page.waitForTimeout(600); await check("conversation");
   if (width < 1280) { await page.locator("button[data-citation='1']").first().click(); await page.waitForTimeout(700); await check("sources-sheet"); await page.keyboard.press("Escape"); await page.waitForTimeout(300); }
   await page.goto(`${APP}/files`); await page.waitForSelector("table tbody tr td button"); await page.waitForTimeout(500); await check("library");

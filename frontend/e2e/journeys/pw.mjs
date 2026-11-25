@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 const require = createRequire(import.meta.url);
 export const { chromium } = require("@playwright/test");
-export const APP = "http://127.0.0.1:3100", STUB = "http://127.0.0.1:8100/api/v1";
+export const APP = process.env.E2E_APP ?? "http://127.0.0.1:3100", STUB = process.env.E2E_API ?? "http://127.0.0.1:8100/api/v1";
 // Screenshots go outside the repository unless SHOTS says otherwise.
 export const SHOTS = process.env.SHOTS ?? join(tmpdir(), "drivemind-e2e-shots");
 mkdirSync(SHOTS, { recursive: true });

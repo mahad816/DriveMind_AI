@@ -29,7 +29,7 @@ export function NewChatCanvas({ ready, onInsert }: { ready: number | null; onIns
     );
   }
   return (
-    <div className="flex flex-1 flex-col justify-end pb-6 pt-16">
+    <div className="flex flex-1 flex-col justify-center pb-6 pt-10">
       <h1 className="max-w-[32rem] font-serif text-display font-medium">What would you like to find in your documents?</h1>
       <p className="mt-3 text-body text-graphite">
         {ready === null ? <Skeleton className="inline-block h-3.5 w-56 align-middle" />

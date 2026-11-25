@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useServerConversations } from "@/components/providers/server-conversations-provider";
 import { useApplicationSession } from "@/components/providers/application-session-provider";
 import { useFiles, useWorkspace } from "@/components/workspace/workspace-provider";
 import { FOCUS_COMPOSER_EVENT, PREFILL_COMPOSER_EVENT, takePrefill, usePageTitle } from "@/components/shell/shell-context";
+import { cn } from "@/lib/utils";
 import { Composer } from "@/components/chat/composer";
 import type { ComposerHandle } from "@/components/chat/composer";
 import { CompletedTurn, NoticeTurn, PendingTurn, TurnFrame } from "@/components/chat/turn";
@@ -146,7 +147,16 @@ export function ChatWorkspace() {
     if (!el || !pendingKey) return;
     requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }));
   }, [pendingKey]);
-  const onScroll = () => { const el = scroller.current; if (el) scrollMemory.set(routeId ?? "new", el.scrollTop); };
+  // "Jump to latest" appears only once the reader has scrolled well away from the end.
+  const [awayFromEnd, setAwayFromEnd] = useState(false);
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    scrollMemory.set(routeId ?? "new", el.scrollTop);
+    const away = el.scrollHeight - el.scrollTop - el.clientHeight > 120;
+    setAwayFromEnd(prev => (prev === away ? prev : away));
+  };
+  const jumpToLatest = () => scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
 
   // ----- announcements: phases are announced by their own status rows; completion once -----
   const [announce, setAnnounce] = useState("");
@@ -167,7 +177,8 @@ export function ChatWorkspace() {
   const timeline = useMemo(() => turns.map(turn => {
     if (turn.status === "COMPLETED")
       return <CompletedTurn key={turn.id} id={turn.id} question={turn.question} answer={turn.answer} citations={turn.citations}
-        conversationId={routeId} onOpenSources={openSources} wide={wide} />;
+        conversationId={routeId} onOpenSources={openSources} wide={wide} current={turn.id === lastTurn?.id}
+        onAskAgain={turn.id === lastTurn?.id && !busy && session.canMutate ? () => askAgain(turn.question) : undefined} />;
     if (turn.status === "RUNNING") {
       const live = streaming && submission?.turn?.id === turn.id;
       if (live) return <PendingTurn key={turn.id} question={turn.question} phase={streaming.phase} provisional={streaming.text || undefined} />;
@@ -225,8 +236,9 @@ export function ChatWorkspace() {
     <CitedFilesContext.Provider value={files.data ?? null}>
       <div className="flex min-h-0 flex-1 flex-col">
         {selected ? <ConversationHeader /> : routeId && !notFound ? <div className="h-14 shrink-0" /> : null}
+        <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={scroller} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" aria-label="Conversation">
-          <div className="mx-auto flex min-h-full w-full max-w-[var(--column)] flex-col px-5 pb-6 md:px-8 xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]">
+          <div className={cn("mx-auto flex min-h-full w-full flex-col px-5 pb-6 md:px-8", isNew ? "max-w-[var(--column-wide)]" : "max-w-[var(--column)] "+"xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]")}>
             {notFound ? <NotFound /> : null}
             {routeId && !selected && !notFound ? <ConversationSkeleton /> : null}
             {selected && state.nextTurnCursor !== null ? <LoadEarlier scroller={scroller} /> : null}
@@ -234,10 +246,24 @@ export function ChatWorkspace() {
             <div className="space-y-12 pt-6">{timeline}{tail}</div>
           </div>
         </div>
+        {awayFromEnd && !isNew ? (
+          // Same column geometry as the question bar below, so the button sits centred over it.
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10">
+            <div className="mx-auto w-full max-w-[var(--column)] px-5 md:px-8 xl:grid xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)] xl:grid-cols-[minmax(0,1fr)_var(--margin-col)] xl:gap-x-10">
+              <div className="flex justify-center">
+                <button type="button" onClick={jumpToLatest} aria-label="Jump to the latest message"
+                  className="press enter-fade pointer-events-auto grid size-9 place-items-center rounded-full border border-rule bg-sheet text-graphite shadow-[var(--shadow-float)] hover:bg-well hover:text-ink touch-44">
+                  <ArrowDown className="size-4" aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        </div>
         {showComposer ? (
           <div className="shrink-0 bg-gradient-to-t from-paper from-70% to-transparent pt-2 safe-bottom">
-            <div className="mx-auto w-full max-w-[var(--column)] px-5 pb-4 md:px-8 xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]">
-              <TurnFrame>
+            <div className={cn("mx-auto w-full px-5 pb-4 md:px-8", isNew ? "max-w-[var(--column-wide)]" : "max-w-[var(--column)] "+"xl:max-w-[calc(var(--column)+var(--margin-col)+2.5rem)]")}>
+              <TurnFrame solo={isNew}>
                 {state.creation?.uncertain && !outgoing ? (
                   <p role="alert" className="mb-2 text-label text-fault">Couldn&apos;t start the conversation. Your question is still in the box; sending again is safe.</p>
                 ) : error?.category === "invalid_request" ? (

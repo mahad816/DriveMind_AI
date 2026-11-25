@@ -3,7 +3,7 @@ import { Dialog as Base } from "@base-ui/react/dialog";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { FileText, Library, MessageSquare, Moon, Plus, Search, Settings, Sparkles, Sun, ListChecks } from "lucide-react";
+import { FileText, Library, MessageSquare, Moon, Plus, Search, Settings, Sparkles, Sun, ListChecks, Keyboard } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useServerConversations } from "@/components/providers/server-conversations-provider";
 import { useFiles } from "@/components/workspace/workspace-provider";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 type Item = { id: string; group: "Conversations" | "Files" | "Actions" | "Ask"; label: string; hint?: ReactNode; icon: ReactNode; run: (alt: boolean) => void };
 
-export function CommandPalette({ open, onOpenChange, initialQuery }: { open: boolean; onOpenChange: (open: boolean) => void; initialQuery: string }) {
+export function CommandPalette({ open, onOpenChange, initialQuery, onShortcuts }: { open: boolean; onOpenChange: (open: boolean) => void; initialQuery: string; onShortcuts: () => void }) {
   const router = useRouter();
   const { state } = useServerConversations();
   const files = useFiles();
@@ -46,6 +46,7 @@ export function CommandPalette({ open, onOpenChange, initialQuery }: { open: boo
       { id: "a:settings", group: "Actions", label: "Settings", icon: <Settings />, run: () => go("/settings") },
       { id: "a:theme", group: "Actions", label: resolvedTheme === "dark" ? "Switch to light theme" : "Switch to dark theme",
         icon: resolvedTheme === "dark" ? <Sun /> : <Moon />, run: () => { setTheme(resolvedTheme === "dark" ? "light" : "dark"); onOpenChange(false); } },
+      { id: "a:shortcuts", group: "Actions", label: "Keyboard shortcuts", icon: <Keyboard />, run: () => { onOpenChange(false); requestAnimationFrame(onShortcuts); } },
     ] as Item[]).filter(a => !q || normalize(a.label).includes(normalize(q)));
     const ask: Item[] = q ? [{ id: "ask", group: "Ask", label: `Ask DriveMind: “${q}”`, icon: <Sparkles />,
       hint: "Opens a new chat with this question, not sent yet",
@@ -81,7 +82,7 @@ export function CommandPalette({ open, onOpenChange, initialQuery }: { open: boo
               role="combobox" aria-expanded="true" aria-controls={listId} aria-autocomplete="list"
               aria-activedescendant={items.length ? `${listId}-${active}` : undefined} aria-label="Search conversations, files and actions"
               placeholder="Search conversations, file names and actions"
-              className="h-13 min-w-0 flex-1 bg-transparent py-4 text-body outline-none placeholder:text-faint" />
+              className="h-13 min-w-0 flex-1 bg-transparent py-4 focus-visible:shadow-none text-body outline-none placeholder:text-faint" />
             <Kbd>Esc</Kbd>
           </div>
           <div id={listId} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5">

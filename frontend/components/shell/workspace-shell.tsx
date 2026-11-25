@@ -10,6 +10,7 @@ import { Rail, RailContent } from "@/components/shell/rail";
 import { TopBar } from "@/components/shell/top-bar";
 import { ConnectionBanners } from "@/components/shell/connection-banners";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { ShortcutsDialog } from "@/components/shell/shortcuts-dialog";
 import { PreparationTray } from "@/components/preparation/preparation-tray";
 import { Sheet } from "@/components/ui/dialog";
 import { readPreference, writePreference } from "@/lib/state/browser-memory";
@@ -26,6 +27,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState("DriveMind");
   const [palette, setPalette] = useState<{ open: boolean; query: string }>({ open: false, query: "" });
   const [navOpen, setNavOpen] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
   const [compact, setCompact] = useState(false);
 
   // Rail width: a saved choice wins; otherwise compact below 1024 px (blueprint §12.1).
@@ -42,12 +44,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   // Close the mobile drawer whenever navigation happens.
   useEffect(() => { setNavOpen(false); }, [pathname]);
 
-  // Global shortcuts. ⌘K / Ctrl K and "/" open search; ⇧⌘O starts a new chat.
+  // Global shortcuts. ⌘K / Ctrl K and "/" open search; ⇧⌘O starts a new chat; "?" lists them.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
       if (mod && !event.shiftKey && event.key.toLowerCase() === "k") { event.preventDefault(); setPalette(p => ({ open: !p.open, query: "" })); return; }
       if (event.key === "/" && !mod && !typing(event.target) && !document.querySelector("[role=dialog]")) { event.preventDefault(); setPalette({ open: true, query: "" }); return; }
+      if (event.key === "?" && !mod && !typing(event.target) && !document.querySelector("[role=dialog]")) { event.preventDefault(); setShortcuts(true); return; }
       if (mod && event.shiftKey && event.key.toLowerCase() === "o") {
         event.preventDefault();
         if (pathname !== "/chat") router.push("/chat");
@@ -84,7 +87,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           </main>
         </div>
         <PreparationTray />
-        <CommandPalette open={palette.open} initialQuery={palette.query} onOpenChange={open => setPalette(p => ({ ...p, open }))} />
+        <CommandPalette open={palette.open} initialQuery={palette.query} onOpenChange={open => setPalette(p => ({ ...p, open }))}
+          onShortcuts={() => setShortcuts(true)} />
+        <ShortcutsDialog open={shortcuts} onOpenChange={setShortcuts} />
         <Sheet open={navOpen} onOpenChange={setNavOpen} side="left" title="Navigation" hideTitle responsive={false} className="md:hidden">
           <div className="-mx-5 -mb-5 h-full"><RailContent compact={false} onSearch={() => { setNavOpen(false); api.openPalette(); }} inDrawer /></div>
         </Sheet>
