@@ -1,5 +1,13 @@
 # Current development status
 
+## Integration candidate — 2026-11-26
+
+`integration/drivemind-v2` starts from Marginalia `70c2ee6`, whose direct parent is Checkpoint A `7d8764d`. It includes the committed backend stabilization and authentication work. Frontend polish is `cec5025`; sync availability/recovery integration is `6b73c27`. No promotion, push or deployment is authorized by this record. See [integration verification](INTEGRATION_VERIFICATION.md) for current evidence and limits.
+
+## Historical checkpoint record
+
+The remainder records earlier work and local observations. Its branch tips, counts and runtime state are historical; do not treat them as current configuration.
+
 The one place a fresh session reads to learn where DriveMind stands. Keep it short and factual: one row per checkpoint, newest first, no history essays (that is `docs/DECISIONS.md`) and no per-run numbers beyond what a checkpoint needs. The `drivemind-engineering` skill updates it after each meaningful checkpoint. The older `docs/CURRENT_STATUS.md` (Phase 11) and `docs/HANDOFF_2026-11-21.md` are historical.
 
 **Never put here:** held-out questions, answers, anchors, ids or per-case results; secrets; account details; provider balances; paths inside the sealed store beyond its directory name.

@@ -77,7 +77,7 @@ database that has not been migrated is **not** a "safe, paused" state: every rea
    (`indexing_jobs.failure_class`, `character varying(32)`, nullable).
 4. Only then start the new backend (and deploy the new frontend).
 
-The column is nullable and added without a table rewrite, so existing rows stay valid. They read as "unclassified", which
+The column is nullable and added without a table rewrite, so existing rows stay valid. `sync_available` is a computed status field and needs no additional migration. It does not provision a worker or grant admission. They read as "unclassified", which
 the preparation queue treats as "pause, do not continue". Rolling back: stop the new backend first, then
 `uv run alembic downgrade -1`. `alembic check` still reports pre-existing drift on `users` and `chunks`; it reports
 nothing for `indexing_jobs`. Never run these commands against a database you did not intend to change.

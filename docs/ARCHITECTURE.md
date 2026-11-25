@@ -1,6 +1,6 @@
 # DriveMind architecture
 
-DriveMind is a single-user application that prepares read-only Google Drive content for local search and answers questions from that prepared index.
+DriveMind is an owner-scoped application that prepares read-only Google Drive content for local search and answers questions from that prepared index.
 
 ![DriveMind runtime architecture, with preparation and answering paths](assets/drivemind-runtime.svg)
 
@@ -22,7 +22,9 @@ The frontend calls the FastAPI API through the Next.js rewrite. The backend owns
 
 ## Knowledge preparation
 
-The frontend starts and polls four separate FastAPI jobs: **sync → ingest → chunk → build**. Sync discovers or changes metadata and Drive cursor state; ingest later downloads or exports file content and extracts text; chunk writes searchable PostgreSQL chunk rows; build embeds eligible chunks with OpenAI, reconciles Qdrant points for each file, and marks the file indexed. These jobs execute within the FastAPI process.
+The frontend starts and polls four separate FastAPI jobs: **sync → ingest → chunk → build**. Sync discovers or changes metadata and Drive cursor state; ingest later downloads or exports file content and extracts text; chunk writes searchable PostgreSQL chunk rows; build embeds eligible chunks with OpenAI, reconciles Qdrant points for each file, and marks the file indexed. These jobs execute within the FastAPI process through durable owner-bound admission and a supervised worker with leases and recovery checks. `GET /index/status` reports an optional nullable `sync_available` flag: false means admission is currently unavailable; true is advisory, not a reservation. Missing/null means unknown. Definite admission refusals can be retried explicitly; unknown submission outcomes are never automatically resubmitted.
+
+The preparation queue continues past a failure only when the terminal job positively reports `failure_class: "document"` with coherent file/job evidence. Provider, infrastructure, configuration and unknown failures pause it. Migration `20261125_1200` must precede the new backend.
 
 Full sync takes a Changes API start page token before listing supported files, reconciles missing files after the scan, and persists the token with successful work. Incremental sync consumes a stored token and paginated changes, including removals, trashed files, and newly unsupported MIME types. A failed sync does not advance the successful cursor.
 
@@ -59,7 +61,9 @@ FastAPI mounts the following under `/api/v1`:
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /health`, `GET /health/ready` | Liveness and readiness |
-| `GET /auth/google`, `GET /auth/google/callback` | Drive OAuth authorization |
+| `POST /auth/session/google`, `GET /auth/session/google/callback` | Owner-bound Google login or read-only Drive connection |
+| `GET /auth/session`, `POST /auth/session/logout` | Inspect or revoke the application session |
+| `/conversations`, `/conversations/{id}/turns[/stream]` | Owner-scoped persisted conversations and answers |
 | `POST /index/sync`, `/index/ingest`, `/index/chunk`, `/index/build` | Separate preparation jobs |
 | `GET /index/status`, `GET /index/pending` | Job and pending-work status |
 | `GET /files` | Synced metadata across statuses |

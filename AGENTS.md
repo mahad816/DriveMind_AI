@@ -132,6 +132,8 @@ npm run build
 
 ## Latest recorded verification
 
+For the isolated 2026-11-26 integration candidate, see `docs/guides/INTEGRATION_VERIFICATION.md`. It records the current test results and limitations; the M0-SEC measurements below are historical. No main promotion or deployment was performed.
+
 Recorded by M0-SEC ticket 09 on 2026-11-22, on `d117df0` plus the ticket's changes (no application behavior change: comments, docstrings, one test, documents). Details, environment and the failure analysis are in `docs/tickets/m0-sec-security-hardening/09-security-closeout-and-verification.md` (`## Findings`). The earlier M0 baseline is in `docs/tickets/m0-system-audit/02-test-baseline-and-classification.md`.
 
 - **Backend full run (3245 tests), one run, as measured:** `5 failed, 3233 passed, 1 skipped, 6 xfailed` in 32 min 13 s on disposable PostgreSQL 18.7 and Qdrant 1.18.0 (ports 61449 and 61448), `OPENAI_API_KEY` unexported. The 5 failures were: one real test defect (an import-time clock in `test_invalid_signed_claims_rejected[claims3]`, fixed) and four indexing database-probe timeouts that occurred while heavy work ran beside the suite. The three affected files rerun alone: 125 passed. The full suite was **not** repeated after the test fix. **Qualified baseline:** all pass in the right environment, shown by the full run plus the isolated reruns, not by one clean run. Run nothing heavy beside the suite.
