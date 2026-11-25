@@ -259,6 +259,64 @@ async def test_failed_verification_and_final_commit_roll_back(
         assert await db.scalar(select(User.id).where(User.google_id == "new-subject")) is None
 
 
+async def test_connect_drive_without_keyring_fails_safely_and_logs_category(
+    oauth_engine: AsyncEngine,
+    login_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    """A Drive connect with no credential keyring must not disturb the sign-in session or write
+    a grant, and the operator must be able to see WHY (a fixed category, never provider text)."""
+    async with async_sessionmaker(oauth_engine, expire_on_commit=False)() as db:
+        service = GoogleSessionAuthService(db, login_settings)
+        verified(monkeypatch)
+        state, binding = await begin(service)
+        issued = await service.callback(code="code", state=state, binding=binding, credential=None)
+        token = issued.credential.get_secret_value()
+        sessions_service = ApplicationSessionService(db, login_settings)
+        owner = (await sessions_service.resolve_principal(token)).authenticated_user_id
+
+        login_settings.google_credential_encryption_keyring = None
+        login_settings.google_credential_encryption_active_key_id = ""
+        credentials = Credentials(
+            token="synthetic-new-access",
+            refresh_token="synthetic-new-refresh",
+            scopes=login_settings.google_drive_scopes.split(),
+        )
+        monkeypatch.setattr(
+            GoogleSessionAuthService,
+            "_exchange_and_verify",
+            lambda self, code, pending: (
+                credentials,
+                VerifiedGoogleIdentity("verified-subject-a"),
+                "a@example.invalid",
+            ),
+        )
+        state, binding = await begin(service, GoogleAuthIntent.CONNECT_DRIVE, token)
+        with caplog.at_level("ERROR"):
+            with pytest.raises(SessionStoreUnavailable):
+                await service.callback(code="code", state=state, binding=binding, credential=token)
+
+        # The sign-in session survives and nothing was stored.
+        assert (await sessions_service.resolve_principal(token)).authenticated_user_id == owner
+        assert await db.scalar(select(func.count()).select_from(GoogleOAuthToken)) == 0
+        # The operator sees a fixed category; no secret or provider text is logged.
+        assert "Google session callback failed (configuration_error)." in [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == "app.services.google_session_auth_service"
+        ]
+        for secret in (
+            "synthetic-new-access",
+            "synthetic-new-refresh",
+            "a@example.invalid",
+            token,
+            state,
+            binding,
+        ):
+            assert secret not in caplog.text
+
+
 async def test_migration_legacy_rows_constraints_and_roundtrip(oauth_engine: AsyncEngine):
     async with oauth_engine.begin() as connection:
         await connection.execute(

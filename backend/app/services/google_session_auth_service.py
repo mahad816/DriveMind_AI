@@ -2,6 +2,7 @@
 
 import asyncio
 import hmac
+import logging
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -43,9 +44,10 @@ from app.services.application_session_service import (
     ApplicationSessionService,
     IssuedApplicationSession,
 )
-from app.core.credential_diagnostics import OAuthCredentialFailure
+from app.core.credential_diagnostics import OAuthCredentialFailure, log_safe_failure
 from app.services.google_oauth_service import GoogleOAuthService, _identity_scopes
 
+logger = logging.getLogger(__name__)
 
 _PRUNE_BATCH = 500
 
@@ -374,8 +376,11 @@ class GoogleSessionAuthService(GoogleOAuthService):
                 await self._session_service().revoke(credential)
             await self.db.commit()  # Cookie issuance is exclusively AFTER this commit.
             return issued
-        except (SQLAlchemyError, SessionStoreUnavailable, OAuthCredentialFailure):
+        except (SQLAlchemyError, SessionStoreUnavailable, OAuthCredentialFailure) as exc:
             await self.db.rollback()
+            # The public answer is one generic 503; the operator needs the fixed category (for
+            # example configuration_error for a missing credential keyring). Never the exception.
+            log_safe_failure(logger, "Google session callback", exc)
             raise SessionStoreUnavailable() from None
         except (GoogleLoginRejected, InvalidApplicationSession, TimeoutError):
             await self.db.rollback()
