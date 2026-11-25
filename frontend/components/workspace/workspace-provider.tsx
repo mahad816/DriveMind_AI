@@ -96,7 +96,7 @@ export function WorkspaceProvider({ owner, children }: { owner: string; children
       if (value.files.getSnapshot().updatedAt !== null && value.files.isStale(STALE_ON_RETURN)) void value.files.load();
       void value.queue.check();
       const phase = value.discovery.getSnapshot().phase;
-      if (phase === "active" || phase === "submitting") void value.discovery.check();
+      if (phase !== "checking") void value.discovery.check();
     };
     document.addEventListener("visibilitychange", visible);
     return () => document.removeEventListener("visibilitychange", visible);

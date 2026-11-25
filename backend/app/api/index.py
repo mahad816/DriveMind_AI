@@ -196,8 +196,15 @@ async def get_sync_status(
     try:
         job = await jobs.get_job(owner, job_id)
         connected = await service.is_connected(user_id=owner)
+        supervisor = getattr(request.app.state, "indexing_supervisor", None)
+        # A diagnostic flag must never fail the status read: anything unproven is "not available".
+        sync_available = (
+            getattr(supervisor, "healthy", False) is True
+            and getattr(request.app.state, "indexing_admission_ready", False) is True
+        )
         return DriveSyncStatusResponse(
             connected=connected,
+            sync_available=sync_available,
             job=IndexingJobRead.model_validate(job) if job is not None else None,
         )
     except (IndexingTargetNotFound, IndexingStoreUnavailable, SQLAlchemyError) as exc:

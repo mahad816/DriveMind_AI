@@ -111,6 +111,8 @@ export type DriveSyncStatusResponse = {
   corpus_version?: string;
   demo_questions?: string[];
   connected: boolean;
+  /** Normal mode only: the sync executor is accepting jobs. */
+  sync_available?: boolean | null;
   job: IndexingJobRead | null;
 };
 

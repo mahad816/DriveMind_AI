@@ -1,4 +1,4 @@
-import { getDriveSyncStatus, syncDriveMetadata, SyncSubmissionError } from "@/lib/api/indexing";
+import { getDriveSyncStatus, syncDriveMetadata, SyncSubmissionError, type SyncRejection } from "@/lib/api/indexing";
 import { sessionOwner, sessionRevision } from "@/lib/api/session-events";
 import type { IndexingJobRead } from "@/lib/api/types";
 import { preparationKey } from "./single-file-preparation";
@@ -7,12 +7,21 @@ import { JoinedCheck } from "./joined-check";
 
 type Intent = { jobId: string | null; submissionId?: string; revision?: number };
 export type DiscoveryState = {
-  phase: "checking" | "idle" | "submitting" | "active" | "complete" | "blocked" | "unknown";
+  phase: "checking" | "idle" | "submitting" | "active" | "complete" | "unavailable" | "blocked" | "unknown";
   job: IndexingJobRead | null;
   message: string;
   connected: boolean;
+  /** Backend report that the sync executor accepts jobs; null when not (yet) reported. */
+  syncAvailable: boolean | null;
 };
-const initial: DiscoveryState = { phase: "checking", job: null, message: "Checking Drive discovery…", connected: false };
+const initial: DiscoveryState = { phase: "checking", job: null, message: "Checking Drive discovery…", connected: false, syncAvailable: null };
+/** Phases from which a new request may be made. "unavailable" is a known refusal, safe to retry. */
+export const STARTABLE_PHASES: readonly DiscoveryState["phase"][] = ["idle", "complete", "unavailable"];
+const rejectionMessages: Partial<Record<SyncRejection, { phase: DiscoveryState["phase"]; message: string }>> = {
+  unavailable: { phase: "unavailable", message: "Sync is temporarily unavailable. Please try again." },
+  not_connected: { phase: "idle", message: "Your Google Drive connection needs to be renewed." },
+  session: { phase: "blocked", message: "Your session expired. Sign in again, then retry the sync." },
+};
 /** Why discovery was refused locally, before any backend call. Each reason has its own message. */
 export type DiscoveryBlockReason = "preparation_unfinished" | "preparation_unreadable" | "pending_elsewhere" | "coordination_unavailable";
 export class DiscoveryBlockedError extends Error {
@@ -99,24 +108,25 @@ export class DiscoveryController {
       if (!this.live()) return;
       if (result.demo_mode === true || typeof result.connected !== "boolean") throw new Error("Discovery mode mismatch");
       const job = result.job;
+      const syncAvailable = typeof result.sync_available === "boolean" ? result.sync_available : null;
       if (job && job.user_id !== this.owner) throw new Error("Discovery owner mismatch");
       if (intent?.jobId && (!job || job.id !== intent.jobId || job.operation !== "SYNC")) throw new Error("Discovery identity mismatch");
       if (JSON.stringify(this.read()) !== JSON.stringify(intent)) throw new Error("Discovery intent changed");
       if (job?.recovery_required) {
-        this.publish({ phase: "blocked", job, connected: result.connected, message: "Existing work needs review before discovery can continue. Ask the beta owner for help." });
+        this.publish({ phase: "blocked", job, connected: result.connected, syncAvailable, message: "Existing work needs review before discovery can continue. Ask the beta owner for help." });
       } else if (intent && !intent.jobId) {
         // Latest-job evidence can describe activity, but cannot correlate a lost receipt.
-        this.publish({ phase: "unknown", job, connected: result.connected, message: "The discovery request could not be confirmed. Check status again; do not start another request. If this persists, ask the beta owner to review it." });
+        this.publish({ phase: "unknown", job, connected: result.connected, syncAvailable, message: "The discovery request could not be confirmed. Check status again; do not start another request. If this persists, ask the beta owner to review it." });
       } else if (job && ["queued", "running"].includes(job.status)) {
         if (!intent && job.operation === "SYNC") {
           const adopted = { jobId: job.id, submissionId: crypto.randomUUID(), revision: this.revision };
           if (!await this.replace(null, adopted)) throw new Error("Discovery intent changed");
         }
-        this.publish({ phase: "active", job, connected: result.connected, message: job.operation === "SYNC" ? `Drive discovery ${job.status === "queued" ? "queued" : "in progress"}.` : "Document preparation is active. Discovery will be available when it finishes." });
+        this.publish({ phase: "active", job, connected: result.connected, syncAvailable, message: job.operation === "SYNC" ? `Drive discovery ${job.status === "queued" ? "queued" : "in progress"}.` : "Document preparation is active. Discovery will be available when it finishes." });
       } else {
         if (intent && !await this.replace(intent, null)) throw new Error("Discovery intent changed");
         const completed = job?.operation === "SYNC" && job.status === "completed";
-        this.publish({ phase: completed ? "complete" : "idle", job, connected: result.connected, message: completed ? `Drive check completed. ${job.processed ?? 0} metadata updates processed.` : job?.operation === "SYNC" && job.status === "failed" ? "The Drive check failed. No documents were prepared. You can start a new check after reviewing your connection." : "Discover supported documents without preparing their content." });
+        this.publish({ phase: completed ? "complete" : "idle", job, connected: result.connected, syncAvailable, message: completed ? `Drive check completed. ${job.processed ?? 0} metadata updates processed.` : job?.operation === "SYNC" && job.status === "failed" ? "The Drive check failed. No documents were prepared. You can start a new check after reviewing your connection." : "Discover supported documents without preparing their content." });
         if (this.live() && completed && this.notified !== job.id) { this.notified = job.id; this.onComplete(); }
       }
     } catch (error) {
@@ -127,9 +137,14 @@ export class DiscoveryController {
     } finally { this.busy = false; }
   };
   start = async () => {
-    if (this.busy || !this.live() || !["idle", "complete"].includes(this.state.phase) || !this.state.connected) return;
+    if (this.busy || !this.live() || !STARTABLE_PHASES.includes(this.state.phase) || !this.state.connected) return;
     await this.check();
-    if (!this.live() || this.busy || !["idle", "complete"].includes(this.state.phase) || !this.state.connected) return;
+    if (!this.live() || this.busy || !STARTABLE_PHASES.includes(this.state.phase) || !this.state.connected) return;
+    // The backend reports the executor closed: say so instead of sending a request that must fail.
+    if (this.state.syncAvailable === false) {
+      this.publish({ ...this.state, ...rejectionMessages.unavailable! });
+      return;
+    }
     this.busy = true;
     // Immutable request scope. Receipt bookkeeping deliberately outlives the UI.
     const intent: Intent = { jobId: null, submissionId: crypto.randomUUID(), revision: this.revision };
@@ -161,6 +176,11 @@ export class DiscoveryController {
     } catch (error) {
       if (!apiCalled || (error instanceof SyncSubmissionError && error.outcome !== "unknown")) {
         try { await this.replace(intent, null); } catch { /* Preserve any record if safe cleanup fails. */ }
+        const known = error instanceof SyncSubmissionError && error.reason ? rejectionMessages[error.reason] : undefined;
+        if (known) {
+          this.publish({ ...this.state, ...known, ...(error instanceof SyncSubmissionError && error.reason === "not_connected" ? { connected: false } : {}) });
+          return;
+        }
         // Name the real cause: a local refusal never reached the backend, so it is not a connection problem.
         const message = error instanceof DiscoveryBlockedError ? blockMessages[error.reason] : apiCalled
           ? "The Drive check was not accepted. Verify your connection and check discovery status before explicitly trying again."

@@ -29,11 +29,24 @@ export async function getPendingCounts(): Promise<PendingCountsResponse> {
   return pending;
 }
 
-export type SyncReceipt = { outcome: "accepted"; jobId: string } | { outcome: "rejected" };
+/** Why the server refused before creating any job. Each maps to its own user message. */
+export type SyncRejection = "unavailable" | "not_connected" | "session" | "conflict";
+export type SyncReceipt = { outcome: "accepted"; jobId: string } | { outcome: "rejected"; reason?: SyncRejection };
 export class SyncSubmissionError extends Error {
-  constructor(readonly outcome: "not_submitted" | "rejected" | "unknown") {
+  constructor(readonly outcome: "not_submitted" | "rejected" | "unknown", readonly reason?: SyncRejection) {
     super(outcome === "unknown" ? "Discovery acceptance could not be confirmed." : "Discovery was not accepted.");
   }
+}
+
+const EXECUTOR_UNAVAILABLE = "Indexing execution is unavailable until its worker and recovery support are ready.";
+const NOT_CONNECTED = "No Google Drive connection found. Complete OAuth first.";
+function rejectionReason(status: number, detail: unknown): SyncRejection | null {
+  if (status === 401 && detail === "Your application session is invalid or expired.") return "session";
+  if (status === 403 && detail === "Application session request could not be verified.") return "session";
+  if (status === 409 && detail === "An unresolved indexing job already exists for this account.") return "conflict";
+  if (status === 503 && detail === EXECUTOR_UNAVAILABLE) return "unavailable";
+  if (status === 503 && detail === NOT_CONNECTED) return "not_connected";
+  return null;
 }
 
 async function submitIndexJob(
@@ -46,7 +59,7 @@ async function submitIndexJob(
   const revision = sessionRevision();
   let postAttempted = false;
   let acceptedReceipt = false;
-  const receiptState: { outcome: "rejected" | "unknown" } = { outcome: "unknown" };
+  const receiptState: { outcome: "rejected" | "unknown"; reason?: SyncRejection } = { outcome: "unknown" };
   try {
     // Fresh same-origin proof before every mutation; never cache CSRF across owners.
     type SessionProof = { csrf_token: string; user_id?: string };
@@ -79,15 +92,16 @@ async function submitIndexJob(
             typeof body.job_id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.job_id)) {
           await receipt({ outcome: "accepted", jobId: body.job_id });
           acceptedReceipt = true;
-        } else if (
-          // Exact guard/admission rejections, before any new job commit:
-          // api/session_dependencies.py, security/session_helpers.py, api/index.py.
-          (response.status === 401 && body?.detail === "Your application session is invalid or expired.") ||
-          (response.status === 403 && body?.detail === "Application session request could not be verified.") ||
-          (response.status === 409 && body?.detail === "An unresolved indexing job already exists for this account.")
-        ) {
-          receiptState.outcome = "rejected";
-          await receipt({ outcome: "rejected" });
+        } else {
+          // Exact guard/admission rejections, all raised before any new job commit:
+          // api/session_dependencies.py, security/session_helpers.py, api/index.py (_accept).
+          // A generic 5xx stays ambiguous: it can follow a commit attempt.
+          const reason = rejectionReason(response.status, body?.detail);
+          if (reason) {
+            receiptState.outcome = "rejected";
+            receiptState.reason = reason;
+            await receipt({ outcome: "rejected", reason });
+          }
         }
       } } : {}),
     });
@@ -95,7 +109,7 @@ async function submitIndexJob(
     return result;
   } catch (error) {
     if (!receipt) throw error; // Existing preparation callers keep their contract.
-    throw new SyncSubmissionError(postAttempted ? receiptState.outcome : "not_submitted");
+    throw new SyncSubmissionError(postAttempted ? receiptState.outcome : "not_submitted", postAttempted ? receiptState.reason : undefined);
   }
 }
 

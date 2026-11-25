@@ -35,6 +35,9 @@ class DriveSyncStatusResponse(SchemaBase):
 
     job: IndexingJobRead | None = None
     connected: bool = False
+    # Whether the indexing executor is accepting jobs right now (normal mode only).
+    # Lets the UI say "sync unavailable" before a doomed request, never a secret.
+    sync_available: bool | None = None
     # Only populated in demo responses; connected always describes actual OAuth state.
     demo_mode: bool = False
     demo_ready: bool = False

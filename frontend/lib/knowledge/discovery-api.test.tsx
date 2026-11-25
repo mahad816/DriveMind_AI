@@ -224,3 +224,81 @@ it.each(["storage write", "Web Lock acquisition"])("202 with failed receipt %s s
   expect(next.getSnapshot().phase).toBe("unknown"); expect(posts()).toHaveLength(1);
   expect(posts()[0][0]).toBe("/api/v1/index/sync?full=false");
 });
+
+// --- Definite 503 refusals are retryable; ambiguous failures keep the at-most-once guard. ---
+const EXECUTOR = "Indexing execution is unavailable until its worker and recovery support are ready.";
+const NO_DRIVE = "No Google Drive connection found. Complete OAuth first.";
+function liveServer(state: { post: () => Response; available?: boolean }) {
+  vi.stubGlobal("fetch", vi.fn(async (path: string) => {
+    if (path === "/api/v1/auth/session") return json({ kind: "GOOGLE_ACCOUNT", user_id: owner, csrf_token: "synthetic" });
+    if (path === "/api/v1/index/sync?full=false") return state.post();
+    if (path === `/api/v1/index/status?job_id=${id}`) return json(running());
+    if (path === "/api/v1/index/status") return json({ connected: true, job: null, ...(state.available === undefined ? {} : { sync_available: state.available }) });
+    throw new Error("Unexpected route");
+  }));
+}
+it("a 503 executor refusal is definite: clears the intent, says unavailable, and retry is allowed", async () => {
+  const state = { post: () => json({ detail: EXECUTOR }, 503) as Response, available: undefined as boolean | undefined };
+  liveServer(state);
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(posts()).toHaveLength(1);
+  expect(window.localStorage.getItem(key)).toBeNull();
+  expect(c.getSnapshot()).toMatchObject({ phase: "unavailable", message: "Sync is temporarily unavailable. Please try again." });
+  // Executor comes up; the user retries from the same controller, no status check or storage clearing needed.
+  state.post = () => accepted();
+  await c.start();
+  expect(posts()).toHaveLength(2); expect(c.getSnapshot().phase).toBe("active");
+});
+it("a refresh after a 503 refusal starts clean and can sync", async () => {
+  const state = { post: () => json({ detail: EXECUTOR }, 503) as Response };
+  liveServer(state);
+  const first = new DiscoveryController(owner, vi.fn()); await first.check(); await first.start();
+  const reloaded = new DiscoveryController(owner, vi.fn()); await reloaded.check();
+  expect(reloaded.getSnapshot().phase).toBe("idle");
+  state.post = () => accepted();
+  await reloaded.start(); expect(posts()).toHaveLength(2);
+});
+it("a 503 with no Drive connection reports renewal needed and releases the intent", async () => {
+  liveServer({ post: () => json({ detail: NO_DRIVE }, 503) });
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(window.localStorage.getItem(key)).toBeNull();
+  expect(c.getSnapshot()).toMatchObject({ connected: false, message: "Your Google Drive connection needs to be renewed." });
+});
+it("an expired session (401) releases its intent and is never replayed", async () => {
+  liveServer({ post: () => json({ detail: "Your application session is invalid or expired." }, 401) });
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(window.localStorage.getItem(key)).toBeNull(); expect(posts()).toHaveLength(1);
+  await c.start(); expect(posts()).toHaveLength(1); // no automatic replay
+});
+it("a CSRF failure (403) is a definite rejection that does not wedge the button", async () => {
+  liveServer({ post: () => json({ detail: "Application session request could not be verified." }, 403) });
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(window.localStorage.getItem(key)).toBeNull(); expect(posts()).toHaveLength(1);
+  const next = new DiscoveryController(owner, vi.fn()); await next.check();
+  expect(next.getSnapshot().phase).toBe("idle");
+});
+it("an unrecognised 503 body stays ambiguous and is never replayed", async () => {
+  liveServer({ post: () => json({ detail: "Indexing is temporarily unavailable." }, 503) });
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(c.getSnapshot().phase).toBe("unknown");
+  expect(JSON.parse(window.localStorage.getItem(key)!).jobId).toBeNull();
+  await c.check(); await c.start(); expect(posts()).toHaveLength(1);
+});
+it("when the backend reports the executor closed, no request is sent and the state is retryable", async () => {
+  const state = { post: () => accepted(), available: false };
+  liveServer(state);
+  const c = new DiscoveryController(owner, vi.fn()); await c.check(); await c.start();
+  expect(posts()).toHaveLength(0); expect(window.localStorage.getItem(key)).toBeNull();
+  expect(c.getSnapshot()).toMatchObject({ phase: "unavailable", syncAvailable: false });
+  state.available = true;
+  await c.check(); await c.start();
+  expect(posts()).toHaveLength(1); expect(c.getSnapshot().phase).toBe("active");
+});
+it("rapid duplicate clicks on one controller send a single request", async () => {
+  const gate = deferred<Response>();
+  server({ post: () => gate.promise });
+  const c = new DiscoveryController(owner, vi.fn()); await c.check();
+  const a = c.start(), b = c.start(), d = c.start();
+  gate.resolve(accepted()); await Promise.all([a, b, d]);
+  expect(posts()).toHaveLength(1);
+});
