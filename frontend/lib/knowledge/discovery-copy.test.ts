@@ -13,9 +13,9 @@ it.each([
   ["executor closed", state({ syncAvailable: false }), none, "Sync is temporarily unavailable. Please try again."],
   ["running", state({ phase: "active", job: job("running") }), none, "Finding files in your Google Drive…"],
   ["queued", state({ phase: "active", job: job("queued") }), none, "Finding files in your Google Drive…"],
-  ["complete with files", state({ phase: "complete", job: job("completed") }), some, "Sync complete. 24 files found."],
-  ["complete with one file", state({ phase: "complete", job: job("completed") }), { total: 1, indexed: 0 }, "Sync complete. 1 file found."],
-  ["complete with zero files", state({ phase: "complete", job: job("completed") }), none, "No supported files were found in this Drive."],
+  ["complete with files", state({ phase: "complete", job: job("completed") }), some, "Sync complete. 0 metadata updates processed."],
+  ["complete with one file", state({ phase: "complete", job: job("completed") }), { total: 1, indexed: 0 }, "Sync complete. 0 metadata updates processed."],
+  ["complete with zero files", state({ phase: "complete", job: job("completed") }), none, "Sync complete. 0 metadata updates processed."],
   ["failed", state({ job: job("failed") }), none, "Sync failed. Your Google Drive files were not changed. Check status before trying again."],
   ["discovered, not prepared", state({}), some, "Files found. Select a file to prepare it for chat."],
   ["some ready for chat", state({}), { total: 24, indexed: 3 }, "3 files are ready for chat. Select a file to prepare more."],
@@ -33,4 +33,12 @@ it("never shows a percentage or raw backend text", () => {
   const texts = [state({ phase: "active", job: job("running", { processed: 3, total: 10 }) }), state({ job: job("failed", { error: "boom: traceback" }) })]
     .map(s => describeDiscovery(s, none).message);
   for (const t of texts) { expect(t).not.toMatch(/%|boom|traceback|\{/); }
+});
+
+it("completion never mistakes stale inventory for the just-completed sync result", () => {
+  const completed = state({ phase: "complete", job: job("completed", { processed: 7 }) });
+  // A refreshing or failed Resource retains its previous data, including an empty array.
+  for (const inventory of [null, none, some]) {
+    expect(describeDiscovery(completed, inventory).message).toBe("Sync complete. 7 metadata updates processed.");
+  }
 });

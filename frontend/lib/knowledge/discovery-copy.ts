@@ -48,11 +48,9 @@ export function describeDiscovery(state: DiscoveryState, inventory: InventoryCou
     return {
       ...base,
       canSync: true,
-      message: inventory === null
-        ? `Sync complete. ${plural(syncJob?.processed ?? 0, "metadata update", "metadata updates")} processed.`
-        : total > 0
-          ? `Sync complete. ${plural(total, "file", "files")} found.`
-          : "No supported files were found in this Drive.",
+      // Inventory refresh runs after completion and may retain stale data on failure.
+      // Only the job's own metadata counter is evidence for what this sync processed.
+      message: `Sync complete. ${plural(syncJob?.processed ?? 0, "metadata update", "metadata updates")} processed.`,
     };
   }
   // idle: never synced, or synced earlier.

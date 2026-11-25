@@ -331,8 +331,14 @@ def test_only_one_delete_route_exists_and_none_is_named_disconnect_revoke_or_pur
 
 def test_disconnect_help_text_is_a_link_to_google_not_a_backend_call():
     """The one place the frontend mentions Revoke points the Owner to Google (no backend call)."""
-    source = (REPO_ROOT / "frontend/lib/user-language.ts").read_text()
-    assert "Opens Google Account permissions to revoke DriveMind access." in source
+    # Marginalia replaced user-language.ts; preserve the security contract on the actual control.
+    source = (REPO_ROOT / "frontend/components/settings/settings-view.tsx").read_text()
+    opening = '<a href="https://myaccount.google.com/permissions"'
+    assert opening in source
+    anchor = source.split(opening, 1)[1].split("</a>", 1)[0]
+    assert "Manage access in your Google Account" in anchor
+    assert "onClick" not in anchor
+    assert 'target="_blank"' in anchor and 'rel="noreferrer"' in anchor
 
 
 # --- History the answering path receives (no database) --------------------------------------

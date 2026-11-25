@@ -178,7 +178,7 @@ export function ChatWorkspace() {
     if (turn.status === "COMPLETED")
       return <CompletedTurn key={turn.id} id={turn.id} question={turn.question} answer={turn.answer} citations={turn.citations}
         conversationId={routeId} onOpenSources={openSources} wide={wide} current={turn.id === lastTurn?.id}
-        onAskAgain={turn.id === lastTurn?.id && !busy && session.canMutate ? () => askAgain(turn.question) : undefined} />;
+        onAskAgain={turn.id === lastTurn?.id && !busy && !blocked && session.canMutate ? () => askAgain(turn.question) : undefined} />;
     if (turn.status === "RUNNING") {
       const live = streaming && submission?.turn?.id === turn.id;
       if (live) return <PendingTurn key={turn.id} question={turn.question} phase={streaming.phase} provisional={streaming.text || undefined} />;
@@ -202,7 +202,7 @@ export function ChatWorkspace() {
       : <NoticeTurn key={turn.id} question={turn.question} tone="neutral" title="This answer was stopped before it finished."
           actions={latest ? <Button size="sm" onClick={() => askAgain(turn.question)} disabled={!session.canMutate}>Ask again</Button> : undefined} />;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [turns, streaming, submission, state.executionExpired, state.polling, unknown, wide, routeId, busy, session.canMutate, openSources]);
+  }), [turns, streaming, submission, state.executionExpired, state.polling, unknown, wide, routeId, busy, blocked, session.canMutate, openSources]);
 
   let tail: React.ReactNode = null;
   if (outgoing) tail = <PendingTurn question={outgoing} phase="searching" />;

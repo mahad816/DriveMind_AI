@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import fixture from "@/lib/api/fixtures/conversation-backend-dto.json";
 import { ApplicationSessionProvider } from "@/components/providers/application-session-provider";
+import { useFiles } from "@/components/workspace/workspace-provider";
 import { WorkspaceRoot } from "@/components/workspace/workspace-root";
 import { ChatWorkspace } from "@/components/chat/chat-workspace";
 import { ToastProvider } from "@/components/ui/toast";
@@ -28,7 +29,7 @@ function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promi
 
 /** A tiny synthetic backend: the session can be switched off, and the question request is held open. */
 function backend(streaming: boolean) {
-  const state = { signedIn: true, turnPosts: 0 };
+  const state = { signedIn: true, turnPosts: 0, filesReady: true };
   const held = deferred<Response>();
   let pipe: ReadableStreamDefaultController<Uint8Array> | null = null;
   const fetch = vi.fn(async (input: string, init?: RequestInit) => {
@@ -37,7 +38,7 @@ function backend(streaming: boolean) {
       return state.signedIn ? json({ kind: "GOOGLE_ACCOUNT", user_id: OWNER, csrf_token: "synthetic-csrf" }) : json({ detail: "Session expired" }, 401);
     if (!state.signedIn) return json({ detail: "Session expired" }, 401);
     if (path === "/files") return json({ files: [{ id: "00000000-0000-4000-8000-000000000106", user_id: OWNER, drive_file_id: "synthDrive1", name: "synthetic.txt",
-      mime_type: "text/plain", folder_path: null, modified_at: "2026-10-01T00:00:00Z", indexed_at: "2026-10-02T00:00:00Z", status: "indexed",
+      mime_type: "text/plain", folder_path: null, modified_at: "2026-10-01T00:00:00Z", indexed_at: "2026-10-02T00:00:00Z", status: state.filesReady ? "indexed" : "discovered",
       created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z" }], total: 1 });
     if (path === "/index/status") return json({ connected: true, demo_mode: false, job: null });
     if (path === "/conversations" && method === "GET") return json({ conversations: [fixture.metadata], next_cursor: null });
@@ -58,9 +59,14 @@ function backend(streaming: boolean) {
   return { state, held, fetch, pipe: () => pipe };
 }
 
+function InventoryRefresh() {
+  const files = useFiles();
+  return <button onClick={() => void files.reload()}>Reload inventory</button>;
+}
+
 function App() {
   return (
-    <ToastProvider><TooltipProvider><ApplicationSessionProvider><WorkspaceRoot><ChatWorkspace /></WorkspaceRoot></ApplicationSessionProvider></TooltipProvider></ToastProvider>
+    <ToastProvider><TooltipProvider><ApplicationSessionProvider><WorkspaceRoot><ChatWorkspace /><InventoryRefresh /></WorkspaceRoot></ApplicationSessionProvider></TooltipProvider></ToastProvider>
   );
 }
 
@@ -133,4 +139,18 @@ it("normal mode keeps no question or answer text in browser storage once sent", 
   const stored = local.entries().map(([k, v]) => `${k}=${v}`).join("\n") + "\n" + Object.keys(window.sessionStorage).map(k => `${k}=${window.sessionStorage.getItem(k)}`).join("\n");
   expect(stored).not.toContain("Private follow-up question");
   expect(stored).not.toContain("Synthetic canonical answer.");
+});
+
+it("hides the new completed-answer retry when refreshed inventory has no ready files", async () => {
+  vi.stubEnv("NEXT_PUBLIC_CHAT_STREAMING_ENABLED", "false");
+  const server = backend(false);
+  render(<App />);
+  await screen.findByText("Synthetic canonical answer.");
+  expect(await screen.findByRole("button", { name: "Ask again" })).toBeEnabled();
+  server.state.filesReady = false;
+  fireEvent.click(screen.getByRole("button", { name: "Reload inventory" }));
+  await screen.findByText("Prepare a document before asking.");
+  expect(screen.getByText("Synthetic canonical answer.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ask again" })).not.toBeInTheDocument();
+  expect(server.state.turnPosts).toBe(0);
 });
