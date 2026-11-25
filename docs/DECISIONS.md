@@ -2,6 +2,14 @@
 
 Short, dated records of engineering decisions with the evidence behind them. Newest first.
 
+## 2026-11-24 — Backend stabilization checkpoint: the narrow M1 exception is extended to six confirmed defects; C2-cap3 and the tool agent are active in local development only
+
+**Decision (Owner, 2026-11-24).** The exception below is extended, for this checkpoint only (`docs/specs/backend-stabilization.md`, tickets in `docs/tickets/backend-stabilization/`), to these confirmed defects and to nothing else: (1) a citation marker on its own line was treated as a claim and removed (nm07); (2) a trailing colon exempted a factual lead-in from removal (nm07); (3) the checker flagged a supported, qualified "not stated" statement (cc07, both repeats of the reliability validation); (4) a document named as the source of a fact was not a material assertion (nm07, a correct value attributed to the wrong document); (5) after the model's own citations were removed the answer got a "Sources consulted" list of every retrieved file; (6) the remaining KI-035 edge cases (`+`, `•`, `>` markers, continuation indent). It does **not** reopen M1, change retrieval ranking, models, thresholds or any default, or authorize any paid call.
+
+**Local activation (not a code default).** `scripts/dev-backend.sh` sets `TOOL_RAG_AGENT_ENABLED=true` and `RETRIEVAL_DUAL_QUERY_ENABLED=true` for the local process only (each can be set to `false` on the command line). Both are needed: with the Owner's local configuration the tool agent was **off** (`tool_rag_agent_enabled` False, read from the loaded settings, not from the secret file), and C2, the claim check, the false-premise prompt and the KI-034 note all live on the tool-agent path, so the dual-query flag alone would have changed nothing locally. The code defaults, `backend/.env`, Railway and the demo configuration are unchanged; the evaluation harness still pins its own strategy. A one-line `effective_config` log at startup shows the flags the process really uses.
+
+**Consequences.** The checker prompt hash changes. The prompt changes (qualified absence, document attribution, lead-ins) have **no real-model evidence**: one bounded validation is prepared (`docs/tickets/backend-stabilization/03-...`) and **not authorized**. The previous reliability validation (commit `bdcdb39`, 28 executions, evidence in the Owner's `answer_reliability_validation/` folder outside Git) keeps its verdict **FAIL**: its scorer passed 12 of 14 cases in each run, but `cc07`'s supported "not stated" statement was removed in both repeats, and `nm07` stayed wrong. A new validation has its own result.
+
 ## 2026-11-24 — Narrow M1 exception for three targeted answer-reliability fixes
 
 **Decision (Owner, 2026-11-24).** The M1 boundary "no change to prompts, the claim check or the application package" (`docs/specs/m1-rag-evaluation.md`, Boundaries) is relaxed for exactly three production changes, and for nothing else:

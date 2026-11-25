@@ -59,7 +59,7 @@ def describe_evidence(sections: Sequence[EvidenceSection], text: str) -> dict[st
     for index, section in enumerate(sections):
         if index:
             offset += 2  # the "\n\n" between sections
-        header = f"[{section.members[0].filename}]\n"
+        header = claim_module.section_label(section.members[0].filename) + "\n"
         base = offset + len(header)
         by_id = {m.chunk_id: m for m in section.members}
         chunks = []
@@ -144,7 +144,7 @@ def _labels(indexes: Sequence[int]) -> list[str]:
 
 
 def _number_hints(statements: Sequence[str], evidence: str, question: str) -> dict[str, list[str]]:
-    given = f"{evidence[: claim_module.MAX_EVIDENCE_CHARS]}\n{question}"
+    given = f"{claim_module.evidence_body(evidence[: claim_module.MAX_EVIDENCE_CHARS])}\n{question}"
     return {
         f"S{i}": missing
         for i, s in enumerate(statements, 1)
@@ -229,7 +229,7 @@ def attribute_removals(
     """What happened to each statement, read from the answer text before and after, not from the checker's labels.
 
     Since KI-035 was fixed, ``enforce_claims`` removes exactly the flagged units, so a non-empty
-    ``flagged_not_removed`` or ``collateral_removed`` in a new run means a new defect, not normal behaviour (older
+    ``flagged_not_removed`` or ``collateral_removed`` in a new run means a new defect, except a structural lead-in dropped because every item it introduced was removed (documented in KNOWN_ISSUES SC-5), not normal behaviour (older
     result files can contain them: the old code kept a flagged numbered statement and dropped every copy of a
     flagged text). This function still reads only the text before and after. Each statement is
     judged by how many copies of its text (as a whole statement unit, whitespace squashed) the remaining answer

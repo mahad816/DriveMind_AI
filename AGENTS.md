@@ -84,6 +84,9 @@ uv sync --dev
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8000
 
+# Or, from the repository root, the tool agent with C2-cap3 on (local process only; the startup log prints `effective_config`):
+#   scripts/dev-backend.sh
+
 # Frontend setup and start
 cd frontend
 npm install

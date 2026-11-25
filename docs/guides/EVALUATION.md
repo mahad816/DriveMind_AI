@@ -58,7 +58,7 @@ uv run python -m evaluation.rag_eval.cli rescore evaluation/results/FILE.json --
 | `cli setup --cap USD` | embeddings for the corpus |
 | `cli run --cap USD [--repeats N] [--limit N]` | the answering calls and the refusal judge; `--repeats` is 1 to 5 and writes one result file per repeat and pipeline |
 | `cli rescore FILE --cap USD` | the refusal judge |
-| `first_step_probe`, `retrieval_probe`, `ragbench_check`, `planted_claims` (`--cap USD`) | one model call or one embedding per question; these four have no `--plan` yet |
+| `first_step_probe`, `retrieval_probe`, `ragbench_check`, `planted_claims` (`--cap USD`) | one model call or one embedding per question; these four have no `--plan` yet; since 2026-11-25 `planted_claims` builds controls from **development** cases only, so an unscoped run is smaller than the 2026-11-19 figures in `EVALUATION_RESULTS.md`, `--ids` accepts only those cases and exits before any call otherwise, and it now also builds two absence variants (about 1.7 times the checker calls per case: five variants where there were three) |
 
 A command whose estimate is above `--cap` refuses to start. During a run the meter refuses every provider call after the cap is reached. The cases that were running or not yet started become rows marked `cap_stopped`: they are left out of every rate, the summary says `incomplete: true`, the file is still written and the command exits non-zero. The meter checks before each call, so requests already in flight can overshoot by up to the concurrency times one call.
 

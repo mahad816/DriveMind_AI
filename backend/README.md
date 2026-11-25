@@ -51,6 +51,18 @@ curl -X POST http://localhost:8000/api/v1/chat \
 curl http://localhost:8000/api/v1/sources/<chunk_id>
 ```
 
+## Local development: which answer path runs
+
+The code defaults are conservative (`TOOL_RAG_AGENT_ENABLED=false`, `RETRIEVAL_DUAL_QUERY_ENABLED=false`), and `backend/.env` is secret-bearing, so local feature switches are set on the command line:
+
+```bash
+scripts/dev-backend.sh                                        # tool agent + C2-cap3 on (local process only)
+RETRIEVAL_DUAL_QUERY_ENABLED=false scripts/dev-backend.sh     # C2 off, tool agent still on
+TOOL_RAG_AGENT_ENABLED=false scripts/dev-backend.sh           # legacy answer path (C2 does not apply)
+```
+
+On start the log is expected to show one line (not yet observed from a real server start in this checkpoint), for example `effective_config tool_agent=True dual_query=True hybrid=True claim_check=True streaming=False demo=False max_chunks_per_file=3` (booleans and one integer, no secret). Environment variables take precedence over `.env`. `CHAT_STREAMING_ENABLED` is a separate backend and frontend rollout flag and is not set by the launcher. Railway and any remote deployment read their own variables and are not affected. See `docs/specs/backend-stabilization.md` and `docs/DECISIONS.md`.
+
 ## Phase 7 — Hybrid Retrieval
 
 Hybrid retrieval runs three retrievers in parallel, then merges, reranks, and grades evidence before generation:

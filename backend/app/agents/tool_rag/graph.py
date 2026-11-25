@@ -24,7 +24,13 @@ from .contracts import (
 )
 
 from .claim_check import ClaimChecker, evidence_text, user_text
-from .finalization import UnknownCitation, finalize_answer, is_social_phrase, provenance_response
+from .finalization import (
+    UnknownCitation,
+    cites_a_source,
+    finalize_answer,
+    is_social_phrase,
+    provenance_response,
+)
 from app.llm.prompts import NO_EVIDENCE_ANSWER
 from app.services.chat_stream import emit, provisional_text, stream_sink
 
@@ -196,6 +202,7 @@ def build_tool_graph(
                 "pending": None,
                 "search_nudged": True,
             }
+        consulted_footer = True
         if claim_check is not None and state["evidence"]:
             # KI-002: drop statements the retrieved evidence does not support. Never raises;
             # an unusable check leaves the text unchanged.
@@ -209,8 +216,12 @@ def build_tool_graph(
                 if checked.nothing_left:
                     return {"final_answer": NO_EVIDENCE_ANSWER, "citations": ()}
                 text = checked.text
+                # The model cited, but only text the check removed: do not list every retrieved file instead.
+                consulted_footer = not (checked.removed and cites_a_source(pending.text))
         try:
-            answer = finalize_answer(text, state, runtime.context.handles)
+            answer = finalize_answer(
+                text, state, runtime.context.handles, consulted_footer=consulted_footer
+            )
         except UnknownCitation as bad:
             # No retry when it was already used, or when the cycle limit leaves no model call for it
             # (the agent node would turn that into a misleading "cycle limit" message).

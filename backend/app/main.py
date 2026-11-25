@@ -78,6 +78,18 @@ async def lifespan(
     app.state.indexing_admission_ready = False
     supervisor = None
     configure_logging(settings.log_level)
+    # Booleans and one integer, no secret: what a developer needs to confirm which answer path this process runs.
+    logger.info(
+        "effective_config tool_agent=%s dual_query=%s hybrid=%s claim_check=%s streaming=%s demo=%s "
+        "max_chunks_per_file=%s",
+        settings.tool_rag_agent_enabled,
+        settings.retrieval_dual_query_enabled,
+        settings.hybrid_retrieval_enabled,
+        settings.claim_check_enabled,
+        settings.chat_streaming_enabled,
+        settings.demo_mode,
+        settings.retrieval_max_chunks_per_file,
+    )
     try:
         if settings.indexing_enabled and runtime is None:
             try:

@@ -1,10 +1,10 @@
-# 04: Targeted real-model validation of tickets 01 to 03 (prepared, NOT authorized, NOT run)
+# 04: Targeted real-model validation of tickets 01 to 03 (RAN 2026-11-24 at bdcdb39: verdict FAIL)
 
 **Spec:** docs/specs/m1-rag-evaluation.md (Owner-approved exception: docs/DECISIONS.md, "2026-11-24 — Narrow M1 exception for three targeted answer-reliability fixes")
 **What to build:** a small paid run whose every draft and final answer the Owner can read, to see whether the real model follows the revised prompts and whether the checker still protects against wrong numbers.
 **Blocked by:** tickets 01 to 03 reviewed and committed; the Owner's explicit go-ahead for spend
-**Status:** needs-info (awaits the Owner)
-**Progress:** open
+**Status:** ready-for-human
+**Progress:** resolved (the validation ran; its verdict is FAIL, see Comments)
 **Risk:** high (paid evaluation path)
 
 ## Boundaries
@@ -48,7 +48,7 @@ Development split only, English only, no held-out or regression case, no sealed 
 - Measured, completed pilot, arm A: 0.0822 USD for 18 rows, **about 0.0046 per row** (the claim check, on `gpt-5.4-mini`, was 0.0515 of it). At that rate: about 0.064 USD per run, **about 0.13 USD for both runs**. Cases with several retrieval steps cost more.
 - **Proposed application-side cap: 0.15 USD per run, 0.30 USD in total** (about 2.3 times the measured per-run figure). It is checked between calls and is not a provider limit. Prices must be re-read from OpenAI's pages at go time (`prices.json` was last checked 2026-11-19).
 
-## Commands (not run)
+## Commands (run once on 2026-11-24 at `bdcdb39`; kept for the record, not to be repeated)
 
 Preconditions: the code is committed (the gate refuses a dirty tree and records the commit); containers up; `index_verify verify --store v3` passes; `OPENAI_API_KEY` exported for this command only. Run from `backend/` in bash (the commit created by the Owner-authorized local commit satisfies the clean-tree rule). Repeats must be separate runs (the gate wants one row per case).
 
@@ -80,3 +80,4 @@ One real false-premise development case exists, so false-premise handling cannot
 ## Comments
 
 - 2026-11-24: prepared. No paid call made.
+- 2026-11-24: **run** at `bdcdb39` after the Owner's go-ahead: two runs of arm A, 14 development cases, 28 executions, preflight and arm gates ok, chain exit 0; metered 0.06483 and 0.02994 USD (caps 0.15 each). Scorer: 12 of 14 cases passed in each run (`id19` and `nm07` failed both times). Reading the drafts: `cc07`'s supported "not stated" line was removed in both runs; `nm07` still attributed the 36-hour window to the wrong document. **Verdict FAIL**, recorded in `docs/DECISIONS.md` (backend stabilization checkpoint). Raw evidence is outside Git (`answer_reliability_validation/`, contains drafts). Follow-up: `docs/tickets/backend-stabilization/` (ticket 03 is prepared and not authorized).

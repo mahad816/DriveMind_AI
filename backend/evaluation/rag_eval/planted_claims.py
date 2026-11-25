@@ -1,12 +1,15 @@
 """Product-shaped test of the KI-002 claim checker: does it remove an invented fact, and spare a true one?
 
 For answerable cases whose answer is a plain fact (not computed), the evidence is the text of the
-file(s) that really hold the answer and the clean answer is the case's reference answer. Three
-variants are built from it with fixed rules, no model involved:
+file(s) that really hold the answer and the clean answer is the case's reference answer. Five
+variants are built from it with fixed rules, no model involved (a case with no number gets no
+``contradict`` variant, so it has four):
 
   clean      the reference answer as it is (a flag here is a FALSE removal);
   appended   the clean answer plus one fabricated, specific sentence that is in no file;
-  contradict the reference answer with its first number changed (contradicts the file).
+  contradict the reference answer with its first number changed (contradicts the file);
+  absence_supported  the clean answer plus a true statement about what the files lack (must be spared);
+  absence_false      the clean answer plus "the documents do not specify this" although they do (must be flagged).
 
 The planted sentences are synthetic, so this measures the product's failure shape (an invented
 specific fact next to a real answer), not general faithfulness; RAGBench covers the latter.
@@ -22,7 +25,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from app.agents.tool_rag.claim_check import find_unsupported, numbers_missing, split_statements
+from app.agents.tool_rag.claim_check import (
+    evidence_body,
+    find_unsupported,
+    numbers_missing,
+    split_statements,
+)
 from app.core.config import get_settings
 from app.llm.openai_agent_service import OpenAIAgentChatService
 
@@ -31,6 +39,9 @@ from .dataset import corpus_texts, load_cases
 from .meter import CostMeter, cap_argument, label_var
 from .score import wilson
 
+# Development cases only: a regression or held-out case (or one with no split) is never built into a control
+# item, so a paid control run cannot touch another pool. ``--ids`` can name only items that were built.
+DEV_SPLIT = "dev"
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 FABRICATIONS = [
     "This was confirmed by an external audit in March 2019.",
@@ -39,6 +50,23 @@ FABRICATIONS = [
     "A penalty of 4,800 USD applies when this is breached.",
     "The head of operations, Marta Ilves, signed off on it personally.",
 ]
+
+
+# Stabilization controls for the checker's treatment of statements about what the documents lack. The first is
+# true of the synthetic corpus (no file says who first proposed anything); the second is false by construction
+# because the evidence given is the file that holds the answer.
+ABSENCE_SUPPORTED = "The documents do not say who first proposed this."
+ABSENCE_FALSE = "The documents do not specify this value."
+
+
+def select_ids(items: list[dict[str, Any]], ids: list[str] | None) -> list[dict[str, Any]]:
+    """Only the named cases (all when ``ids`` is None), to keep a paid control run small."""
+    if ids is None:
+        return items
+    unknown = sorted(set(ids) - {i["id"] for i in items})
+    if unknown:  # a typo must not silently shrink a paid run
+        raise SystemExit(f"not an eligible case id: {' '.join(unknown)}")
+    return [i for i in items if i["id"] in set(ids)]
 
 
 def change_first_number(text: str) -> str | None:
@@ -61,7 +89,8 @@ def build_items(dataset: dict[str, Any], texts: dict[str, str]) -> list[dict[str
     cases = [
         c
         for c in dataset["cases"]
-        if c["expected_behavior"] == "answer"
+        if c.get("split") == DEV_SPLIT
+        and c["expected_behavior"] == "answer"
         and not c["computed"]
         and c["category"] != "public_document"
         and not c.get("history")
@@ -69,13 +98,18 @@ def build_items(dataset: dict[str, Any], texts: dict[str, str]) -> list[dict[str
     for n, case in enumerate(cases):
         clean = case["reference_answer"]
         evidence = "\n\n".join(f"[{p.split('/')[-1]}]\n{texts[p]}" for p in case["expected_files"])
-        if numbers_missing(clean, evidence):
+        if numbers_missing(clean, evidence_body(evidence)):
             skipped.append(case["id"])
             continue
         planted = FABRICATIONS[n % len(FABRICATIONS)]
-        variants = {"clean": clean, "appended": f"{clean} {planted}"}
+        variants = {
+            "clean": clean,
+            "appended": f"{clean} {planted}",
+            "absence_supported": f"{clean} {ABSENCE_SUPPORTED}",
+            "absence_false": f"{clean} {ABSENCE_FALSE}",
+        }
         swapped = change_first_number(clean)
-        if swapped and swapped != clean and numbers_missing(swapped, evidence):
+        if swapped and swapped != clean and numbers_missing(swapped, evidence_body(evidence)):
             variants["contradict"] = swapped
         items.append(
             {
@@ -89,7 +123,12 @@ def build_items(dataset: dict[str, Any], texts: dict[str, str]) -> list[dict[str
     SKIPPED_CASES[:] = skipped
     # Honest calculations contain numbers the text does not: they must survive the number hint.
     for case in dataset["cases"]:
-        if case["computed"] and case["expected_behavior"] == "answer" and not case.get("history"):
+        if (
+            case.get("split") == DEV_SPLIT
+            and case["computed"]
+            and case["expected_behavior"] == "answer"
+            and not case.get("history")
+        ):
             evidence = "\n\n".join(
                 f"[{p.split('/')[-1]}]\n{texts[p]}" for p in case["expected_files"] if p in texts
             )
@@ -111,7 +150,10 @@ SKIPPED_CASES: list[str] = []
 
 async def main(args: argparse.Namespace) -> None:
     files = synthetic_files() + public_files(require_present=False)
-    items = build_items(load_cases(), corpus_texts([f for f in files if f.kind == "synthetic"]))
+    items = select_ids(
+        build_items(load_cases(), corpus_texts([f for f in files if f.kind == "synthetic"])),
+        args.ids,
+    )
     service = OpenAIAgentChatService(get_settings().model_copy(update={"chat_model": args.model}))
     gate, meter = asyncio.Semaphore(4), CostMeter(args.cap)
 
@@ -129,6 +171,10 @@ async def main(args: argparse.Namespace) -> None:
             hit = any(
                 item["planted"] in statements[i] for i in flagged
             )  # the invented sentence itself removed
+        elif kind == "absence_supported":
+            hit = any(ABSENCE_SUPPORTED in statements[i] for i in flagged)  # a FALSE removal
+        elif kind == "absence_false":
+            hit = any(ABSENCE_FALSE in statements[i] for i in flagged)  # the false absence caught
         else:
             hit = bool(flagged)  # the changed answer must be caught
         wrong = [
@@ -164,6 +210,8 @@ async def main(args: argparse.Namespace) -> None:
         ("appended", "invented_sentence_removed"),
         ("contradict", "contradiction_caught"),
         ("computed", "calculated_answer_false_removal"),
+        ("absence_supported", "qualified_absence_false_removal"),
+        ("absence_false", "false_absence_removed"),
     ):
         ok = [r for r in rows if r["kind"] == kind and not r["error"]]
         k = sum(r["hit"] for r in ok)
@@ -189,6 +237,9 @@ async def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="gpt-5.4-mini")
+    parser.add_argument(
+        "--ids", nargs="+", default=None, help="only these case ids (keeps a control run small)"
+    )
     parser.add_argument(
         "--cap",
         type=cap_argument,

@@ -198,6 +198,11 @@ class UnknownCitation(ValueError):
         self.valid = valid
 
 
+def cites_a_source(text: str) -> bool:
+    """Whether the model's text carries at least one protocol citation marker."""
+    return _MARKER.search(text) is not None
+
+
 @dataclass(frozen=True)
 class FinalizedAnswer:
     answer: str
@@ -205,8 +210,10 @@ class FinalizedAnswer:
 
 
 def finalize_answer(
-    text: str, state: AgentState, handles: RuntimeHandleRegistry
+    text: str, state: AgentState, handles: RuntimeHandleRegistry, *, consulted_footer: bool = True
 ) -> FinalizedAnswer:
+    """``consulted_footer=False`` leaves an answer without markers uncited instead of listing every
+    retrieved file: used when the model did cite, but only statements the claim check then removed."""
     # Source text is sliced from actual contributing ranges, not generated summaries.
     chunks = {}
     excerpts: dict[UUID, str] = {}
@@ -250,7 +257,7 @@ def finalize_answer(
     if _HANDLE.search(answer) or _UUID.search(answer):
         raise ValueError("unsafe final output")
     answer, retained = normalize_answer_citations(answer, citations)
-    if citations and not retained:
+    if citations and not retained and consulted_footer:
         # Honest attribution of consulted sources, not invented sentence-level support.
         names = "; ".join(f"{c.filename} [{i}]" for i, c in enumerate(citations, 1))
         answer += "\n\nSources consulted: " + names
