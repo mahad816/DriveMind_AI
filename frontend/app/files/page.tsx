@@ -1,23 +1,6 @@
-import { DEMO_MODE } from "@/lib/demo";
-import { KnowledgeLibrary } from "@/components/files/knowledge-library";
-import { PageShell } from "@/components/layout/page-shell";
-import { filesCopy } from "@/lib/user-language";
+import { Suspense } from "react";
+import { LibraryView } from "@/components/library/library-view";
 
-export const metadata = {
-  title: "Files — DriveMind AI",
-};
-
-export default function FilesPage() {
-  if (!DEMO_MODE) return <div className="files-workspace"><KnowledgeLibrary /></div>;
-
-  return (
-    <PageShell
-      size="xl"
-      className={DEMO_MODE ? "px-5 py-10 sm:px-8 md:h-full md:min-h-0 md:overflow-hidden md:py-14" : "gap-3 px-4 py-4 sm:px-6 md:h-full md:min-h-0 md:overflow-hidden md:py-6"}
-      title={filesCopy.pageTitle}
-      description={DEMO_MODE ? "Browse seven fictional HarborDesk sample documents and inspect their text." : undefined}
-    >
-      <KnowledgeLibrary />
-    </PageShell>
-  );
+export default function Page() {
+  return <Suspense fallback={null}><LibraryView /></Suspense>;
 }

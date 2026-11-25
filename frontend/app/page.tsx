@@ -1,17 +1,9 @@
-import { redirect } from "next/navigation";
-import { OnboardingAwareHomeRedirect } from "@/components/onboarding/onboarding-gate";
-import { DEMO_MODE } from "@/lib/demo";
+"use client";
+import { useSetupDestination } from "@/components/setup/use-setup";
+import { StartupSkeleton } from "@/components/setup/startup-skeleton";
 
-type HomeProps = { searchParams?: Promise<Record<string, string | string[] | undefined>> };
-
-export default async function HomePage({ searchParams }: HomeProps) {
-  if (DEMO_MODE) {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(await searchParams ?? {})) {
-      if (Array.isArray(value)) value.forEach((item) => query.append(key, item));
-      else if (value !== undefined) query.set(key, value);
-    }
-    redirect(`/chat${query.size ? `?${query}` : ""}`);
-  }
-  return <OnboardingAwareHomeRedirect />;
+/** Resolver only: goes to setup or to a new chat based on real state. */
+export default function Home() {
+  useSetupDestination(true);
+  return <StartupSkeleton />;
 }

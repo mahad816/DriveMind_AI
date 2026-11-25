@@ -162,11 +162,67 @@ it("a different owner found on return invalidates requests and gives the new own
   expect(sessionRevision()).toBeGreaterThan(revision); expect(mounts.n).toBe(2);
   expect(screen.queryByText(`Private account ${a}`)).not.toBeInTheDocument();
 });
-it("a failed verification on return fails closed instead of keeping private content", async () => {
+// Decision D2 (authorized in the Phase 2 brief): a transient failure keeps already-authorized content visible,
+// read-only. The server still authorizes every request, and any 401 hides private content immediately.
+function Degraded() { const s = useApplicationSession(); useEffect(() => { mounts.n += 1; }, []); return <p>Private account {s.userId} degraded={String(s.degraded)} canMutate={String(s.canMutate)}</p>; }
+it("a transient failure on return keeps private content mounted but read-only", async () => {
+  mounts.n = 0;
   const fetch = vi.fn().mockResolvedValueOnce(who()).mockResolvedValueOnce(json({ detail: "down" }, 503)); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Degraded /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a} degraded=false canMutate=true`);
+  const revision = sessionRevision();
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByText(`Private account ${a} degraded=true canMutate=false`)).toBeInTheDocument();
+  expect(sessionRevision()).toBe(revision); expect(mounts.n).toBe(1);
+  expect(screen.queryByRole("button", { name: "Sign in with Google" })).not.toBeInTheDocument();
+});
+it("a 401 while degraded hides private content immediately", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(who()).mockResolvedValueOnce(json({ detail: "down" }, 503))
+    .mockResolvedValueOnce(json({ detail: "Session expired" }, 401)); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Degraded /></ApplicationSessionProvider>);
+  await screen.findByText(/degraded=false/);
+  fireEvent(window, new Event("focus"));
+  await screen.findByText(/degraded=true/);
+  await act(async () => { await expect(apiFetch("/files")).rejects.toMatchObject({ status: 401 }); });
+  expect(screen.queryByText(/Private account/)).not.toBeInTheDocument();
+  expect(await screen.findByText(/Your session expired/)).toBeInTheDocument();
+});
+it("recovery after a transient failure restores writes without remounting", async () => {
+  mounts.n = 0;
+  const fetch = vi.fn().mockResolvedValueOnce(who()).mockResolvedValueOnce(json({ detail: "down" }, 503)).mockResolvedValue(who()); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Degraded /></ApplicationSessionProvider>);
+  await screen.findByText(/degraded=false/);
+  fireEvent(window, new Event("focus"));
+  await screen.findByText(/degraded=true/);
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByText(`Private account ${a} degraded=false canMutate=true`)).toBeInTheDocument();
+  expect(mounts.n).toBe(1);
+});
+it("a different owner after a transient failure still gets a fresh mount, never the old content", async () => {
+  mounts.n = 0;
+  const fetch = vi.fn().mockResolvedValueOnce(who(a)).mockResolvedValueOnce(json({ detail: "down" }, 503)).mockResolvedValue(who(b)); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Degraded /></ApplicationSessionProvider>);
+  await screen.findByText(/degraded=false/);
+  fireEvent(window, new Event("focus")); await screen.findByText(/degraded=true/);
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByText(`Private account ${b} degraded=false canMutate=true`)).toBeInTheDocument();
+  expect(screen.queryByText(new RegExp(a))).not.toBeInTheDocument(); expect(mounts.n).toBe(2);
+});
+it("a sign-in notice from another tab re-checks silently and does not remount the same owner", async () => {
+  mounts.n = 0;
+  const fetch = vi.fn().mockResolvedValue(who()); vi.stubGlobal("fetch", fetch);
+  render(<ApplicationSessionProvider><Counted /></ApplicationSessionProvider>);
+  await screen.findByText(`Private account ${a}`);
+  const calls = fetch.mock.calls.length;
+  await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: "drivemind:session-transition:v1", newValue: "other-tab-nonce" })); });
+  await waitFor(() => expect(fetch.mock.calls.length).toBe(calls + 1));
+  expect(screen.getByText(`Private account ${a}`)).toBeInTheDocument();
+  expect(screen.queryByText("Checking your sign-in…")).not.toBeInTheDocument(); expect(mounts.n).toBe(1);
+});
+it("a sign-out in another tab is confirmed by the server and hides private content", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(who()).mockResolvedValue(json({ detail: "Signed out" }, 401)); vi.stubGlobal("fetch", fetch);
   render(<ApplicationSessionProvider><Private /></ApplicationSessionProvider>);
   await screen.findByText(`Private account ${a}`);
-  fireEvent(window, new Event("focus"));
-  expect(await screen.findByRole("button", { name: "Verify session again" })).toBeInTheDocument();
-  expect(screen.queryByText(/Private account/)).not.toBeInTheDocument();
+  await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: "drivemind:session-transition:v1", newValue: "logout-nonce" })); });
+  await waitFor(() => expect(screen.queryByText(/Private account/)).not.toBeInTheDocument());
 });

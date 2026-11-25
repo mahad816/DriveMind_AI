@@ -1,5 +1,6 @@
-import { SettingsPageContent } from "@/components/settings/settings-page-content";
+import { Suspense } from "react";
+import { SettingsView } from "@/components/settings/settings-view";
 
-export default function SettingsPage() {
-  return <SettingsPageContent />;
+export default function Page() {
+  return <Suspense fallback={null}><SettingsView /></Suspense>;
 }

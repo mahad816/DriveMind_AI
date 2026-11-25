@@ -93,7 +93,7 @@ export type CreateConversationResult = {
 export type SubmitTurnResult = TurnReceipt & {
   httpStatus: 200 | 202;
 };
-export type ConversationErrorCategory = "unauthenticated" | "forbidden" | "not_found" | "metadata_version_conflict" | "request_conflict" | "invalid_request" | "unavailable" | "session_changed" | "http_error";
+export type ConversationErrorCategory = "unauthenticated" | "forbidden" | "not_found" | "metadata_version_conflict" | "request_conflict" | "invalid_request" | "unavailable" | "rate_limited" | "session_changed" | "http_error";
 export type SubmissionIdentity = {
   readonly conversation_id: string;
   readonly payload: Readonly<SubmitTurnRequest>;
@@ -106,6 +106,7 @@ export class ConversationApiError extends ApiError {
       not_found: "Conversation not found.", metadata_version_conflict: "Conversation metadata version is stale.",
       request_conflict: "Conversation request conflicts with existing state.",
       invalid_request: "Invalid conversation request.", unavailable: "Conversation service is unavailable.",
+      rate_limited: "The question limit was reached. Please try again later.",
       session_changed: "Your application session changed. Verify your account again.",
       http_error: "Conversation request was rejected.",
     };
@@ -268,7 +269,7 @@ function category(error: ApiError): ConversationErrorCategory {
     const detail = error.body && typeof error.body === "object" && "detail" in error.body ? error.body.detail : null;
     return detail === "Conversation metadata version is stale." ? "metadata_version_conflict" : "request_conflict";
   }
-  return ({ 401: "unauthenticated", 403: "forbidden", 404: "not_found", 422: "invalid_request", 503: "unavailable" } as Record<number, ConversationErrorCategory>)[error.status] ?? "http_error";
+  return ({ 401: "unauthenticated", 403: "forbidden", 404: "not_found", 422: "invalid_request", 429: "rate_limited", 503: "unavailable" } as Record<number, ConversationErrorCategory>)[error.status] ?? "http_error";
 }
 async function send(path: string, signal?: AbortSignal, mutation?: {
   method: string;

@@ -1,9 +1,3 @@
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { DEMO_MODE } from "@/lib/demo";
-import { PreparationView } from "@/components/knowledge/preparation-view";
-
-export default function PreparePage() {
-  if (DEMO_MODE) redirect("/index");
-  return <Suspense fallback={<p role="status" className="p-6">Checking preparation…</p>}><PreparationView /></Suspense>;
-}
+/** Preparation lives in the tray now; the library is where documents are chosen. */
+export default function Prepare() { redirect("/files"); }
